@@ -65,6 +65,7 @@ The rewrite must make these retained rules explicit and give each one a single o
 
 ## Non-Goals
 
+- Linux is the only supported host platform. No macOS/Windows support, portability shims, or cross-platform fallback paths.
 - No Squid sidecar, HTTPS interception, CA management, allowlist, or proxy recovery.
 - No offline mode. AI harnesses require network access.
 - No network-security or egress-isolation claim.
@@ -293,8 +294,8 @@ Use one canonical spec with three derived fingerprints:
 | Fingerprint | Inputs | Required action |
 |---|---|---|
 | Image | Dockerfiles, Devbox image assets, harness install definition | rebuild image and recreate container |
-| Container | image ID, mounts, env, ports, primary network, harness stores/auth, raw Docker args | recreate container |
-| Runtime | hooks, harness config desired tree, runtime assets, launch defaults | synchronize or run without recreate |
+| Container | image ID, mounts, env, ports, primary network, harness stores/auth, raw Docker args, per-container setup inputs | recreate container |
+| Runtime | every-open entrypoint hook, harness config desired tree, runtime assets, launch defaults | synchronize or run without recreate |
 
 The resolver produces a typed `ChangePlan`:
 
@@ -333,7 +334,7 @@ It contains:
 
 It does not retain permanent `cloned_from` or `relocated_from` history. Clone creates a new session ID; relocate preserves the session ID. Only an in-progress transfer journal is retained for recovery and removed after completion.
 
-Do not split durable recreation metadata into another host-side record. Do not persist live Docker runtime facts as session authority; inspect Docker for those facts. Do not persist secrets in the record. Secret-bearing env values contribute through a salted/structured fingerprint and are redacted in config, status, and reconciliation output.
+Do not split durable recreation metadata into another host-side record. Do not persist live Docker runtime facts as session authority; inspect Docker for those facts. Do not persist secrets in the record. Treat all host-provided environment values and `${env:...}` substitutions as sensitive. Secrets are supported through environment/auth inputs, not launch argv, raw Docker arguments, or other ordinary settings; document that those fields must not contain secrets. Secret-bearing env values contribute through a salted/structured fingerprint and are redacted in config, status, and reconciliation output.
 
 ### Missing-container recovery
 
@@ -853,7 +854,7 @@ Each environment/harness stores `managed-config.json` containing, for every mana
 - desired source and source layer;
 - synchronization strategy;
 - destination store and relative path;
-- hash last applied by Devbox for an ordinary file;
+- hash and managed mode last applied by Devbox for an ordinary file;
 - declared owned keys and their desired hashes for a structured merge file;
 - last synchronization time;
 - conflict status when applicable.
@@ -1521,7 +1522,8 @@ The migration utility stages converted data, keeps the original home at `~/.devb
 During development:
 
 - build the binary under a distinct name such as `devbox-rewrite`;
-- use an explicit isolated `DEVBOX_HOME`;
+- default the development rewrite to `~/.devbox-neo`, with `--home` taking priority over `DEVBOX_HOME`; reject the conventional old `~/.devbox` and its descendants even when selected through an override or symlink alias;
+- use temporary isolated homes for tests, not the user's persistent `~/.devbox-neo`;
 - use distinct development labels and container/image name prefixes;
 - never inspect or mutate current Devbox resources by prefix alone.
 

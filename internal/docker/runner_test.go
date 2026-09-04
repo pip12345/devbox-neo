@@ -20,6 +20,13 @@ func TestRecordingRunner(t *testing.T) {
 		t.Fatal("recording contract")
 	}
 }
+func TestSignalExit(t *testing.T) {
+	err := (docker.ExecRunner{Binary: "sh"}).Run(context.Background(), docker.Command{Args: []string{"-c", "kill -TERM $$"}})
+	var exit *docker.ExitError
+	if !errors.As(err, &exit) || exit.Code != 143 {
+		t.Fatalf("signal status: %v", err)
+	}
+}
 func TestForegroundExit(t *testing.T) {
 	err := (docker.ExecRunner{Binary: "sh"}).Run(context.Background(), docker.Command{Args: []string{"-c", "exit 23"}})
 	var exit *docker.ExitError

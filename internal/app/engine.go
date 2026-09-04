@@ -1,0 +1,597 @@
+// Package app orders lifecycle transitions. Resolution finishes before Docker mutation.
+package app
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"devbox/internal/config"
+	"devbox/internal/docker"
+	"devbox/internal/environment"
+	"devbox/internal/filesync"
+	"devbox/internal/fsutil"
+	"devbox/internal/harness"
+	"devbox/internal/store"
+)
+
+type Engine struct {
+	Store   *store.Store
+	Docker  docker.Runtime
+	Streams docker.Streams
+	UID     int
+	GID     int
+}
+type Request struct {
+	Workspace    string
+	Profile      string
+	ExpectedName string
+	Overrides    config.Layer
+	ReadOnly     bool
+	Continue     bool
+	Args         []string
+}
+type Diagnostic struct {
+	Code    string
+	Message string
+	Command []string
+}
+type Result struct {
+	Name        string
+	Diagnostics []Diagnostic
+}
+
+func (e *Engine) Resolve(q Request) (environment.Spec, error) {
+	s, err := environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, Overrides: q.Overrides, ReadOnly: q.ReadOnly, UID: e.UID, GID: e.GID, Salt: e.Store.Installation})
+	if err == nil && q.ExpectedName != "" && s.Identity.Name != q.ExpectedName {
+		return s, fmt.Errorf("current configuration resolves a different slot; restore the target's configuration before recreating it")
+	}
+	return s, err
+}
+func (e *Engine) owner(r store.Record) docker.Owner {
+	return docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot}
+}
+func (e *Engine) inspect(ctx context.Context, r store.Record) (docker.Container, bool, error) {
+	c, exists, err := e.Docker.Inspect(ctx, r.Identity.Name)
+	if err == nil && exists {
+		err = c.Verify(e.owner(r))
+		if err == nil && (c.Image != r.ImageID || (r.SetupContainer != "" && c.ID != r.SetupContainer)) {
+			err = fmt.Errorf("container instance does not match the committed creation contract")
+		}
+	}
+	return c, exists, err
+}
+
+// Open keeps the operation lock through stopped-only synchronization, startup,
+// and lease creation. The long foreground command runs after releasing it.
+func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error) {
+	spec, err := e.Resolve(q)
+	if err != nil {
+		return result, err
+	}
+	result.Name = spec.Identity.Name
+	if _, err = store.ProcessIdentity(os.Getpid()); err != nil {
+		return result, err
+	}
+	lock, err := e.Store.Lock(ctx, result.Name)
+	if err != nil {
+		return result, err
+	}
+	defer lock.Close()
+	record, err := lock.Load()
+	fresh := os.IsNotExist(err)
+	if err != nil && !fresh {
+		return result, err
+	}
+	var c docker.Container
+	started := false
+	defer func() {
+		if err != nil && started && lock.Held() {
+			err = errors.Join(err, e.stopUnattached(lock, record))
+		}
+	}()
+	if fresh {
+		if err = e.requireNew(ctx, lock); err != nil {
+			return result, err
+		}
+		record, c, err = e.create(ctx, lock, spec, nil, false)
+		started = err == nil
+	} else {
+		var exists bool
+		c, exists, err = e.inspect(ctx, record)
+		if err == nil && !exists {
+			c, err = e.recover(ctx, lock, &record, &spec)
+			started = err == nil
+		}
+		if err == nil {
+			change := environment.Compare(record.Applied, spec.FingerprintsFor(record.ImageID))
+			if change == environment.Recreate || change == environment.RebuildAndRecreate {
+				result.Diagnostics = append(result.Diagnostics, Diagnostic{Code: "creation_drift", Message: "using recorded creation settings; changes are pending", Command: []string{"devbox-rewrite", "recreate", record.Identity.Name}})
+			}
+			compatible := record.Definition.Hash == spec.Harness.Hash
+			if compatible && !c.State.Running {
+				if err = lock.RequireIdle(); err == nil {
+					err = e.sync(lock, spec)
+				}
+				if err == nil {
+					record.Applied.Runtime = spec.Fingerprints.Runtime
+				}
+			} else if compatible && record.Applied.Runtime != spec.Fingerprints.Runtime {
+				manifest, pathErr := lock.Path(filepath.Join("harnesses", record.Definition.Name, "managed-config.json"))
+				if pathErr != nil {
+					return result, pathErr
+				}
+				current, checkErr := filesync.Current(manifest, spec.Files, spec.Harness.Definition.Merge)
+				if checkErr != nil {
+					return result, checkErr
+				}
+				if current {
+					record.Applied.Runtime = spec.Fingerprints.Runtime
+				} else {
+					result.Diagnostics = append(result.Diagnostics, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; stop, then open to apply", Command: []string{"devbox-rewrite", "stop", record.Identity.Name}})
+				}
+			}
+			if compatible {
+				record.Launch.Args = append(append([]string(nil), spec.Harness.Definition.Launch.Args...), spec.Settings.HarnessArgs...)
+			}
+			record.Launch.OnExit = spec.Settings.OnExit
+			record.Launch.Shell = append([]string(nil), spec.Settings.Shell...)
+		}
+	}
+	if err != nil {
+		return result, err
+	}
+	if !c.State.Running {
+		if err = e.Docker.Start(ctx, c, e.owner(record)); err != nil {
+			return result, err
+		}
+		c.State.Running = true
+		started = true
+	}
+	if err = e.runHook(ctx, c, record, spec.Entrypoint); err != nil {
+		return result, err
+	}
+	record.Activity = time.Now().UTC()
+	record.Action = "open"
+	if err = lock.Save(record); err != nil {
+		return result, err
+	}
+	argv := append([]string{record.Launch.Binary}, record.Launch.Args...)
+	if q.Continue {
+		argv = append(argv, record.Launch.Continue...)
+	}
+	argv = append(argv, q.Args...)
+	for _, d := range result.Diagnostics {
+		if e.Streams.Err != nil {
+			fmt.Fprintf(e.Streams.Err, "Warning: %s\n  %s\n", d.Message, strings.Join(d.Command, " "))
+		}
+	}
+	err = e.attach(ctx, lock, c, record, "open", argv)
+	return result, err
+}
+func (e *Engine) requireNew(ctx context.Context, l *store.Locked) error {
+	_, exists, err := e.Docker.Inspect(ctx, l.Name)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("container exists without a valid durable contract; refusing adoption")
+	}
+	dir, err := l.Path(".")
+	if err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if len(entries) > 0 {
+		return fmt.Errorf("uncommitted session state exists at %s; inspect it before retrying creation", dir)
+	}
+	return nil
+}
+func (e *Engine) sync(l *store.Locked, s environment.Spec) error {
+	d := s.Harness.Definition
+	base := filepath.Join("harnesses", d.Name)
+	root, err := l.Dir(filepath.Join(base, "stores", d.Config.Store, d.Config.Path))
+	if err != nil {
+		return err
+	}
+	manifest, err := l.Path(filepath.Join(base, "managed-config.json"))
+	if err != nil {
+		return err
+	}
+	return filesync.Sync(root, manifest, d.Config.Store, s.Files, d.Merge)
+}
+func (e *Engine) mountPlan(l *store.Locked, s environment.Spec) ([]docker.Mount, error) {
+	mounts := []docker.Mount{{Source: s.Identity.Workspace, Target: "/workspace", ReadOnly: s.ReadOnly}}
+	d := s.Harness.Definition
+	for _, storeDef := range d.Stores {
+		var source string
+		var err error
+		if storeDef.Scope == "environment" {
+			source, err = l.Dir(filepath.Join("harnesses", d.Name, "stores", storeDef.Name))
+		} else {
+			source, err = fsutil.Dir(e.Store.Home, filepath.Join("cache/harnesses", d.Name, storeDef.Name), 0700)
+		}
+		if err != nil {
+			return nil, err
+		}
+		mounts = append(mounts, docker.Mount{Source: source, Target: storeDef.Target})
+	}
+	for _, auth := range d.Auth {
+		rel := filepath.Join("auth", d.Name, auth.Source)
+		source, err := fsutil.Path(e.Store.Home, rel)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Stat(source)
+		if os.IsNotExist(err) && auth.Create {
+			if _, err = fsutil.Dir(e.Store.Home, filepath.Dir(rel), 0700); err != nil {
+				return nil, err
+			}
+			if auth.Kind == "directory" {
+				err = os.Mkdir(source, 0700)
+			} else {
+				var f *os.File
+				f, err = os.OpenFile(source, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+				if err == nil {
+					if strings.HasSuffix(source, ".json") {
+						_, err = f.Write([]byte("{}\n"))
+					}
+					err = errors.Join(err, f.Close())
+				}
+			}
+			if err != nil && !os.IsExist(err) {
+				return nil, err
+			}
+			info, err = os.Stat(source)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("required managed auth source unavailable: %s", source)
+		}
+		if (auth.Kind == "directory" && !info.IsDir()) || (auth.Kind == "file" && !info.Mode().IsRegular()) {
+			return nil, fmt.Errorf("managed auth source has wrong kind")
+		}
+		mounts = append(mounts, docker.Mount{Source: source, Target: auth.Target})
+	}
+	return mounts, nil
+}
+func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force bool) (docker.Image, error) {
+	dir, err := os.MkdirTemp(e.Store.Home, ".build-*")
+	if err != nil {
+		return docker.Image{}, err
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "Dockerfile")
+	if err = fsutil.Write(path, s.Dockerfile, 0600); err != nil {
+		return docker.Image{}, err
+	}
+	return e.Docker.Build(ctx, docker.BuildPlan{Directory: dir, Dockerfile: path, Tag: docker.Namespace + "/session:" + id, NoCache: force, Installation: e.Store.Installation}, e.Streams.Err)
+}
+func (e *Engine) create(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool) (record store.Record, c docker.Container, err error) {
+	if err = l.RequireIdle(); err != nil {
+		return record, c, err
+	}
+	if err = e.Docker.Network(ctx, s.Settings.Network); err != nil {
+		return record, c, err
+	}
+	id := ""
+	created := time.Now().UTC()
+	if previous != nil {
+		id = previous.ID
+		created = previous.Created
+	} else {
+		id, err = fsutil.ID()
+		if err != nil {
+			return record, c, err
+		}
+	}
+	var image docker.Image
+	if previous != nil && !force && previous.Applied.Image == s.Fingerprints.Image {
+		available, inspectErr := e.Docker.ImageAvailable(ctx, previous.ImageID)
+		if inspectErr != nil {
+			return record, c, inspectErr
+		}
+		if available {
+			image, err = e.Docker.InspectImage(ctx, previous.ImageID)
+			if err == nil {
+				err = image.Verify(e.Store.Installation)
+			}
+		} else {
+			image, err = e.build(ctx, s, id, false)
+		}
+	} else {
+		image, err = e.build(ctx, s, id, force)
+	}
+	if err != nil {
+		return record, c, err
+	}
+	var old docker.Container
+	var existed, removed bool
+	if previous != nil {
+		old, existed, err = e.inspect(ctx, *previous)
+		if err != nil {
+			return record, c, err
+		}
+	}
+	// Before removal, a failed sync must restore a previously running original.
+	// After removal, the old record and image remain the recovery authority.
+	defer func() {
+		if err != nil && existed && !removed && old.State.Running {
+			cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			err = errors.Join(err, e.Docker.Start(cleanup, old, e.owner(*previous)))
+		}
+	}()
+	if existed && old.State.Running {
+		if err = e.Docker.Stop(ctx, old, e.owner(*previous)); err != nil {
+			return record, c, err
+		}
+	}
+	mounts, err := e.mountPlan(l, s)
+	if err != nil {
+		return record, c, err
+	}
+	if err = e.sync(l, s); err != nil {
+		return record, c, err
+	}
+	if existed {
+		if err = e.Docker.Remove(ctx, old, e.owner(*previous)); err != nil {
+			return record, c, err
+		}
+		removed = true
+	}
+	record = store.Record{Version: 1, ID: id, Identity: s.Identity, Created: created, Activity: time.Now().UTC(), Action: "create", Applied: s.FingerprintsFor(image.ID), ImageTag: docker.Namespace + "/session:" + id, ImageID: image.ID, Creation: docker.CreatePlan{Name: s.Identity.Name, Image: image.ID, Network: s.Settings.Network, Mounts: mounts, Env: s.Env()}, Definition: store.DefinitionInput{Name: s.Harness.Definition.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash}, Stores: s.Harness.Definition.Stores, Auth: s.Harness.Definition.Auth, Config: s.Harness.Definition.Config, Merge: s.Harness.Definition.Merge, Prepare: s.Harness.Definition.Prepare, Launch: store.Launch{Binary: s.Harness.Definition.Binary, Args: append(append([]string(nil), s.Harness.Definition.Launch.Args...), s.Settings.HarnessArgs...), Continue: s.Harness.Definition.Launch.Continue, Shell: s.Settings.Shell, OnExit: s.Settings.OnExit}, Setup: s.Setup, Ownership: 1, ManifestVersion: 1}
+	if previous != nil {
+		record.Activity = previous.Activity
+		record.Action = "recreate"
+	}
+	c, err = e.materialize(ctx, record)
+	if err != nil {
+		return record, c, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			stopErr := e.Docker.Stop(cleanup, c, e.owner(record))
+			err = errors.Join(err, stopErr)
+			if stopErr == nil {
+				err = errors.Join(err, e.Docker.Remove(cleanup, c, e.owner(record)))
+			}
+		}
+	}()
+	record.SetupContainer = c.ID
+	if err = l.Save(record); err != nil {
+		return record, c, err
+	}
+	committed = true
+	return record, c, nil
+}
+func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker.Container, err error) {
+	// This attempt prepares a new instance; only its successful caller commits
+	// the new setup-container ID. Existing-instance access never clears it.
+	record.SetupContainer = ""
+	id, err := e.Docker.Create(ctx, record.Creation, e.owner(record))
+	if err != nil {
+		return c, err
+	}
+	c, exists, err := e.inspect(ctx, record)
+	if err != nil {
+		return c, err
+	}
+	if !exists || c.ID != id {
+		return c, fmt.Errorf("new container identity could not be verified")
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			stopErr := e.Docker.Stop(cleanup, c, e.owner(record))
+			err = errors.Join(err, stopErr)
+			if stopErr == nil {
+				err = errors.Join(err, e.Docker.Remove(cleanup, c, e.owner(record)))
+			}
+		}
+	}()
+	if err = e.Docker.Start(ctx, c, e.owner(record)); err != nil {
+		return c, err
+	}
+	c.State.Running = true
+	for _, argv := range record.Prepare {
+		if err = e.Docker.Exec(ctx, c, e.owner(record), argv, docker.Streams{Out: e.Streams.Out, Err: e.Streams.Err}); err != nil {
+			return c, err
+		}
+	}
+	if err = e.runHook(ctx, c, record, record.Setup); err != nil {
+		return c, err
+	}
+	if err = e.Docker.Exec(ctx, c, e.owner(record), []string{"sh", "-c", `command -v "$1" >/dev/null`, "--", record.Launch.Binary}, docker.Streams{Err: e.Streams.Err}); err != nil {
+		return c, err
+	}
+	ok = true
+	return c, nil
+}
+func (e *Engine) runHook(ctx context.Context, c docker.Container, r store.Record, hook environment.Hook) error {
+	if hook.Path == "" {
+		return nil
+	}
+	return e.Docker.Exec(ctx, c, e.owner(r), []string{"bash", "-s"}, docker.Streams{In: bytes.NewReader(hook.Data), Out: e.Streams.Out, Err: e.Streams.Err})
+}
+func (e *Engine) stopUnattached(l *store.Locked, r store.Record) error {
+	if r.ID == "" || r.Launch.OnExit != "stop" {
+		return nil
+	}
+	active, err := l.Active()
+	if err != nil || len(active) != 0 {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	c, exists, err := e.inspect(ctx, r)
+	if err != nil || !exists || !c.State.Running {
+		return err
+	}
+	return e.Docker.Stop(ctx, c, e.owner(r))
+}
+
+func (e *Engine) attach(ctx context.Context, l *store.Locked, c docker.Container, r store.Record, action string, argv []string) (err error) {
+	lease, err := l.Lease(action, r.Launch.OnExit)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		lock, cleanupErr := e.Store.Lock(cleanup, r.Identity.Name)
+		if cleanupErr == nil {
+			defer lock.Close()
+			cleanupErr = lock.Release(lease.ID)
+			if cleanupErr == nil {
+				current, touchErr := lock.Touch(r.ID, action)
+				active, aerr := lock.Active()
+				cleanupErr = errors.Join(touchErr, aerr)
+				if current.ID != "" && aerr == nil && len(active) == 0 && lease.OnExit == "stop" {
+					live, exists, ierr := e.inspect(cleanup, current)
+					cleanupErr = errors.Join(cleanupErr, ierr)
+					if ierr == nil && exists && live.State.Running {
+						cleanupErr = errors.Join(cleanupErr, e.Docker.Stop(cleanup, live, e.owner(current)))
+					}
+				}
+			}
+		}
+		// Joining keeps errors.As able to find the foreground ExitError. Cleanup is
+		// still visible instead of replacing the user's command status with success.
+		err = errors.Join(err, cleanupErr)
+	}()
+	if err = l.Close(); err != nil {
+		return err
+	}
+	return e.Docker.Exec(ctx, c, e.owner(r), argv, e.Streams)
+}
+func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, error) {
+	s, err := e.Resolve(q)
+	if err != nil {
+		return Result{}, err
+	}
+	l, err := e.Store.Lock(ctx, s.Identity.Name)
+	if err != nil {
+		return Result{}, err
+	}
+	defer l.Close()
+	old, err := l.Load()
+	if err != nil {
+		return Result{}, err
+	}
+	if err = l.RequireIdle(); err != nil {
+		return Result{}, err
+	}
+	container, exists, err := e.inspect(ctx, old)
+	if err != nil {
+		return Result{}, err
+	}
+	running := exists && container.State.Running
+	r, c, err := e.create(ctx, l, s, &old, force)
+	if err != nil {
+		return Result{}, err
+	}
+	if !running {
+		if err = e.Docker.Stop(ctx, c, e.owner(r)); err != nil {
+			return Result{}, err
+		}
+	}
+	return Result{Name: s.Identity.Name}, nil
+}
+
+func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, desired *environment.Spec) (docker.Container, error) {
+	unavailable := func(reason string) (docker.Container, error) {
+		return docker.Container{}, fmt.Errorf("recorded recovery unavailable: %s; use devbox-rewrite recreate %s", reason, r.Identity.Name)
+	}
+	if err := l.RequireIdle(); err != nil {
+		return docker.Container{}, err
+	}
+	image, err := e.Docker.InspectImage(ctx, r.ImageID)
+	if err != nil {
+		return unavailable("recorded image is unavailable")
+	}
+	if err = image.Verify(e.Store.Installation); err != nil {
+		return docker.Container{}, err
+	}
+	if err = e.Docker.Network(ctx, r.Creation.Network); err != nil {
+		return unavailable("recorded network is unavailable")
+	}
+	for _, m := range r.Creation.Mounts {
+		if _, err = fsutil.Path(filepath.Dir(m.Source), filepath.Base(m.Source)); err != nil {
+			return unavailable("recorded bind source is unsafe")
+		}
+		info, statErr := os.Stat(m.Source)
+		if statErr != nil {
+			return unavailable("recorded bind source is missing")
+		}
+		file := false
+		for _, auth := range r.Auth {
+			if auth.Target == m.Target && auth.Kind == "file" {
+				file = true
+			}
+		}
+		if (file && !info.Mode().IsRegular()) || (!file && !info.IsDir()) {
+			return unavailable("recorded bind source has the wrong kind")
+		}
+	}
+	if r.Definition.Origin != "builtin" {
+		expected, err := fsutil.Path(e.Store.Home, filepath.Join("harnesses", r.Definition.Name, "harness.json"))
+		if err != nil || expected != r.Definition.Origin {
+			return unavailable("recorded definition source is unsafe")
+		}
+	}
+	definition, hash, err := harness.Recorded(r.Definition.Name, r.Definition.Origin)
+	if err != nil || environment.Fingerprint(e.Store.Installation, hash) != r.Definition.Hash {
+		return unavailable("recorded environment source is missing or changed")
+	}
+	keys := make([]string, 0, len(definition.Env))
+	for k := range definition.Env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	r.Creation.Env = nil
+	for _, k := range keys {
+		r.Creation.Env = append(r.Creation.Env, k+"="+definition.Env[k])
+	}
+	if r.Setup.Path != "" {
+		data, err := os.ReadFile(r.Setup.Path)
+		if err != nil || environment.Digest(data) != r.Setup.Hash {
+			return unavailable("recorded setup input is missing or changed")
+		}
+		r.Setup.Data = data
+	}
+	if desired != nil && r.Definition.Hash == desired.Harness.Hash {
+		if err = e.sync(l, *desired); err != nil {
+			return docker.Container{}, err
+		}
+		r.Applied.Runtime = desired.Fingerprints.Runtime
+	}
+	c, err := e.materialize(ctx, *r)
+	if err != nil {
+		return c, err
+	}
+	r.SetupContainer = c.ID
+	if err = l.Save(*r); err != nil {
+		cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		stopErr := e.Docker.Stop(cleanup, c, e.owner(*r))
+		err = errors.Join(err, stopErr)
+		if stopErr == nil {
+			err = errors.Join(err, e.Docker.Remove(cleanup, c, e.owner(*r)))
+		}
+	}
+	return c, err
+}

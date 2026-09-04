@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"syscall"
+	"time"
 )
 
 type Command struct {
@@ -40,6 +42,9 @@ func (r ExecRunner) Run(ctx context.Context, c Command) error {
 	}
 	cmd := exec.CommandContext(ctx, binary, c.Args...)
 	cmd.Dir, cmd.Stdin, cmd.Stdout, cmd.Stderr = c.Dir, c.Stdin, c.Stdout, c.Stderr
+	// Docker plugins can inherit captured pipes. Cancellation must not wait
+	// indefinitely for a descendant to close them after the CLI process exits.
+	cmd.WaitDelay = 5 * time.Second
 	err := cmd.Run()
 	if err == nil {
 		return nil
@@ -51,10 +56,13 @@ func (r ExecRunner) Run(ctx context.Context, c Command) error {
 			operation = c.Args[0]
 		}
 		code := exit.ExitCode()
+		if status, ok := exit.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			code = 128 + int(status.Signal())
+		}
 		if code < 1 {
 			code = 1
 		}
-		return &ExitError{Code: code, Operation: operation}
+		return errors.Join(&ExitError{Code: code, Operation: operation}, ctx.Err())
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
