@@ -88,6 +88,9 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 	if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "creation_drift" || count(d, "create") != 1 {
 		t.Fatal("drift must warn without recreate")
 	}
+	if !slices.Equal(result.Diagnostics[0].Command, []string{"devbox-neo", "recreate", result.Name}) {
+		t.Fatal("drift hint uses the wrong executable")
+	}
 	if record(t, e, result.Name).Creation.Network != "default" {
 		t.Fatal("drift advanced recorded creation settings")
 	}
@@ -197,7 +200,7 @@ func TestRecordedRecoveryUsesOriginalDefinitionAndSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	creates := count(d, "create")
-	if _, err = e.Start(ctx, result.Name, ""); err == nil || !strings.Contains(err.Error(), "recreate") {
+	if _, err = e.Start(ctx, result.Name, ""); err == nil || !strings.Contains(err.Error(), "devbox-neo recreate "+result.Name) {
 		t.Fatalf("want actionable recovery error: %v", err)
 	}
 	if count(d, "create") != creates {
@@ -227,6 +230,9 @@ func TestRunningManagedConfigIsDeferred(t *testing.T) {
 	}
 	if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "runtime_deferred" {
 		t.Fatal("missing deferral")
+	}
+	if !slices.Equal(result.Diagnostics[0].Command, []string{"devbox-neo", "stop", result.Name}) {
+		t.Fatal("deferral hint uses the wrong executable")
 	}
 	after, _ := os.ReadFile(manifest)
 	if !bytes.Equal(before, after) || record(t, e, result.Name).Applied.Runtime != first.Applied.Runtime {

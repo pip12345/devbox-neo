@@ -112,7 +112,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 		if err == nil {
 			change := environment.Compare(record.Applied, spec.FingerprintsFor(record.ImageID))
 			if change == environment.Recreate || change == environment.RebuildAndRecreate {
-				result.Diagnostics = append(result.Diagnostics, Diagnostic{Code: "creation_drift", Message: "using recorded creation settings; changes are pending", Command: []string{"devbox-rewrite", "recreate", record.Identity.Name}})
+				result.Diagnostics = append(result.Diagnostics, Diagnostic{Code: "creation_drift", Message: "using recorded creation settings; changes are pending", Command: []string{"devbox-neo", "recreate", record.Identity.Name}})
 			}
 			compatible := record.Definition.Hash == spec.Harness.Hash
 			if compatible && !c.State.Running {
@@ -134,7 +134,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 				if current {
 					record.Applied.Runtime = spec.Fingerprints.Runtime
 				} else {
-					result.Diagnostics = append(result.Diagnostics, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; stop, then open to apply", Command: []string{"devbox-rewrite", "stop", record.Identity.Name}})
+					result.Diagnostics = append(result.Diagnostics, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; stop, then open to apply", Command: []string{"devbox-neo", "stop", record.Identity.Name}})
 				}
 			}
 			if compatible {
@@ -514,7 +514,7 @@ func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, e
 
 func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, desired *environment.Spec) (docker.Container, error) {
 	unavailable := func(reason string) (docker.Container, error) {
-		return docker.Container{}, fmt.Errorf("recorded recovery unavailable: %s; use devbox-rewrite recreate %s", reason, r.Identity.Name)
+		return docker.Container{}, fmt.Errorf("recorded recovery unavailable: %s; use devbox-neo recreate %s", reason, r.Identity.Name)
 	}
 	if err := l.RequireIdle(); err != nil {
 		return docker.Container{}, err

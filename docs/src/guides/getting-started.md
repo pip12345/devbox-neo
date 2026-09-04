@@ -10,7 +10,7 @@ From the rewrite repository:
 make check
 ```
 
-The binary is `bin/devbox-rewrite`. Its default home is `~/.devbox-neo`; it uses separate Docker names and labels. `--home` overrides `DEVBOX_HOME`, which overrides the default. The old `~/.devbox` is rejected, including when an inherited environment variable selects it.
+The binary is `bin/devbox-neo`. Its default home is `~/.devbox-neo`; it uses separate Docker names and labels. `--home` overrides `DEVBOX_HOME`, which overrides the default. The old `~/.devbox` is rejected, including when an inherited environment variable selects it.
 
 ## Configure the first profile
 
@@ -25,7 +25,7 @@ This early runtime path uses direct configuration files. Profile/project create/
 Open a workspace:
 
 ```sh
-bin/devbox-rewrite /path/to/workspace --profile basic
+bin/devbox-neo /path/to/workspace --profile basic
 ```
 
 The first open builds the image and starts Pi. Later opens reuse the container. The default `on_exit` policy stops it after the last attached Devbox command exits.
@@ -33,7 +33,7 @@ The first open builds the image and starts Pi. Later opens reuse the container. 
 For a non-interactive launch check without provider credentials:
 
 ```sh
-bin/devbox-rewrite /path/to/workspace --profile basic -- --version
+bin/devbox-neo /path/to/workspace --profile basic -- --version
 ```
 
 ## Apply changes explicitly
@@ -41,8 +41,8 @@ bin/devbox-rewrite /path/to/workspace --profile basic -- --version
 Valid creation changes warn instead of replacing the existing container:
 
 ```sh
-bin/devbox-rewrite recreate /path/to/workspace --profile basic
-bin/devbox-rewrite recreate /path/to/workspace --profile basic --image
+bin/devbox-neo recreate /path/to/workspace --profile basic
+bin/devbox-neo recreate /path/to/workspace --profile basic --image
 ```
 
 `--image` disables build cache for the selected session. It does not promise to refresh upstream base images. Durable harness state is preserved.
@@ -52,10 +52,10 @@ Managed config is synchronized only while stopped. If an open reports deferred c
 ## Access without desired configuration
 
 ```sh
-bin/devbox-rewrite start /path/to/workspace --profile basic
-bin/devbox-rewrite shell /path/to/workspace --profile basic
-bin/devbox-rewrite exec /path/to/workspace --profile basic -- git status
-bin/devbox-rewrite stop /path/to/workspace --profile basic
+bin/devbox-neo start /path/to/workspace --profile basic
+bin/devbox-neo shell /path/to/workspace --profile basic
+bin/devbox-neo exec /path/to/workspace --profile basic -- git status
+bin/devbox-neo stop /path/to/workspace --profile basic
 ```
 
 For existing containers these commands use the recorded contract, not current profile/project config. `shell` and `exec` require an existing container. A missing container can be recovered by `start` only if its recorded inputs remain available and unchanged; otherwise use explicit `recreate`.

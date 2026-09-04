@@ -16,7 +16,7 @@ var Version = "dev"
 func New() *cobra.Command {
 	var home, profile, network, onExit string
 	var resume, readOnly bool
-	root := &cobra.Command{Use: "devbox-rewrite <target> [-- harness-args...]", Short: "Persistent development environments (scratch rewrite)", SilenceUsage: true, SilenceErrors: true, Args: cobra.MinimumNArgs(1)}
+	root := &cobra.Command{Use: "devbox-neo <target> [-- harness-args...]", Short: "Persistent development environments (scratch rewrite)", SilenceUsage: true, SilenceErrors: true, Args: cobra.MinimumNArgs(1)}
 	root.PersistentFlags().StringVar(&home, "home", "", "Devbox home (default ~/.devbox-neo; DEVBOX_HOME overrides)")
 	root.PersistentFlags().StringVarP(&profile, "profile", "p", "", "Select a profile slot")
 	root.Flags().StringVar(&network, "network", "", "Primary Docker network")

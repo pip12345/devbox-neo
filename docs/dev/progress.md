@@ -6,7 +6,7 @@ The approved scope is [rewrite-plan.md](rewrite-plan.md). The migration utility 
 
 - Independent Go module; Makefile targets for format, unit/race tests, build, and opt-in Docker integration.
 - Linux-only implementation and toolchain installer.
-- Development binary `bin/devbox-rewrite`, default home `~/.devbox-neo`, and separate Docker resource names/ownership labels.
+- Development binary `bin/devbox-neo`, default home `~/.devbox-neo`, and separate Docker resource names/ownership labels.
 - `--home` > `DEVBOX_HOME` > development default; the conventional `~/.devbox` and its descendants are rejected.
 - Cobra smoke tests, process-boundary Docker recorder, and a stateful Docker fake.
 

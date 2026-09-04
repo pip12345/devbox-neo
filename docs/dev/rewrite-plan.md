@@ -1521,7 +1521,7 @@ The migration utility stages converted data, keeps the original home at `~/.devb
 
 During development:
 
-- build the binary under a distinct name such as `devbox-rewrite`;
+- build the development binary as `devbox-neo`;
 - default the development rewrite to `~/.devbox-neo`, with `--home` taking priority over `DEVBOX_HOME`; reject the conventional old `~/.devbox` and its descendants even when selected through an override or symlink alias;
 - use temporary isolated homes for tests, not the user's persistent `~/.devbox-neo`;
 - use distinct development labels and container/image name prefixes;

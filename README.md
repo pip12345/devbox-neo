@@ -10,7 +10,7 @@ An independent, Linux-only Go scratch rewrite. **In development, not ready for c
 ```sh
 make install-go  # optional if the repo or parent already has .tools/go
 make check
-bin/devbox-rewrite --help
+bin/devbox-neo --help
 ```
 
 The development home defaults to `~/.devbox-neo`. `--home` overrides `DEVBOX_HOME`, which overrides that default. Selecting the old `~/.devbox` (or anything inside it) is rejected, including symlink aliases. Docker names and ownership labels also stay separate from the existing installation.

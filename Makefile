@@ -1,6 +1,6 @@
 GO ?= $(firstword $(wildcard $(CURDIR)/.tools/go/bin/go $(CURDIR)/../.tools/go/bin/go) go)
 GOFMT ?= $(shell $(GO) env GOROOT)/bin/gofmt
-BINARY ?= bin/devbox-rewrite
+BINARY ?= bin/devbox-neo
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS ?= -X devbox/internal/cli.Version=$(VERSION)
 
