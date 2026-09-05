@@ -3,13 +3,11 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	"devbox/internal/config"
@@ -130,11 +128,11 @@ func Open(ctx context.Context, home string) (*Store, error) {
 	if _, err = fsutil.Dir(absolute, "state/locks/sessions", 0700); err != nil {
 		return nil, err
 	}
-	lock, err := lockFile(ctx, filepath.Join(absolute, "state/locks/installation.lock"))
+	lock, err := fsutil.Lock(ctx, filepath.Join(absolute, "state/locks/installation.lock"))
 	if err != nil {
 		return nil, err
 	}
-	defer unlock(lock)
+	defer fsutil.Unlock(lock)
 	p, err := fsutil.Path(absolute, "state/installation-id")
 	if err != nil {
 		return nil, err
@@ -193,7 +191,7 @@ func (s *Store) Lock(ctx context.Context, name string) (*Locked, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, err := lockFile(ctx, p)
+	f, err := fsutil.Lock(ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +201,7 @@ func (l *Locked) Close() error {
 	if l.file == nil {
 		return nil
 	}
-	err := unlock(l.file)
+	err := fsutil.Unlock(l.file)
 	l.file = nil
 	return err
 }
@@ -244,11 +242,11 @@ func (s *Store) Read(ctx context.Context, name string) (Record, error) {
 	if err != nil {
 		return record, err
 	}
-	lock, err := lockFile(ctx, p)
+	lock, err := fsutil.Lock(ctx, p)
 	if err != nil {
 		return record, err
 	}
-	defer unlock(lock)
+	defer fsutil.Unlock(lock)
 	path, err := fsutil.Path(s.Home, filepath.Join("sessions", name, "session.json"))
 	if err != nil {
 		return record, err
@@ -273,11 +271,11 @@ func (l *Locked) Save(record Record) error {
 	if err != nil {
 		return err
 	}
-	lock, err := lockFile(l.ctx, p)
+	lock, err := fsutil.Lock(l.ctx, p)
 	if err != nil {
 		return err
 	}
-	defer unlock(lock)
+	defer fsutil.Unlock(lock)
 	if _, err = l.Dir("."); err != nil {
 		return err
 	}
@@ -301,34 +299,4 @@ func (l *Locked) Touch(id, action string) (Record, error) {
 	r.Activity = time.Now().UTC()
 	r.Action = action
 	return r, l.Save(r)
-}
-
-func lockFile(ctx context.Context, path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return nil, err
-	}
-	for {
-		if err = ctx.Err(); err != nil {
-			f.Close()
-			return nil, err
-		}
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			return f, nil
-		}
-		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
-			f.Close()
-			return nil, err
-		}
-		select {
-		case <-ctx.Done():
-			f.Close()
-			return nil, ctx.Err()
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-}
-func unlock(f *os.File) error {
-	return errors.Join(syscall.Flock(int(f.Fd()), syscall.LOCK_UN), f.Close())
 }

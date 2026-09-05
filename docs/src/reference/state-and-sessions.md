@@ -15,15 +15,25 @@ The default development home is `~/.devbox-neo`. Its important paths are:
 | `sessions/<container>/harnesses/<harness>/managed-config.json` | Last applied file/key ownership and conflicts |
 | `state/installation-id` | Stable installation identity |
 | `state/locks/installation.lock` | First-run initialization lock |
+| `state/locks/config/*.lock` | Configuration-owner mutation locks |
 | `state/locks/sessions/*.operation.lock` | Environment mutation lock |
 | `state/locks/sessions/*.record.lock` | Short record read/write lock |
 | `.build-*` | Temporary generated image context |
+
+Profile/project creation stages a private `.devbox-create-*` directory beside its destination, then publishes it with a Linux no-replace rename. An interrupted staging directory is not a configured owner and is never adopted. Configuration locks remain outside the edited directories.
 
 Docker creation uses a private `0600` env file in the OS temporary directory, removed when the create command returns. Its contents and path are not persisted in session records.
 
 Locks remain outside removable session directories. Records are atomically replaced with restrictive permissions; corrupt state is not treated as absence.
 
 Containers carry installation, ownership-version, session, workspace, and slot labels. Images carry installation ownership only. Final image tags are `devbox-rewrite/session:<session-id>`. Names are lookup keys, never proof of ownership.
+
+Built-in mappings (targets are inside the container):
+
+| Harness | Environment stores | Shared cache stores | Auth target |
+|---|---|---|---|
+| Pi | `home` → `/home/devuser/.pi/agent` | `npm-global` → `/home/devuser/.local`; `npm-cache` → `/home/devuser/.npm` | `/home/devuser/.pi/agent/auth.json` |
+| OpenCode | `config` → `/home/devuser/.config/opencode`; `data` → `/home/devuser/.local/share/opencode` | `cache` → `/home/devuser/.cache/opencode` | `/home/devuser/.local/share/opencode/auth.json` |
 
 Recreation preserves the session ID and stores. Missing-container recovery uses the exact recorded image, mount layout, source definition, and setup input; it does not choose newer configuration. Existing-container start/shell/exec do not require those old source inputs just to access the container.
 

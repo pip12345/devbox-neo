@@ -13,10 +13,15 @@ import (
 	"time"
 
 	"devbox/internal/docker"
+	"devbox/internal/resource"
 	"devbox/internal/store"
 )
 
-func TestDockerPiLifecycle(t *testing.T) {
+func TestDockerPiLifecycle(t *testing.T)       { dockerHarnessLifecycle(t, "pi") }
+func TestDockerOpenCodeLifecycle(t *testing.T) { dockerHarnessLifecycle(t, "opencode") }
+func TestDockerCustomLifecycle(t *testing.T)   { dockerHarnessLifecycle(t, "third") }
+
+func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	if os.Getenv("DEVBOX_DOCKER_TEST") != "1" {
 		t.Skip("run make test-integration to opt in to isolated Docker work")
 	}
@@ -37,7 +42,20 @@ func TestDockerPiLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
-	write(t, filepath.Join(s.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi"}`)
+	if harnessName == "third" {
+		seedThird(t, s.Home)
+	}
+	resources := resource.Service{Home: s.Home}
+	profile, err := resources.Profile("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = resources.Create(ctx, profile, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = resources.Init(ctx, profile, resource.InitOptions{Harness: harnessName}); err != nil {
+		t.Fatal(err)
+	}
 	var output bytes.Buffer
 	e := &Engine{Store: s, Docker: docker.Runtime{Runner: runner}, Streams: docker.Streams{Out: &output, Err: &output}, UID: os.Getuid(), GID: os.Getgid()}
 	q := Request{Workspace: workspace, Profile: "test", Args: []string{"--version"}}
@@ -104,8 +122,36 @@ func TestDockerPiLifecycle(t *testing.T) {
 		t.Fatalf("create/open: %v\n%s", err, output.String())
 	}
 	first := record(t, e, result.Name)
-	marker := filepath.Join(s.Home, "sessions", result.Name, "harnesses/pi/stores/home/sessions/preservation-check")
+	marker := ""
+	for _, declared := range first.Stores {
+		if declared.Scope == "environment" {
+			marker = filepath.Join(s.Home, "sessions", result.Name, "harnesses", harnessName, "stores", declared.Name, "preservation-check")
+			break
+		}
+	}
+	if marker == "" {
+		t.Fatal("fixture has no environment store")
+	}
 	write(t, marker, "preserved")
+	authPaths := []string{}
+	for _, auth := range first.Auth {
+		target := auth.Target
+		source := filepath.Join(s.Home, "auth", harnessName, auth.Source)
+		if auth.Kind == "directory" {
+			target += "/acceptance.json"
+			source = filepath.Join(source, "acceptance.json")
+		}
+		if _, err = e.Start(ctx, result.Name, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err = e.Exec(ctx, result.Name, "", []string{"bash", "-c", `printf '{}\n\n' > "$1"`, "auth-check", target}, false); err != nil {
+			t.Fatal(err)
+		}
+		if b, err := os.ReadFile(source); err != nil || string(b) != "{}\n\n" {
+			t.Fatal("in-container auth write did not persist on host", err)
+		}
+		authPaths = append(authPaths, source)
+	}
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
 	}
@@ -132,6 +178,11 @@ func TestDockerPiLifecycle(t *testing.T) {
 	b, err := os.ReadFile(marker)
 	if err != nil || strings.TrimSpace(string(b)) != "preserved" {
 		t.Fatal("recreation lost session state")
+	}
+	for _, path := range authPaths {
+		if b, err := os.ReadFile(path); err != nil || string(b) != "{}\n\n" {
+			t.Fatal("recreation lost managed auth", err)
+		}
 	}
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)

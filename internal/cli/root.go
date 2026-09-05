@@ -7,6 +7,7 @@ import (
 	"devbox/internal/app"
 	"devbox/internal/config"
 	"devbox/internal/docker"
+	"devbox/internal/resource"
 	"devbox/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +24,7 @@ func New() *cobra.Command {
 	root.Flags().StringVar(&onExit, "on-exit", "", "After the last attached command: stop or running")
 	root.Flags().BoolVarP(&resume, "continue", "c", false, "Continue the recorded harness session")
 	root.Flags().BoolVar(&readOnly, "read-only", false, "Mount the workspace read-only at creation")
-	engine := func(cmd *cobra.Command) (*app.Engine, error) {
+	initialize := func(cmd *cobra.Command) (*store.Store, error) {
 		userHome, err := os.UserHomeDir()
 		if err != nil {
 			return nil, err
@@ -32,7 +33,10 @@ func New() *cobra.Command {
 		if err != nil {
 			return nil, err
 		}
-		state, err := store.Open(cmd.Context(), resolved)
+		return store.Open(cmd.Context(), resolved)
+	}
+	engine := func(cmd *cobra.Command) (*app.Engine, error) {
+		state, err := initialize(cmd)
 		if err != nil {
 			return nil, err
 		}
@@ -111,5 +115,12 @@ func New() *cobra.Command {
 	}}
 	recreate.Flags().BoolVar(&image, "image", false, "Force a no-cache build (does not promise refreshed upstream bases)")
 	root.AddCommand(recreate)
+	root.AddCommand(resourceCommands(func(cmd *cobra.Command) (*resource.Service, error) {
+		state, err := initialize(cmd)
+		if err != nil {
+			return nil, err
+		}
+		return &resource.Service{Home: state.Home}, nil
+	})...)
 	return root
 }

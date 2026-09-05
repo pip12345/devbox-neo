@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -95,22 +96,11 @@ func Load(home, name string) (Effective, error) {
 		if os.IsNotExist(err) {
 			return result, fmt.Errorf("unknown harness %q", name)
 		}
-		defaults = map[string]File{}
 		if err == nil {
-			entries, e := builtins.ReadDir("builtin/" + name + "/defaults")
-			if e != nil {
-				return result, e
-			}
-			for _, entry := range entries {
-				data, e := builtins.ReadFile("builtin/" + name + "/defaults/" + entry.Name())
-				if e != nil {
-					return result, e
-				}
-				info, e := entry.Info()
-				if e != nil {
-					return result, e
-				}
-				defaults[entry.Name()] = File{Data: data, Mode: info.Mode().Perm()}
+			var source fs.FS
+			source, err = fs.Sub(builtins, "builtin/"+name+"/defaults")
+			if err == nil {
+				defaults, err = readTree(source)
 			}
 		}
 	} else if err == nil {
@@ -140,7 +130,9 @@ func parseDefinition(b []byte) (Definition, error) {
 func absolute(p string) bool {
 	return path.IsAbs(p) && path.Clean(p) == p && !strings.ContainsAny(p, "\x00\r\n")
 }
-func relative(p string) bool { return p == "." || (filepath.IsLocal(p) && !strings.Contains(p, `\`)) }
+func relative(p string) bool {
+	return filepath.IsLocal(p) && path.Clean(p) == p && !strings.ContainsAny(p, "\\\x00\r\n")
+}
 func target(p string) bool {
 	return absolute(p) && strings.HasPrefix(p, "/home/devuser/")
 }
@@ -200,6 +192,11 @@ func (d Definition) Validate() error {
 		if targets[a.Target] {
 			return fmt.Errorf("duplicate auth target")
 		}
+		for _, s := range d.Stores {
+			if strings.HasPrefix(s.Target, a.Target+"/") {
+				return fmt.Errorf("auth mount cannot obscure a declared store")
+			}
+		}
 		targets[a.Target] = true
 	}
 	for _, argv := range d.Prepare {
@@ -225,12 +222,16 @@ func (d Definition) Validate() error {
 	return nil
 }
 func ReadTree(root string) (map[string]File, error) {
-	files := map[string]File{}
 	if _, err := fsutil.Path(root, "."); err != nil {
 		return nil, err
 	}
-	err := filepath.WalkDir(root, func(p string, e os.DirEntry, err error) error {
-		if os.IsNotExist(err) && p == root {
+	return readTree(os.DirFS(root))
+}
+
+func readTree(source fs.FS) (map[string]File, error) {
+	files := map[string]File{}
+	err := fs.WalkDir(source, ".", func(p string, e fs.DirEntry, err error) error {
+		if os.IsNotExist(err) && p == "." {
 			return nil
 		}
 		if err != nil {
@@ -246,13 +247,9 @@ func ReadTree(root string) (map[string]File, error) {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("only regular config files are supported: %s", p)
 		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return err
-		}
-		b, err := os.ReadFile(p)
+		b, err := fs.ReadFile(source, p)
 		if err == nil {
-			files[filepath.ToSlash(rel)] = File{Data: b, Mode: info.Mode().Perm()}
+			files[p] = File{Data: b, Mode: info.Mode().Perm()}
 		}
 		return err
 	})

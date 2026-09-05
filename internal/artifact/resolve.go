@@ -31,6 +31,16 @@ type Resolved struct {
 }
 
 func Resolve(home, workspace, explicit string, override config.Layer) (Resolved, error) {
+	return resolve(home, workspace, explicit, override, nil)
+}
+
+// PreviewProject uses the normal participation rules for a proposed project
+// edit, before writing it. Initialization must not implement its own inheritance.
+func PreviewProject(home, workspace string, project config.Layer) (Resolved, error) {
+	return resolve(home, workspace, "", config.Layer{}, &project)
+}
+
+func resolve(home, workspace, explicit string, override config.Layer, proposed *config.Layer) (Resolved, error) {
 	r := Resolved{Settings: config.Defaults(), Trace: Trace{Winners: map[string]string{}, Sources: map[string][]string{}}}
 	g, err := config.ReadGlobal(filepath.Join(home, "config.json"))
 	if err != nil {
@@ -46,7 +56,13 @@ func Resolve(home, workspace, explicit string, override config.Layer) (Resolved,
 	if explicit != "" || g.IgnoreProject {
 		r.Trace.Excluded = append(r.Trace.Excluded, "project")
 	} else {
-		l, err := config.ReadLayer(projectPath, true)
+		var l config.Layer
+		var err error
+		if proposed != nil {
+			l = *proposed
+		} else {
+			l, err = config.ReadLayer(projectPath, true)
+		}
 		if err == nil {
 			project = &l
 			r.Project = true
@@ -69,7 +85,7 @@ func Resolve(home, workspace, explicit string, override config.Layer) (Resolved,
 		}
 		l, err := config.ReadLayer(filepath.Join(root, "config.json"), false)
 		if os.IsNotExist(err) {
-			return r, fmt.Errorf("profile %q does not exist; create %s/config.json", profile, root)
+			return r, fmt.Errorf("profile %q does not exist; use devbox-neo profile create %s, then devbox-neo profile init %s --harness <name>", profile, profile, profile)
 		}
 		if err != nil {
 			return r, err
@@ -81,14 +97,14 @@ func Resolve(home, workspace, explicit string, override config.Layer) (Resolved,
 		r.Layers = append(r.Layers, Layer{Name: "project", Path: filepath.Dir(projectPath), Config: *project})
 	}
 	if len(r.Layers) == 0 {
-		return r, fmt.Errorf("no profile or project configuration applies; create a profile config under %s/profiles or %s", home, projectPath)
+		return r, fmt.Errorf("no profile or project configuration applies; use devbox-neo profile create <name> and select it with --profile <name>, or devbox-neo project create <folder>")
 	}
 	r.Trace.Layers = append(r.Trace.Layers, Layer{Name: "built-in default"}, Layer{Name: "global", Path: filepath.Join(home, "config.json")})
 	for _, l := range r.Layers {
 		r.Settings.Apply(l.Config)
 		r.Trace.Layers = append(r.Trace.Layers, l)
 		contributions(r.Trace.Sources, l.Name, l.Config)
-		for _, name := range []string{"Dockerfile", "Dockerfile.full", "setup.sh", "entrypoint.sh"} {
+		for _, name := range SingletonNames {
 			p, err := fsutil.Path(l.Path, name)
 			if err != nil {
 				return r, err

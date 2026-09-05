@@ -10,7 +10,7 @@ The approved scope is [rewrite-plan.md](rewrite-plan.md). The migration utility 
 - `--home` > `DEVBOX_HOME` > development default; the conventional `~/.devbox` and its descendants are rejected.
 - Cobra smoke tests, process-boundary Docker recorder, and a stateful Docker fake.
 
-## Phase 1 — candidate implemented, real-Docker gate outstanding
+## Phase 1 — initial automated Docker gate reported passed
 
 Implemented and covered by unit/fake-backed tests:
 
@@ -26,7 +26,24 @@ Implemented and covered by unit/fake-backed tests:
 - Failure propagation, failed-commit cleanup, cancellation cleanup, concurrent-lease safety, and preserved foreground exit/signal status.
 - A custom fixture already exercises the same generic engine; this does not complete the full Phase 2 schema/acceptance gate.
 
-The real-Docker test uses Pi's non-interactive version command to exercise launch without provider credentials and verifies durable state preservation across recreation. Provider login, an interactive terminal session, and conversation continuation still need host-side acceptance coverage.
+The user reported the original Pi real-Docker lifecycle test passing on their Linux host. That test exercised non-interactive version launch and state preservation, not provider login or conversation continuation. Those manual checks remain unverified. The user explicitly approved continuing implementation rather than blocking on them.
+
+## Phase 2 — candidate implemented, expanded Docker acceptance pending
+
+- Added the OpenCode definition, separate config/data stores, shared cache, managed auth, and continuation/reset declarations.
+- Built-in and user defaults share one recursive regular-file reader.
+- Registry enumeration reports invalid overrides separately and retains valid choices; selected loading remains isolated from unrelated invalid definitions.
+- Pi, OpenCode, and a third custom fixture pass the same fake-backed lifecycle, storage mapping, auth/cache preservation, recreation, and recovery tests.
+- The real-Docker suite now covers all three definitions, creates profiles through the resource service, and checks in-container auth writes and preservation. These expanded cases have compiled but have not been executed here; schema freeze remains pending acceptance.
+
+## Configuration-owner workflow — implemented ahead of dashboards
+
+- `profile create|init|list|set` and `project create|init` are available without hand-written JSON.
+- Create publishes sparse config with no implicit harness or default profile. Init accepts explicit automation flags and terminal choices, keeps existing selections, and never overwrites artifacts.
+- Current optional seeds: harness config, `setup.sh`, and `entrypoint.sh`. Dockerfile seeding remains tied to pending build-context support.
+- `project create --from-profile` copies supported source artifacts once, preserves expressions, and writes `inherit_profile: false`. It refuses existing destinations, including empty directories.
+- Configuration mutations use external owner locks; Linux no-replace publication prevents replacement races. Source edits do not flatten global/host values.
+- Project inheritance preview uses the normal resolver. Create/init return structured next steps scoped to the selected home.
 
 ## Validation
 
@@ -34,7 +51,8 @@ The real-Docker test uses Pi's non-interactive version command to exercise launc
 - `go vet ./...`: passes.
 - `make install-go`: downloaded and checksum-verified the pinned Linux amd64 toolchain successfully; arm64 has a verified official checksum but was not executed here.
 - Integration-tagged tests compile.
-- `make test-integration`: **blocked** because this workspace has no Docker CLI/socket. The target fails explicitly rather than reporting a skipped gate as a pass.
+- Original Pi `make test-integration`: **passed on the user's Linux host, per user report**.
+- Expanded Pi/OpenCode/custom `make test-integration`: **not run here** because this workspace has no Docker CLI/socket. The target fails explicitly rather than reporting a skipped gate as a pass.
 - The parent repository's `make test` remains a separate check; it does not validate the rewrite.
 
 Run the gate on a Linux host as a non-root user with Docker access:
@@ -48,16 +66,16 @@ It uses temporary homes and rewrite-only ownership labels, not the existing inst
 
 ## Remaining work
 
-Do not mark Phase 1 complete or advance to dashboards until the real-Docker gate passes.
+Continue the runtime/configuration work; do not claim interactive harness acceptance or schema freeze from fake-backed tests.
 
-- Phase 2: OpenCode definition, full built-in/custom mapping and auth acceptance, and schema freeze.
+- Phase 2: expanded real-Docker built-in/custom mapping and auth acceptance, provider login/continuation checks, and schema freeze.
 - Phase 3: host env substitution/reference recovery and multiline env transport, full env/mount/port/raw-arg/IDE settings, normal/full Dockerfile contexts, artifact-only project participation, runtime docs/assets, complete provenance, and config `--show`.
 - Phase 4: complete target resolution, container inventory/status/logs/delete, bulk recreation, network facts/commands, and expanded lifecycle/crash testing.
 - Phase 5: session views, reset/prune/delete, clone/relocate, and transfer interruption recovery.
-- Phase 6: resource commands, dashboards, create/init guidance and seeding, doctor, and complete documentation.
+- Phase 6: remaining resource commands (including profile delete and scoped config), dashboards, Dockerfile seeding, complete structured guidance, doctor, and complete documentation.
 - Phase 7: release hardening, performance/secret audits, and remaining acceptance tests.
 - Separate migration utility: not implemented.
 
-Definition env uses a private temporary env file, keeping values out of process arguments and the host Docker client's environment. Multiline values are explicitly rejected before Docker work; the wider env feature remains pending.
+Definition env uses a private temporary env file, keeping values out of process arguments and avoiding container-env overrides of the host Docker client's environment. Multiline values are explicitly rejected before Docker work; the wider env feature remains pending.
 
 Pending creation options are explicitly rejected instead of being silently ignored. Initial-creation failures can leave uncommitted host state when it cannot be safely classified; retries refuse to adopt it. This is not a production-ready cutover build.

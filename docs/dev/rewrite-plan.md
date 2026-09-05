@@ -783,13 +783,13 @@ Schema rules:
 - `install.shell` runs only inside the image build, never on the host.
 - `${user}` is the only initial template variable.
 - launch commands use argv arrays; shell parsing is not used for launch.
-- store names are unique and targets are absolute.
+- store names are unique and targets are clean absolute paths. Relative declaration paths must be canonical and remain within their owner.
 - `scope` is `environment` or `cache`.
 - config names one environment store and an optional relative subpath.
 - `config_merge` declares structured files that cannot use whole-file synchronization because the harness mutates the same file.
 - `json-keys` requires a relative JSON file path and a unique, non-empty `owned_keys` list. Paths and owned keys cannot overlap across declarations.
 - auth sources are relative to `~/.devbox/auth/<harness>/` unless an explicit, validated host path feature is added later.
-- auth targets may overlay files inside a mounted store.
+- auth targets may overlay files inside a mounted store, but cannot obscure a declared store.
 - reset and transfer behavior comes from the definition, not Go branches.
 - `prepare` is a list of explicit in-container argv commands. Avoid harness-specific shell generation in Go.
 
@@ -1253,7 +1253,7 @@ devbox profile config <name>
 devbox profile config <name> --show [--json]
 devbox profile init <name> [--harness <name>]
 devbox profile list
-devbox profile set [name]
+devbox profile set [name] [--clear]
 devbox profile delete <name>
 ```
 
@@ -1261,7 +1261,7 @@ devbox profile delete <name>
 - `config` opens the interactive profile dashboard.
 - `config --show` prints the effective built-in/global/profile values and provenance.
 - `init` selects the harness when not already configured, then interactively creates optional profile artifacts such as Dockerfiles, hooks, and harness config. It replaces `profile seed`.
-- `set` remains an intentional convenience for changing the global default profile without opening the global dashboard.
+- `set` remains an intentional convenience for changing the global default profile without opening the global dashboard; `--clear` clears that selection without prompting.
 
 ### Project commands
 

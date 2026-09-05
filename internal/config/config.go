@@ -128,11 +128,9 @@ func ReadGlobal(path string) (Global, error) {
 	if bytes.Contains(b, []byte("${env:")) {
 		return g, fmt.Errorf("%s: host substitution awaits phase 3; expressions are not used as literal values", path)
 	}
-	if err = Decode(b, &g); err != nil {
+	g, err = ParseGlobal(b)
+	if err != nil {
 		return g, fmt.Errorf("%s: invalid global config: %w", path, err)
-	}
-	if g.Version != 1 {
-		return g, fmt.Errorf("%s: unsupported version", path)
 	}
 	if g.DefaultProfile != "" && !Name.MatchString(g.DefaultProfile) {
 		return g, fmt.Errorf("%s: invalid default_profile", path)
@@ -148,16 +146,37 @@ func ReadLayer(path string, project bool) (Layer, error) {
 	if bytes.Contains(b, []byte("${env:")) {
 		return l, fmt.Errorf("%s: host substitution awaits phase 3; expressions are not used as literal values", path)
 	}
-	if err = Decode(b, &l); err != nil {
+	l, err = ParseLayer(b, project)
+	if err != nil {
 		return l, fmt.Errorf("%s: invalid layer: %w", path, err)
 	}
+	return l, nil
+}
+
+// Source operations validate shape without resolving values. Copying a profile
+// or editing one field must preserve expressions, not flatten host/global inputs.
+func ParseLayer(b []byte, project bool) (Layer, error) {
+	l := Layer{Version: 1}
+	if err := Decode(b, &l); err != nil {
+		return l, err
+	}
 	if l.Version != 1 {
-		return l, fmt.Errorf("%s: unsupported version", path)
+		return l, fmt.Errorf("unsupported version")
 	}
 	if !project && l.InheritProfile != nil {
-		return l, fmt.Errorf("%s: inherit_profile is project-only", path)
+		return l, fmt.Errorf("inherit_profile is project-only")
 	}
 	return l, nil
+}
+func ParseGlobal(b []byte) (Global, error) {
+	g := Global{Version: 1}
+	if err := Decode(b, &g); err != nil {
+		return g, err
+	}
+	if g.Version != 1 {
+		return g, fmt.Errorf("unsupported version")
+	}
+	return g, nil
 }
 func (s *Settings) Apply(l Layer) {
 	if l.OnExit != nil {
@@ -187,7 +206,7 @@ func (s Settings) Validate() error {
 		return fmt.Errorf("default_shell must be non-empty argv")
 	}
 	if s.Harness == "" {
-		return fmt.Errorf("no harness selected; set harness in the participating profile or project config")
+		return fmt.Errorf("no harness selected; use devbox-neo profile init <name> --harness <name> or devbox-neo project init <folder> --harness <name>")
 	}
 	if !Name.MatchString(s.Harness) {
 		return fmt.Errorf("invalid harness name")

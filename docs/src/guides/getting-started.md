@@ -14,13 +14,22 @@ The binary is `bin/devbox-neo`. Its default home is `~/.devbox-neo`; it uses sep
 
 ## Configure the first profile
 
-Create `~/.devbox-neo/profiles/basic/config.json` with:
-
-```json
-{"version": 1, "harness": "pi"}
+```sh
+bin/devbox-neo profile create basic
+bin/devbox-neo profile init basic --harness pi
+bin/devbox-neo profile set basic
 ```
 
-This early runtime path uses direct configuration files. Profile/project create/init commands and dashboards are not implemented yet. No profile or harness is selected implicitly.
+`create` writes sparse config without choosing a harness. `init` selects the harness; `set` makes the profile the default. No defaults are selected implicitly. Use `--harness opencode` for OpenCode.
+
+In a terminal, `init` without flags offers harness and optional artifact choices. For automation, use explicit flags:
+
+```sh
+bin/devbox-neo profile init basic --harness pi --artifact harness-config,setup.sh
+bin/devbox-neo profile list
+```
+
+Re-running init keeps existing files. The current optional artifacts are harness config, `setup.sh`, and `entrypoint.sh`; Dockerfile seeding and dashboards remain pending.
 
 Open a workspace:
 
@@ -35,6 +44,24 @@ For a non-interactive launch check without provider credentials:
 ```sh
 bin/devbox-neo /path/to/workspace --profile basic -- --version
 ```
+
+## Configure a project instead
+
+```sh
+bin/devbox-neo project create /path/to/workspace
+bin/devbox-neo project init /path/to/workspace --harness pi
+bin/devbox-neo /path/to/workspace
+```
+
+Use `--harness inherit` on project init to use the participating profile/global harness. Inheritance must resolve to a configured harness.
+
+To start a standalone project from a reusable profile:
+
+```sh
+bin/devbox-neo project create /path/to/workspace --from-profile basic
+```
+
+This copies the profile's supported source artifacts once and sets `inherit_profile: false`. It preserves variable expressions, refuses an existing `.devbox/`, and does not track later profile changes. Global defaults still apply. Use `profile set --clear` to clear the default profile.
 
 ## Apply changes explicitly
 
@@ -60,4 +87,4 @@ bin/devbox-neo stop /path/to/workspace --profile basic
 
 For existing containers these commands use the recorded contract, not current profile/project config. `shell` and `exec` require an existing container. A missing container can be recovered by `start` only if its recorded inputs remain available and unchanged; otherwise use explicit `recreate`.
 
-Secrets belong in auth or supported environment inputs, not launch arguments, raw Docker arguments, or ordinary settings. Host environment configuration/substitution is not implemented in this checkpoint and is rejected rather than used literally. Managed Pi auth persists at `~/.devbox-neo/auth/pi/auth.json`.
+Secrets belong in auth or supported environment inputs, not launch arguments, raw Docker arguments, or ordinary settings. Host environment configuration/substitution is not implemented in this checkpoint and is rejected rather than used literally. Managed Pi and OpenCode auth persist at `~/.devbox-neo/auth/<harness>/auth.json`.

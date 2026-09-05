@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 )
 
 func TestBuiltinAndUserOverrideUseSameSchema(t *testing.T) {
@@ -54,6 +55,53 @@ func TestUnsafeAndOverlappingDeclarations(t *testing.T) {
 		mutate(&h.Definition)
 		if err = h.Definition.Validate(); err == nil {
 			t.Fatal("unsafe declaration accepted")
+		}
+	}
+}
+func TestRegistryReportsBrokenOverridesWithoutHidingValidChoices(t *testing.T) {
+	home := t.TempDir()
+	p := filepath.Join(home, "harnesses/pi/harness.json")
+	os.MkdirAll(filepath.Dir(p), 0700)
+	os.WriteFile(p, []byte("bad"), 0600)
+	h, err := Load(home, "opencode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Definition.Config.Store != "config" || len(h.Definition.Stores) != 3 || len(h.Definition.Merge) != 0 {
+		t.Fatal("unexpected OpenCode declarations")
+	}
+	custom := h.Definition
+	custom.Name = "third"
+	b, _ := json.Marshal(custom)
+	p = filepath.Join(home, "harnesses/third/harness.json")
+	os.MkdirAll(filepath.Dir(p), 0700)
+	os.WriteFile(p, b, 0600)
+	registry, err := Enumerate(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Valid) != 2 || registry.Valid[0].Definition.Name != "opencode" || registry.Valid[1].Definition.Name != "third" || len(registry.Invalid) != 1 || registry.Invalid[0].Name != "pi" {
+		t.Fatal("registry hid an invalid override or valid choice")
+	}
+}
+func TestEmbeddedAndHostDefaultsShareRecursiveFileRules(t *testing.T) {
+	files, err := readTree(fstest.MapFS{"nested/file": {Data: []byte("value"), Mode: 0700}})
+	if err != nil || string(files["nested/file"].Data) != "value" || files["nested/file"].Mode != 0700 {
+		t.Fatal(files, err)
+	}
+	if _, err = readTree(fstest.MapFS{"link": {Mode: os.ModeSymlink}}); err == nil {
+		t.Fatal("unsafe embedded tree accepted")
+	}
+}
+func TestCanonicalPathsAndAuthCannotObscureStores(t *testing.T) {
+	for _, change := range []func(*Definition){func(d *Definition) { d.Config.Path = "a/../b" }, func(d *Definition) { d.Auth[0].Target = "/home/devuser/.pi"; d.Auth[0].Kind = "directory" }} {
+		h, err := Load(t.TempDir(), "pi")
+		if err != nil {
+			t.Fatal(err)
+		}
+		change(&h.Definition)
+		if err = h.Definition.Validate(); err == nil {
+			t.Fatal("ambiguous path or obscured store accepted")
 		}
 	}
 }

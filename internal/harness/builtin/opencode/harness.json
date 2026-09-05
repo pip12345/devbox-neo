@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "opencode",
+  "binary": "opencode",
+  "install": {
+    "shell": "curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path",
+    "path": ["/home/${user}/.opencode/bin", "/home/${user}/.local/bin"]
+  },
+  "launch": {"args": [], "continue_args": ["-c"]},
+  "env": {"OPENCODE_CONFIG_CONTENT": "{\"share\":\"disabled\",\"disabled_providers\":[\"opencode\"]}"},
+  "stores": [
+    {"name": "config", "scope": "environment", "target": "/home/devuser/.config/opencode"},
+    {"name": "data", "scope": "environment", "target": "/home/devuser/.local/share/opencode"},
+    {"name": "cache", "scope": "cache", "target": "/home/devuser/.cache/opencode"}
+  ],
+  "config": {"store": "config", "path": "."},
+  "config_merge": [],
+  "auth": [{"source": "auth.json", "target": "/home/devuser/.local/share/opencode/auth.json", "kind": "file", "create": true}],
+  "session": {"reset_preserve": ["project", "storage", "snapshot", "opencode.db*"], "relocate": true, "clone": true},
+  "prepare": []
+}

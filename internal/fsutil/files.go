@@ -59,6 +59,14 @@ func Dir(root, rel string, mode fs.FileMode) (string, error) {
 }
 
 func Write(path string, data []byte, mode fs.FileMode) error {
+	return write(path, data, mode, true)
+}
+
+func WriteNew(path string, data []byte, mode fs.FileMode) error {
+	return write(path, data, mode, false)
+}
+
+func write(path string, data []byte, mode fs.FileMode, replace bool) error {
 	if _, err := Path(filepath.Dir(path), filepath.Base(path)); err != nil {
 		return err
 	}
@@ -83,15 +91,7 @@ func Write(path string, data []byte, mode fs.FileMode) error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	if err = os.Rename(temp, path); err != nil {
-		return err
-	}
-	d, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
+	return publish(temp, path, replace)
 }
 func JSON(path string, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
