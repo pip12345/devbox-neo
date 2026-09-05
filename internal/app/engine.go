@@ -48,11 +48,7 @@ type Result struct {
 }
 
 func (e *Engine) Resolve(q Request) (environment.Spec, error) {
-	s, err := environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, Overrides: q.Overrides, ReadOnly: q.ReadOnly, UID: e.UID, GID: e.GID, Salt: e.Store.Installation})
-	if err == nil && q.ExpectedName != "" && s.Identity.Name != q.ExpectedName {
-		return s, fmt.Errorf("current configuration resolves a different slot; restore the target's configuration before recreating it")
-	}
-	return s, err
+	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, ExpectedName: q.ExpectedName, Overrides: q.Overrides, ReadOnly: q.ReadOnly, UID: e.UID, GID: e.GID, Salt: e.Store.Installation})
 }
 func (e *Engine) owner(r store.Record) docker.Owner {
 	return docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot}
@@ -71,6 +67,18 @@ func (e *Engine) inspect(ctx context.Context, r store.Record) (docker.Container,
 // Open keeps the operation lock through stopped-only synchronization, startup,
 // and lease creation. The long foreground command runs after releasing it.
 func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error) {
+	if strings.HasPrefix(q.Workspace, docker.Namespace+"-") && !strings.ContainsAny(q.Workspace, "/\\") {
+		r, loadErr := e.Store.Read(ctx, q.Workspace)
+		if loadErr != nil {
+			return result, loadErr
+		}
+		if q.Profile != "" && q.Profile != r.Identity.Profile {
+			return result, fmt.Errorf("profile does not match the recorded target")
+		}
+		q.Workspace = r.Identity.Workspace
+		q.Profile = r.Identity.Profile
+		q.ExpectedName = r.Identity.Name
+	}
 	spec, err := e.Resolve(q)
 	if err != nil {
 		return result, err
@@ -263,17 +271,93 @@ func (e *Engine) mountPlan(l *store.Locked, s environment.Spec) ([]docker.Mount,
 	}
 	return mounts, nil
 }
-func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force bool) (docker.Image, error) {
+func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force bool) (image docker.Image, err error) {
 	dir, err := os.MkdirTemp(e.Store.Home, ".build-*")
 	if err != nil {
-		return docker.Image{}, err
+		return image, err
 	}
 	defer os.RemoveAll(dir)
-	path := filepath.Join(dir, "Dockerfile")
-	if err = fsutil.Write(path, s.Dockerfile, 0600); err != nil {
-		return docker.Image{}, err
+	contextDir, err := fsutil.Dir(dir, "context", 0700)
+	if err != nil {
+		return image, err
 	}
-	return e.Docker.Build(ctx, docker.BuildPlan{Directory: dir, Dockerfile: path, Tag: docker.Namespace + "/session:" + id, NoCache: force, Installation: e.Store.Installation}, e.Streams.Err)
+	names := make([]string, 0, len(s.Build.Context))
+	for name := range s.Build.Context {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	// Restore owner access before removing staging directories whose source
+	// permissions were read-only. Their original modes belong in the build.
+	defer func() {
+		for _, name := range names {
+			if s.Build.Context[name].Directory {
+				p, pathErr := fsutil.Path(contextDir, name)
+				if pathErr == nil {
+					_ = os.Chmod(p, 0700)
+				}
+			}
+		}
+	}()
+	for _, name := range names {
+		if err = ctx.Err(); err != nil {
+			return image, err
+		}
+		file := s.Build.Context[name]
+		if file.Directory {
+			if _, err = fsutil.Dir(contextDir, name, 0700); err != nil {
+				return image, err
+			}
+			continue
+		}
+		if _, err = fsutil.Dir(contextDir, filepath.Dir(name), 0700); err != nil {
+			return image, err
+		}
+		p, pathErr := fsutil.Path(contextDir, name)
+		if pathErr != nil {
+			return image, pathErr
+		}
+		if err = fsutil.Write(p, file.Data, file.Mode); err != nil {
+			return image, err
+		}
+	}
+	for i := len(names) - 1; i >= 0; i-- {
+		name := names[i]
+		file := s.Build.Context[name]
+		if file.Directory {
+			if err = os.Chmod(filepath.Join(contextDir, name), file.Mode); err != nil {
+				return image, err
+			}
+		}
+	}
+	build := func(name, tag string, data []byte, arguments map[string]string) (docker.Image, error) {
+		path := filepath.Join(dir, name)
+		if err := fsutil.Write(path, data, 0600); err != nil {
+			return docker.Image{}, err
+		}
+		if err := fsutil.Write(path+".dockerignore", s.Build.Ignore, 0600); err != nil {
+			return docker.Image{}, err
+		}
+		return e.Docker.Build(ctx, docker.BuildPlan{Directory: contextDir, Dockerfile: path, Tag: tag, NoCache: force, Installation: e.Store.Installation, Arguments: arguments}, e.Streams.Err)
+	}
+	baseID := ""
+	if s.Build.Mode == "normal" {
+		nonce, idErr := fsutil.ID()
+		if idErr != nil {
+			return image, idErr
+		}
+		tag := docker.Namespace + "/build:" + nonce
+		base, buildErr := build("base.Dockerfile", tag, s.Build.Dockerfile, s.Build.Arguments)
+		if buildErr != nil {
+			return image, buildErr
+		}
+		baseID = base.ID
+		defer func() {
+			cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			err = errors.Join(err, e.Docker.Untag(cleanup, tag, base.ID, e.Store.Installation))
+		}()
+	}
+	return build("runtime.Dockerfile", docker.Namespace+"/session:"+id, s.Build.FinalDockerfile(baseID), s.Build.Arguments)
 }
 func (e *Engine) create(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool) (record store.Record, c docker.Container, err error) {
 	if err = l.RequireIdle(); err != nil {

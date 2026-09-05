@@ -151,6 +151,7 @@ Do not hard-link new mutable files to the backup. New harness writes must not al
 - Convert `host_network` to `network: host` when true and normal default networking otherwise, respecting sparse inheritance.
 - Non-empty `extra_networks` has no equivalent durable list in the rewrite. Do not silently select one as the primary network or drop the list. Require an explicit configuration decision before importing affected environments.
 - Preserve supported Dockerfiles, hooks, harness config, and the build-context files those Dockerfiles require. Do not assume that copying only the named Dockerfile preserves `COPY`/`ADD` inputs.
+- `Dockerfile.full` has no rewrite equivalent. Block affected imports until the user supplies a supported layered `Dockerfile` or explicitly excludes the affected configuration. Never silently rename it or discard its runtime responsibilities; the original remains in the backup.
 - Validate raw Docker args against the new runtime's invariant restrictions.
 - Report explicit-profile behavior changes: old profile slots could inherit project artifacts; new explicit profiles exclude them. Do not add a per-session legacy-precedence mode.
 - A direct import of existing project configuration preserves ordinary profile inheritance. `inherit_profile: false` is added by the new `project create --from-profile` workflow, not indiscriminately to migrated projects.

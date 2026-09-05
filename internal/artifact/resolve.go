@@ -63,6 +63,16 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 		} else {
 			l, err = config.ReadLayer(projectPath, true)
 		}
+		if os.IsNotExist(err) {
+			present, probeErr := hasProjectArtifacts(filepath.Dir(projectPath))
+			if probeErr != nil {
+				return r, probeErr
+			}
+			if present {
+				l = config.Layer{Version: 1}
+				err = nil
+			}
+		}
 		if err == nil {
 			project = &l
 			r.Project = true

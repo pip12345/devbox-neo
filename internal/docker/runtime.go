@@ -14,6 +14,7 @@ import (
 )
 
 const Namespace = "devbox-rewrite"
+const HostAlias = "host.docker.internal"
 
 type Owner struct {
 	Installation string
@@ -34,11 +35,25 @@ type Container struct {
 	Name  string `json:"Name"`
 	Image string `json:"Image"`
 	State struct {
-		Running bool `json:"Running"`
+		Running  bool   `json:"Running"`
+		Status   string `json:"Status"`
+		ExitCode int    `json:"ExitCode"`
 	} `json:"State"`
 	Config struct {
 		Labels map[string]string `json:"Labels"`
 	} `json:"Config"`
+	HostConfig struct {
+		NetworkMode string `json:"NetworkMode"`
+	} `json:"HostConfig"`
+	NetworkSettings struct {
+		Networks map[string]Endpoint `json:"Networks"`
+	} `json:"NetworkSettings"`
+}
+
+type Endpoint struct {
+	IPAddress string `json:"IPAddress"`
+	Gateway   string `json:"Gateway"`
+	NetworkID string `json:"NetworkID"`
 }
 
 func (c Container) Verify(o Owner) error {
@@ -90,6 +105,7 @@ type BuildPlan struct {
 	Tag          string
 	NoCache      bool
 	Installation string
+	Arguments    map[string]string
 }
 type Streams struct {
 	In  io.Reader
@@ -158,6 +174,9 @@ func (r Runtime) InspectImage(ctx context.Context, ref string) (Image, error) {
 }
 func (r Runtime) Build(ctx context.Context, p BuildPlan, out io.Writer) (Image, error) {
 	args := []string{"build", "--file", p.Dockerfile, "--tag", p.Tag}
+	for _, key := range sortedKeys(p.Arguments) {
+		args = append(args, "--build-arg", key+"="+p.Arguments[key])
+	}
 	if p.NoCache {
 		args = append(args, "--no-cache")
 	}
@@ -175,6 +194,21 @@ func (r Runtime) Build(ctx context.Context, p BuildPlan, out io.Writer) (Image, 
 	}
 	return image, image.Verify(p.Installation)
 }
+func (r Runtime) Untag(ctx context.Context, tag, expectedID, installation string) error {
+	image, err := r.InspectImage(ctx, tag)
+	if err != nil {
+		return err
+	}
+	if err = image.Verify(installation); err != nil {
+		return err
+	}
+	if image.ID != expectedID {
+		return fmt.Errorf("image tag no longer points to its recorded image")
+	}
+	_, err = r.capture(ctx, "image", "rm", tag)
+	return err
+}
+
 func (r Runtime) Network(ctx context.Context, name string) error {
 	if name == "default" || name == "host" {
 		return nil
@@ -193,6 +227,9 @@ func (r Runtime) Create(ctx context.Context, p CreatePlan, o Owner) (string, err
 	}
 	if p.Network != "default" {
 		args = append(args, "--network", p.Network)
+	}
+	if p.Network != "host" {
+		args = append(args, "--add-host", HostAlias+":host-gateway")
 	}
 	for _, m := range p.Mounts {
 		if strings.ContainsRune(m.Source+m.Target, '\x00') {

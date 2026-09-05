@@ -215,6 +215,9 @@ func (d Definition) Validate() error {
 		}
 	}
 	for _, p := range d.Session.Preserve {
+		if _, err := filepath.Match(p, ""); err != nil {
+			return fmt.Errorf("invalid reset_preserve pattern")
+		}
 		if !relative(p) {
 			return fmt.Errorf("reset_preserve must remain relative")
 		}

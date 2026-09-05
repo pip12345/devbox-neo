@@ -95,7 +95,6 @@ Keep these profile/project artifacts:
 
 - `config.json`
 - `Dockerfile`
-- `Dockerfile.full`
 - `setup.sh`
 - `entrypoint.sh`
 - `<harness>/` configuration directory
@@ -109,7 +108,7 @@ Use one layer-selection rule for all profile/project artifacts:
 - excluded project artifacts are not read, parsed, validated, merged, or fingerprinted; a malformed project `.devbox/config.json` cannot block explicit-profile startup;
 - global settings and built-in defaults still apply in both cases, with CLI overrides last;
 - `config.json` merges participating layers by schema;
-- `Dockerfile`, `Dockerfile.full`, `setup.sh`, and `entrypoint.sh` use winner-by-existence among participating layers;
+- `Dockerfile`, `setup.sh`, and `entrypoint.sh` use winner-by-existence among participating layers;
 - harness directories overlay recursively in the same base-to-winner order.
 
 This deliberately replaces the current explicit-profile precedence reversal. Invalid participating configuration remains a hard error; exclusion is not an invalid-config fallback.
@@ -361,7 +360,6 @@ If these conditions hold, create from the recorded image and settings, preserve 
     <name>/
       config.json
       Dockerfile
-      Dockerfile.full
       setup.sh
       entrypoint.sh
       <harness>/
@@ -649,7 +647,7 @@ Human rendering prints copyable shell commands. JSON rendering preserves argv ar
 1. uses an already configured profile harness when present;
 2. otherwise lists effective Pi, OpenCode, and valid user-defined harnesses;
 3. writes the selected harness to profile config;
-4. offers optional `Dockerfile`, `Dockerfile.full`, `setup.sh`, `entrypoint.sh`, and selected-harness config files;
+4. offers optional `Dockerfile`, `setup.sh`, `entrypoint.sh`, and selected-harness config files;
 5. creates only selected missing artifacts.
 
 ### Projects
@@ -913,10 +911,12 @@ Devbox does not create or delete user networks. Container creation selects the r
 
 ### Images
 
-Preserve `Dockerfile` and `Dockerfile.full` behavior through one `ImageBuildPlan`:
+Use one layered `ImageBuildPlan`:
 
-- normal mode may build a user/profile intermediate image, then apply the Devbox runtime layer and selected harness installation;
-- full mode uses `Dockerfile.full`, then appends the documented Devbox runtime contract;
+- a user/profile `Dockerfile` may build an intermediate image, then Devbox always applies its runtime layer and selected harness installation;
+- without a user Dockerfile, Devbox uses its standard Debian base;
+- users customize a Debian-compatible base; Devbox owns the user/permissions, required runtime packages, and harness installation on top;
+- `Dockerfile.full` is removed: there is no alternate user-owned runtime contract;
 - selected harness definition hash is part of the image fingerprint;
 - changing a user override of Pi/OpenCode therefore becomes pending image drift for each affected session, but does not block opening its existing container;
 - embedded runtime docs/assets have separate runtime hashes when they can be synchronized without rebuilding.
@@ -1382,7 +1382,7 @@ Build the first complete runtime path before dashboards or exhaustive package im
 - implement default-profile/project layering, explicit-profile isolation, and project-only `inherit_profile: false` in one resolver;
 - implement `${env:NAME}` using one host-environment snapshot, source-expression preservation, secret-source references, and redacted diagnostics;
 - complete every artifact's resolution and source trace, including ordinary overlays and stopped-only managed-config synchronization;
-- complete normal/full Dockerfile build plans, setup/entrypoint contracts, and embedded runtime assets/docs;
+- complete layered Dockerfile build plans, setup/entrypoint contracts, and embedded runtime assets/docs;
 - document and test the build-context and fingerprint inputs, normal cache use, forced no-cache builds, shared-image ownership, and targeted rebuild isolation;
 - implement scoped config `--show` and JSON provenance output without requiring an interactive dashboard.
 
@@ -1469,7 +1469,7 @@ Cover:
 - one custom harness definition;
 - auth and store persistence;
 - default-profile/project precedence and explicit-profile startup with malformed excluded project configuration;
-- normal and full Dockerfile modes;
+- default-base and custom-base layered Dockerfile builds;
 - ordinary config synchronization and conflicts while stopped, running-container deferral, and application after stop then open;
 - Pi `settings.json` owned-key updates while stopped, with undeclared Pi-owned keys unchanged;
 - the same `json-keys` strategy in a custom harness;

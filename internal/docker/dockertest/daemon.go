@@ -84,28 +84,59 @@ func (d *Daemon) run(a []string) (string, error) {
 	switch a[0] {
 	case "container":
 		if a[1] == "ls" {
-			pattern, err := regexp.Compile(strings.TrimPrefix(flag("--filter"), "name="))
-			if err != nil {
-				return "", err
-			}
 			var ids []string
 			for _, c := range d.Containers {
-				if pattern.MatchString(c.Name) {
+				match := true
+				for i, arg := range a {
+					if arg != "--filter" {
+						continue
+					}
+					filter := a[i+1]
+					if pattern, ok := strings.CutPrefix(filter, "name="); ok {
+						re, err := regexp.Compile(pattern)
+						if err != nil {
+							return "", err
+						}
+						match = match && re.MatchString(c.Name)
+					}
+					if label, ok := strings.CutPrefix(filter, "label="); ok {
+						key, value, _ := strings.Cut(label, "=")
+						match = match && c.Config.Labels[key] == value
+					}
+				}
+				if match {
 					ids = append(ids, c.ID)
 				}
 			}
+			slices.Sort(ids)
 			return strings.Join(ids, "\n"), nil
 		}
 		if a[1] == "inspect" {
-			for _, c := range d.Containers {
-				if c.ID == a[2] {
-					return encode([]docker.Container{c})
+			result := []docker.Container{}
+			for _, id := range a[2:] {
+				found := false
+				for _, c := range d.Containers {
+					if c.ID == id {
+						result = append(result, c)
+						found = true
+						break
+					}
+				}
+				if !found {
+					return "", fmt.Errorf("container missing")
 				}
 			}
-			return "", fmt.Errorf("container missing")
+			return encode(result)
 		}
 	case "image":
 		if a[1] == "ls" {
+			if ref, ok := strings.CutPrefix(flag("--filter"), "reference="); ok {
+				image, exists := d.Images[ref]
+				if !exists {
+					return "", nil
+				}
+				return image.ID, nil
+			}
 			ids := map[string]bool{}
 			for _, image := range d.Images {
 				ids[image.ID] = true
@@ -115,6 +146,13 @@ func (d *Daemon) run(a []string) (string, error) {
 				out = append(out, id)
 			}
 			return strings.Join(out, "\n"), nil
+		}
+		if a[1] == "rm" {
+			if _, ok := d.Images[a[2]]; !ok {
+				return "", fmt.Errorf("image missing")
+			}
+			delete(d.Images, a[2])
+			return a[2], nil
 		}
 		if a[1] == "inspect" {
 			image, ok := d.Images[a[2]]
@@ -138,6 +176,16 @@ func (d *Daemon) run(a []string) (string, error) {
 		d.Sequence++
 		c := docker.Container{ID: fmt.Sprintf("%064x", d.Sequence), Name: "/" + name, Image: a[len(a)-2]}
 		c.Config.Labels = labels()
+		c.State.Status = "created"
+		c.HostConfig.NetworkMode = flag("--network")
+		if c.HostConfig.NetworkMode == "" {
+			c.HostConfig.NetworkMode = "default"
+		}
+		primary := c.HostConfig.NetworkMode
+		if primary == "default" {
+			primary = "bridge"
+		}
+		c.NetworkSettings.Networks = map[string]docker.Endpoint{primary: {NetworkID: primary, IPAddress: "172.20.0.2", Gateway: "172.20.0.1"}}
 		d.Containers[name] = c
 		return c.ID, nil
 	case "start", "stop", "rm":
@@ -151,6 +199,10 @@ func (d *Daemon) run(a []string) (string, error) {
 					delete(d.Containers, name)
 				} else {
 					c.State.Running = a[0] == "start"
+					c.State.Status = "exited"
+					if c.State.Running {
+						c.State.Status = "running"
+					}
 					d.Containers[name] = c
 				}
 				return "", nil
@@ -159,9 +211,26 @@ func (d *Daemon) run(a []string) (string, error) {
 		return "", fmt.Errorf("container missing")
 	case "exec":
 		return "", nil
+	case "logs":
+		return "container logs\n", nil
 	case "network":
 		if len(a) == 3 && a[1] == "inspect" {
 			return "[]", nil
+		}
+		if len(a) == 4 && (a[1] == "connect" || a[1] == "disconnect") {
+			for name, c := range d.Containers {
+				if c.ID == a[3] {
+					c.NetworkSettings.Networks = maps.Clone(c.NetworkSettings.Networks)
+					if a[1] == "connect" {
+						c.NetworkSettings.Networks[a[2]] = docker.Endpoint{NetworkID: a[2], IPAddress: "172.21.0.2", Gateway: "172.21.0.1"}
+					} else {
+						delete(c.NetworkSettings.Networks, a[2])
+					}
+					d.Containers[name] = c
+					return "", nil
+				}
+			}
+			return "", fmt.Errorf("container missing")
 		}
 	}
 	return "", fmt.Errorf("unimplemented fake Docker operation %s", a[0])

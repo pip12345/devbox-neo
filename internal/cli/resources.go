@@ -82,7 +82,7 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 			return renderResource(cmd, result, err, initJSON, s.Home)
 		}}
 		init.Flags().StringVar(&selected, "harness", "", "Select a registry harness (projects also accept inherit)")
-		init.Flags().StringSliceVar(&artifacts, "artifact", nil, "Seed missing harness-config, setup.sh, or entrypoint.sh (repeatable)")
+		init.Flags().StringSliceVar(&artifacts, "artifact", nil, "Seed missing harness-config, setup.sh, entrypoint.sh, or Dockerfile (repeatable)")
 		init.Flags().BoolVar(&initJSON, "json", false, "Print the result and next steps as JSON; never prompt")
 		group.AddCommand(init)
 		if kind == "profile" {

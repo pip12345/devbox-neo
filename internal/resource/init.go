@@ -15,7 +15,7 @@ import (
 	"devbox/internal/harness"
 )
 
-var InitArtifacts = []string{"harness-config", "setup.sh", "entrypoint.sh"}
+var InitArtifacts = []string{"harness-config", "setup.sh", "entrypoint.sh", "Dockerfile"}
 
 type InitOptions struct {
 	Harness         string
@@ -114,12 +114,14 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 			if err = filesync.Validate(desiredFiles, h.Definition.Merge); err != nil {
 				return result, err
 			}
+		case "Dockerfile":
+			files[name] = harness.File{Data: []byte("FROM debian:bookworm-slim\n\n# Add base packages here. Devbox installs its runtime and selected harness afterward.\n"), Mode: 0600}
 		case "setup.sh":
 			files[name] = harness.File{Data: []byte("#!/bin/bash\nset -euo pipefail\n\n# Runs once per container as devuser; use sudo for system changes.\n"), Mode: 0700}
 		case "entrypoint.sh":
 			files[name] = harness.File{Data: []byte("#!/bin/bash\nset -euo pipefail\n\n# Runs on each normal open, before attaching the harness.\n"), Mode: 0700}
 		default:
-			return result, fmt.Errorf("unsupported init artifact %q; available: %v (Dockerfile seeding awaits build-context support)", name, InitArtifacts)
+			return result, fmt.Errorf("unsupported init artifact %q; available: %v", name, InitArtifacts)
 		}
 	}
 	names := make([]string, 0, len(files))

@@ -286,6 +286,36 @@ func (l *Locked) Save(record Record) error {
 	return fsutil.JSON(path, record)
 }
 
+// Delete keeps record readers outside the removal window. The external
+// operation lock survives deletion and remains held until the caller releases it.
+func (l *Locked) Delete() error {
+	if err := l.check(); err != nil {
+		return err
+	}
+	p, err := l.store.lockPath(l.Name, "record")
+	if err != nil {
+		return err
+	}
+	lock, err := fsutil.Lock(l.ctx, p)
+	if err != nil {
+		return err
+	}
+	defer fsutil.Unlock(lock)
+	root, err := l.Path(".")
+	if err != nil {
+		return err
+	}
+	if err = os.RemoveAll(root); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(root))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
+}
+
 // Touch reloads under the operation lock so a long attached command cannot
 // overwrite creation/runtime settings committed by a more recent invocation.
 func (l *Locked) Touch(id, action string) (Record, error) {

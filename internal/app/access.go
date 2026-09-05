@@ -23,6 +23,13 @@ func (e *Engine) Locate(ctx context.Context, target, profile string) (store.Reco
 	if err != nil {
 		return store.Record{}, err
 	}
+	if profile != "" {
+		id, err := environment.Identify(target, profile, false)
+		if err != nil {
+			return store.Record{}, err
+		}
+		return e.Store.Read(ctx, id.Name)
+	}
 	entries, err := os.ReadDir(filepath.Join(e.Store.Home, "sessions"))
 	if err != nil {
 		return store.Record{}, err

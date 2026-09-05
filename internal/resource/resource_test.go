@@ -303,6 +303,43 @@ func TestInitKeepsConfiguredHarnessAndUsesExplicitChoices(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+func TestCopyIncludesActiveBuildContextAndInitNeverOverwritesDockerfiles(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	source, _ := s.Profile("image")
+	s.Create(ctx, source, "")
+	if _, err := s.Init(ctx, source, InitOptions{Harness: "pi", Artifacts: []string{"Dockerfile"}}); err != nil {
+		t.Fatal(err)
+	}
+	put(t, filepath.Join(source.Root, "Dockerfile"), "FROM debian:bookworm-slim\nCOPY asset /opt/asset\n")
+	put(t, filepath.Join(source.Root, "asset"), "copied")
+	put(t, filepath.Join(source.Root, "not-copied.txt"), "ignored")
+	put(t, filepath.Join(source.Root, "private/omitted"), "ignored directory content")
+	put(t, filepath.Join(source.Root, ".dockerignore"), "not-copied.txt\nprivate\n")
+	if _, err := s.Init(ctx, source, InitOptions{Harness: "pi", Artifacts: []string{"Dockerfile"}}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(get(t, filepath.Join(source.Root, "Dockerfile"))), "COPY asset") {
+		t.Fatal("init replaced Dockerfile")
+	}
+	project, _ := s.Project(t.TempDir())
+	if _, err := s.Create(ctx, project, "image"); err != nil {
+		t.Fatal(err)
+	}
+	if string(get(t, filepath.Join(project.Root, "asset"))) != "copied" {
+		t.Fatal("build context asset lost")
+	}
+	if _, err := os.Stat(filepath.Join(project.Root, "not-copied.txt")); !os.IsNotExist(err) {
+		t.Fatal("ignored context copied")
+	}
+	if _, err := os.Stat(filepath.Join(project.Root, "private")); !os.IsNotExist(err) {
+		t.Fatal("ignored build directory was mistaken for harness configuration")
+	}
+	if string(get(t, filepath.Join(project.Root, ".dockerignore"))) != "not-copied.txt\nprivate\n" {
+		t.Fatal("context policy lost")
+	}
+}
+
 func TestSourceTreeAndPublishPreserveExecutableIntent(t *testing.T) {
 	s := fixture(t)
 	o, _ := s.Profile("scripts")
@@ -314,7 +351,7 @@ func TestSourceTreeAndPublishPreserveExecutableIntent(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(filepath.Join(p.Root, "setup.sh"))
-	if err != nil || info.Mode().Perm() != 0700 {
+	if err != nil || info.Mode().Perm() != 0755 {
 		t.Fatal("executable intent lost", err)
 	}
 	if err = fsutil.WriteNew(filepath.Join(p.Root, "setup.sh"), []byte("overwrite"), 0600); !os.IsExist(err) {

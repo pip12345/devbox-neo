@@ -29,7 +29,7 @@ bin/devbox-neo profile init basic --harness pi --artifact harness-config,setup.s
 bin/devbox-neo profile list
 ```
 
-Re-running init keeps existing files. The current optional artifacts are harness config, `setup.sh`, and `entrypoint.sh`; Dockerfile seeding and dashboards remain pending.
+Re-running init keeps existing files. Optional artifacts are harness config, `setup.sh`, `entrypoint.sh`, and `Dockerfile`. Dashboards remain pending.
 
 Open a workspace:
 
@@ -62,6 +62,14 @@ bin/devbox-neo project create /path/to/workspace --from-profile basic
 ```
 
 This copies the profile's supported source artifacts once and sets `inherit_profile: false`. It preserves variable expressions, refuses an existing `.devbox/`, and does not track later profile changes. Global defaults still apply. Use `profile set --clear` to clear the default profile.
+
+## Customize the image
+
+```sh
+bin/devbox-neo profile init basic --artifact Dockerfile
+```
+
+Edit the generated Dockerfile to add tools to a Debian-compatible base. Its directory is the build context, so `COPY` can use sibling files. Use `.dockerignore` to exclude files that are not image inputs. Devbox always installs its runtime and harness afterward; there is no full override mode. Init never replaces an existing Dockerfile.
 
 ## Apply changes explicitly
 

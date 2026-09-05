@@ -73,21 +73,22 @@ type Spec struct {
 	Harness      harness.Effective
 	Trace        artifact.Trace
 	Files        map[string]artifact.File
-	Dockerfile   []byte
+	Build        ImageBuildPlan
 	Setup        Hook
 	Entrypoint   Hook
 	Fingerprints Fingerprints
 	ReadOnly     bool
 }
 type Request struct {
-	Salt      string
-	Home      string
-	Workspace string
-	Profile   string
-	Overrides config.Layer
-	ReadOnly  bool
-	UID       int
-	GID       int
+	Salt         string
+	Home         string
+	Workspace    string
+	Profile      string
+	ExpectedName string
+	Overrides    config.Layer
+	ReadOnly     bool
+	UID          int
+	GID          int
 }
 
 func Resolve(q Request) (Spec, error) {
@@ -104,6 +105,15 @@ func Resolve(q Request) (Spec, error) {
 	identity, err := Identify(q.Workspace, r.Profile, r.Project && q.Profile == "")
 	if err != nil {
 		return spec, err
+	}
+	if q.ExpectedName != "" {
+		identity, err = Identify(q.Workspace, q.Profile, q.Profile == "")
+		if err != nil {
+			return spec, err
+		}
+		if identity.Name != q.ExpectedName {
+			return spec, fmt.Errorf("requested slot does not match its recorded identity")
+		}
 	}
 	h, err := harness.Load(q.Home, r.Settings.Harness)
 	if err != nil {
@@ -139,9 +149,6 @@ func Resolve(q Request) (Spec, error) {
 	if len(r.Settings.Env)+len(r.Settings.DockerArgs)+len(r.Settings.Mounts)+len(r.Settings.Ports)+len(r.Settings.VSCode.Extensions) > 0 {
 		return spec, fmt.Errorf("env, raw Docker args, extra mounts/ports and IDE metadata await phase 3; no environment was changed")
 	}
-	if r.Trace.Winners["Dockerfile"] != "" || r.Trace.Winners["Dockerfile.full"] != "" {
-		return spec, fmt.Errorf("custom Dockerfile build contexts await phase 3; no environment was changed")
-	}
 	if q.UID <= 0 || q.GID <= 0 {
 		return spec, fmt.Errorf("run the development CLI as a non-root user with a non-root primary group")
 	}
@@ -149,7 +156,10 @@ func Resolve(q Request) (Spec, error) {
 	if err = docker.ValidateEnv(spec.Env()); err != nil {
 		return Spec{}, err
 	}
-	spec.Dockerfile = ImageDockerfile(h.Definition, q.UID, q.GID)
+	spec.Build, err = PlanImage(r.Trace.Winners, h.Definition, q.UID, q.GID)
+	if err != nil {
+		return spec, err
+	}
 	spec.Setup, err = readHook(r.Trace.Winners["setup.sh"])
 	if err != nil {
 		return spec, err
@@ -159,9 +169,9 @@ func Resolve(q Request) (Spec, error) {
 		return spec, err
 	}
 	spec.Fingerprints.Image = Digest(struct {
-		Dockerfile []byte
+		Build      string
 		Definition string
-	}{spec.Dockerfile, h.Hash})
+	}{spec.Build.InputFingerprint(), h.Hash})
 	// Setup runs once per container. A changed setup input is pending creation
 	// work, not something a managed-config sync can mark as applied.
 	spec.Fingerprints.Container = Fingerprint(q.Salt, struct {
@@ -215,7 +225,8 @@ func Digest(v any) string {
 func ImageDockerfile(d harness.Definition, uid, gid int) []byte {
 	// Harness installation runs before its runtime cache/prefix env is applied:
 	// executables stay in the image, not under empty host cache bind mounts.
-	base := fmt.Sprintf("FROM debian:bookworm-slim\nRUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl git sudo procps && rm -rf /var/lib/apt/lists/*\nRUN (getent group %d >/dev/null || groupadd -g %d devuser) && useradd -m -s /bin/bash -u %d -g %d devuser && echo 'devuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/devuser && chmod 0440 /etc/sudoers.d/devuser\nUSER devuser\nENV HOME=/home/devuser USER=devuser\nWORKDIR /workspace\n", gid, gid, uid, gid)
+	base := fmt.Sprintf("FROM debian:bookworm-slim\nUSER root\nRUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl git sudo procps && rm -rf /var/lib/apt/lists/*\nRUN (getent group %d >/dev/null || groupadd -g %d devuser) && (id devuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u %d -g %d devuser) && echo 'devuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/devuser && chmod 0440 /etc/sudoers.d/devuser\nUSER devuser\nENV HOME=/home/devuser USER=devuser\nWORKDIR /workspace\n", gid, gid, uid, gid)
+	base += fmt.Sprintf("RUN test \"$(id -u devuser)\" = %d && test \"$(id -g devuser)\" = %d\n", uid, gid)
 	if d.Install.Shell != "" {
 		encoded, _ := json.Marshal([]string{"/bin/bash", "-o", "pipefail", "-c", d.Install.Shell})
 		base += "RUN " + string(encoded) + "\n"

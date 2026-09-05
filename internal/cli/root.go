@@ -100,11 +100,21 @@ func New() *cobra.Command {
 		}
 		return e.Exec(cmd.Context(), args[0], profile, args[1:], false)
 	}})
-	var image bool
-	recreate := &cobra.Command{Use: "recreate <target>", Short: "Explicitly apply current creation settings, preserving session state", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	var image, recreateAll bool
+	recreate := &cobra.Command{Use: "recreate [target]", Short: "Explicitly apply current creation settings, preserving session state", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
 			return err
+		}
+		if recreateAll {
+			if len(args) > 0 {
+				return fmt.Errorf("--all does not accept an exact target")
+			}
+			_, err = e.RecreateAll(cmd.Context(), image, profile)
+			return err
+		}
+		if len(args) != 1 {
+			return fmt.Errorf("provide a target or --all")
 		}
 		r, err := e.Locate(cmd.Context(), args[0], profile)
 		if err != nil {
@@ -114,7 +124,10 @@ func New() *cobra.Command {
 		return err
 	}}
 	recreate.Flags().BoolVar(&image, "image", false, "Force a no-cache build (does not promise refreshed upstream bases)")
+	recreate.Flags().BoolVar(&recreateAll, "all", false, "Recreate all selected owned containers after complete preflight")
 	root.AddCommand(recreate)
+	root.AddCommand(containerCommands(engine, &profile)...)
+	root.AddCommand(sessionCommands(engine, &profile))
 	root.AddCommand(resourceCommands(func(cmd *cobra.Command) (*resource.Service, error) {
 		state, err := initialize(cmd)
 		if err != nil {

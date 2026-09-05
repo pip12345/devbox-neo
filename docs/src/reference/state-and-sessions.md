@@ -35,6 +35,10 @@ Built-in mappings (targets are inside the container):
 | Pi | `home` → `/home/devuser/.pi/agent` | `npm-global` → `/home/devuser/.local`; `npm-cache` → `/home/devuser/.npm` | `/home/devuser/.pi/agent/auth.json` |
 | OpenCode | `config` → `/home/devuser/.config/opencode`; `data` → `/home/devuser/.local/share/opencode` | `cache` → `/home/devuser/.cache/opencode` | `/home/devuser/.local/share/opencode/auth.json` |
 
+Reset clears selected environment-store contents only after complete stopped/idle preflight, preserving declared history unless `--include-history` is used. Bind-root directories and managed ownership manifests remain in place; the next normal open restores missing desired config. Auth and cache roots are separate and are not reset.
+
+Container deletion retains session records/stores and image tags. Exact session deletion requires container absence and verifies tag ownership/association before removing state and its tag. External operation/record locks are not deleted. Filtered pruning requires a dry run or explicit `--yes`, and age is revalidated under lock.
+
 Recreation preserves the session ID and stores. Missing-container recovery uses the exact recorded image, mount layout, source definition, and setup input; it does not choose newer configuration. Existing-container start/shell/exec do not require those old source inputs just to access the container.
 
-The source installation's data is not imported automatically. Session management commands and the separate migration tool are still pending; see [progress](../../dev/progress.md).
+The source installation's data is not imported automatically. Session list/show/reset/prune/delete are available; transfer commands and the separate migration tool remain pending. See [commands](commands.md) and [progress](../../dev/progress.md).

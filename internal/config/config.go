@@ -53,6 +53,7 @@ func Defaults() Settings {
 
 var Name = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,47}$`)
 var EnvName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var NetworkName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
 
 // Decode also rejects duplicate object keys: accepting the last occurrence would
 // give validators and other JSON tools different views of the same configuration.
@@ -211,7 +212,7 @@ func (s Settings) Validate() error {
 	if !Name.MatchString(s.Harness) {
 		return fmt.Errorf("invalid harness name")
 	}
-	if !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`).MatchString(s.Network) {
+	if !NetworkName.MatchString(s.Network) {
 		return fmt.Errorf("network must be a valid Docker network name")
 	}
 	if s.Network == "host" && len(s.Ports) > 0 {

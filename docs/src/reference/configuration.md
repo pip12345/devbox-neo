@@ -44,7 +44,7 @@ Explicit `--profile` excludes every project artifact. Without it, the applicable
 | `project create <folder> --from-profile <name>` | Copy supported source artifacts; write `inherit_profile: false`; refuse existing destination |
 | `profile/project init <target> --harness <name>` | Select a valid effective harness without prompting |
 | `project init <folder> --harness inherit` | Remove the explicit harness and validate inherited selection through the shared resolver |
-| `init --artifact <name,...>` | Seed only missing `harness-config`, `setup.sh`, or `entrypoint.sh` |
+| `init --artifact <name,...>` | Seed only missing `harness-config`, `setup.sh`, `entrypoint.sh`, or `Dockerfile` |
 | `profile list [--json]` | Sorted profiles, default marker, and invalid-config entries |
 | `profile set [name]` / `profile set --clear` | Set or clear the global default; omitted name prompts in a terminal |
 
@@ -52,9 +52,17 @@ Create/init support `--json` result and next-step output. Init without flags pro
 
 ## Pending options
 
-Non-empty `global_env`, `extra_env`, `extra_mounts`, `extra_ports`, `docker_args`, and `vscode.extensions` are rejected by the current runtime. `${env:...}` substitution and custom `Dockerfile`/`Dockerfile.full` build contexts also require Phase 3. These are explicit implementation gates, not removed features or ignored values.
+Non-empty `global_env`, `extra_env`, `extra_mounts`, `extra_ports`, `docker_args`, and `vscode.extensions` are rejected by the current runtime. `${env:...}` substitution still requires further Phase 3 work. These are explicit implementation gates, not removed features or ignored values.
 
 `setup.sh` runs once per successful container creation; changes require recreation. `entrypoint.sh` runs on each root open. Both run inside the container, never on the host.
+
+## Image inputs
+
+An optional `Dockerfile` customizes a Debian-compatible base. Devbox builds it as an intermediate image, then always installs its runtime and selected harness on top. Without one, the base is `debian:bookworm-slim`. There is no `Dockerfile.full` mode.
+
+The selected Dockerfile's directory is the build context. `Dockerfile.dockerignore` takes precedence over `.dockerignore`; included regular files, directories, permissions, and ignore rules contribute to the image fingerprint. Symlinks and special files are rejected unless excluded. `HOST_UID` and `HOST_GID` build arguments are available. Ordinary builds use cache; `recreate --image` disables cache for both controlled stages.
+
+Profile-to-project copying includes the active build context and its ignore rules, preserving context-file permissions. Existing source files are never refreshed by init.
 
 ## Harness configuration
 

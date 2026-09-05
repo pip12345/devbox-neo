@@ -1,0 +1,144 @@
+package cli
+
+import (
+	"encoding/json"
+	"time"
+
+	"devbox/internal/app"
+	"github.com/spf13/cobra"
+)
+
+func sessionCommands(factory engineFactory, profile *string) *cobra.Command {
+	group := &cobra.Command{Use: "session", Short: "Inspect or clean durable session state independently of containers"}
+	var listJSON bool
+	list := &cobra.Command{Use: "list", Short: "List durable sessions and their container state", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		e, err := factory(cmd)
+		if err != nil {
+			return err
+		}
+		views, err := e.List(cmd.Context(), true)
+		if err != nil {
+			return err
+		}
+		if *profile != "" {
+			filtered := []app.View{}
+			for _, view := range views {
+				if view.Profile == *profile {
+					filtered = append(filtered, view)
+				}
+			}
+			views = filtered
+		}
+		if listJSON {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(views)
+		}
+		for _, view := range views {
+			printView(cmd, view)
+		}
+		if len(views) == 0 {
+			cmd.Println("No durable sessions. Configure a profile/project, then open its folder.")
+		}
+		return nil
+	}}
+	list.Flags().BoolVar(&listJSON, "json", false, "Print session entries as JSON")
+	var showJSON bool
+	show := &cobra.Command{Use: "show <target>", Short: "Inspect the durable contract and active leases without desired configuration", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		e, err := factory(cmd)
+		if err != nil {
+			return err
+		}
+		details, err := e.SessionShow(cmd.Context(), args[0], *profile)
+		if err != nil {
+			return err
+		}
+		if showJSON {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(details)
+		}
+		printView(cmd, details.Container)
+		cmd.Printf("Session: %s\nHarness: %s\nImage: %s\nActive commands: %d\n", details.Record.ID, details.Record.Definition.Name, details.Record.ImageID, len(details.Active))
+		return nil
+	}}
+	show.Flags().BoolVar(&showJSON, "json", false, "Print durable contract and live state as JSON")
+	var options app.ResetOptions
+	var resetJSON bool
+	reset := &cobra.Command{Use: "reset [target...]", Short: "Reset stopped session stores while preserving declared history", Args: cobra.ArbitraryArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		e, err := factory(cmd)
+		if err != nil {
+			return err
+		}
+		options.Targets = args
+		options.Profile = *profile
+		results, err := e.ResetSessions(cmd.Context(), options)
+		if err != nil {
+			return err
+		}
+		if resetJSON {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(results)
+		}
+		for _, result := range results {
+			action := "Reset"
+			if result.DryRun {
+				action = "Would reset"
+			}
+			cmd.Printf("%s %s (%d paths; auth and shared caches untouched)\n", action, result.Name, len(result.Removed))
+		}
+		return nil
+	}}
+	reset.Flags().BoolVar(&options.All, "all", false, "Select all durable sessions")
+	reset.Flags().StringVar(&options.Harness, "harness", "", "Reset a selected harness instead of the recorded harness")
+	reset.Flags().BoolVar(&options.AllHarnesses, "all-harnesses", false, "Reset every harness stored in the selected sessions")
+	reset.Flags().BoolVar(&options.IncludeHistory, "include-history", false, "Also clear the selected environment stores' history")
+	reset.Flags().BoolVar(&options.DryRun, "dry-run", false, "Preview without changing state")
+	reset.Flags().BoolVar(&resetJSON, "json", false, "Print reset results as JSON")
+	var deleteDryRun, deleteJSON bool
+	remove := &cobra.Command{Use: "delete <target...>", Short: "Delete exact sessions after their containers are gone", Args: cobra.MinimumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		e, err := factory(cmd)
+		if err != nil {
+			return err
+		}
+		names, err := e.DeleteSessions(cmd.Context(), args, *profile, deleteDryRun)
+		if err != nil {
+			return err
+		}
+		return printSessionDeletion(cmd, names, deleteDryRun, deleteJSON)
+	}}
+	remove.Flags().BoolVar(&deleteDryRun, "dry-run", false, "Preview exact deletion")
+	remove.Flags().BoolVar(&deleteJSON, "json", false, "Print selected session names as JSON")
+	var pruneOptions app.PruneOptions
+	var pruneJSON bool
+	prune := &cobra.Command{Use: "prune", Short: "Preview or confirm filtered durable-state cleanup", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		e, err := factory(cmd)
+		if err != nil {
+			return err
+		}
+		pruneOptions.Profile = *profile
+		names, err := e.PruneSessions(cmd.Context(), pruneOptions)
+		if err != nil {
+			return err
+		}
+		return printSessionDeletion(cmd, names, pruneOptions.DryRun, pruneJSON)
+	}}
+	prune.Flags().BoolVar(&pruneOptions.Orphaned, "orphaned", false, "Select sessions without owned containers")
+	prune.Flags().DurationVar(&pruneOptions.OlderThan, "older-than", time.Duration(0), "Select sessions inactive longer than this duration")
+	prune.Flags().BoolVar(&pruneOptions.DryRun, "dry-run", false, "Preview without deleting state")
+	prune.Flags().BoolVar(&pruneOptions.Confirm, "yes", false, "Confirm filtered state deletion")
+	prune.Flags().BoolVar(&pruneJSON, "json", false, "Print selected session names as JSON")
+	group.AddCommand(list, show, reset, remove, prune)
+	return group
+}
+func printSessionDeletion(cmd *cobra.Command, names []string, dryRun, asJSON bool) error {
+	if asJSON {
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(names)
+	}
+	action := "Deleted session"
+	if dryRun {
+		action = "Would delete session"
+	}
+	for _, name := range names {
+		cmd.Printf("%s %s\n", action, name)
+	}
+	if len(names) == 0 {
+		cmd.Println("No matching sessions.")
+	}
+	return nil
+}

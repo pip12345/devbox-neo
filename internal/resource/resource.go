@@ -142,7 +142,20 @@ func (s Service) Create(ctx context.Context, o Owner, fromProfile string) (Resul
 			return result, err
 		}
 		defer fsutil.Unlock(sourceLock)
-		files, err = artifact.SourceTree(source.Root)
+		registry, registryErr := harness.Enumerate(s.Home)
+		if registryErr != nil {
+			return result, registryErr
+		}
+		harnessNames := map[string]bool{}
+		for _, entry := range registry.Valid {
+			harnessNames[entry.Definition.Name] = true
+		}
+		for _, entry := range registry.Invalid {
+			if config.Name.MatchString(entry.Name) {
+				harnessNames[entry.Name] = true
+			}
+		}
+		files, err = artifact.SourceTree(source.Root, harnessNames)
 		if err != nil {
 			return result, err
 		}
@@ -166,6 +179,16 @@ func (s Service) Create(ctx context.Context, o Owner, fromProfile string) (Resul
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	defer func() {
+		for _, name := range names {
+			if files[name].Mode.IsDir() {
+				p, pathErr := fsutil.Path(stage, name)
+				if pathErr == nil {
+					_ = os.Chmod(p, 0700)
+				}
+			}
+		}
+	}()
 	for _, name := range names {
 		if err = ctx.Err(); err != nil {
 			return result, err
@@ -178,8 +201,22 @@ func (s Service) Create(ctx context.Context, o Owner, fromProfile string) (Resul
 			return result, err
 		}
 		file := files[name]
-		if err = fsutil.Write(p, file.Data, privateMode(file.Mode)); err != nil {
+		if file.Mode.IsDir() {
+			if _, err = fsutil.Dir(stage, name, 0700); err != nil {
+				return result, err
+			}
+			continue
+		}
+		if err = fsutil.Write(p, file.Data, file.Mode.Perm()); err != nil {
 			return result, err
+		}
+	}
+	for i := len(names) - 1; i >= 0; i-- {
+		name := names[i]
+		if files[name].Mode.IsDir() {
+			if err = os.Chmod(filepath.Join(stage, name), files[name].Mode.Perm()); err != nil {
+				return result, err
+			}
 		}
 	}
 	if err = ctx.Err(); err != nil {

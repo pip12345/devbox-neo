@@ -94,7 +94,10 @@ func (l *Locked) Release(id string) error {
 	}
 	return err
 }
-func (l *Locked) Active() ([]Lease, error) {
+func (l *Locked) Active() ([]Lease, error)     { return l.active(true) }
+func (l *Locked) LiveLeases() ([]Lease, error) { return l.active(false) }
+
+func (l *Locked) active(reap bool) ([]Lease, error) {
 	dir, err := l.Path("active")
 	if err != nil {
 		return nil, err
@@ -128,8 +131,10 @@ func (l *Locked) Active() ([]Lease, error) {
 		}
 		current, err := ProcessIdentity(lease.Process.PID)
 		if os.IsNotExist(err) || (err == nil && current != lease.Process) {
-			if err = l.Release(lease.ID); err != nil {
-				return nil, err
+			if reap {
+				if err = l.Release(lease.ID); err != nil {
+					return nil, err
+				}
 			}
 			continue
 		}
@@ -141,7 +146,7 @@ func (l *Locked) Active() ([]Lease, error) {
 	return active, nil
 }
 func (l *Locked) RequireIdle() error {
-	active, err := l.Active()
+	active, err := l.LiveLeases()
 	if err != nil {
 		return err
 	}

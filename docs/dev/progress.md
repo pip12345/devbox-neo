@@ -40,10 +40,22 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 
 - `profile create|init|list|set` and `project create|init` are available without hand-written JSON.
 - Create publishes sparse config with no implicit harness or default profile. Init accepts explicit automation flags and terminal choices, keeps existing selections, and never overwrites artifacts.
-- Current optional seeds: harness config, `setup.sh`, and `entrypoint.sh`. Dockerfile seeding remains tied to pending build-context support.
+- Optional seeds: harness config, `setup.sh`, `entrypoint.sh`, and `Dockerfile`. Existing artifacts are never overwritten.
 - `project create --from-profile` copies supported source artifacts once, preserves expressions, and writes `inherit_profile: false`. It refuses existing destinations, including empty directories.
 - Configuration mutations use external owner locks; Linux no-replace publication prevents replacement races. Source edits do not flatten global/host values.
 - Project inheritance preview uses the normal resolver. Create/init return structured next steps scoped to the selected home.
+
+## Layered images and container/session commands — implemented
+
+- User-approved simplification: removed `Dockerfile.full`. Custom Debian-compatible bases always receive the Devbox runtime and harness layer.
+- One immutable image plan captures the selected Dockerfile, context files/permissions, ignore rules, host-ID build arguments, and runtime layer. Forced rebuilds disable cache for both stages; temporary intermediate tags are ownership-checked before cleanup.
+- Artifact-only projects participate through the shared resolver. Source copies preserve the active build context without mistaking excluded directories for harness configuration.
+- Container list/status/logs/delete, bulk recreation, and network inspect/env/connect/disconnect are wired into the CLI. Inventory batches Docker inspection; status reports broken desired config separately from live state.
+- Exact root targets keep their recorded slots, and explicit-profile access avoids unrelated corrupt session records.
+- Container deletion preserves durable state and image tags; complete selection locks and preflight precede bulk mutations. Fully labelled recordless owned containers can be deleted without adoption.
+- Session list/show/reset/prune/delete are wired. Reset requires stopped/absent containers and idle leases, preserves declared history by default, and never clears auth/shared caches or stable bind roots. Dry runs do not reap leases or change files.
+- Session deletion requires container absence, verifies image-tag association, and keeps external locks stable. Prune requires filters plus confirmation and rechecks age under lock.
+- These additions pass unit/fake-backed checks; real-Docker acceptance for the new image/network/session cases remains outstanding.
 
 ## Validation
 
@@ -69,10 +81,10 @@ It uses temporary homes and rewrite-only ownership labels, not the existing inst
 Continue the runtime/configuration work; do not claim interactive harness acceptance or schema freeze from fake-backed tests.
 
 - Phase 2: expanded real-Docker built-in/custom mapping and auth acceptance, provider login/continuation checks, and schema freeze.
-- Phase 3: host env substitution/reference recovery and multiline env transport, full env/mount/port/raw-arg/IDE settings, normal/full Dockerfile contexts, artifact-only project participation, runtime docs/assets, complete provenance, and config `--show`.
-- Phase 4: complete target resolution, container inventory/status/logs/delete, bulk recreation, network facts/commands, and expanded lifecycle/crash testing.
-- Phase 5: session views, reset/prune/delete, clone/relocate, and transfer interruption recovery.
-- Phase 6: remaining resource commands (including profile delete and scoped config), dashboards, Dockerfile seeding, complete structured guidance, doctor, and complete documentation.
+- Phase 3: host env substitution/reference recovery, full env/mount/port/raw-arg/IDE settings, runtime docs/assets, complete provenance, and config `--show`.
+- Phase 4: generated in-container network facts/assets, remaining target/creation-option integration, and expanded real-Docker lifecycle/crash testing.
+- Phase 5: clone/relocate, transfer interruption recovery, and additional acceptance coverage for reset/prune/delete.
+- Phase 6: remaining resource commands (including profile delete and scoped config), dashboards, complete structured guidance, doctor, and complete documentation.
 - Phase 7: release hardening, performance/secret audits, and remaining acceptance tests.
 - Separate migration utility: not implemented.
 
