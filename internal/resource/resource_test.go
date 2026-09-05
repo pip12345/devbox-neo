@@ -303,6 +303,31 @@ func TestInitKeepsConfiguredHarnessAndUsesExplicitChoices(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+func TestProfileDeleteOnlyRemovesItsConfiguration(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	o, _ := s.Profile("remove")
+	s.Create(ctx, o, "")
+	if err := s.SetDefault(ctx, "remove"); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(s.Home, "sessions/retained-marker")
+	put(t, marker, "retained")
+	if _, err := s.DeleteProfile(ctx, "remove"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(o.Root); !os.IsNotExist(err) {
+		t.Fatal("profile remained")
+	}
+	if string(get(t, marker)) != "retained" {
+		t.Fatal("profile deletion changed session state")
+	}
+	global, _, err := s.global()
+	if err != nil || global.DefaultProfile != "remove" {
+		t.Fatal("profile deletion changed global configuration", err)
+	}
+}
+
 func TestCopyIncludesActiveBuildContextAndInitNeverOverwritesDockerfiles(t *testing.T) {
 	s := fixture(t)
 	ctx := context.Background()

@@ -46,6 +46,7 @@ Explicit `--profile` excludes every project artifact. Without it, the applicable
 | `project init <folder> --harness inherit` | Remove the explicit harness and validate inherited selection through the shared resolver |
 | `init --artifact <name,...>` | Seed only missing `harness-config`, `setup.sh`, `entrypoint.sh`, or `Dockerfile` |
 | `profile list [--json]` | Sorted profiles, default marker, and invalid-config entries |
+| `profile delete <name> [--force] [--json]` | Delete profile config/artifacts only; retain global defaults, containers, and sessions. Force skips confirmation |
 | `profile set [name]` / `profile set --clear` | Set or clear the global default; omitted name prompts in a terminal |
 
 Create/init support `--json` result and next-step output. Init without flags prompts in a terminal, keeps an already selected harness, and offers optional artifacts. Non-interactive init requires an existing selection or `--harness`; it never guesses. Explicit `--harness` does not prompt for artifacts. Source edits preserve unrelated fields and expressions without expanding them.

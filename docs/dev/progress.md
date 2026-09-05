@@ -38,7 +38,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 
 ## Configuration-owner workflow — implemented ahead of dashboards
 
-- `profile create|init|list|set` and `project create|init` are available without hand-written JSON.
+- `profile create|init|list|set|delete` and `project create|init` are available without hand-written JSON.
 - Create publishes sparse config with no implicit harness or default profile. Init accepts explicit automation flags and terminal choices, keeps existing selections, and never overwrites artifacts.
 - Optional seeds: harness config, `setup.sh`, `entrypoint.sh`, and `Dockerfile`. Existing artifacts are never overwritten.
 - `project create --from-profile` copies supported source artifacts once, preserves expressions, and writes `inherit_profile: false`. It refuses existing destinations, including empty directories.
@@ -84,7 +84,7 @@ Continue the runtime/configuration work; do not claim interactive harness accept
 - Phase 3: host env substitution/reference recovery, full env/mount/port/raw-arg/IDE settings, runtime docs/assets, complete provenance, and config `--show`.
 - Phase 4: generated in-container network facts/assets, remaining target/creation-option integration, and expanded real-Docker lifecycle/crash testing.
 - Phase 5: clone/relocate, transfer interruption recovery, and additional acceptance coverage for reset/prune/delete.
-- Phase 6: remaining resource commands (including profile delete and scoped config), dashboards, complete structured guidance, doctor, and complete documentation.
+- Phase 6: scoped config commands, dashboards, complete structured guidance, doctor, and complete documentation.
 - Phase 7: release hardening, performance/secret audits, and remaining acceptance tests.
 - Separate migration utility: not implemented.
 

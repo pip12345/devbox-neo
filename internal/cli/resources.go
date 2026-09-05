@@ -86,7 +86,7 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 		init.Flags().BoolVar(&initJSON, "json", false, "Print the result and next steps as JSON; never prompt")
 		group.AddCommand(init)
 		if kind == "profile" {
-			group.AddCommand(profileList(factory), profileSet(factory))
+			group.AddCommand(profileList(factory), profileSet(factory), profileDelete(factory))
 		}
 		groups = append(groups, group)
 	}
