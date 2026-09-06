@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"devbox/internal/config"
@@ -19,6 +20,24 @@ func put(t *testing.T, p, b string) {
 		t.Fatal(err)
 	}
 }
+func TestMissingConfigurationGuidanceIncludesDefaultProfileSelection(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		home, work := t.TempDir(), t.TempDir()
+		if existing {
+			put(t, filepath.Join(home, "profiles/base/config.json"), `{"version":1,"harness":"pi"}`)
+		}
+		_, err := Resolve(home, work, "", config.Layer{})
+		if err == nil {
+			t.Fatal("unselected configuration should fail")
+		}
+		for _, hint := range []string{"devbox-neo profile set <name> (default)", "--profile <name> (this invocation)", "devbox-neo profile create <name>", "devbox-neo project create <folder>"} {
+			if !strings.Contains(err.Error(), hint) {
+				t.Fatalf("missing guidance %q: %v", hint, err)
+			}
+		}
+	}
+}
+
 func TestLayerParticipation(t *testing.T) {
 	tests := []struct {
 		name, global, profile, project, explicit string

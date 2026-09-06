@@ -121,7 +121,7 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 		r.Layers = append(r.Layers, Layer{Name: "project", Path: filepath.Dir(projectPath), Config: *project})
 	}
 	if len(r.Layers) == 0 {
-		return r, fmt.Errorf("no profile or project configuration applies; use devbox-neo profile create <name> and select it with --profile <name>, or devbox-neo project create <folder>")
+		return r, fmt.Errorf("no profile or project configuration applies; select an existing profile with devbox-neo profile set <name> (default) or --profile <name> (this invocation); create configuration with devbox-neo profile create <name> or devbox-neo project create <folder>")
 	}
 	r.Trace.Layers = append(r.Trace.Layers, Layer{Name: "built-in default"}, Layer{Name: "global", Path: filepath.Join(home, "config.json")})
 	for _, l := range r.Layers {
