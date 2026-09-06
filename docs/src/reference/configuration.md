@@ -50,7 +50,7 @@ Explicit `--profile` excludes every project artifact. Without it, the applicable
 | `project create <folder> --from-profile <name>` | Copy supported source artifacts; write `inherit_profile: false`; refuse existing destination |
 | `profile/project init <target> --harness <name>` | Select a valid effective harness without prompting |
 | `project init <folder> --harness inherit` | Remove the explicit harness and validate inherited selection through the shared resolver |
-| `init --artifact <name,...>` | Seed only missing `harness-config`, `setup.sh`, `entrypoint.sh`, or `Dockerfile` |
+| `init --artifact <name,...>` | Seed only missing `harness-config`, `setup.sh`, `entrypoint.sh`, or `Dockerfile`; `harness-config` excludes `skills/devbox/SKILL.md`, which remains an overridable harness default |
 | `profile list [--json]` | Sorted profiles, default marker, and invalid-config entries |
 | `profile delete <name> [--force] [--json]` | Delete profile config/artifacts only; retain global defaults, containers, and sessions. Force skips confirmation |
 | `profile set [name]` / `profile set --clear` | Set or clear the global default; omitted name prompts in a terminal |

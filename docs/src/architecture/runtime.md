@@ -68,7 +68,7 @@ Publishing `committed` switches authority to the destination before source remov
 
 `assets` embeds the human docs, their linked development notes, and container agent guidance. The engine stages that bundle plus fresh inspected network facts in a private temporary directory. The Docker adapter copies it into the verified running container's `/devbox` directory and applies root-owned read-only permissions for `devuser`. Temporary host staging is removed on success and failure.
 
-Preparation runs before setup/harness access and root entrypoint hooks; existing-container access remains independent of desired configuration. Managed secondary-network changes refresh the files while running. These inspected facts are not durable session authority. Pi/OpenCode seed ordinary managed skill files that point to `/devbox/AGENTS.md` and the docs.
+Preparation runs before setup/harness access and root entrypoint hooks; existing-container access remains independent of desired configuration. Managed secondary-network changes refresh the files while running. These inspected facts are not durable session authority. Pi/OpenCode supply the `devbox` skill through harness defaults, pointing to `/devbox/AGENTS.md` and the docs. Init excludes that skill from profile/project copies so it stays inherited; an explicitly supplied file still overrides it through the normal config tree resolution and synchronization.
 
 The asset content hash participates in runtime drift, not the image build fingerprint.
 

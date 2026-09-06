@@ -70,7 +70,7 @@ func TestCreateAndInitAreSeparateAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Created) != 3 {
+	if len(result.Created) != 2 {
 		t.Fatal(result)
 	}
 	if got := strings.Join(result.Next[1].Command, " "); got != "devbox-neo open <folder> --profile basic" {
@@ -83,7 +83,7 @@ func TestCreateAndInitAreSeparateAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Created) != 0 || len(result.Skipped) != 3 || string(get(t, p)) != "user-owned settings" {
+	if len(result.Created) != 0 || len(result.Skipped) != 2 || string(get(t, p)) != "user-owned settings" {
 		t.Fatal("init overwrote source artifacts")
 	}
 	if !bytes.Equal(before, get(t, filepath.Join(o.Root, "config.json"))) {

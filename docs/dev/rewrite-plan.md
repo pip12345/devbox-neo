@@ -1283,7 +1283,7 @@ devbox project init <folder> [--harness <name|inherit>]
 | One-off launch options | Retain continue, harness selection/args, `on_exit`, read-only workspace, extra mounts/env/ports, and validated raw Docker args; `network` replaces old network flags |
 | Existing-container access | `start`, `shell`, and `exec` use recorded settings without desired config; folder plus explicit profile or exact container name selects the slot |
 | IDE attachment | `start` replaces detach; retain non-root user/workspace devcontainer metadata and `vscode.extensions` container metadata |
-| Agent documentation | Keep `/devbox/docs`, `/devbox/AGENTS.md`, and seeded documentation skills; update their contracts with the rewrite |
+| Agent documentation | Keep `/devbox/docs`, `/devbox/AGENTS.md`, and built-in documentation skills; init does not copy the Devbox skill into profile/project config, but explicit user overrides remain supported |
 | Network scripting | Keep inspect JSON, shell-safe env exports, single-value printing, and generated `/devbox/network/env` and `/devbox/network/inspect.json` runtime facts |
 | Authentication | Preserve managed host auth and login persistence; arbitrary global auth-path overrides are outside the initial rewrite schema |
 | Automation | Keep non-interactive create/config display, explicit init selections, dry-run session operations, and command exit-code/cancellation contracts; do not require dashboards for the first working path |

@@ -119,6 +119,10 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 			desiredFiles := map[string]artifact.File{}
 			for p, f := range h.Defaults {
 				desiredFiles[p] = artifact.File{Data: f.Data, Mode: f.Mode}
+				// Keep Devbox guidance inherited unless the user explicitly supplies an override.
+				if p == "skills/devbox/SKILL.md" {
+					continue
+				}
 				files[filepath.Join(selected, p)] = f
 			}
 			if err = filesync.Validate(desiredFiles, h.Definition.Merge); err != nil {

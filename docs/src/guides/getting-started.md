@@ -116,7 +116,7 @@ If a transfer is interrupted, inspect `session list` or `session show <exact-nam
 
 ## Help inside the container
 
-Read `/devbox/AGENTS.md` for the container contract and `/devbox/docs/index.md` for the user docs. The seeded Pi/OpenCode `devbox` skill points to these files. To inspect network facts in a shell, run `cat /devbox/network/inspect.json` or source `/devbox/network/env`. These files are managed by Devbox, not editable project configuration.
+Read `/devbox/AGENTS.md` for the container contract and `/devbox/docs/index.md` for the user docs. The built-in Pi/OpenCode `devbox` skill points to these files. Init does not copy it into your configuration. To override it explicitly, add `<harness>/skills/devbox/SKILL.md` under your profile or project `.devbox/` directory. To inspect network facts in a shell, run `cat /devbox/network/inspect.json` or source `/devbox/network/env`. These files are managed by Devbox, not editable project configuration.
 
 ## Environment and other creation settings
 

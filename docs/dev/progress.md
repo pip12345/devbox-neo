@@ -69,7 +69,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 
 - Embedded human docs, linked development notes, and `/devbox/AGENTS.md` are copied into verified running containers with root ownership and read-only access for the container user.
 - `/devbox/network/env` and `/devbox/network/inspect.json` use fresh Docker facts, not persisted session authority. Preparation/access and managed network changes refresh them.
-- Pi/OpenCode defaults include the generic `devbox` skill pointing to the runtime docs. Init remains non-overwriting.
+- Pi/OpenCode defaults include the generic `devbox` skill pointing to the runtime docs. Init leaves it inherited rather than copying it into profile/project config; explicit user overrides still take precedence. Init remains non-overwriting.
 - Unit tests cover bundle links, network contents/refresh, staging cleanup, failed-copy launch prevention, and updated seed counts. The real-Docker suite now checks runtime file readability/permissions, but has only been compiled here.
 
 ## Phase 5 — transfers implemented, broader acceptance pending
