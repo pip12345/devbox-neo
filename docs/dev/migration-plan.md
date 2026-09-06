@@ -289,7 +289,7 @@ The migration package does not construct a parallel Docker creation implementati
 
 Verify each imported ID, workspace/slot, harness store, new container ownership, valid record, and expected final stopped state. Verify that new runtime state contains neither migration markers nor obsolete formats and that copied auth/config does not retain unsafe old-home links.
 
-Report exact imported sessions, backup-only items, behavior changes, archived Docker names, and next `devbox <target>` commands. Leave `.devbox.old` and the migration report/project backups intact. Old-resource cleanup is a later explicit user action, not part of migration success.
+Report exact imported sessions, backup-only items, behavior changes, archived Docker names, and next `devbox open <target>` commands. Leave `.devbox.old` and the migration report/project backups intact. Old-resource cleanup is a later explicit user action, not part of migration success.
 
 ## Failure and Retry Rules
 

@@ -6,7 +6,7 @@ Executable: `devbox-neo`. `--home` selects an isolated home; the default is `~/.
 
 | Command | Behavior |
 |---|---|
-| `<folder-or-name> [-- harness-args...]` | Resolve desired configuration and open; valid creation drift warns without replacing |
+| `open <folder-or-name> [-- harness-args...]` | Resolve desired configuration and open; valid creation drift warns without replacing |
 | `list [--json]` | Batched inventory of installation-owned containers |
 | `status <target> [--json]` | Live state plus desired drift or a separate configuration error |
 | `start <target>` | Use recorded settings; recover a missing container when recorded inputs remain available |
@@ -18,9 +18,9 @@ Executable: `devbox-neo`. `--home` selects an isolated home; the default is `~/.
 | `delete <target...>` | Delete containers only; retain session state and image tags |
 | `delete --all\|--stopped [--force] [--json]` | Bulk container deletion after complete lock-set preflight; force permits disrupting attached commands |
 
-Root open and recreate also accept `--harness`, `--harness-arg`, `--env`, `--volume`, `--port`, `--docker-arg`, `--network`, `--on-exit`, and `--read-only`. `--profile` retains `-p`; port publishing uses `--port` without that short flag. Config env is recoverable from verified source references; invocation-only env requires explicit recreation after container loss.
+`open` and `recreate` also accept `--harness`, `--harness-arg`, `--env`, `--volume`, `--port`, `--docker-arg`, `--network`, `--on-exit`, and `--read-only`. `--continue` belongs only to `open`. `--profile` retains `-p`; port publishing uses `--port` without that short flag. Config env is recoverable from verified source references; invocation-only env requires explicit recreation after container loss.
 
-Exact container names keep their recorded slots when defaults change. A folder name colliding with a command needs an explicit path such as `./status`. Existing-container start/shell/exec and logs do not load desired configuration.
+Exact container names keep their recorded slots when defaults change. Open targets are arguments to `open`, so target names do not collide with top-level commands. Existing-container start/shell/exec and logs do not load desired configuration.
 
 ## Networks
 

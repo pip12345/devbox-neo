@@ -65,7 +65,7 @@ Sensitivity is determined by field: env/auth values are sensitive; names, paths,
 
 Environment precedence is harness defaults → global → profile → project → CLI. Within a layer, later assignments win. Explicit public raw `--env=KEY=VALUE` options take Docker CLI precedence. `DEVBOX_*` is reserved. Env values must be single-line with no NUL; values travel in a private env file, not process arguments.
 
-Root open and recreate accept `--harness`, `--harness-arg`, `--env`, `--volume`, `--port`, `--docker-arg`, `--network`, `--on-exit`, and `--read-only`. Bind sources must exist; relative extra binds resolve against the workspace, while bare source names designate user volumes. Extra/raw mounts cannot overlap workspace, runtime, store, or auth targets. Published ports are numeric, within 1–65535, with equal-size mapped ranges; host networking cannot publish ports.
+`open` and `recreate` accept `--harness`, `--harness-arg`, `--env`, `--volume`, `--port`, `--docker-arg`, `--network`, `--on-exit`, and `--read-only`. Bind sources must exist; relative extra binds resolve against the workspace, while bare source names designate user volumes. Extra/raw mounts cannot overlap workspace, runtime, store, or auth targets. Published ports are numeric, within 1–65535, with equal-size mapped ranges; host networking cannot publish ports.
 
 Raw Docker options cannot replace identity, ownership labels, user/workdir, entrypoint, primary network, managed mounts/env, IDE metadata, or the host gateway alias. Value-taking options must use one `--option=value` token; raw bind sources must be absolute.
 
@@ -73,7 +73,7 @@ Raw Docker options cannot replace identity, ownership labels, user/workdir, entr
 
 `global config --show`, `profile config <name> --show`, and `project config <folder> --show [--profile NAME]` display the normal resolver's effective values, layers, exclusions, contributors, artifact winners, and harness origin. Add `--json` for structured output. A sparse owner can be inspected before selecting a harness. Interactive dashboards remain pending.
 
-`setup.sh` runs once per successful container creation; changes require recreation. `entrypoint.sh` runs on each root open. Both run inside the container, never on the host.
+`setup.sh` runs once per successful container creation; changes require recreation. `entrypoint.sh` runs on each `open`. Both run inside the container, never on the host.
 
 ## Image inputs
 

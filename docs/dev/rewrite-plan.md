@@ -136,9 +136,9 @@ Valid values:
 The CLI uses the same model:
 
 ```text
-devbox <target> --network default
-devbox <target> --network host
-devbox <target> --network <existing-network>
+devbox open <target> --network default
+devbox open <target> --network host
+devbox open <target> --network <existing-network>
 ```
 
 `--network` overrides the resolved profile/project value for that open. It is a creation-time option; changing it requires container recreation. `host` is incompatible with published ports. Named networks must exist before any build or container mutation. Devbox never creates or deletes the selected network.
@@ -302,7 +302,7 @@ The resolver produces a typed `ChangePlan`:
 NoChange | RuntimeSync | Recreate | RebuildAndRecreate
 ```
 
-`ChangePlan` describes differences, not permission to mutate. The application applies command policy to it: explicit recreation applies creation-time changes; root open reports them as pending and uses the recorded container contract. Managed harness config synchronization is deferred while the container is running. Starting a stopped container is a lifecycle operation, not a `Restart` change kind.
+`ChangePlan` describes differences, not permission to mutate. The application applies command policy to it: explicit recreation applies creation-time changes; `open` reports them as pending and uses the recorded container contract. Managed harness config synchronization is deferred while the container is running. Starting a stopped container is a lifecycle operation, not a `Restart` change kind.
 
 ### `SessionRecord`
 
@@ -509,7 +509,7 @@ devbox project config <folder> --show [--profile <name>]
 
 Without `--show`, each command opens its interactive dashboard. With `--show`, it prints the effective config and provenance tree non-interactively. `--json` makes that output machine-readable. There is no separate `--resolve`, `devbox config resolve`, or `devbox plan` command.
 
-For profile config, effective resolution includes built-in defaults, global config, and the selected profile. For project config, it includes exactly the participating layers used by the root open flow: built-in defaults, global config, the applicable profile, and project overrides when enabled. Explicit `--profile` excludes the project layer and all project artifacts; project `inherit_profile: false` excludes the profile layer and all profile artifacts. `--show` reports excluded layers without loading them.
+For profile config, effective resolution includes built-in defaults, global config, and the selected profile. For project config, it includes exactly the participating layers used by the `open` flow: built-in defaults, global config, the applicable profile, and project overrides when enabled. Explicit `--profile` excludes the project layer and all project artifacts; project `inherit_profile: false` excludes the profile layer and all profile artifacts. `--show` reports excluded layers without loading them.
 
 The human provenance display shows participating layers in their actual application order, effective values and their sources, contributions to appended lists, and winning artifact paths. It identifies layers excluded by configuration rather than implying they participated. JSON output exposes the same information. Both render the resolver's source trace; there is no separate visualization resolver or command.
 
@@ -539,7 +539,7 @@ When a profile is needed because no project configuration applies, but profiles 
 No default profile is configured.
 
 Open with an existing profile:
-  devbox . --profile python
+  devbox open . --profile python
 
 Set a default:
   devbox profile set python
@@ -570,7 +570,7 @@ Created /work/api/.devbox/config.json.
 Next:
   devbox project init /work/api
   devbox project config /work/api
-  devbox /work/api
+  devbox open /work/api
 ```
 
 `init` is described as the guided path for harness selection and optional artifacts, not as hidden work performed by `create`.
@@ -582,7 +582,7 @@ Provide exact next commands for these common states:
 | State | Guidance |
 |---|---|
 | `profile list` is empty | `devbox profile create <name>` |
-| container list is empty, no sessions | configure a profile/project, then `devbox <folder>` |
+| container list is empty, no sessions | configure a profile/project, then `devbox open <folder>` |
 | container list is empty, sessions exist | `devbox session list`, then `devbox start <target>` |
 | selected profile is missing | exact `profile create` command plus available profiles |
 | selected harness is missing | owning `profile config`, `project config`, or `init` command |
@@ -594,7 +594,6 @@ Provide exact next commands for these common states:
 | primary network is missing | `docker network create <name>` or owning config command |
 | recorded recovery input is missing or changed | identify the input without secrets; `devbox recreate <target>` to use current config |
 | managed config changes are deferred while running | stop when safe, then open the target to synchronize before startup |
-| command-name folder exists | explicit path such as `devbox ./status` |
 
 Filtered cleanup guides users to preview first:
 
@@ -1030,7 +1029,7 @@ If no container exists but a session does, `start` uses the strict recorded reco
 
 ### Hard failures
 
-Normal root open fails on invalid participating configuration, including malformed JSON, an unknown selected harness, or an unset `${env:NAME}` reference. Excluded layers are never loaded. There is no fallback from a failed desired resolution to an apparently successful normal open; the error points to config-independent existing-container `start`, `shell`, or `exec` when applicable.
+`devbox open` fails on invalid participating configuration, including malformed JSON, an unknown selected harness, or an unset `${env:NAME}` reference. Excluded layers are never loaded. There is no fallback from a failed desired resolution to an apparently successful normal open; the error points to config-independent existing-container `start`, `shell`, or `exec` when applicable.
 
 Runtime reuse also fails for:
 
@@ -1062,7 +1061,7 @@ With the proxy removed, the owned Docker aggregate contains only the main contai
 
 ### Attached commands
 
-The root target flow, `shell`, and `exec`:
+`open`, `shell`, and `exec`:
 
 1. acquire the session operation lock;
 2. reject incompatible pending transfers;
@@ -1105,7 +1104,7 @@ devbox recreate --all --image
 - commit new fingerprints only after success;
 - restore intended running/stopped state.
 
-The root open flow has no recreate flags and never performs destructive reconciliation implicitly.
+The `open` command has no recreate flags and never performs destructive reconciliation implicitly.
 
 ## Open Flow
 
@@ -1139,7 +1138,7 @@ Rules:
 - a brand-new configured target with no durable session is created from current resolved configuration;
 - a usable existing container opens from its recorded contract even when creation-time config drift exists;
 - drift produces a concise warning and `devbox recreate <target>` hint, never a blocking prompt or error;
-- the root open flow never performs destructive recreation;
+- the `open` command never performs destructive recreation;
 - setup runs once per container creation and records completion in the session record, not an opaque home marker;
 - entrypoint hook runs on every open;
 - these hooks are the only persisted pre-harness customization points; `open` has no `--init` or `--run` command injection;
@@ -1193,7 +1192,7 @@ The CLI is resource-first. Global, profile, and project configuration stays unde
 ### Runtime and session commands
 
 ```text
-devbox <target> [-c] [-p NAME]
+devbox open <target> [-c] [-p NAME]
 devbox list
 devbox status <target>
 devbox start <target>
@@ -1219,9 +1218,9 @@ devbox session prune --orphaned [--older-than <duration>] [--dry-run]
 
 `delete --all` removes containers only. `session delete` removes exact durable sessions only after their containers are gone. `session prune` owns discovered and filtered bulk state cleanup.
 
-The root target flow accepts open options such as `--network <default|host|existing-network>`. There is no `open` subcommand. If a workspace name collides with a command, an explicit path disambiguates it: `devbox ./status`, `devbox ../status`, or `devbox /absolute/path/status`.
+The `open` command accepts open options such as `--network <default|host|existing-network>`. Because the target follows an explicit command, workspace names do not collide with top-level command names.
 
-The root target flow has no `--detach`, `--recreate-container`, `--recreate-image`, `--init`, or `--run`. `start` owns detached preparation, `recreate` owns replacement, one-time preparation belongs in `setup.sh`, every-open preparation belongs in `entrypoint.sh`, and ad hoc commands use `devbox exec`.
+The `open` command has no `--detach`, `--recreate-container`, `--recreate-image`, `--init`, or `--run`. `start` owns detached preparation, `recreate` owns replacement, one-time preparation belongs in `setup.sh`, every-open preparation belongs in `entrypoint.sh`, and ad hoc commands use `devbox exec`.
 
 Network command semantics:
 
@@ -1274,7 +1273,7 @@ devbox project init <folder> [--harness <name|inherit>]
 
 - `create` creates the project's minimal sparse `.devbox/config.json` without forcing a harness selection, or copies a named profile's supported configuration and artifacts with `--from-profile`. The copy writes `inherit_profile: false`, refuses an existing `.devbox/`, and creates no ongoing link. It replaces the current meaning of `project init`.
 - `config` opens the interactive project dashboard.
-- `config --show` prints the exact effective built-in/global/profile/project values and provenance used by the root open flow.
+- `config --show` prints the exact effective built-in/global/profile/project values and provenance used by the `open` flow.
 - `init` chooses an explicit harness or valid inheritance when not already configured, then interactively creates optional project artifacts such as Dockerfiles, hooks, and harness config. It replaces `project seed`.
 
 ### Retained workflow contracts
@@ -1552,7 +1551,7 @@ The rewrite is complete when:
 - all retained session operations work through one durable session record and transfer engine, with no permanent lineage and stopped-container safety for state reset/copy;
 - missing-container recovery uses concrete recorded settings and available verified inputs, never saved secrets or an implicit current-config fallback;
 - Docker destructive operations require lock ownership and installation labels;
-- a fresh home contains no seeded profiles/default selection and guides the first root open to `profile create` or `project create`;
+- a fresh home contains no seeded profiles/default selection and guides the first `open` to `profile create` or `project create`;
 - create commands point to init, profile copying writes `inherit_profile: false` without duplicate list inheritance, init owns harness selection and optional artifact seeding, and repeated init never overwrites existing files;
 - scoped config `--show` explains effective values, exclusions, and provenance; valid drift diagnostics are non-blocking, invalid participating config fails normal open, and existing-container start/shell/exec remain config-independent;
 - final image tags are session-scoped but image ownership is installation-scoped, so shared image IDs are valid and targeted no-cache rebuilds never create digest-only drift for another session;

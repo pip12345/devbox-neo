@@ -51,7 +51,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - One immutable image plan captures the selected Dockerfile, context files/permissions, ignore rules, host-ID build arguments, and runtime layer. Forced rebuilds disable cache for both stages; temporary intermediate tags are ownership-checked before cleanup.
 - Artifact-only projects participate through the shared resolver. Source copies preserve the active build context without mistaking excluded directories for harness configuration.
 - Container list/status/logs/delete, bulk recreation, and network inspect/env/connect/disconnect are wired into the CLI. Inventory batches Docker inspection; status reports broken desired config separately from live state.
-- Exact root targets keep their recorded slots, and explicit-profile access avoids unrelated corrupt session records.
+- Exact `open` targets keep their recorded slots, and explicit-profile access avoids unrelated corrupt session records.
 - Container deletion preserves durable state and image tags; complete selection locks and preflight precede bulk mutations. Fully labelled recordless owned containers can be deleted without adoption.
 - Session list/show/reset/prune/delete are wired. Reset requires stopped/absent containers and idle leases, preserves declared history by default, and never clears auth/shared caches or stable bind roots. Dry runs do not reap leases or change files.
 - Session deletion requires container absence, verifies image-tag association, and keeps external locks stable. Prune requires filters plus confirmation and rechecks age under lock.

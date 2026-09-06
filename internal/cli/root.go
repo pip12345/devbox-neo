@@ -16,13 +16,9 @@ var Version = "dev"
 
 func New() *cobra.Command {
 	var home, profile string
-	var resume bool
-	var openFlags creationFlags
-	root := &cobra.Command{Use: "devbox-neo <target> [-- harness-args...]", Short: "Persistent development environments (scratch rewrite)", SilenceUsage: true, SilenceErrors: true, Args: cobra.MinimumNArgs(1)}
+	root := &cobra.Command{Use: "devbox-neo", Short: "Persistent development environments (scratch rewrite)", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().StringVar(&home, "home", "", "Devbox home (default ~/.devbox-neo; DEVBOX_HOME overrides)")
 	root.PersistentFlags().StringVarP(&profile, "profile", "p", "", "Select a profile slot")
-	openFlags.Bind(root)
-	root.Flags().BoolVarP(&resume, "continue", "c", false, "Continue the recorded harness session")
 	initialize := func(cmd *cobra.Command) (*store.Store, error) {
 		userHome, err := os.UserHomeDir()
 		if err != nil {
@@ -45,7 +41,9 @@ func New() *cobra.Command {
 		}
 		return &app.Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(), TTY: tty}, UID: os.Getuid(), GID: os.Getgid()}, nil
 	}
-	root.RunE = func(cmd *cobra.Command, args []string) error {
+	var resume bool
+	var openFlags creationFlags
+	open := &cobra.Command{Use: "open <target> [-- harness-args...]", Short: "Open a configured target and launch its harness", Args: cobra.MinimumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 && cmd.ArgsLenAtDash() != 1 {
 			return fmt.Errorf("use -- before one-off harness arguments")
 		}
@@ -58,7 +56,10 @@ func New() *cobra.Command {
 		q.Args = args[1:]
 		_, err = e.Open(cmd.Context(), q)
 		return err
-	}
+	}}
+	openFlags.Bind(open)
+	open.Flags().BoolVarP(&resume, "continue", "c", false, "Continue the recorded harness session")
+	root.AddCommand(open)
 	root.AddCommand(&cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { cmd.Println(Version); return nil }})
 	root.AddCommand(&cobra.Command{Use: "start <target>", Short: "Start using recorded settings, or create a brand-new configured target", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)

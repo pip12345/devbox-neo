@@ -182,9 +182,9 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 		}
 	}
 	if o.Kind == "profile" {
-		result.Next = []Step{o.step("set", "Use this profile by default"), {Command: []string{"devbox-neo", "<folder>", "--profile", o.Name}, Reason: "Open a workspace explicitly with this profile"}}
+		result.Next = []Step{o.step("set", "Use this profile by default"), {Command: []string{"devbox-neo", "open", "<folder>", "--profile", o.Name}, Reason: "Open a workspace explicitly with this profile"}}
 	} else {
-		result.Next = []Step{{Command: []string{"devbox-neo", o.Workspace}, Reason: "Open this project"}}
+		result.Next = []Step{{Command: []string{"devbox-neo", "open", o.Workspace}, Reason: "Open this project"}}
 	}
 	return result, nil
 }

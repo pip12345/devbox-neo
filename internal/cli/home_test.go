@@ -15,7 +15,7 @@ func TestDefaultHomeIsNeo(t *testing.T) {
 	cmd := New()
 	cmd.SetOut(new(bytes.Buffer))
 	cmd.SetErr(new(bytes.Buffer))
-	cmd.SetArgs([]string{t.TempDir()})
+	cmd.SetArgs([]string{"open", t.TempDir()})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "no profile or project configuration") {
 		t.Fatalf("expected fresh-home guidance, got %v", err)
@@ -32,7 +32,7 @@ func TestInheritedOldHomeIsRejectedBeforeMutation(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("DEVBOX_HOME", filepath.Join(home, ".devbox"))
 	cmd := New()
-	cmd.SetArgs([]string{t.TempDir()})
+	cmd.SetArgs([]string{"open", t.TempDir()})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "cannot use ~/.devbox") {
 		t.Fatalf("missing home guard: %v", err)

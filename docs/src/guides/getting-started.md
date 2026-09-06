@@ -34,7 +34,7 @@ Re-running init keeps existing files. Optional artifacts are harness config, `se
 Open a workspace:
 
 ```sh
-bin/devbox-neo /path/to/workspace --profile basic
+bin/devbox-neo open /path/to/workspace --profile basic
 ```
 
 The first open builds the image and starts Pi. Later opens reuse the container. The default `on_exit` policy stops it after the last attached Devbox command exits.
@@ -42,7 +42,7 @@ The first open builds the image and starts Pi. Later opens reuse the container. 
 For a non-interactive launch check without provider credentials:
 
 ```sh
-bin/devbox-neo /path/to/workspace --profile basic -- --version
+bin/devbox-neo open /path/to/workspace --profile basic -- --version
 ```
 
 ## Configure a project instead
@@ -50,7 +50,7 @@ bin/devbox-neo /path/to/workspace --profile basic -- --version
 ```sh
 bin/devbox-neo project create /path/to/workspace
 bin/devbox-neo project init /path/to/workspace --harness pi
-bin/devbox-neo /path/to/workspace
+bin/devbox-neo open /path/to/workspace
 ```
 
 Use `--harness inherit` on project init to use the participating profile/global harness. Inheritance must resolve to a configured harness.

@@ -17,8 +17,36 @@ func TestExecutableName(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "devbox-neo <target>") || strings.Contains(out.String(), "devbox-rewrite") {
-		t.Fatalf("incorrect help command name: %s", out.String())
+	help := out.String()
+	if !strings.Contains(help, "open") || strings.Contains(help, "devbox-neo <target>") || strings.Contains(help, "devbox-rewrite") {
+		t.Fatalf("incorrect root help: %s", help)
+	}
+	if strings.Contains(help, "--continue") || strings.Contains(help, "--network string") {
+		t.Fatalf("root help contains open-only flags: %s", help)
+	}
+}
+
+func TestOpenCommandOwnsTargetAndFlags(t *testing.T) {
+	cmd := New()
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"open", "--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	help := out.String()
+	for _, text := range []string{"open <target>", "--continue", "--network string"} {
+		if !strings.Contains(help, text) {
+			t.Fatalf("open help is missing %q: %s", text, help)
+		}
+	}
+}
+
+func TestRootRejectsImplicitTarget(t *testing.T) {
+	cmd := New()
+	cmd.SetArgs([]string{"workspace"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("implicit target was not rejected: %v", err)
 	}
 }
 

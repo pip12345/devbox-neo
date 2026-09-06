@@ -96,7 +96,7 @@ Implement the basic command suggested in the request. The host authenticates usi
 Proposed invocation, not existing syntax:
 
 ```sh
-devbox-neo . --ssh-tunnel my-server
+devbox-neo open . --ssh-tunnel my-server
 ```
 
 The agent receives the actual address, port, user, and instructions through managed runtime facts. Do not require it to guess a fixed port.
