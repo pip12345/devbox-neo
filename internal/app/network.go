@@ -89,7 +89,7 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, profile, name string
 		}
 	}
 	if !connect && actual == facts.Primary {
-		return fmt.Errorf("cannot disconnect the primary network; change configuration and recreate")
+		return fmt.Errorf("cannot disconnect the primary network.\nChange the network configuration, then recreate:\n  devbox-neo recreate %s", r.Identity.Name)
 	}
 	_, attached := facts.Networks[actual]
 	if connect && attached {

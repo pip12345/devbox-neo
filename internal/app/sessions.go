@@ -321,7 +321,7 @@ func (e *Engine) PruneSessions(ctx context.Context, options PruneOptions) ([]str
 		return nil, fmt.Errorf("provide --orphaned or --older-than")
 	}
 	if !options.DryRun && !options.Confirm {
-		return nil, fmt.Errorf("preview with --dry-run, then use --yes to confirm filtered state deletion")
+		return nil, fmt.Errorf("filtered state deletion requires confirmation.\nPreview with --dry-run.\nThen repeat with --yes to confirm deletion.")
 	}
 	views, err := e.List(ctx, true)
 	if err != nil {
@@ -378,14 +378,14 @@ func (e *Engine) deleteSessionNames(ctx context.Context, names []string, dryRun 
 			return nil, err
 		}
 		if !before.IsZero() && !r.Activity.Before(before) {
-			return nil, fmt.Errorf("session activity changed since selection; preview cleanup again")
+			return nil, fmt.Errorf("session activity changed since selection.\nPreview cleanup again.")
 		}
 		_, exists, err := e.inspect(ctx, r)
 		if err != nil {
 			return nil, err
 		}
 		if exists {
-			return nil, fmt.Errorf("session %s still has a container; use devbox-neo delete %s first", r.Identity.Name, r.Identity.Name)
+			return nil, fmt.Errorf("session %s still has a container.\n\nDelete the container first:\n  devbox-neo delete %s\nThen retry session deletion.", r.Identity.Name, r.Identity.Name)
 		}
 		image, tagged, err := e.Docker.TaggedImage(ctx, r.ImageTag)
 		if err != nil {

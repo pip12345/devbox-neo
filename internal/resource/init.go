@@ -59,7 +59,7 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 		}
 		if options.ChooseHarness == nil {
 			command := append(o.Command("init"), "--harness", "<name>")
-			return result, &Error{Code: "harness_required", Message: "select a harness with --harness; no configuration was changed", Next: []Step{{Command: command, Reason: "Select an available harness: " + fmt.Sprint(choices)}}}
+			return result, &Error{Code: "harness_required", Message: "no harness selected. No configuration was changed.", Next: []Step{{Command: command, Reason: "Select an available harness: " + fmt.Sprint(choices)}}}
 		}
 		selected, err = options.ChooseHarness(choices, registry.Invalid)
 		if err != nil {
@@ -84,11 +84,11 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 		}
 		resolved, err := artifact.PreviewProject(s.Home, o.Workspace, proposed, host)
 		if err != nil {
-			return result, fmt.Errorf("harness inheritance is unavailable; initialize a lower layer or use --harness NAME: %w", err)
+			return result, fmt.Errorf("harness inheritance is unavailable: %w\nInitialize a lower configuration layer or select a harness with --harness NAME.", err)
 		}
 		selected = resolved.Settings.Harness
 		if selected == "" {
-			return result, fmt.Errorf("harness inheritance is unavailable; initialize a lower layer or select --harness NAME")
+			return result, fmt.Errorf("harness inheritance is unavailable.\nInitialize a lower configuration layer or select a harness with --harness NAME.")
 		}
 		if layer.Harness == nil {
 			desired = original
@@ -130,7 +130,7 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 		case "entrypoint.sh":
 			files[name] = harness.File{Data: []byte("#!/bin/bash\nset -euo pipefail\n\n# Runs on each normal open, before attaching the harness.\n"), Mode: 0700}
 		default:
-			return result, fmt.Errorf("unsupported init artifact %q; available: %v", name, InitArtifacts)
+			return result, fmt.Errorf("unsupported init artifact %q.\nAvailable artifacts: %v", name, InitArtifacts)
 		}
 	}
 	names := make([]string, 0, len(files))

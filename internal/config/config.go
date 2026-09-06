@@ -239,7 +239,7 @@ func (s Settings) Validate() error {
 		return err
 	}
 	if s.Harness == "" {
-		return fmt.Errorf("no harness selected; use devbox-neo profile init <name> --harness <name> or devbox-neo project init <folder> --harness <name>")
+		return fmt.Errorf("no harness selected.\n\nFor a profile:\n  devbox-neo profile init <name> --harness <harness>\n\nFor a project:\n  devbox-neo project init <folder> --harness <harness>")
 	}
 	return nil
 }

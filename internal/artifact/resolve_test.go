@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"devbox/internal/config"
@@ -30,11 +29,21 @@ func TestMissingConfigurationGuidanceIncludesDefaultProfileSelection(t *testing.
 		if err == nil {
 			t.Fatal("unselected configuration should fail")
 		}
-		for _, hint := range []string{"devbox-neo profile set <name> (default)", "--profile <name> (this invocation)", "devbox-neo profile create <name>", "devbox-neo project create <folder>"} {
-			if !strings.Contains(err.Error(), hint) {
-				t.Fatalf("missing guidance %q: %v", hint, err)
-			}
+		want := "no profile or project configuration applies.\n\nNext:\n" +
+			"  devbox-neo profile create <name>\n" +
+			"  devbox-neo profile set <name>\n\n" +
+			"Or create project configuration:\n  devbox-neo project create <folder>"
+		if err.Error() != want {
+			t.Fatalf("unexpected guidance:\n%s", err)
 		}
+	}
+}
+
+func TestMissingProfileGuidanceOrdersCreationBeforeInitialization(t *testing.T) {
+	_, err := Resolve(t.TempDir(), t.TempDir(), "missing", config.Layer{})
+	want := "profile \"missing\" does not exist.\n\nNext:\n  devbox-neo profile create missing\n  devbox-neo profile init missing --harness <name>"
+	if err == nil || err.Error() != want {
+		t.Fatalf("unexpected guidance: %v", err)
 	}
 }
 

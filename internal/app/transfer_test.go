@@ -204,7 +204,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	if !c.State.Running {
 		t.Fatal("source not restarted")
 	}
-	if _, err = e.Start(ctx, opened.Name, ""); err == nil || !strings.Contains(err.Error(), "pending transfer") {
+	if _, err = e.Start(ctx, opened.Name, ""); err == nil || !strings.Contains(err.Error(), "pending transfer") || !strings.Contains(err.Error(), "\nRetry the same session relocate command.\nSource: "+opened.Name+"\nDestination: ") {
 		t.Fatal("pending source not guarded", err)
 	}
 	j, err := e.Store.ReadTransfer(opened.Name)

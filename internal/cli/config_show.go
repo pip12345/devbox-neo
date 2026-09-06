@@ -25,7 +25,7 @@ func configCommand(factory resourceFactory, scope string) *cobra.Command {
 	}
 	cmd := &cobra.Command{Use: use, Short: "Show effective configuration and source provenance", Args: args, RunE: func(cmd *cobra.Command, args []string) error {
 		if !show {
-			return fmt.Errorf("interactive configuration editing is not implemented yet; use --show to inspect the effective configuration")
+			return fmt.Errorf("interactive configuration editing is not implemented yet.\nUse --show to inspect the effective configuration.")
 		}
 		service, err := factory(cmd)
 		if err != nil {

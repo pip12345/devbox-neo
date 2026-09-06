@@ -133,7 +133,7 @@ func sessionCommands(factory engineFactory, profile *string) *cobra.Command {
 func transferCommand(factory engineFactory, profile *string, mode string) *cobra.Command {
 	var options app.TransferOptions
 	var asJSON bool
-	cmd := &cobra.Command{Use: mode + " <source> [destination-folder]", Short: mode + " portable session state; retry the same command to resume pending work", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: mode + " <source> [destination-folder]", Short: mode + " portable session state", Long: mode + " portable session state.\nRetry the same command to resume pending work.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := factory(cmd)
 		if err != nil {
 			return err

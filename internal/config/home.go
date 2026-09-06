@@ -35,7 +35,7 @@ func Home(explicit, environment, userHome string) (string, error) {
 		return "", err
 	}
 	if absolute == old || strings.HasPrefix(absolute, old+string(filepath.Separator)) {
-		return "", fmt.Errorf("the development rewrite cannot use ~/.devbox; use ~/.devbox-neo or an isolated --home")
+		return "", fmt.Errorf("the development rewrite cannot use ~/.devbox.\nUse ~/.devbox-neo or select an isolated directory with --home.")
 	}
 	return absolute, nil
 }

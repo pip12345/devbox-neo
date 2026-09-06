@@ -226,7 +226,7 @@ func ValidateRaw(args []string, protected []string, workspace, userHome string) 
 				return err
 			}
 			if mount.Kind == "bind" && !strings.HasPrefix(value, "/") {
-				return fmt.Errorf("raw bind sources must be absolute; use --volume for workspace-relative paths")
+				return fmt.Errorf("raw bind sources must be absolute.\nUse --volume for workspace-relative paths.")
 			}
 			if err = ValidateExtraTargets([]Mount{mount}, protected); err != nil {
 				return err

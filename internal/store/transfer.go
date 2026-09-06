@@ -153,7 +153,7 @@ func (l *Locked) RequireAvailable() error {
 		return err
 	}
 	if pending != nil {
-		return fmt.Errorf("pending transfer %s; retry the session transfer from %s", pending.ID, pending.Source)
+		return fmt.Errorf("pending transfer %s (%s).\nRetry the same session %s command.\nSource: %s\nDestination: %s", pending.ID, pending.Phase, pending.Mode, pending.Source, pending.Destination)
 	}
 	return nil
 }

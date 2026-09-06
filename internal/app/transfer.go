@@ -72,7 +72,7 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string,
 	for _, j := range journals {
 		if j.Source.Workspace == workspace {
 			if name != "" {
-				return "", fmt.Errorf("multiple pending transfers; use the exact source name")
+				return "", fmt.Errorf("multiple pending transfers.\nUse the exact source name.")
 			}
 			name = j.Source.Name
 		}
@@ -119,7 +119,7 @@ func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode 
 			return nil, fmt.Errorf("harness %s does not support %s", d.Name, mode)
 		}
 		if d.Name == source.Definition.Name && environment.Fingerprint(e.Store.Installation, effective.Hash) != source.Definition.Hash {
-			return nil, fmt.Errorf("source harness definition changed; recreate before transfer")
+			return nil, fmt.Errorf("source harness definition changed.\n\nNext:\n  devbox-neo recreate %s\nThen retry the transfer.", source.Identity.Name)
 		}
 		path, err := l.Path(filepath.Join("harnesses", d.Name, "stores"))
 		if err != nil {
@@ -286,7 +286,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		return result, err
 	}
 	if journal != nil && journal.Desired != spec.Fingerprints {
-		return result, fmt.Errorf("destination inputs changed during pending transfer; restore them before retry")
+		return result, fmt.Errorf("destination inputs changed during pending transfer.\nRestore them before retrying the same transfer command.")
 	}
 	if journal == nil {
 		nonce, idErr := fsutil.ID()
@@ -328,7 +328,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			}
 		}
 		if err != nil {
-			err = fmt.Errorf("%w; retry the same session %s command (source %s, destination %s)", err, journal.Mode, journal.Source.Name, journal.Destination.Name)
+			err = fmt.Errorf("%w\n\nRetry the same session %s command.\nSource: %s\nDestination: %s", err, journal.Mode, journal.Source.Name, journal.Destination.Name)
 		}
 	}()
 	if exists && c.State.Running {

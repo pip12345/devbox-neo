@@ -29,9 +29,9 @@ func profileDelete(factory resourceFactory) *cobra.Command {
 		}
 		result, err := service.DeleteProfile(cmd.Context(), args[0])
 		if err != nil {
-			return resourceError(err, service.Home)
+			return resourceError(cmd, err, service.Home)
 		}
-		result.Next = scopedSteps(result.Next, service.Home)
+		result.Next = scopedSteps(cmd, result.Next, service.Home)
 		if asJSON {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
 		}

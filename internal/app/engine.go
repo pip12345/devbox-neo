@@ -204,7 +204,7 @@ func (e *Engine) requireNew(ctx context.Context, l *store.Locked) error {
 		return err
 	}
 	if len(entries) > 0 {
-		return fmt.Errorf("uncommitted session state exists at %s; inspect it before retrying creation", dir)
+		return fmt.Errorf("uncommitted session state exists at %s.\nInspect this directory before retrying creation.", dir)
 	}
 	return nil
 }
@@ -615,7 +615,7 @@ func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, e
 
 func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, desired *environment.Spec) (docker.Container, error) {
 	unavailable := func(reason string) (docker.Container, error) {
-		return docker.Container{}, fmt.Errorf("recorded recovery unavailable: %s; use devbox-neo recreate %s", reason, r.Identity.Name)
+		return docker.Container{}, fmt.Errorf("recorded recovery unavailable: %s\n\nNext:\n  devbox-neo recreate %s", reason, r.Identity.Name)
 	}
 	if err := l.RequireIdle(); err != nil {
 		return docker.Container{}, err

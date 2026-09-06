@@ -155,7 +155,7 @@ func Resolve(q Request) (Spec, error) {
 		target := path.Join(configRoot, name)
 		for _, auth := range h.Definition.Auth {
 			if target == auth.Target || strings.HasPrefix(auth.Target, target+"/") || (auth.Kind == "directory" && strings.HasPrefix(target, auth.Target+"/")) {
-				return spec, fmt.Errorf("managed config %s overlaps an auth mount; configure managed auth instead", name)
+				return spec, fmt.Errorf("managed config %s overlaps an auth mount.\nConfigure managed auth instead.", name)
 			}
 		}
 	}

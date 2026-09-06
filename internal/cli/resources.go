@@ -105,10 +105,17 @@ func shellQuote(value string) string {
 	}
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
-func scopedSteps(steps []resource.Step, home string) []resource.Step {
+func scopedSteps(cmd *cobra.Command, steps []resource.Step, home string) []resource.Step {
+	// Preserve an explicit installation selection, not the result of normal
+	// default/environment resolution. Those resolve naturally on the next command.
+	flag := cmd.Flag("home")
+	explicit := flag != nil && flag.Changed
 	result := make([]resource.Step, 0, len(steps))
 	for _, step := range steps {
-		args := append([]string{step.Command[0], "--home", home}, step.Command[1:]...)
+		args := append([]string(nil), step.Command...)
+		if explicit {
+			args = append([]string{step.Command[0], "--home", home}, step.Command[1:]...)
+		}
 		result = append(result, resource.Step{Command: args, Reason: step.Reason})
 	}
 	return result
@@ -124,18 +131,18 @@ func stepsText(steps []resource.Step) string {
 	}
 	return out.String()
 }
-func resourceError(err error, home string) error {
+func resourceError(cmd *cobra.Command, err error, home string) error {
 	var actionable *resource.Error
 	if errors.As(err, &actionable) && len(actionable.Next) > 0 {
-		return fmt.Errorf("%w\n\nNext:\n%s", err, stepsText(scopedSteps(actionable.Next, home)))
+		return fmt.Errorf("%w\n\nNext:\n%s", err, stepsText(scopedSteps(cmd, actionable.Next, home)))
 	}
 	return err
 }
 func renderResource(cmd *cobra.Command, result resource.Result, err error, asJSON bool, home string) error {
 	if err != nil {
-		return resourceError(err, home)
+		return resourceError(cmd, err, home)
 	}
-	result.Next = scopedSteps(result.Next, home)
+	result.Next = scopedSteps(cmd, result.Next, home)
 	if asJSON {
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
 	}
@@ -170,7 +177,7 @@ func profileList(factory resourceFactory) *cobra.Command {
 		}
 		if len(profiles) == 0 {
 			fmt.Fprintln(cmd.OutOrStdout(), "No profiles.\n\nNext:")
-			fmt.Fprint(cmd.OutOrStdout(), stepsText(scopedSteps([]resource.Step{{Command: []string{"devbox-neo", "profile", "create", "default"}}}, s.Home)))
+			fmt.Fprint(cmd.OutOrStdout(), stepsText(scopedSteps(cmd, []resource.Step{{Command: []string{"devbox-neo", "profile", "create", "default"}}}, s.Home)))
 			return nil
 		}
 		for _, p := range profiles {
@@ -228,7 +235,7 @@ func profileSet(factory resourceFactory) *cobra.Command {
 			}
 		}
 		if err = s.SetDefault(cmd.Context(), name); err != nil {
-			return resourceError(err, s.Home)
+			return resourceError(cmd, err, s.Home)
 		}
 		if name == "" {
 			cmd.Println("Default profile cleared.")

@@ -51,7 +51,7 @@ func (e *Engine) Locate(ctx context.Context, target, profile string) (store.Reco
 		return store.Record{}, os.ErrNotExist
 	}
 	if len(matches) > 1 {
-		return store.Record{}, fmt.Errorf("workspace has multiple recorded slots; use --profile or an exact container name")
+		return store.Record{}, fmt.Errorf("workspace has multiple recorded slots.\nSelect one with --profile or use its exact container name.")
 	}
 	return matches[0], nil
 }
@@ -69,7 +69,7 @@ func (e *Engine) Start(ctx context.Context, target, profile string) (Result, err
 		defer l.Close()
 		if _, err = l.Load(); !os.IsNotExist(err) {
 			if err == nil {
-				return Result{}, fmt.Errorf("session was created concurrently; retry start")
+				return Result{}, fmt.Errorf("session was created concurrently.\nRetry the start command.")
 			}
 			return Result{}, err
 		}
@@ -137,7 +137,7 @@ func (e *Engine) Stop(ctx context.Context, target, profile string, force bool) e
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("container is missing; use session show to inspect durable state")
+		return fmt.Errorf("container is missing.\n\nInspect its session state:\n  devbox-neo session show %s", r.Identity.Name)
 	}
 	if c.State.Running {
 		if err = e.Docker.Stop(ctx, c, e.owner(r)); err != nil {
@@ -170,7 +170,7 @@ func (e *Engine) Exec(ctx context.Context, target, profile string, argv []string
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("shell and exec require an existing container; use start first")
+		return fmt.Errorf("shell and exec require an existing container.\n\nNext:\n  devbox-neo start %s\nThen retry your command.", r.Identity.Name)
 	}
 	started := false
 	defer func() {

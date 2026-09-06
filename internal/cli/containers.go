@@ -121,7 +121,7 @@ func printView(cmd *cobra.Command, view app.View) {
 	}
 	cmd.Printf("%s  %s  %s\n", view.Name, state, view.Workspace)
 	if view.Pending != nil {
-		cmd.Printf("  Pending %s (%s): %s -> %s; retry the same transfer command\n", view.Pending.Mode, view.Pending.Phase, view.Pending.Source, view.Pending.Destination)
+		cmd.Printf("  Pending %s (%s): %s -> %s\n  Retry the same transfer command.\n", view.Pending.Mode, view.Pending.Phase, view.Pending.Source, view.Pending.Destination)
 	}
 	if view.Error != "" {
 		cmd.Printf("  Error: %s\n", view.Error)
