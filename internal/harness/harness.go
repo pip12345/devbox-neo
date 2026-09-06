@@ -71,11 +71,17 @@ type File struct {
 	Mode os.FileMode
 }
 
+type Tree struct {
+	Files    map[string]File
+	Warnings []string
+}
+
 type Effective struct {
 	Definition Definition
 	Origin     string
 	Hash       string
 	Defaults   map[string]File
+	Warnings   []string
 }
 
 func Load(home, name string) (Effective, error) {
@@ -88,7 +94,7 @@ func Load(home, name string) (Effective, error) {
 		return result, err
 	}
 	b, err := os.ReadFile(user)
-	var defaults map[string]File
+	var defaults Tree
 	origin := user
 	if os.IsNotExist(err) {
 		origin = "builtin"
@@ -100,7 +106,7 @@ func Load(home, name string) (Effective, error) {
 			var source fs.FS
 			source, err = fs.Sub(builtins, "builtin/"+name+"/defaults")
 			if err == nil {
-				defaults, err = readTree(source)
+				defaults, err = readTree(source, "builtin/"+name+"/defaults")
 			}
 		}
 	} else if err == nil {
@@ -117,7 +123,7 @@ func Load(home, name string) (Effective, error) {
 		return result, fmt.Errorf("harness definition name must match its directory")
 	}
 	sum := sha256.Sum256(b)
-	return Effective{Definition: def, Origin: origin, Hash: hex.EncodeToString(sum[:]), Defaults: defaults}, nil
+	return Effective{Definition: def, Origin: origin, Hash: hex.EncodeToString(sum[:]), Defaults: defaults.Files, Warnings: defaults.Warnings}, nil
 }
 func parseDefinition(b []byte) (Definition, error) {
 	d := Definition{Config: Config{Path: "."}}
@@ -224,15 +230,15 @@ func (d Definition) Validate() error {
 	}
 	return nil
 }
-func ReadTree(root string) (map[string]File, error) {
+func ReadTree(root string) (Tree, error) {
 	if _, err := fsutil.Path(root, "."); err != nil {
-		return nil, err
+		return Tree{}, err
 	}
-	return readTree(os.DirFS(root))
+	return readTree(os.DirFS(root), root)
 }
 
-func readTree(source fs.FS) (map[string]File, error) {
-	files := map[string]File{}
+func readTree(source fs.FS, root string) (Tree, error) {
+	tree := Tree{Files: map[string]File{}}
 	err := fs.WalkDir(source, ".", func(p string, e fs.DirEntry, err error) error {
 		if os.IsNotExist(err) && p == "." {
 			return nil
@@ -248,13 +254,14 @@ func readTree(source fs.FS) (map[string]File, error) {
 			return err
 		}
 		if !info.Mode().IsRegular() {
-			return fmt.Errorf("only regular config files are supported: %s", p)
+			tree.Warnings = append(tree.Warnings, fmt.Sprintf("skipping non-regular config entry %q (%s); it will not be copied", filepath.Join(root, p), info.Mode().Type()))
+			return nil
 		}
 		b, err := fs.ReadFile(source, p)
 		if err == nil {
-			files[p] = File{Data: b, Mode: info.Mode().Perm()}
+			tree.Files[p] = File{Data: b, Mode: info.Mode().Perm()}
 		}
 		return err
 	})
-	return files, err
+	return tree, err
 }

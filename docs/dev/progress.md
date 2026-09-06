@@ -31,7 +31,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 ## Phase 2 — candidate implemented, expanded Docker acceptance pending
 
 - Added the OpenCode definition, separate config/data stores, shared cache, managed auth, and continuation/reset declarations.
-- Built-in and user defaults share one recursive regular-file reader.
+- Built-in and user defaults share one recursive regular-file reader. Harness config trees now warn and skip symlinks and other non-regular entries instead of blocking open; source copying and seeding also report omissions. Root symlinks and read errors remain fatal. Unit/fake-backed coverage checks skips and warning propagation; real-Docker extension behavior remains unverified.
 - Registry enumeration reports invalid overrides separately and retains valid choices; selected loading remains isolated from unrelated invalid definitions.
 - Pi, OpenCode, and a third custom fixture pass the same fake-backed lifecycle, storage mapping, auth/cache preservation, recreation, and recovery tests.
 - The real-Docker suite now covers all three definitions, creates profiles through the resource service, and checks in-container auth writes and preservation. These expanded cases have compiled but have not been executed here; schema freeze remains pending acceptance.

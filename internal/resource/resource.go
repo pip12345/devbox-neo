@@ -24,11 +24,12 @@ type Step struct {
 	Reason  string   `json:"reason"`
 }
 type Result struct {
-	Path    string   `json:"path"`
-	Harness string   `json:"harness,omitempty"`
-	Created []string `json:"created,omitempty"`
-	Skipped []string `json:"skipped,omitempty"`
-	Next    []Step   `json:"next_steps,omitempty"`
+	Path     string   `json:"path"`
+	Harness  string   `json:"harness,omitempty"`
+	Created  []string `json:"created,omitempty"`
+	Skipped  []string `json:"skipped,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
+	Next     []Step   `json:"next_steps,omitempty"`
 }
 type Error struct {
 	Code    string
@@ -155,10 +156,12 @@ func (s Service) Create(ctx context.Context, o Owner, fromProfile string) (Resul
 				harnessNames[entry.Name] = true
 			}
 		}
-		files, err = artifact.SourceTree(source.Root, harnessNames)
+		tree, err := artifact.SourceTree(source.Root, harnessNames)
+		result.Warnings = append(result.Warnings, tree.Warnings...)
 		if err != nil {
 			return result, err
 		}
+		files = tree.Files
 		data, err := patch(files["config.json"].Data, "inherit_profile", false, false)
 		if err != nil {
 			return result, err

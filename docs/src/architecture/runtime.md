@@ -25,7 +25,7 @@ The implementation supports Linux only. `flock`, `/proc/<pid>/stat`, boot identi
 
 Standalone project copying uses `artifact.SourceTree`: supported profile sources only, without global values or harness defaults. It adds `inherit_profile: false` while preserving expressions. Project init previews inheritance through the normal artifact resolver rather than duplicating layer selection.
 
-Registry enumeration sorts effective definitions and reports invalid user overrides separately. Selected loading does not inspect unrelated definitions. Built-in and user defaults use the same recursive regular-file reader. Pi, OpenCode, and a custom fixture use the same lifecycle engine; stores, auth, structured merges, and continuation arguments come from their definitions.
+Registry enumeration sorts effective definitions and reports invalid user overrides separately. Selected loading does not inspect unrelated definitions. Built-in and user defaults use the same recursive regular-file reader. It returns files plus source-qualified warnings for skipped symlinks and other non-regular entries, without following links. Artifact resolution carries these warnings into the desired spec; the application reports them on stderr. Source-copy and seeding results expose warnings in text or JSON. Root path checks and filesystem read failures remain fatal. Pi, OpenCode, and a custom fixture use the same lifecycle engine; stores, auth, structured merges, and continuation arguments come from their definitions.
 
 ## Layered image builds
 

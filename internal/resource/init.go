@@ -115,6 +115,7 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 	for _, name := range requested {
 		switch name {
 		case "harness-config":
+			result.Warnings = append(result.Warnings, h.Warnings...)
 			desiredFiles := map[string]artifact.File{}
 			for p, f := range h.Defaults {
 				desiredFiles[p] = artifact.File{Data: f.Data, Mode: f.Mode}

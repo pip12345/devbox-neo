@@ -23,6 +23,10 @@ Use DEVBOX_HOST to reach host services; services need to listen on a reachable
 interface, not host loopback alone on a bridge network. Listen on 0.0.0.0 for
 container services that must be reached outside the container.
 
+Harness config copies skip symlinks and other non-regular entries with host-side
+warnings. Skipped extension dependency links are not supplied by that source;
+install dependencies in the container if the extension needs them.
+
 Install development tools in the container when needed. Container-layer changes
 survive stop/start but are lost on recreation. Workspace files and declared
 harness stores persist on the host. Devbox prepares parents for declared harness

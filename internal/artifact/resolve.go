@@ -183,19 +183,21 @@ type File struct {
 	Layer  string
 }
 
-func (r Resolved) Tree(h harness.Effective) (map[string]File, error) {
+func (r Resolved) Tree(h harness.Effective) (map[string]File, []string, error) {
 	files := map[string]File{}
+	warnings := append([]string(nil), h.Warnings...)
 	for p, b := range h.Defaults {
 		files[p] = File{Data: append([]byte(nil), b.Data...), Mode: b.Mode, Source: h.Origin, Layer: "harness defaults"}
 	}
 	for _, l := range r.Layers {
 		tree, err := harness.ReadTree(filepath.Join(l.Path, h.Definition.Name))
+		warnings = append(warnings, tree.Warnings...)
 		if err != nil {
-			return nil, err
+			return nil, warnings, err
 		}
-		for p, b := range tree {
+		for p, b := range tree.Files {
 			files[p] = File{Data: b.Data, Mode: b.Mode, Source: filepath.Join(l.Path, h.Definition.Name, p), Layer: l.Name}
 		}
 	}
-	return files, nil
+	return files, warnings, nil
 }

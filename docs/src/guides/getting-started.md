@@ -86,6 +86,8 @@ bin/devbox-neo recreate /path/to/workspace --profile basic --image
 
 Managed config is synchronized only while stopped. If an open reports deferred configuration, stop the container when safe and open it again.
 
+Harness config copies warn and skip symlinks and other non-regular entries. Opening continues, but skipped files are not supplied by that source. If an extension needs skipped `node_modules/.bin` links, install its dependencies inside the container; copying the source tree does not preserve those links.
+
 ## Access without desired configuration
 
 ```sh

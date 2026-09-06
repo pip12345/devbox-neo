@@ -146,6 +146,9 @@ func renderResource(cmd *cobra.Command, result resource.Result, err error, asJSO
 	if asJSON {
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
 	}
+	for _, warning := range result.Warnings {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s\n", warning)
+	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Configured %s\n", result.Path)
 	if result.Harness != "" {
 		fmt.Fprintf(cmd.OutOrStdout(), "Harness: %s\n", result.Harness)

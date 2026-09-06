@@ -831,7 +831,7 @@ Resolve the desired file tree in accepted precedence order:
 
 Explicit `--profile` excludes the project directory entirely, matching all other artifact types.
 
-Only regular files and directories are accepted initially. Reject special files. Define symlink support separately if a real use case requires it.
+Copy regular files and traverse directories in harness config trees. Warn with each source path and skip symlinks and other non-regular entries without following links; skipped entries do not override lower-layer files. Carry warnings through defaults, layer resolution, source copying, and seeding to user output. Config-root symlinks and filesystem read failures remain errors. Preserving symlinks is separate work; Docker build-context validation is unchanged.
 
 ### Synchronization timing
 

@@ -49,7 +49,13 @@ type Result struct {
 }
 
 func (e *Engine) Resolve(q Request) (environment.Spec, error) {
-	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, ExpectedName: q.ExpectedName, Overrides: q.Overrides, ReadOnly: q.ReadOnly, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
+	spec, err := environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, ExpectedName: q.ExpectedName, Overrides: q.Overrides, ReadOnly: q.ReadOnly, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
+	if e.Streams.Err != nil {
+		for _, warning := range spec.Warnings {
+			fmt.Fprintf(e.Streams.Err, "Warning: %s\n", warning)
+		}
+	}
+	return spec, err
 }
 func (e *Engine) owner(r store.Record) docker.Owner {
 	return docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot}

@@ -85,12 +85,16 @@ func TestRegistryReportsBrokenOverridesWithoutHidingValidChoices(t *testing.T) {
 	}
 }
 func TestEmbeddedAndHostDefaultsShareRecursiveFileRules(t *testing.T) {
-	files, err := readTree(fstest.MapFS{"nested/file": {Data: []byte("value"), Mode: 0700}})
-	if err != nil || string(files["nested/file"].Data) != "value" || files["nested/file"].Mode != 0700 {
-		t.Fatal(files, err)
+	tree, err := readTree(fstest.MapFS{
+		"nested/file": {Data: []byte("value"), Mode: 0700},
+		"link":        {Mode: os.ModeSymlink},
+		"pipe":        {Mode: os.ModeNamedPipe},
+	}, "defaults")
+	if err != nil || len(tree.Files) != 1 || string(tree.Files["nested/file"].Data) != "value" || tree.Files["nested/file"].Mode != 0700 {
+		t.Fatal(tree, err)
 	}
-	if _, err = readTree(fstest.MapFS{"link": {Mode: os.ModeSymlink}}); err == nil {
-		t.Fatal("unsafe embedded tree accepted")
+	if len(tree.Warnings) != 2 {
+		t.Fatal("unsupported entries must each produce a warning", tree.Warnings)
 	}
 }
 func TestCanonicalPathsAndAuthCannotObscureStores(t *testing.T) {

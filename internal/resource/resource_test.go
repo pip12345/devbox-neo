@@ -197,11 +197,11 @@ func TestInvalidCopyAndInitDoNotPublishChanges(t *testing.T) {
 	}
 	put(t, filepath.Join(source.Root, "config.json"), `{"version":1}`)
 	put(t, filepath.Join(source.Root, "pi/regular"), "safe")
-	if err := os.Symlink("regular", filepath.Join(source.Root, "pi/link")); err != nil {
+	if err := os.Symlink("pi", filepath.Join(source.Root, "opencode")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Create(ctx, project, "broken"); err == nil {
-		t.Fatal("unsafe tree copied")
+		t.Fatal("symlink config root copied")
 	}
 	before := get(t, filepath.Join(source.Root, "config.json"))
 	for _, options := range []InitOptions{{Harness: "missing"}, {Harness: "pi", Artifacts: []string{"../escape"}}, {Harness: "inherit"}} {

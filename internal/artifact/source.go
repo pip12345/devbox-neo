@@ -34,77 +34,78 @@ func hasProjectArtifacts(root string) (bool, error) {
 
 // SourceTree copies only the profile artifact layout, without injecting global
 // settings or harness defaults. Named config directories need not be selected.
-func SourceTree(root string, harnessNames map[string]bool) (map[string]harness.File, error) {
+func SourceTree(root string, harnessNames map[string]bool) (harness.Tree, error) {
+	result := harness.Tree{Files: map[string]harness.File{}}
 	if _, err := fsutil.Path(root, "."); err != nil {
-		return nil, err
+		return result, err
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
-	result := map[string]harness.File{}
 	p, err := fsutil.Path(root, "Dockerfile")
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	if _, err = os.Lstat(p); err != nil && !os.IsNotExist(err) {
-		return nil, err
+		return result, err
 	} else if err == nil {
 		context, err := ReadBuildContext(p)
 		if err != nil {
-			return nil, err
+			return result, err
 		}
 		for name, file := range context.Files {
 			mode := file.Mode
 			if file.Directory {
 				mode |= os.ModeDir
 			}
-			result[name] = harness.File{Data: file.Data, Mode: mode}
+			result.Files[name] = harness.File{Data: file.Data, Mode: mode}
 		}
-		result["Dockerfile"] = harness.File{Data: context.Dockerfile, Mode: 0600}
+		result.Files["Dockerfile"] = harness.File{Data: context.Dockerfile, Mode: 0600}
 		if context.IgnoreName != "" {
-			result[context.IgnoreName] = harness.File{Data: context.Ignore, Mode: 0600}
+			result.Files[context.IgnoreName] = harness.File{Data: context.Ignore, Mode: 0600}
 		}
 	}
 	for _, entry := range entries {
 		name := entry.Name()
 		if name == "config.json" || slices.Contains(SingletonNames, name) {
-			if _, captured := result[name]; captured {
+			if _, captured := result.Files[name]; captured {
 				continue
 			}
 			p, err := fsutil.Path(root, name)
 			if err != nil {
-				return nil, err
+				return result, err
 			}
 			info, err := os.Lstat(p)
 			if err != nil {
-				return nil, err
+				return result, err
 			}
 			if !info.Mode().IsRegular() {
-				return nil, fmt.Errorf("artifact must be a regular file: %s", p)
+				return result, fmt.Errorf("artifact must be a regular file: %s", p)
 			}
 			b, err := os.ReadFile(p)
 			if err != nil {
-				return nil, err
+				return result, err
 			}
-			result[name] = harness.File{Data: b, Mode: info.Mode().Perm()}
+			result.Files[name] = harness.File{Data: b, Mode: info.Mode().Perm()}
 			continue
 		}
 		if harnessNames[name] && (entry.IsDir() || entry.Type()&os.ModeSymlink != 0) {
 			tree, err := harness.ReadTree(filepath.Join(root, name))
+			result.Warnings = append(result.Warnings, tree.Warnings...)
 			if err != nil {
-				return nil, err
+				return result, err
 			}
-			for p, file := range tree {
-				result[filepath.Join(name, p)] = file
+			for p, file := range tree.Files {
+				result.Files[filepath.Join(name, p)] = file
 			}
 		}
 	}
-	if _, ok := result["config.json"]; !ok {
-		return nil, fmt.Errorf("profile config is missing: %s", filepath.Join(root, "config.json"))
+	if _, ok := result.Files["config.json"]; !ok {
+		return result, fmt.Errorf("profile config is missing: %s", filepath.Join(root, "config.json"))
 	}
-	if _, err := config.ParseLayer(result["config.json"].Data, false); err != nil {
-		return nil, fmt.Errorf("invalid source profile: %w", err)
+	if _, err := config.ParseLayer(result.Files["config.json"].Data, false); err != nil {
+		return result, fmt.Errorf("invalid source profile: %w", err)
 	}
 	return result, nil
 }

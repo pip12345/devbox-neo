@@ -108,7 +108,7 @@ func TestArtifactsFollowTheSameSelectedLayers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		tree, err := r.Tree(h)
+		tree, _, err := r.Tree(h)
 		if err != nil {
 			t.Fatal(err)
 		}

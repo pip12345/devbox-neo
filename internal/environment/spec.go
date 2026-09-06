@@ -75,6 +75,7 @@ type Spec struct {
 	Harness      harness.Effective
 	Trace        artifact.Trace
 	Files        map[string]artifact.File
+	Warnings     []string
 	Build        ImageBuildPlan
 	Setup        Hook
 	Entrypoint   Hook
@@ -138,7 +139,7 @@ func Resolve(q Request) (Spec, error) {
 		return spec, fmt.Errorf("installation fingerprint salt is required")
 	}
 	h.Hash = Fingerprint(q.Salt, h.Hash)
-	files, err := r.Tree(h)
+	files, warnings, err := r.Tree(h)
 	if err != nil {
 		return spec, err
 	}
@@ -162,7 +163,7 @@ func Resolve(q Request) (Spec, error) {
 	if q.UID <= 0 || q.GID <= 0 {
 		return spec, fmt.Errorf("run the development CLI as a non-root user with a non-root primary group")
 	}
-	spec = Spec{Identity: identity, Settings: r.Settings, Harness: h, Trace: r.Trace, Files: files, ReadOnly: q.ReadOnly, Host: q.Host}
+	spec = Spec{Identity: identity, Settings: r.Settings, Harness: h, Trace: r.Trace, Files: files, Warnings: warnings, ReadOnly: q.ReadOnly, Host: q.Host}
 	protected := []string{"/workspace", "/devbox"}
 	for _, store := range h.Definition.Stores {
 		protected = append(protected, store.Target)
