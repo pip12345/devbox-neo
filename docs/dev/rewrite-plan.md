@@ -327,11 +327,10 @@ It contains:
 - required hook/input paths and hashes for recorded preparation, plus setup completion tied to the container instance;
 - a non-secret recorded launch contract containing harness name, binary, default/continue args, configured harness args, default shell, definition hash, and lifecycle policy;
 - Docker ownership version;
-- pending transfer journal summary;
 - lifecycle policy required for stale-lease cleanup;
 - managed config manifest version and location.
 
-It does not retain permanent `cloned_from` or `relocated_from` history. Clone creates a new session ID; relocate preserves the session ID. Only an in-progress transfer journal is retained for recovery and removed after completion.
+It does not retain permanent `cloned_from` or `relocated_from` history. Clone creates a new session ID; relocate preserves the session ID. Only an in-progress transfer journal is retained for recovery and removed after completion. Session views expose its pending summary; the journal is external to both removable session trees.
 
 Do not split durable recreation metadata into another host-side record. Do not persist live Docker runtime facts as session authority; inspect Docker for those facts. Do not persist secrets in the record. Classify sensitivity by destination field. Environment/auth values are sensitive regardless of whether they are literal or substituted. Names, paths, networks, launch argv, raw Docker arguments, and other ordinary settings are public configuration, including their substitutions; those fields must not contain secrets. Secret-bearing env values contribute through a salted/structured fingerprint and are redacted in config, status, and reconciliation output.
 
@@ -379,10 +378,10 @@ If these conditions hold, create from the recorded image and settings, preserve 
         <harness>/
           stores/<store-name>/
           managed-config.json
-      transfer/
-        journal.json
   state/
     installation-id
+    transfers/
+      <source-container>.json
     locks/
       sessions/
         <hash>.operation.lock
@@ -1171,9 +1170,9 @@ Use one transfer engine with explicit mode-specific policy:
 - stage destination state before source destruction;
 - clone creates a new session ID without retaining permanent source history;
 - relocate preserves the session ID without retaining permanent path history;
-- a relocation journal records the authoritative destination before source cleanup;
+- one external `state/transfers/<source-container>.json` journal reserves both endpoints atomically and records the authoritative destination before source cleanup;
 - interrupted relocation exposes one recoverable pending state;
-- retry resumes the recorded operation instead of starting another transfer;
+- retry resumes the recorded operation instead of starting another transfer; before commitment it recopies the source using unchanged destination inputs, and after commitment it only recovers the committed destination if needed and finishes source cleanup;
 - rollback is bounded and never silently destroys the last valid copy.
 
 Keep transfer logic in one package and state machine. Do not express it through generic callbacks.

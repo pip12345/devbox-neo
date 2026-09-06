@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+
+	"devbox/internal/docker"
 	"time"
 
 	"devbox/internal/config"
@@ -14,13 +17,23 @@ import (
 )
 
 type SessionDetails struct {
-	Record    store.Record  `json:"record"`
-	Container View          `json:"container"`
-	Active    []store.Lease `json:"active"`
+	Record    store.Record       `json:"record"`
+	Container View               `json:"container"`
+	Active    []store.Lease      `json:"active"`
+	Pending   *store.Reservation `json:"pending_transfer,omitempty"`
 }
 
 func (e *Engine) SessionShow(ctx context.Context, target, profile string) (SessionDetails, error) {
 	r, err := e.Locate(ctx, target, profile)
+	if os.IsNotExist(err) && strings.HasPrefix(target, docker.Namespace+"-") && !strings.ContainsAny(target, "/\\") {
+		pending, pendingErr := e.Store.Pending(target)
+		if pendingErr != nil {
+			return SessionDetails{}, pendingErr
+		}
+		if pending != nil {
+			return SessionDetails{Container: View{Name: target, Pending: pending}, Pending: pending, Active: []store.Lease{}}, nil
+		}
+	}
 	if err != nil {
 		return SessionDetails{}, err
 	}
@@ -29,7 +42,11 @@ func (e *Engine) SessionShow(ctx context.Context, target, profile string) (Sessi
 		return SessionDetails{}, err
 	}
 	defer lock.Close()
-	r, err = lock.Load()
+	r, err = lock.ReadRecord(ctx)
+	if err != nil {
+		return SessionDetails{}, err
+	}
+	pending, err := e.Store.Pending(r.Identity.Name)
 	if err != nil {
 		return SessionDetails{}, err
 	}
@@ -47,7 +64,8 @@ func (e *Engine) SessionShow(ctx context.Context, target, profile string) (Sessi
 	if exists {
 		view.ContainerID = c.ID
 	}
-	return SessionDetails{Record: r, Container: view, Active: leases}, nil
+	view.Pending = pending
+	return SessionDetails{Record: r, Container: view, Active: leases, Pending: pending}, nil
 }
 func (e *Engine) sessionNames(ctx context.Context, targets []string, profile string, all bool) ([]string, error) {
 	if all && len(targets) > 0 {

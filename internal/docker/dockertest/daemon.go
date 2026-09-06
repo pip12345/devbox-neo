@@ -131,6 +131,14 @@ func (d *Daemon) run(a []string) (string, error) {
 			return encode(result)
 		}
 	case "image":
+		if a[1] == "tag" {
+			image, ok := d.Images[a[2]]
+			if !ok {
+				return "", fmt.Errorf("image missing")
+			}
+			d.Images[a[3]] = image
+			return "", nil
+		}
 		if a[1] == "ls" {
 			if ref, ok := strings.CutPrefix(flag("--filter"), "reference="); ok {
 				image, exists := d.Images[ref]

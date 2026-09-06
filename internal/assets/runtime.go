@@ -26,7 +26,10 @@ container services that must be reached outside the container.
 Install development tools in the container when needed. Container-layer changes
 survive stop/start but are lost on recreation. Workspace files and declared
 harness stores persist on the host. Managed authentication and shared caches are
-separate from resettable session state.
+separate from resettable session state. Session clone/relocate copy only declared
+harness state, not workspace files or container-layer tools. Pending transfers
+reserve both endpoints; retry the same host CLI command instead of deleting
+journals or session directories by hand.
 
 Do not modify /devbox: it is Devbox-owned runtime data. Do not add a project
 Dockerfile to make an ad-hoc tool installation persistent without user approval.

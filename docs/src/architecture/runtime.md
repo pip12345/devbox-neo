@@ -39,6 +39,27 @@ Bulk deletion, recreation, and reset acquire sorted complete operation-lock sets
 
 Secondary network commands inspect the actual attachment set under the operation lock. They never alter creation fingerprints, cannot detach the primary network, and are unavailable for host networking.
 
+## Session transfers
+
+`app/transfer.go` owns one explicit clone/relocate state machine. Destination resolution uses the normal configuration resolver; portable store copying and external journals belong to `store`. Creation accepts the identity already allocated in the journal, so retries do not allocate another session. The engine verifies current harness portability declarations and requires the recorded active definition to remain unchanged.
+
+Both endpoint operation locks are acquired in sorted order. A single `state/transfers/<source-container>.json` journal reserves both names. `Locked.Load` rejects pending work; read-only inventory and transfer operations can still read the records. Pending lookup scans unfinished journals, so a corrupt journal fails mutations closed rather than guessing which destination it reserves. No second creation record or permanent lineage is written.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Prepare: reserve both endpoints
+    Prepare --> Prepare: retry from source
+    Prepare --> Committed: destination ready
+    Committed --> Committed: retry cleanup
+    Committed --> [*]: remove journal
+```
+
+In `prepare`, the source remains authoritative. Clone requires a stopped/absent source; relocate stops a running source before copying. Only declared environment stores and ownership manifests are copied. Auth overlays, cache stores, records and leases are excluded. Symlinks remain opaque entries, not traversed host paths. Source container-layer data and workspace files are not transferred.
+
+Destination preparation uses normal image building, stopped config synchronization, setup, and runtime installation. Clone leaves the destination stopped; relocate preserves original running intent. A failed attempt gets bounded destination cleanup, restores the source image tag after a relocation build, and restarts a previously running source. The journal remains pending. A preparation retry requires unchanged destination fingerprints and recopies the authoritative source, since rollback may have restarted it.
+
+Publishing `committed` switches authority to the destination before source removal. Once publication is attempted, rollback cannot delete the destination: directory sync errors can occur after rename succeeds. A committed retry does not resolve desired config or repeat copying. It verifies the recorded destination, recovers its missing container if recorded inputs permit, and finishes source cleanup. The external journal survives source-directory removal and releases both names only when cleanup completes.
+
 ## Runtime documentation and network facts
 
 `assets` embeds the human docs, their linked development notes, and container agent guidance. The engine stages that bundle plus fresh inspected network facts in a private temporary directory. The Docker adapter copies it into the verified running container's `/devbox` directory and applies root-owned read-only permissions for `devuser`. Temporary host staging is removed on success and failure.

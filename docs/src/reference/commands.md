@@ -45,10 +45,13 @@ Network changes do not edit configuration or fingerprints. They survive stop/sta
 | `session show <target> [--json]` | Recorded contract and live leases without desired resolution |
 | `session reset <target...> [--harness NAME\|--all-harnesses]` | Reset stopped/absent, idle session stores; preserve declared history |
 | `session reset --all [--include-history] [--dry-run] [--json]` | Complete-set preflight; include-history clears all selected environment-store contents |
+| `session clone <source> <destination-folder> [--profile NAME] [--dry-run] [--json]` | New session ID; stopped/absent source, stopped destination |
+| `session relocate <source> <destination-folder> [--dry-run] [--json]` | Preserve ID and running/stopped intent; remove source after destination commitment |
+| `session clone\|relocate <folder> --from SLOT --to SLOT [--dry-run] [--json]` | Exact same-folder slots; each slot is a profile name or `.project` |
 | `session delete <target...> [--dry-run] [--json]` | Exact state deletion only after containers are gone; remove only verified session image tags |
 | `session prune --orphaned [--older-than DURATION] --dry-run` | Preview filtered state cleanup |
 | `session prune --orphaned [--older-than DURATION] --yes` | Confirm filtered state cleanup; age is rechecked while locked |
 
-Reset never clears managed auth or shared caches. Store roots remain available for existing Docker bind mounts; the next normal open restores desired managed config. Session delete has no `--all` or age filters. Clone and relocate remain pending.
+Reset never clears managed auth or shared caches. Store roots remain available for existing Docker bind mounts; the next normal open restores desired managed config. Session delete has no `--all` or age filters. Transfers require idle endpoints, an unused destination, and portable harness declarations for all copied state. Destination configuration controls creation; no workspace files or container-layer changes are copied. Cross-folder transfers retain the source slot unless clone selects another profile. Project destinations must be initialized. Pending transfers block ordinary mutations, including forced deletion; retry the same command to resume. Before commitment, destination inputs must still match the journal. After commitment, retry uses the recorded destination rather than desired configuration.
 
 For profile/project commands and scoped config `--show [--json]`, see [configuration](configuration.md#configuration-owner-commands). Interactive config dashboards remain pending.

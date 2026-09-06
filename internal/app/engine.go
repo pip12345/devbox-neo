@@ -363,19 +363,26 @@ func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force
 	}
 	return build("runtime.Dockerfile", docker.Namespace+"/session:"+id, s.Build.FinalDockerfile(baseID), s.Build.Arguments)
 }
-func (e *Engine) create(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool) (record store.Record, c docker.Container, err error) {
+func (e *Engine) create(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool) (store.Record, docker.Container, error) {
+	return e.createAs(ctx, l, s, previous, force, "", time.Time{})
+}
+
+// Transfer supplies a journaled identity before any destination resources exist.
+// The ordinary create/recreate path still allocates or preserves its own identity.
+func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool, id string, created time.Time) (record store.Record, c docker.Container, err error) {
 	if err = l.RequireIdle(); err != nil {
 		return record, c, err
 	}
 	if err = e.Docker.Network(ctx, s.Settings.Network); err != nil {
 		return record, c, err
 	}
-	id := ""
-	created := time.Now().UTC()
+	if created.IsZero() {
+		created = time.Now().UTC()
+	}
 	if previous != nil {
 		id = previous.ID
 		created = previous.Created
-	} else {
+	} else if id == "" {
 		id, err = fsutil.ID()
 		if err != nil {
 			return record, c, err

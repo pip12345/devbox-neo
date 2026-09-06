@@ -52,6 +52,16 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 			t.Fatal(args, out, err)
 		}
 	}
+	destination := t.TempDir()
+	if out, err := run("session", "clone", result.Name, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {
+		t.Fatal(out, err)
+	}
+	if out, err := run("session", "clone", result.Name, destination, "--json"); err != nil || !strings.Contains(out, `"mode":"clone"`) {
+		t.Fatal(out, err)
+	}
+	if _, err := run("session", "relocate", result.Name, "--from", "test"); err == nil {
+		t.Fatal("incomplete slot flags accepted")
+	}
 	if _, err = run("session", "delete", result.Name); err == nil {
 		t.Fatal("session deletion bypassed container")
 	}

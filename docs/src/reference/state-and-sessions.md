@@ -13,6 +13,7 @@ The default development home is `~/.devbox-neo`. Its important paths are:
 | `sessions/<container>/active/` | Attached-command leases |
 | `sessions/<container>/harnesses/<harness>/stores/<store>/` | Environment-scoped harness state |
 | `sessions/<container>/harnesses/<harness>/managed-config.json` | Last applied file/key ownership and conflicts |
+| `state/transfers/<source-container>.json` | Pending clone/relocate journal; reserves both endpoints |
 | `state/installation-id` | Stable installation identity |
 | `state/locks/installation.lock` | First-run initialization lock |
 | `state/locks/config/*.lock` | Configuration-owner mutation locks |
@@ -43,4 +44,6 @@ Container deletion retains session records/stores and image tags. Exact session 
 
 Recreation preserves the session ID and stores. Missing-container recovery uses the exact recorded image, mount layout, source definition, and setup input; it does not choose newer configuration. Existing-container start/shell/exec do not require those old source inputs just to access the container.
 
-The source installation's data is not imported automatically. Session list/show/reset/prune/delete are available; transfer commands and the separate migration tool remain pending. See [commands](commands.md) and [progress](../../dev/progress.md).
+Clone creates a new session ID; relocate preserves it. Transfers copy declared environment stores and their managed-config manifests, excluding auth overlays, shared caches, leases, and container-layer data. Opaque symlinks are copied without traversal; special files are rejected. The external journal contains public endpoint identities, IDs, mode, phase, intended running state, and input fingerprints, not env/auth values or another creation record. Completion removes it; no permanent lineage is kept.
+
+The source installation's data is not imported automatically. The separate migration tool remains pending. See [commands](commands.md) and [progress](../../dev/progress.md).

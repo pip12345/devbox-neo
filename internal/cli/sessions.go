@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"devbox/internal/app"
@@ -9,7 +10,7 @@ import (
 )
 
 func sessionCommands(factory engineFactory, profile *string) *cobra.Command {
-	group := &cobra.Command{Use: "session", Short: "Inspect or clean durable session state independently of containers"}
+	group := &cobra.Command{Use: "session", Short: "Inspect, transfer, or clean durable session state"}
 	var listJSON bool
 	list := &cobra.Command{Use: "list", Short: "List durable sessions and their container state", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		e, err := factory(cmd)
@@ -124,7 +125,45 @@ func sessionCommands(factory engineFactory, profile *string) *cobra.Command {
 	prune.Flags().BoolVar(&pruneOptions.Confirm, "yes", false, "Confirm filtered state deletion")
 	prune.Flags().BoolVar(&pruneJSON, "json", false, "Print selected session names as JSON")
 	group.AddCommand(list, show, reset, remove, prune)
+	for _, mode := range []string{"clone", "relocate"} {
+		group.AddCommand(transferCommand(factory, profile, mode))
+	}
 	return group
+}
+func transferCommand(factory engineFactory, profile *string, mode string) *cobra.Command {
+	var options app.TransferOptions
+	var asJSON bool
+	cmd := &cobra.Command{Use: mode + " <source> [destination-folder]", Short: mode + " portable session state; retry the same command to resume pending work", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
+		e, err := factory(cmd)
+		if err != nil {
+			return err
+		}
+		options.Mode = mode
+		options.Source = args[0]
+		options.Profile = *profile
+		options.Destination = ""
+		if len(args) == 2 {
+			options.Destination = args[1]
+		}
+		result, err := e.Transfer(cmd.Context(), options)
+		if err != nil {
+			return err
+		}
+		if asJSON {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
+		}
+		action := "Completed"
+		if result.DryRun {
+			action = "Would perform"
+		}
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s %s: %s -> %s\n", action, mode, result.Source, result.Destination)
+		return err
+	}}
+	cmd.Flags().StringVar(&options.From, "from", "", "Exact source slot (profile name or .project)")
+	cmd.Flags().StringVar(&options.To, "to", "", "Exact destination slot in the same folder")
+	cmd.Flags().BoolVar(&options.DryRun, "dry-run", false, "Validate and preview without copying state")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Print transfer result as JSON")
+	return cmd
 }
 func printSessionDeletion(cmd *cobra.Command, names []string, dryRun, asJSON bool) error {
 	if asJSON {

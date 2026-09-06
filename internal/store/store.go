@@ -278,7 +278,7 @@ func (l *Locked) Dir(rel string) (string, error) {
 	return fsutil.Dir(l.store.Home, filepath.Join("sessions", l.Name, rel), 0700)
 }
 func (l *Locked) Load() (Record, error) {
-	if err := l.check(); err != nil {
+	if err := l.RequireAvailable(); err != nil {
 		return Record{}, err
 	}
 	return l.store.Read(l.ctx, l.Name)
@@ -335,7 +335,11 @@ func (l *Locked) Save(record Record) error {
 
 // Delete keeps record readers outside the removal window. The external
 // operation lock survives deletion and remains held until the caller releases it.
-func (l *Locked) Delete() error {
+func (l *Locked) Delete() error { return l.DeleteContext(l.ctx) }
+
+// DeleteContext lets bounded cleanup retain the operation lock after the
+// foreground context has been cancelled.
+func (l *Locked) DeleteContext(ctx context.Context) error {
 	if err := l.check(); err != nil {
 		return err
 	}
@@ -343,7 +347,7 @@ func (l *Locked) Delete() error {
 	if err != nil {
 		return err
 	}
-	lock, err := fsutil.Lock(l.ctx, p)
+	lock, err := fsutil.Lock(ctx, p)
 	if err != nil {
 		return err
 	}

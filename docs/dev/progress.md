@@ -72,6 +72,16 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - Pi/OpenCode defaults include the generic `devbox` skill pointing to the runtime docs. Init remains non-overwriting.
 - Unit tests cover bundle links, network contents/refresh, staging cleanup, failed-copy launch prevention, and updated seed counts. The real-Docker suite now checks runtime file readability/permissions, but has only been compiled here.
 
+## Phase 5 — transfers implemented, broader acceptance pending
+
+- Clone/relocate share one explicit state machine, sorted endpoint locks, and a single external journal reserving both names. Clone allocates a new ID and requires a stopped/absent source; relocate preserves ID and restores running intent.
+- Copies declared environment stores and managed-config ownership manifests. Auth overlays, shared caches, leases, workspace files, and container-layer data are excluded. Opaque links are preserved without traversal; unsupported special files fail clearly.
+- Destination creation resolves normal destination configuration. Same-folder `--from`/`--to` slots map exactly to profiles or `.project`; cross-folder clone may override the destination profile. Dry run does not create session state or journals.
+- Preparation failures attempt bounded destination cleanup and source restart. Pending retries preserve the allocated identity and recopy the authoritative source with unchanged destination inputs. Committed retries use recorded destination recovery and finish source cleanup without recopying or consulting desired config.
+- Pending state appears in inventory/show and blocks ordinary mutations, including forced deletion. External journals remain discoverable after source-directory deletion; completion removes the journal without permanent lineage.
+- Fake-backed tests cover running/stopped rules, IDs/state, same-folder slots, dry run, ownership/lease rejection, portability policy, auth/cache exclusions, cancellation, incomplete preparation, retained prepared destinations, committed cleanup interruption, and recovery after source deletion/container loss.
+- Real-Docker transfer acceptance and process-kill/power-loss testing remain unrun; fake-backed failures are not evidence of those gates passing.
+
 ## Validation
 
 - `make check`: unit tests, race tests, and build pass.
@@ -98,7 +108,7 @@ Continue the runtime/configuration work; do not claim interactive harness accept
 - Phase 2: expanded real-Docker built-in/custom mapping and auth acceptance, provider login/continuation checks, and schema freeze.
 - Phase 3: remaining source-snapshot/provenance hardening and real-Docker acceptance for expanded creation inputs.
 - Phase 4: remaining target/creation-option integration, runtime-copy performance hardening, and expanded real-Docker lifecycle/crash testing.
-- Phase 5: clone/relocate, transfer interruption recovery, and additional acceptance coverage for reset/prune/delete.
+- Phase 5: real-Docker transfer/kill-point acceptance and additional acceptance coverage for reset/prune/delete.
 - Phase 6: scoped config commands, dashboards, complete structured guidance, doctor, and complete documentation.
 - Phase 7: release hardening, performance/secret audits, and remaining acceptance tests.
 - Separate migration utility: not implemented.

@@ -9,9 +9,10 @@ import (
 )
 
 type Entry struct {
-	Name   string
-	Record Record
-	Err    error
+	Name    string
+	Record  Record
+	Err     error
+	Pending *Reservation
 }
 
 // Inventory exposes corrupt entries instead of treating them as missing. A
@@ -26,9 +27,50 @@ func (s *Store) Inventory(ctx context.Context) ([]Entry, error) {
 		return nil, err
 	}
 	result := make([]Entry, 0, len(entries))
+	seen := map[string]bool{}
 	for _, entry := range entries {
+		seen[entry.Name()] = true
 		record, err := s.Read(ctx, entry.Name())
-		result = append(result, Entry{Name: entry.Name(), Record: record, Err: err})
+		pending, pendingErr := s.Pending(entry.Name())
+		if pendingErr != nil {
+			err = pendingErr
+		}
+		if pending != nil && os.IsNotExist(err) {
+			journal, journalErr := s.ReadTransfer(pending.Source)
+			if journalErr != nil {
+				err = journalErr
+			} else if journal != nil {
+				record.Identity = journal.Source
+				if entry.Name() == journal.Destination.Name {
+					record.Identity = journal.Destination
+				}
+				err = nil
+			}
+		}
+		result = append(result, Entry{Name: entry.Name(), Record: record, Err: err, Pending: pending})
+	}
+	journals, err := s.Transfers()
+	if err != nil {
+		return nil, err
+	}
+	for _, j := range journals {
+		for _, name := range []string{j.Source.Name, j.Destination.Name} {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			pending, err := s.Pending(name)
+			if err != nil {
+				return nil, err
+			}
+			if pending != nil {
+				record := Record{Identity: j.Source}
+				if name == j.Destination.Name {
+					record.Identity = j.Destination
+				}
+				result = append(result, Entry{Name: name, Record: record, Pending: pending})
+			}
+		}
 	}
 	return result, nil
 }

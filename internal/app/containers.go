@@ -29,6 +29,7 @@ type View struct {
 	Error        string             `json:"error,omitempty"`
 	Desired      environment.Change `json:"desired_change,omitempty"`
 	ConfigError  string             `json:"config_error,omitempty"`
+	Pending      *store.Reservation `json:"pending_transfer,omitempty"`
 }
 
 func recordView(r store.Record) View {
@@ -55,7 +56,7 @@ func (e *Engine) List(ctx context.Context, sessions bool) ([]View, error) {
 			continue
 		}
 		view := View{Name: name, ContainerID: container.ID, Exists: true, Running: container.State.Running}
-		if found && entry.Err == nil {
+		if found && entry.Err == nil && entry.Record.ID != "" {
 			view = recordView(entry.Record)
 			view.ContainerID = container.ID
 			view.Exists = true
@@ -65,11 +66,12 @@ func (e *Engine) List(ctx context.Context, sessions bool) ([]View, error) {
 			} else if container.ID != entry.Record.SetupContainer || container.Image != entry.Record.ImageID {
 				view.Error = "container differs from committed creation contract"
 			}
-		} else if found {
+		} else if found && entry.Err != nil {
 			view.Error = entry.Err.Error()
-		} else {
+		} else if !found || entry.Pending == nil {
 			view.Error = "container has no durable record"
 		}
+		view.Pending = entry.Pending
 		result = append(result, view)
 		delete(records, name)
 	}
@@ -77,6 +79,7 @@ func (e *Engine) List(ctx context.Context, sessions bool) ([]View, error) {
 		for name, entry := range records {
 			view := recordView(entry.Record)
 			view.Name = name
+			view.Pending = entry.Pending
 			if entry.Err != nil {
 				view.Error = entry.Err.Error()
 			}

@@ -95,6 +95,21 @@ bin/devbox-neo stop /path/to/workspace --profile basic
 
 For existing containers these commands use the recorded contract, not current profile/project config. `shell` and `exec` require an existing container. A missing container can be recovered by `start` only if its recorded inputs remain available and unchanged; otherwise use explicit `recreate`.
 
+## Copy or move a session
+
+Prepare the destination folder and its profile/project configuration first. Transfers move harness state, not workspace files or installed container-layer tools.
+
+```sh
+bin/devbox-neo stop /path/to/workspace --profile basic
+bin/devbox-neo session clone /path/to/workspace /path/to/copy --dry-run
+bin/devbox-neo session clone /path/to/workspace /path/to/copy
+bin/devbox-neo session relocate /path/to/workspace --from basic --to .project
+```
+
+Use an exact container name when the source folder has multiple slots. `.project` requires an initialized project; named destination profiles must exist. Clone requires a stopped or absent source container and leaves the destination stopped. Relocate can stop a running source, then restore that running state at the destination after preparation succeeds.
+
+If a transfer is interrupted, inspect `session list` or `session show <exact-name>`, fix the reported problem, and retry the same transfer command. Do not delete pending state manually. Before commitment, restore changed destination inputs before retrying; after commitment, retry only finishes recovery/cleanup.
+
 ## Help inside the container
 
 Read `/devbox/AGENTS.md` for the container contract and `/devbox/docs/index.md` for the user docs. The seeded Pi/OpenCode `devbox` skill points to these files. To inspect network facts in a shell, run `cat /devbox/network/inspect.json` or source `/devbox/network/env`. These files are managed by Devbox, not editable project configuration.
