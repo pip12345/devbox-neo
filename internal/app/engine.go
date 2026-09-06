@@ -349,7 +349,7 @@ func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force
 		}
 		return e.Docker.Build(ctx, docker.BuildPlan{Directory: contextDir, Dockerfile: path, Tag: tag, NoCache: force, Installation: e.Store.Installation, Arguments: arguments}, e.Streams.Err)
 	}
-	baseID := ""
+	baseRef := ""
 	if s.Build.Mode == "normal" {
 		nonce, idErr := fsutil.ID()
 		if idErr != nil {
@@ -360,14 +360,15 @@ func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force
 		if buildErr != nil {
 			return image, buildErr
 		}
-		baseID = base.ID
+		// BuildKit needs an image reference in FROM; a bare ID is parsed as a registry name.
+		baseRef = tag
 		defer func() {
 			cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			err = errors.Join(err, e.Docker.Untag(cleanup, tag, base.ID, e.Store.Installation))
 		}()
 	}
-	return build("runtime.Dockerfile", docker.Namespace+"/session:"+id, s.Build.FinalDockerfile(baseID), s.Build.Arguments)
+	return build("runtime.Dockerfile", docker.Namespace+"/session:"+id, s.Build.FinalDockerfile(baseRef), s.Build.Arguments)
 }
 func (e *Engine) create(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool) (store.Record, docker.Container, error) {
 	return e.createAs(ctx, l, s, previous, force, "", time.Time{})

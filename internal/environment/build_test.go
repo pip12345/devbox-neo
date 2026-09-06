@@ -36,7 +36,7 @@ func TestImagePlansRespectCapturedContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Mode != "normal" || first.Arguments["HOST_GID"] != "1001" || !strings.HasPrefix(string(first.FinalDockerfile("sha256:base")), "FROM sha256:base\nUSER root\n") {
+	if first.Mode != "normal" || first.Arguments["HOST_GID"] != "1001" || !strings.HasPrefix(string(first.FinalDockerfile("devbox-rewrite/build:base")), "FROM devbox-rewrite/build:base\nUSER root\n") {
 		t.Fatal("incorrect normal plan")
 	}
 	if _, ok := first.Context["ignored"]; ok {
@@ -61,7 +61,7 @@ func TestImagePlansRespectCapturedContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(plan.FinalDockerfile("sha256:base"))
+	text := string(plan.FinalDockerfile("devbox-rewrite/build:base"))
 	if !strings.Contains(text, "pi.dev/install") || !strings.Contains(text, "USER devuser") {
 		t.Fatal("Devbox must always install its runtime and harness")
 	}
@@ -119,7 +119,7 @@ func TestRuntimeMountParentsArePreparedAsUserInBothBuildModes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		text := string(plan.FinalDockerfile("sha256:custom"))
+		text := string(plan.FinalDockerfile("devbox-rewrite/build:custom"))
 		user := strings.Index(text, "USER devuser\n")
 		parents := strings.Index(text, instruction)
 		if user < 0 || parents < user || strings.Contains(text[user:], "USER root\n") {

@@ -89,6 +89,12 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - Unit tests cover parent ownership classification, literal path arguments, both image build modes, nested auth/cache parents, reset/start restoration without desired config, and rejection of missing roots/symlinks. The Docker gate probes sibling-directory creation for all three harnesses before and after reset/start; the custom fixture now uses nested state/auth targets.
 - The corrected Docker gate has not been rerun here. The reported failure is not marked resolved by a real-Docker pass.
 
+## Layered-build base reference — regression fix awaiting Docker rerun
+
+- The user's custom-base build succeeded, but BuildKit interpreted the runtime's `FROM sha256:...` as a Docker Hub reference and failed to pull it.
+- The runtime build now references the unique temporary base tag; cleanup still verifies the recorded image ID and installation ownership. Regression tests check the generated reference and cleanup after success or runtime-build failure.
+- A real-Docker rerun of this fix remains pending; fake-backed tests do not validate BuildKit resolution.
+
 ## Validation
 
 - `make check`: unit tests, race tests, and build pass.

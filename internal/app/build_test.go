@@ -2,11 +2,14 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"devbox/internal/docker"
 )
 
 func TestLayeredBuildUsesTypedPlans(t *testing.T) {
@@ -15,7 +18,7 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 	file := "Dockerfile"
 	write(t, filepath.Join(root, file), "FROM debian:bookworm-slim\nCOPY asset /opt/asset\n")
 	write(t, filepath.Join(root, "asset"), "context data")
-	var built []string
+	var built, tags []string
 	d.Fail = func(args []string) error {
 		if args[0] != "build" {
 			return nil
@@ -26,6 +29,7 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 			return err
 		}
 		built = append(built, string(body))
+		tags = append(tags, args[slices.Index(args, "--tag")+1])
 		contextDir := args[len(args)-1]
 		data, err := os.ReadFile(filepath.Join(contextDir, "asset"))
 		if err != nil {
@@ -44,8 +48,13 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 	if len(built) != want {
 		t.Fatal("wrong stage count", len(built))
 	}
-	if !strings.Contains(built[1], "FROM sha256:") {
-		t.Fatal("runtime did not use exact intermediate ID")
+	if !strings.HasPrefix(tags[0], docker.Namespace+"/build:") || !strings.HasPrefix(built[1], "FROM "+tags[0]+"\n") {
+		t.Fatal("runtime did not use the unique intermediate tag", built[1])
+	}
+	if !slices.ContainsFunc(d.History(), func(args []string) bool {
+		return slices.Equal(args, []string{"image", "rm", tags[0]})
+	}) {
+		t.Fatal("intermediate tag was not cleaned up")
 	}
 	before := count(d, "build")
 	if _, err = e.Open(context.Background(), q); err != nil || count(d, "build") != before {
@@ -67,6 +76,31 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 	if record(t, e, result.Name).ID == "" {
 		t.Fatal("creation did not commit")
 	}
+}
+func TestLayeredBuildCleansBaseTagAfterRuntimeFailure(t *testing.T) {
+	e, d, q := fixture(t)
+	write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "FROM debian:bookworm-slim\n")
+	failure := errors.New("runtime build failed")
+	var baseTag string
+	d.Fail = func(args []string) error {
+		if args[0] != "build" {
+			return nil
+		}
+		if baseTag == "" {
+			baseTag = args[slices.Index(args, "--tag")+1]
+			return nil
+		}
+		return failure
+	}
+	if _, err := e.Open(context.Background(), q); !errors.Is(err, failure) {
+		t.Fatal("runtime build failure was not returned", err)
+	}
+	for _, args := range d.History() {
+		if slices.Equal(args, []string{"image", "rm", baseTag}) {
+			return
+		}
+	}
+	t.Fatal("intermediate tag was not cleaned up after runtime failure")
 }
 func TestSeedingHigherPriorityDockerfileWarnsWithoutReplacement(t *testing.T) {
 	e, d, q := fixture(t)
