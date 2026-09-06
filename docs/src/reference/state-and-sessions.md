@@ -35,6 +35,8 @@ Built-in mappings (targets are inside the container):
 | Pi | `home` → `/home/devuser/.pi/agent` | `npm-global` → `/home/devuser/.local`; `npm-cache` → `/home/devuser/.npm` | `/home/devuser/.pi/agent/auth.json` |
 | OpenCode | `config` → `/home/devuser/.config/opencode`; `data` → `/home/devuser/.local/share/opencode` | `cache` → `/home/devuser/.cache/opencode` | `/home/devuser/.local/share/opencode/auth.json` |
 
+Runtime documentation and inspected network facts live inside the container under `/devbox`, not in durable session records. A private `.runtime-*` staging directory beneath the selected home exists only during copying and is removed afterward.
+
 Reset clears selected environment-store contents only after complete stopped/idle preflight, preserving declared history unless `--include-history` is used. Bind-root directories and managed ownership manifests remain in place; the next normal open restores missing desired config. Auth and cache roots are separate and are not reset.
 
 Container deletion retains session records/stores and image tags. Exact session deletion requires container absence and verifies tag ownership/association before removing state and its tag. External operation/record locks are not deleted. Filtered pruning requires a dry run or explicit `--yes`, and age is revalidated under lock.

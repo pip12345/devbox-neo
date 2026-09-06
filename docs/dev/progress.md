@@ -65,6 +65,13 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - Extra bind/volume mounts, published ports, protected raw Docker options, IDE metadata, and root/recreate creation flags are implemented. Host networking rejects published ports and managed targets/labels/env remain protected.
 - Scoped global/profile/project config `--show` and JSON output use the shared resolver, expose origins/exclusions/references, and redact env. Interactive config dashboards remain pending.
 
+## Runtime documentation and network files — implemented
+
+- Embedded human docs, linked development notes, and `/devbox/AGENTS.md` are copied into verified running containers with root ownership and read-only access for the container user.
+- `/devbox/network/env` and `/devbox/network/inspect.json` use fresh Docker facts, not persisted session authority. Preparation/access and managed network changes refresh them.
+- Pi/OpenCode defaults include the generic `devbox` skill pointing to the runtime docs. Init remains non-overwriting.
+- Unit tests cover bundle links, network contents/refresh, staging cleanup, failed-copy launch prevention, and updated seed counts. The real-Docker suite now checks runtime file readability/permissions, but has only been compiled here.
+
 ## Validation
 
 - `make check`: unit tests, race tests, and build pass.
@@ -89,8 +96,8 @@ It uses temporary homes and rewrite-only ownership labels, not the existing inst
 Continue the runtime/configuration work; do not claim interactive harness acceptance or schema freeze from fake-backed tests.
 
 - Phase 2: expanded real-Docker built-in/custom mapping and auth acceptance, provider login/continuation checks, and schema freeze.
-- Phase 3: runtime docs/assets, remaining source-snapshot/provenance hardening, and real-Docker acceptance for expanded creation inputs.
-- Phase 4: generated in-container network facts/assets, remaining target/creation-option integration, and expanded real-Docker lifecycle/crash testing.
+- Phase 3: remaining source-snapshot/provenance hardening and real-Docker acceptance for expanded creation inputs.
+- Phase 4: remaining target/creation-option integration, runtime-copy performance hardening, and expanded real-Docker lifecycle/crash testing.
 - Phase 5: clone/relocate, transfer interruption recovery, and additional acceptance coverage for reset/prune/delete.
 - Phase 6: scoped config commands, dashboards, complete structured guidance, doctor, and complete documentation.
 - Phase 7: release hardening, performance/secret audits, and remaining acceptance tests.

@@ -163,6 +163,9 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 		c.State.Running = true
 		started = true
 	}
+	if err = e.installRuntime(ctx, record); err != nil {
+		return result, err
+	}
 	if err = e.runHook(ctx, c, record, spec.Entrypoint); err != nil {
 		return result, err
 	}
@@ -492,6 +495,9 @@ func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker
 		return c, err
 	}
 	c.State.Running = true
+	if err = e.installRuntime(ctx, record); err != nil {
+		return c, err
+	}
 	for _, argv := range record.Prepare {
 		if err = e.Docker.Exec(ctx, c, e.owner(record), argv, docker.Streams{Out: e.Streams.Out, Err: e.Streams.Err}); err != nil {
 			return c, err

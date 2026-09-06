@@ -39,6 +39,14 @@ Bulk deletion, recreation, and reset acquire sorted complete operation-lock sets
 
 Secondary network commands inspect the actual attachment set under the operation lock. They never alter creation fingerprints, cannot detach the primary network, and are unavailable for host networking.
 
+## Runtime documentation and network facts
+
+`assets` embeds the human docs, their linked development notes, and container agent guidance. The engine stages that bundle plus fresh inspected network facts in a private temporary directory. The Docker adapter copies it into the verified running container's `/devbox` directory and applies root-owned read-only permissions for `devuser`. Temporary host staging is removed on success and failure.
+
+Preparation runs before setup/harness access and root entrypoint hooks; existing-container access remains independent of desired configuration. Managed secondary-network changes refresh the files while running. These inspected facts are not durable session authority. Pi/OpenCode seed ordinary managed skill files that point to `/devbox/AGENTS.md` and the docs.
+
+The asset content hash participates in runtime drift, not the image build fingerprint.
+
 ## Host inputs and sensitivity
 
 Resolution captures one host environment snapshot, expands decoded configuration strings once, and tracks variable names by source field. Literal source bytes are retained for source edits/copies; expanded env values are never serialized into session state. Sensitivity follows the destination field: env/auth are sensitive, ordinary names/paths/settings are public.

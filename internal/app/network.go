@@ -101,7 +101,13 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, profile, name string
 	if err = e.Docker.Network(ctx, name); err != nil {
 		return err
 	}
-	return e.Docker.AttachNetwork(ctx, c, e.owner(r), name, connect)
+	if err = e.Docker.AttachNetwork(ctx, c, e.owner(r), name, connect); err != nil {
+		return err
+	}
+	if c.State.Running {
+		return e.installRuntime(ctx, r)
+	}
+	return nil
 }
 func sortedEnv(values map[string]string) []string {
 	keys := make([]string, 0, len(values))

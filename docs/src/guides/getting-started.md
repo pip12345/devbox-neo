@@ -95,6 +95,10 @@ bin/devbox-neo stop /path/to/workspace --profile basic
 
 For existing containers these commands use the recorded contract, not current profile/project config. `shell` and `exec` require an existing container. A missing container can be recovered by `start` only if its recorded inputs remain available and unchanged; otherwise use explicit `recreate`.
 
+## Help inside the container
+
+Read `/devbox/AGENTS.md` for the container contract and `/devbox/docs/index.md` for the user docs. The seeded Pi/OpenCode `devbox` skill points to these files. To inspect network facts in a shell, run `cat /devbox/network/inspect.json` or source `/devbox/network/env`. These files are managed by Devbox, not editable project configuration.
+
 ## Environment and other creation settings
 
 Profile/project config can reference the host environment:

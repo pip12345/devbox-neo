@@ -106,6 +106,9 @@ func (e *Engine) Start(ctx context.Context, target, profile string) (Result, err
 			return Result{}, err
 		}
 	}
+	if err = e.installRuntime(ctx, r); err != nil {
+		return Result{}, err
+	}
 	r.Action = "start"
 	r.Activity = time.Now().UTC()
 	return Result{Name: r.Identity.Name}, l.Save(r)
@@ -181,6 +184,9 @@ func (e *Engine) Exec(ctx context.Context, target, profile string, argv []string
 		}
 		c.State.Running = true
 		started = true
+	}
+	if err = e.installRuntime(ctx, r); err != nil {
+		return err
 	}
 	action := "exec"
 	if shell {

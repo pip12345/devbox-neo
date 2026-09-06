@@ -226,6 +226,8 @@ func (d *Daemon) run(a []string) (string, error) {
 		return "", fmt.Errorf("container missing")
 	case "exec":
 		return "", nil
+	case "cp":
+		return "", nil
 	case "logs":
 		return "container logs\n", nil
 	case "network":

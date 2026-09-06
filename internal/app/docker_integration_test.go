@@ -122,6 +122,9 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 		t.Fatalf("create/open: %v\n%s", err, output.String())
 	}
 	first := record(t, e, result.Name)
+	if err = e.Exec(ctx, result.Name, "", []string{"sh", "-c", `test -r /devbox/AGENTS.md && test -r /devbox/docs/index.md && test -r /devbox/network/inspect.json && test ! -w /devbox/docs/index.md && . /devbox/network/env && test -n "$DEVBOX_HOST"`}, false); err != nil {
+		t.Fatal("runtime docs/network contract", err)
+	}
 	marker := ""
 	for _, declared := range first.Stores {
 		if declared.Scope == "environment" {

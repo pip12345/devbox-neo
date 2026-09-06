@@ -70,7 +70,7 @@ func TestCreateAndInitAreSeparateAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Created) != 2 {
+	if len(result.Created) != 3 {
 		t.Fatal(result)
 	}
 	p := filepath.Join(o.Root, "pi/settings.json")
@@ -80,7 +80,7 @@ func TestCreateAndInitAreSeparateAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Created) != 0 || len(result.Skipped) != 2 || string(get(t, p)) != "user-owned settings" {
+	if len(result.Created) != 0 || len(result.Skipped) != 3 || string(get(t, p)) != "user-owned settings" {
 		t.Fatal("init overwrote source artifacts")
 	}
 	if !bytes.Equal(before, get(t, filepath.Join(o.Root, "config.json"))) {

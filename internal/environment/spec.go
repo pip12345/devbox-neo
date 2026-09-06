@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"devbox/internal/artifact"
+	"devbox/internal/assets"
 	"devbox/internal/config"
 	"devbox/internal/docker"
 	"devbox/internal/filesync"
@@ -259,14 +260,19 @@ func Resolve(q Request) (Spec, error) {
 	for p, f := range files {
 		data[p] = harness.File{Data: f.Data, Mode: f.Mode & 0111}
 	}
+	runtimeHash, err := assets.Hash()
+	if err != nil {
+		return spec, err
+	}
 	spec.Fingerprints.Runtime = Digest(struct {
+		Assets     string
 		Files      map[string]harness.File
 		Entrypoint string
 		Launch     harness.Launch
 		Args       []string
 		OnExit     string
 		Shell      []string
-	}{data, spec.Entrypoint.Hash, h.Definition.Launch, r.Settings.HarnessArgs, r.Settings.OnExit, r.Settings.Shell})
+	}{runtimeHash, data, spec.Entrypoint.Hash, h.Definition.Launch, r.Settings.HarnessArgs, r.Settings.OnExit, r.Settings.Shell})
 	return spec, nil
 }
 func readHook(path string) (Hook, error) {

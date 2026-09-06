@@ -11,5 +11,6 @@ This is a separate Git repository and Go module. `docs/dev/rewrite-plan.md` is t
 - Session mutation requires external operation locks; labels, not names, prove Docker ownership.
 - `resource` owns profile/project creation and source edits. Use external configuration-owner locks and no-replace publication for new directories/files. `create` stays sparse; `init` never refreshes existing artifacts. Source copies preserve expressions and use `artifact.SourceTree`; project inheritance previews use the normal resolver.
 - Never persist env/auth values in session records or print them in diagnostics. Sensitivity is by field: names, paths, networks, argv, and ordinary settings are public, including `${env:...}` substitutions. Config env recovery uses exact source-entry references and keyed fingerprints; invocation-only env requires explicit recreation after container loss.
+- Runtime guidance is embedded from `docs/` and `internal/assets/`; seeded Pi/OpenCode `skills/devbox/SKILL.md` files link to `/devbox`. Keep these inputs and network-fact paths aligned when container behavior changes.
 - Keep tests and guide/reference/architecture docs aligned. Record unpassed acceptance gates honestly in `docs/dev/progress.md`.
 - Migration logic belongs only in dedicated `migrations.go` files inside the removable migration package.
