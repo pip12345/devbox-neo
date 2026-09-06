@@ -82,6 +82,13 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - Fake-backed tests cover running/stopped rules, IDs/state, same-folder slots, dry run, ownership/lease rejection, portability policy, auth/cache exclusions, cancellation, incomplete preparation, retained prepared destinations, committed cleanup interruption, and recovery after source deletion/container loss.
 - Real-Docker transfer acceptance and process-kill/power-loss testing remain unrun; fake-backed failures are not evidence of those gates passing.
 
+## Mount-parent permissions — regression fix awaiting Docker rerun
+
+- The user's expanded Linux Docker run failed in OpenCode 1.18.29: `EACCES` creating `/home/devuser/.local/state` after a successful image build. The generated image had not prepared `.local/share`, the parent of its data mount.
+- Generic mount-parent planning now separates image-owned ancestors from ancestors inside other managed mounts. The runtime layer creates/checks image parents as `devuser`; recorded create/start prepares nested parents in host store/auth/cache sources. No recursive chown, new mounts, or persistence mapping changes were added.
+- Unit tests cover parent ownership classification, literal path arguments, both image build modes, nested auth/cache parents, reset/start restoration without desired config, and rejection of missing roots/symlinks. The Docker gate probes sibling-directory creation for all three harnesses before and after reset/start; the custom fixture now uses nested state/auth targets.
+- The corrected Docker gate has not been rerun here. The reported failure is not marked resolved by a real-Docker pass.
+
 ## Validation
 
 - `make check`: unit tests, race tests, and build pass.

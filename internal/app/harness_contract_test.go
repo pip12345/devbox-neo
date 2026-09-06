@@ -13,9 +13,9 @@ import (
 const thirdDefinition = `{
  "version":1,"name":"third","binary":"bash",
  "install":{"shell":"","path":[]},"launch":{"args":[],"continue_args":[]},
- "stores":[{"name":"state","scope":"environment","target":"/home/devuser/.third"},{"name":"shared","scope":"cache","target":"/home/devuser/.third-cache"}],
+ "stores":[{"name":"state","scope":"environment","target":"/home/devuser/.third-runtime/state"},{"name":"shared","scope":"cache","target":"/home/devuser/.third-cache"}],
  "config":{"store":"state","path":"preferences"},
- "auth":[{"source":"tokens","target":"/home/devuser/.third/tokens","kind":"directory","create":true}],
+ "auth":[{"source":"tokens","target":"/home/devuser/.third-runtime/state/private/tokens","kind":"directory","create":true}],
  "config_merge":[{"path":"settings.json","strategy":"json-keys","owned_keys":["controlled"]}],
  "session":{"reset_preserve":["history"],"relocate":true,"clone":true},"prepare":[]
 }`

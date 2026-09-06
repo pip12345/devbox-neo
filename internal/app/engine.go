@@ -157,7 +157,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 		return result, err
 	}
 	if !c.State.Running {
-		if err = e.Docker.Start(ctx, c, e.owner(record)); err != nil {
+		if err = e.start(ctx, c, record); err != nil {
 			return result, err
 		}
 		c.State.Running = true
@@ -422,7 +422,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		if err != nil && existed && !removed && old.State.Running {
 			cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
-			err = errors.Join(err, e.Docker.Start(cleanup, old, e.owner(*previous)))
+			err = errors.Join(err, e.start(cleanup, old, *previous))
 		}
 	}()
 	if existed && old.State.Running {
@@ -475,6 +475,9 @@ func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker
 	// This attempt prepares a new instance; only its successful caller commits
 	// the new setup-container ID. Existing-instance access never clears it.
 	record.SetupContainer = ""
+	if err = prepareMountParents(record); err != nil {
+		return c, err
+	}
 	id, err := e.Docker.Create(ctx, record.Creation, e.owner(record))
 	if err != nil {
 		return c, err
@@ -498,7 +501,7 @@ func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker
 			}
 		}
 	}()
-	if err = e.Docker.Start(ctx, c, e.owner(record)); err != nil {
+	if err = e.start(ctx, c, record); err != nil {
 		return c, err
 	}
 	c.State.Running = true

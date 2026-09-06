@@ -308,6 +308,8 @@ func ImageDockerfile(d harness.Definition, uid, gid int) []byte {
 		encoded, _ := json.Marshal([]string{"/bin/bash", "-o", "pipefail", "-c", d.Install.Shell})
 		base += "RUN " + string(encoded) + "\n"
 	}
+	parents, _ := json.Marshal(mountParentCommand(d))
+	base += "RUN " + string(parents) + "\n"
 	paths := append([]string(nil), d.Install.Path...)
 	paths = append(paths, "/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin")
 	encoded, _ := json.Marshal(strings.Join(paths, ":"))

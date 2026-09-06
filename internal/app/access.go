@@ -102,7 +102,7 @@ func (e *Engine) Start(ctx context.Context, target, profile string) (Result, err
 		}
 	}
 	if !c.State.Running {
-		if err = e.Docker.Start(ctx, c, e.owner(r)); err != nil {
+		if err = e.start(ctx, c, r); err != nil {
 			return Result{}, err
 		}
 	}
@@ -179,7 +179,7 @@ func (e *Engine) Exec(ctx context.Context, target, profile string, argv []string
 		}
 	}()
 	if !c.State.Running {
-		if err = e.Docker.Start(ctx, c, e.owner(r)); err != nil {
+		if err = e.start(ctx, c, r); err != nil {
 			return err
 		}
 		c.State.Running = true

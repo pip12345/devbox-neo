@@ -787,6 +787,7 @@ Schema rules:
 - `json-keys` requires a relative JSON file path and a unique, non-empty `owned_keys` list. Paths and owned keys cannot overlap across declarations.
 - auth sources are relative to `~/.devbox/auth/<harness>/` unless an explicit, validated host path feature is added later.
 - auth targets may overlay files inside a mounted store, but cannot obscure a declared store.
+- mount ancestors are derived from declared store/auth targets: the runtime image creates image-owned parents as `devuser`; create/start prepares nested parents in their host backing source using the recorded contract. Neither path recursively changes existing ownership or adds persistence.
 - reset and transfer behavior comes from the definition, not Go branches.
 - `prepare` is a list of explicit in-container argv commands. Avoid harness-specific shell generation in Go.
 

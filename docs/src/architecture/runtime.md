@@ -31,6 +31,10 @@ Registry enumeration sorts effective definitions and reports invalid user overri
 
 `artifact.ReadBuildContext` captures the selected Dockerfile, included regular context files and directory modes, and the effective ignore rules. `environment.ImageBuildPlan` compiles this into an optional base build plus the mandatory Devbox runtime/harness layer. Execution stages captured bytes, supplies host-ID arguments, and uses the concrete intermediate image ID. Temporary intermediate tags are installation-verified before removal. Full runtime overrides are not supported.
 
+Harness mount ancestors are derived once by `Definition.MountParents`, which identifies the enclosing mount for each directory. The mandatory runtime layer creates image-owned ancestors as `devuser` after harness installation and checks that they are writable/searchable. This prevents Docker from supplying root-owned home-directory parents and applies equally to custom bases. Existing incompatible image permissions fail the build rather than triggering recursive ownership changes.
+
+Ancestors inside another mount are created in that mount's host source before container creation/start. `app.start` uses recorded store/auth targets, so reset can remove these descendants without breaking the next start or requiring desired config. Host preparation rejects symlink paths and missing backing roots; it never replaces missing durable state with an empty root. Extra user mounts are outside this managed-harness preparation contract. Preparing directories does not add persistent stores.
+
 ## Inventory and destructive operations
 
 Container inventory uses one label-filtered list and one batched inspection. Durable-session inventory retains parse failures as explicit entries. Status resolves desired config separately from live facts; a desired-config failure is not a container failure.

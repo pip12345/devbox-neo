@@ -71,6 +71,8 @@ bin/devbox-neo profile init basic --artifact Dockerfile
 
 Edit the generated Dockerfile to add tools to a Debian-compatible base. Its directory is the build context, so `COPY` can use sibling files. Use `.dockerignore` to exclude files that are not image inputs. Devbox always installs its runtime and harness afterward; there is no full override mode. Init never replaces an existing Dockerfile.
 
+The runtime layer prepares writable parents for declared harness mounts. If a custom base has incompatible permissions on those parents, correct the base image; do not recursively change ownership of mounted session/auth data. Use `recreate` to apply image-layer fixes to an existing environment.
+
 ## Apply changes explicitly
 
 Valid creation changes warn instead of replacing the existing container:

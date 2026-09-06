@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"devbox/internal/docker"
+	"devbox/internal/harness"
 	"devbox/internal/resource"
 	"devbox/internal/store"
 )
@@ -122,6 +123,17 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 		t.Fatalf("create/open: %v\n%s", err, output.String())
 	}
 	first := record(t, e, result.Name)
+	// Probe sibling-directory creation as the normal container user in both
+	// image-owned and bind-backed parents. Version-only launches can miss this
+	// for custom harnesses that do not initialize state on startup.
+	parents := (harness.Definition{Stores: first.Stores, Auth: first.Auth}).MountParents()
+	argv := []string{"/bin/sh", "-eu", "-c", `for parent do probe=$(mktemp -d "$parent/.devbox-parent-XXXXXX"); rmdir -- "$probe"; done`, "mount-parent-check"}
+	for _, parent := range parents {
+		argv = append(argv, parent.Target)
+	}
+	if err = e.Exec(ctx, result.Name, "", argv, false); err != nil {
+		t.Fatalf("mount parent contract: %v\n%s", err, output.String())
+	}
 	if err = e.Exec(ctx, result.Name, "", []string{"sh", "-c", `test -r /devbox/AGENTS.md && test -r /devbox/docs/index.md && test -r /devbox/network/inspect.json && test ! -w /devbox/docs/index.md && . /devbox/network/env && test -n "$DEVBOX_HOST"`}, false); err != nil {
 		t.Fatal("runtime docs/network contract", err)
 	}
@@ -189,5 +201,11 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	}
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
+	}
+	if _, err = e.ResetSessions(ctx, ResetOptions{Targets: []string{result.Name}, IncludeHistory: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Exec(ctx, result.Name, "", argv, false); err != nil {
+		t.Fatalf("mount parents after reset/start: %v\n%s", err, output.String())
 	}
 }

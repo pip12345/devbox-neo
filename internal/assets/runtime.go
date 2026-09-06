@@ -25,7 +25,9 @@ container services that must be reached outside the container.
 
 Install development tools in the container when needed. Container-layer changes
 survive stop/start but are lost on recreation. Workspace files and declared
-harness stores persist on the host. Managed authentication and shared caches are
+harness stores persist on the host. Devbox prepares parents for declared harness
+mounts, but unmounted directories remain container-local even when writable.
+Managed authentication and shared caches are
 separate from resettable session state. Session clone/relocate copy only declared
 harness state, not workspace files or container-layer tools. Pending transfers
 reserve both endpoints; retry the same host CLI command instead of deleting

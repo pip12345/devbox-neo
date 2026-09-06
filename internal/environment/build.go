@@ -8,6 +8,25 @@ import (
 	"devbox/internal/harness"
 )
 
+// The final runtime layer runs this as devuser, before Docker can create
+// root-owned mount ancestors. Existing incompatible base-image permissions
+// fail at build time; preparation never recursively changes user content.
+func mountParentCommand(d harness.Definition) []string {
+	args := []string{"/bin/sh", "-eu", "-c", `for dir do
+ mkdir -p -- "$dir"
+ if [ ! -w "$dir" ] || [ ! -x "$dir" ]; then
+  printf 'mount parent is not writable/searchable by devuser: %s\n' "$dir" >&2
+  exit 1
+ fi
+done`, "mount-parents"}
+	for _, parent := range d.MountParents() {
+		if parent.Mount == "" {
+			args = append(args, parent.Target)
+		}
+	}
+	return args
+}
+
 type ImageBuildPlan struct {
 	Mode       string
 	Source     string

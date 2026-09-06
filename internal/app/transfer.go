@@ -323,7 +323,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 				live, found, inspectErr := e.inspect(cleanup, source)
 				err = errors.Join(err, inspectErr)
 				if inspectErr == nil && found && !live.State.Running {
-					err = errors.Join(err, e.Docker.Start(cleanup, live, e.owner(source)))
+					err = errors.Join(err, e.start(cleanup, live, source))
 				}
 			}
 		}
@@ -420,7 +420,7 @@ func (e *Engine) readyTransfer(ctx context.Context, source, destination *store.L
 		}
 	}
 	if !c.State.Running && j.Running {
-		if err = e.Docker.Start(ctx, c, e.owner(r)); err != nil {
+		if err = e.start(ctx, c, r); err != nil {
 			return err
 		}
 	}

@@ -36,6 +36,8 @@ Built-in mappings (targets are inside the container):
 | Pi | `home` → `/home/devuser/.pi/agent` | `npm-global` → `/home/devuser/.local`; `npm-cache` → `/home/devuser/.npm` | `/home/devuser/.pi/agent/auth.json` |
 | OpenCode | `config` → `/home/devuser/.config/opencode`; `data` → `/home/devuser/.local/share/opencode` | `cache` → `/home/devuser/.cache/opencode` | `/home/devuser/.local/share/opencode/auth.json` |
 
+Parents of declared harness store/auth mounts are prepared in the filesystem that owns them: image-only ancestors as `devuser` during the runtime build, nested ancestors in their host backing source before create/start. Existing contents and ownership are not recursively changed. Unmounted paths, including OpenCode's `/home/devuser/.local/state`, remain container-local; writable parents do not imply persistence.
+
 Runtime documentation and inspected network facts live inside the container under `/devbox`, not in durable session records. A private `.runtime-*` staging directory beneath the selected home exists only during copying and is removed afterward.
 
 Reset clears selected environment-store contents only after complete stopped/idle preflight, preserving declared history unless `--include-history` is used. Bind-root directories and managed ownership manifests remain in place; the next normal open restores missing desired config. Auth and cache roots are separate and are not reset.
