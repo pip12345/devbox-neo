@@ -18,6 +18,8 @@ Executable: `devbox-neo`. `--home` selects an isolated home; the default is `~/.
 | `delete <target...>` | Delete containers only; retain session state and image tags |
 | `delete --all\|--stopped [--force] [--json]` | Bulk container deletion after complete lock-set preflight; force permits disrupting attached commands |
 
+Root open and recreate also accept `--harness`, `--harness-arg`, `--env`, `--volume`, `--port`, `--docker-arg`, `--network`, `--on-exit`, and `--read-only`. `--profile` retains `-p`; port publishing uses `--port` without that short flag. Config env is recoverable from verified source references; invocation-only env requires explicit recreation after container loss.
+
 Exact container names keep their recorded slots when defaults change. A folder name colliding with a command needs an explicit path such as `./status`. Existing-container start/shell/exec and logs do not load desired configuration.
 
 ## Networks
@@ -45,4 +47,4 @@ Network changes do not edit configuration or fingerprints. They survive stop/sta
 
 Reset never clears managed auth or shared caches. Store roots remain available for existing Docker bind mounts; the next normal open restores desired managed config. Session delete has no `--all` or age filters. Clone and relocate remain pending.
 
-For profile/project commands, see [configuration](configuration.md#configuration-owner-commands).
+For profile/project commands and scoped config `--show [--json]`, see [configuration](configuration.md#configuration-owner-commands). Interactive config dashboards remain pending.

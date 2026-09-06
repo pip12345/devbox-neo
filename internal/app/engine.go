@@ -36,6 +36,7 @@ type Request struct {
 	ReadOnly     bool
 	Continue     bool
 	Args         []string
+	Host         config.Host
 }
 type Diagnostic struct {
 	Code    string
@@ -48,7 +49,7 @@ type Result struct {
 }
 
 func (e *Engine) Resolve(q Request) (environment.Spec, error) {
-	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, ExpectedName: q.ExpectedName, Overrides: q.Overrides, ReadOnly: q.ReadOnly, UID: e.UID, GID: e.GID, Salt: e.Store.Installation})
+	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, ExpectedName: q.ExpectedName, Overrides: q.Overrides, ReadOnly: q.ReadOnly, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
 }
 func (e *Engine) owner(r store.Record) docker.Owner {
 	return docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot}
@@ -269,7 +270,7 @@ func (e *Engine) mountPlan(l *store.Locked, s environment.Spec) ([]docker.Mount,
 		}
 		mounts = append(mounts, docker.Mount{Source: source, Target: auth.Target})
 	}
-	return mounts, nil
+	return append(mounts, s.ExtraMounts...), nil
 }
 func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force bool) (image docker.Image, err error) {
 	dir, err := os.MkdirTemp(e.Store.Home, ".build-*")
@@ -432,7 +433,7 @@ func (e *Engine) create(ctx context.Context, l *store.Locked, s environment.Spec
 		}
 		removed = true
 	}
-	record = store.Record{Version: 1, ID: id, Identity: s.Identity, Created: created, Activity: time.Now().UTC(), Action: "create", Applied: s.FingerprintsFor(image.ID), ImageTag: docker.Namespace + "/session:" + id, ImageID: image.ID, Creation: docker.CreatePlan{Name: s.Identity.Name, Image: image.ID, Network: s.Settings.Network, Mounts: mounts, Env: s.Env()}, Definition: store.DefinitionInput{Name: s.Harness.Definition.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash}, Stores: s.Harness.Definition.Stores, Auth: s.Harness.Definition.Auth, Config: s.Harness.Definition.Config, Merge: s.Harness.Definition.Merge, Prepare: s.Harness.Definition.Prepare, Launch: store.Launch{Binary: s.Harness.Definition.Binary, Args: append(append([]string(nil), s.Harness.Definition.Launch.Args...), s.Settings.HarnessArgs...), Continue: s.Harness.Definition.Launch.Continue, Shell: s.Settings.Shell, OnExit: s.Settings.OnExit}, Setup: s.Setup, Ownership: 1, ManifestVersion: 1}
+	record = store.Record{Version: 1, ID: id, Identity: s.Identity, Created: created, Activity: time.Now().UTC(), Action: "create", Applied: s.FingerprintsFor(image.ID), ImageTag: docker.Namespace + "/session:" + id, ImageID: image.ID, Creation: docker.CreatePlan{Name: s.Identity.Name, Image: image.ID, Network: s.Settings.Network, Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports, RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata}, EnvSources: s.EnvSources, Definition: store.DefinitionInput{Name: s.Harness.Definition.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash}, Stores: s.Harness.Definition.Stores, Auth: s.Harness.Definition.Auth, Config: s.Harness.Definition.Config, Merge: s.Harness.Definition.Merge, Prepare: s.Harness.Definition.Prepare, Launch: store.Launch{Binary: s.Harness.Definition.Binary, Args: append(append([]string(nil), s.Harness.Definition.Launch.Args...), s.Settings.HarnessArgs...), Continue: s.Harness.Definition.Launch.Continue, Shell: s.Settings.Shell, OnExit: s.Settings.OnExit}, Setup: s.Setup, Ownership: 1, ManifestVersion: 1}
 	if previous != nil {
 		record.Activity = previous.Activity
 		record.Action = "recreate"
@@ -614,6 +615,12 @@ func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, 
 		return unavailable("recorded network is unavailable")
 	}
 	for _, m := range r.Creation.Mounts {
+		if m.Kind == "volume" {
+			if err = e.Docker.Volume(ctx, m.Source); err != nil {
+				return unavailable("recorded volume is unavailable")
+			}
+			continue
+		}
 		if _, err = fsutil.Path(filepath.Dir(m.Source), filepath.Base(m.Source)); err != nil {
 			return unavailable("recorded bind source is unsafe")
 		}
@@ -621,7 +628,7 @@ func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, 
 		if statErr != nil {
 			return unavailable("recorded bind source is missing")
 		}
-		file := false
+		file := m.File
 		for _, auth := range r.Auth {
 			if auth.Target == m.Target && auth.Kind == "file" {
 				file = true
@@ -630,6 +637,16 @@ func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, 
 		if (file && !info.Mode().IsRegular()) || (!file && !info.IsDir()) {
 			return unavailable("recorded bind source has the wrong kind")
 		}
+	}
+	protected := []string{"/devbox"}
+	for _, mount := range r.Creation.Mounts {
+		protected = append(protected, mount.Target)
+	}
+	if err = docker.ValidateRaw(r.Creation.RawArgs, protected, r.Identity.Workspace, ""); err != nil {
+		return unavailable("recorded raw Docker inputs are unavailable or invalid")
+	}
+	if err = e.Docker.CheckRawVolumes(ctx, r.Creation.RawArgs); err != nil {
+		return unavailable("recorded raw Docker volume is unavailable")
 	}
 	if r.Definition.Origin != "builtin" {
 		expected, err := fsutil.Path(e.Store.Home, filepath.Join("harnesses", r.Definition.Name, "harness.json"))
@@ -649,6 +666,25 @@ func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, 
 	r.Creation.Env = nil
 	for _, k := range keys {
 		r.Creation.Env = append(r.Creation.Env, k+"="+definition.Env[k])
+	}
+	var host config.Host
+	if desired != nil {
+		host = desired.Host
+	} else {
+		host = config.Snapshot()
+	}
+	sources := map[string][]byte{}
+	for _, source := range r.EnvSources {
+		if source.Kind == "file" {
+			if err := e.validateEnvSource(*r, source); err != nil {
+				return unavailable("recorded environment source path is unsafe")
+			}
+		}
+		value, err := source.Restore(e.Store.Installation, host, sources)
+		if err != nil {
+			return unavailable(err.Error())
+		}
+		r.Creation.Env = append(r.Creation.Env, value)
 	}
 	if r.Setup.Path != "" {
 		data, err := os.ReadFile(r.Setup.Path)

@@ -11,40 +11,47 @@ import (
 )
 
 type Global struct {
-	Version        int      `json:"version"`
-	DefaultProfile string   `json:"default_profile"`
-	DefaultHarness string   `json:"default_harness"`
-	GlobalEnv      []string `json:"global_env"`
-	IgnoreProject  bool     `json:"ignore_project_overrides"`
+	Raw            []byte              `json:"-"`
+	References     map[string][]string `json:"-"`
+	EnvInputs      []EnvInput          `json:"-"`
+	Version        int                 `json:"version"`
+	DefaultProfile string              `json:"default_profile"`
+	DefaultHarness string              `json:"default_harness"`
+	GlobalEnv      []string            `json:"global_env"`
+	IgnoreProject  bool                `json:"ignore_project_overrides"`
 }
 type VSCode struct {
 	Extensions []string `json:"extensions,omitempty"`
 }
 type Layer struct {
-	Version        int       `json:"version"`
-	OnExit         *string   `json:"on_exit,omitempty"`
-	Shell          *[]string `json:"default_shell,omitempty"`
-	Harness        *string   `json:"harness,omitempty"`
-	Network        *string   `json:"network,omitempty"`
-	HarnessArgs    []string  `json:"harness_args,omitempty"`
-	DockerArgs     []string  `json:"docker_args,omitempty"`
-	Mounts         []string  `json:"extra_mounts,omitempty"`
-	Env            []string  `json:"extra_env,omitempty"`
-	Ports          []string  `json:"extra_ports,omitempty"`
-	VSCode         VSCode    `json:"vscode,omitempty"`
-	InheritProfile *bool     `json:"inherit_profile,omitempty"`
+	Raw            []byte              `json:"-"`
+	References     map[string][]string `json:"-"`
+	EnvInputs      []EnvInput          `json:"-"`
+	Version        int                 `json:"version"`
+	OnExit         *string             `json:"on_exit,omitempty"`
+	Shell          *[]string           `json:"default_shell,omitempty"`
+	Harness        *string             `json:"harness,omitempty"`
+	Network        *string             `json:"network,omitempty"`
+	HarnessArgs    []string            `json:"harness_args,omitempty"`
+	DockerArgs     []string            `json:"docker_args,omitempty"`
+	Mounts         []string            `json:"extra_mounts,omitempty"`
+	Env            []string            `json:"extra_env,omitempty"`
+	Ports          []string            `json:"extra_ports,omitempty"`
+	VSCode         VSCode              `json:"vscode,omitempty"`
+	InheritProfile *bool               `json:"inherit_profile,omitempty"`
 }
 type Settings struct {
-	OnExit      string   `json:"on_exit"`
-	Shell       []string `json:"default_shell"`
-	Harness     string   `json:"harness"`
-	Network     string   `json:"network"`
-	HarnessArgs []string `json:"harness_args"`
-	DockerArgs  []string `json:"docker_args"`
-	Mounts      []string `json:"extra_mounts"`
-	Env         []string `json:"-"`
-	Ports       []string `json:"extra_ports"`
-	VSCode      VSCode   `json:"vscode"`
+	EnvInputs   []EnvInput `json:"-"`
+	OnExit      string     `json:"on_exit"`
+	Shell       []string   `json:"default_shell"`
+	Harness     string     `json:"harness"`
+	Network     string     `json:"network"`
+	HarnessArgs []string   `json:"harness_args"`
+	DockerArgs  []string   `json:"docker_args"`
+	Mounts      []string   `json:"extra_mounts"`
+	Env         []string   `json:"-"`
+	Ports       []string   `json:"extra_ports"`
+	VSCode      VSCode     `json:"vscode"`
 }
 
 func Defaults() Settings {
@@ -117,7 +124,7 @@ func value(d *json.Decoder) error {
 	_, err = d.Token()
 	return err
 }
-func ReadGlobal(path string) (Global, error) {
+func ReadGlobal(path string, host Host) (Global, error) {
 	g := Global{Version: 1}
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -126,38 +133,65 @@ func ReadGlobal(path string) (Global, error) {
 	if err != nil {
 		return g, err
 	}
-	if bytes.Contains(b, []byte("${env:")) {
-		return g, fmt.Errorf("%s: host substitution awaits phase 3; expressions are not used as literal values", path)
-	}
-	g, err = ParseGlobal(b)
+	raw, err := ParseGlobal(b)
 	if err != nil {
 		return g, fmt.Errorf("%s: invalid global config: %w", path, err)
+	}
+	expanded, refs, err := Expand(b, path, host)
+	if err != nil {
+		return g, err
+	}
+	g, err = ParseGlobal(expanded)
+	if err != nil {
+		return g, fmt.Errorf("%s: invalid expanded global config: %w", path, err)
+	}
+	g.Raw = b
+	g.References = refs
+	g.EnvInputs, err = envInputs(raw.GlobalEnv, g.GlobalEnv, path, "global_env", host, true)
+	if err != nil {
+		return g, err
+	}
+	g.GlobalEnv = nil
+	for _, input := range g.EnvInputs {
+		g.GlobalEnv = append(g.GlobalEnv, input.Value)
 	}
 	if g.DefaultProfile != "" && !Name.MatchString(g.DefaultProfile) {
 		return g, fmt.Errorf("%s: invalid default_profile", path)
 	}
 	return g, nil
 }
-func ReadLayer(path string, project bool) (Layer, error) {
+func ReadLayer(path string, project bool, host Host) (Layer, error) {
 	l := Layer{Version: 1}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return l, err
 	}
-	if bytes.Contains(b, []byte("${env:")) {
-		return l, fmt.Errorf("%s: host substitution awaits phase 3; expressions are not used as literal values", path)
-	}
-	l, err = ParseLayer(b, project)
+	return ResolveLayer(b, path, project, host)
+}
+func ResolveLayer(b []byte, path string, project bool, host Host) (Layer, error) {
+	l := Layer{Version: 1}
+	raw, err := ParseLayer(b, project)
 	if err != nil {
 		return l, fmt.Errorf("%s: invalid layer: %w", path, err)
 	}
-	return l, nil
+	expanded, refs, err := Expand(b, path, host)
+	if err != nil {
+		return l, err
+	}
+	l, err = ParseLayer(expanded, project)
+	if err != nil {
+		return l, fmt.Errorf("%s: invalid expanded layer: %w", path, err)
+	}
+	l.Raw = b
+	l.References = refs
+	l.EnvInputs, err = envInputs(raw.Env, l.Env, path, "extra_env", host, false)
+	return l, err
 }
 
 // Source operations validate shape without resolving values. Copying a profile
 // or editing one field must preserve expressions, not flatten host/global inputs.
 func ParseLayer(b []byte, project bool) (Layer, error) {
-	l := Layer{Version: 1}
+	l := Layer{Version: 1, Raw: b}
 	if err := Decode(b, &l); err != nil {
 		return l, err
 	}
@@ -170,7 +204,7 @@ func ParseLayer(b []byte, project bool) (Layer, error) {
 	return l, nil
 }
 func ParseGlobal(b []byte) (Global, error) {
-	g := Global{Version: 1}
+	g := Global{Version: 1, Raw: b}
 	if err := Decode(b, &g); err != nil {
 		return g, err
 	}
@@ -196,20 +230,27 @@ func (s *Settings) Apply(l Layer) {
 	s.DockerArgs = append(s.DockerArgs, l.DockerArgs...)
 	s.Mounts = append(s.Mounts, l.Mounts...)
 	s.Env = append(s.Env, l.Env...)
+	s.EnvInputs = append(s.EnvInputs, l.EnvInputs...)
 	s.Ports = append(s.Ports, l.Ports...)
 	s.VSCode.Extensions = append(s.VSCode.Extensions, l.VSCode.Extensions...)
 }
 func (s Settings) Validate() error {
+	if err := s.ValidateFields(); err != nil {
+		return err
+	}
+	if s.Harness == "" {
+		return fmt.Errorf("no harness selected; use devbox-neo profile init <name> --harness <name> or devbox-neo project init <folder> --harness <name>")
+	}
+	return nil
+}
+func (s Settings) ValidateFields() error {
 	if s.OnExit != "stop" && s.OnExit != "running" {
 		return fmt.Errorf("on_exit must be stop or running")
 	}
 	if len(s.Shell) == 0 || s.Shell[0] == "" {
 		return fmt.Errorf("default_shell must be non-empty argv")
 	}
-	if s.Harness == "" {
-		return fmt.Errorf("no harness selected; use devbox-neo profile init <name> --harness <name> or devbox-neo project init <folder> --harness <name>")
-	}
-	if !Name.MatchString(s.Harness) {
+	if s.Harness != "" && !Name.MatchString(s.Harness) {
 		return fmt.Errorf("invalid harness name")
 	}
 	if !NetworkName.MatchString(s.Network) {

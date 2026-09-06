@@ -21,6 +21,7 @@ type Daemon struct {
 	Calls      [][]string
 	Containers map[string]docker.Container
 	Images     map[string]docker.Image
+	Volumes    map[string]bool
 	Sequence   int
 	Fail       func([]string) error
 	Attached   func(context.Context, docker.Command) error
@@ -41,6 +42,7 @@ func (d *Daemon) Run(ctx context.Context, c docker.Command) error {
 	if d.Containers == nil {
 		d.Containers = map[string]docker.Container{}
 		d.Images = map[string]docker.Image{}
+		d.Volumes = map[string]bool{}
 	}
 	a := c.Args
 	if len(a) > 0 && a[0] == "exec" && d.Attached != nil {
@@ -168,7 +170,20 @@ func (d *Daemon) run(a []string) (string, error) {
 		d.Images[flag("--tag")] = image
 		d.Images[image.ID] = image
 		return "", nil
+	case "volume":
+		if len(a) == 3 && a[1] == "inspect" && d.Volumes[a[2]] {
+			return "[]", nil
+		}
+		return "", fmt.Errorf("volume missing")
 	case "create":
+		for i, arg := range a {
+			if arg == "--volume" {
+				source, _, _ := strings.Cut(a[i+1], ":")
+				if !strings.HasPrefix(source, "/") {
+					d.Volumes[source] = true
+				}
+			}
+		}
 		name := flag("--name")
 		if _, exists := d.Containers[name]; exists {
 			return "", fmt.Errorf("name collision")

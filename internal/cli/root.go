@@ -15,15 +15,14 @@ import (
 var Version = "dev"
 
 func New() *cobra.Command {
-	var home, profile, network, onExit string
-	var resume, readOnly bool
+	var home, profile string
+	var resume bool
+	var openFlags creationFlags
 	root := &cobra.Command{Use: "devbox-neo <target> [-- harness-args...]", Short: "Persistent development environments (scratch rewrite)", SilenceUsage: true, SilenceErrors: true, Args: cobra.MinimumNArgs(1)}
 	root.PersistentFlags().StringVar(&home, "home", "", "Devbox home (default ~/.devbox-neo; DEVBOX_HOME overrides)")
 	root.PersistentFlags().StringVarP(&profile, "profile", "p", "", "Select a profile slot")
-	root.Flags().StringVar(&network, "network", "", "Primary Docker network")
-	root.Flags().StringVar(&onExit, "on-exit", "", "After the last attached command: stop or running")
+	openFlags.Bind(root)
 	root.Flags().BoolVarP(&resume, "continue", "c", false, "Continue the recorded harness session")
-	root.Flags().BoolVar(&readOnly, "read-only", false, "Mount the workspace read-only at creation")
 	initialize := func(cmd *cobra.Command) (*store.Store, error) {
 		userHome, err := os.UserHomeDir()
 		if err != nil {
@@ -54,13 +53,9 @@ func New() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		q := app.Request{Workspace: args[0], Profile: profile, Continue: resume, ReadOnly: readOnly, Args: args[1:]}
-		if cmd.Flags().Changed("network") {
-			q.Overrides.Network = &network
-		}
-		if cmd.Flags().Changed("on-exit") {
-			q.Overrides.OnExit = &onExit
-		}
+		q := openFlags.Request(cmd, args[0], profile)
+		q.Continue = resume
+		q.Args = args[1:]
 		_, err = e.Open(cmd.Context(), q)
 		return err
 	}
@@ -101,6 +96,7 @@ func New() *cobra.Command {
 		return e.Exec(cmd.Context(), args[0], profile, args[1:], false)
 	}})
 	var image, recreateAll bool
+	var recreateFlags creationFlags
 	recreate := &cobra.Command{Use: "recreate [target]", Short: "Explicitly apply current creation settings, preserving session state", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
@@ -110,7 +106,7 @@ func New() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("--all does not accept an exact target")
 			}
-			_, err = e.RecreateAll(cmd.Context(), image, profile)
+			_, err = e.RecreateAll(cmd.Context(), image, recreateFlags.Request(cmd, "", profile))
 			return err
 		}
 		if len(args) != 1 {
@@ -120,9 +116,12 @@ func New() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		_, err = e.Recreate(cmd.Context(), app.Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, ExpectedName: r.Identity.Name}, image)
+		q := recreateFlags.Request(cmd, r.Identity.Workspace, r.Identity.Profile)
+		q.ExpectedName = r.Identity.Name
+		_, err = e.Recreate(cmd.Context(), q, image)
 		return err
 	}}
+	recreateFlags.Bind(recreate)
 	recreate.Flags().BoolVar(&image, "image", false, "Force a no-cache build (does not promise refreshed upstream bases)")
 	recreate.Flags().BoolVar(&recreateAll, "all", false, "Recreate all selected owned containers after complete preflight")
 	root.AddCommand(recreate)

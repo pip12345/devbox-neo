@@ -88,16 +88,22 @@ func (i Image) Verify(installation string) error {
 }
 
 type Mount struct {
-	Source   string `json:"source"`
-	Target   string `json:"target"`
-	ReadOnly bool   `json:"read_only"`
+	Kind     string   `json:"kind,omitempty"`
+	Options  []string `json:"options,omitempty"`
+	File     bool     `json:"file,omitempty"`
+	Source   string   `json:"source"`
+	Target   string   `json:"target"`
+	ReadOnly bool     `json:"read_only"`
 }
 type CreatePlan struct {
-	Name    string   `json:"name"`
-	Image   string   `json:"image"`
-	Network string   `json:"network"`
-	Mounts  []Mount  `json:"mounts"`
-	Env     []string `json:"-"`
+	Name     string   `json:"name"`
+	Image    string   `json:"image"`
+	Network  string   `json:"network"`
+	Mounts   []Mount  `json:"mounts"`
+	Env      []string `json:"-"`
+	Ports    []string `json:"ports,omitempty"`
+	RawArgs  []string `json:"docker_args,omitempty"`
+	Metadata string   `json:"devcontainer_metadata,omitempty"`
 }
 type BuildPlan struct {
 	Directory    string
@@ -216,6 +222,11 @@ func (r Runtime) Network(ctx context.Context, name string) error {
 	_, err := r.capture(ctx, "network", "inspect", name)
 	return err
 }
+func (r Runtime) Volume(ctx context.Context, name string) error {
+	_, err := r.capture(ctx, "volume", "inspect", name)
+	return err
+}
+
 func (r Runtime) Create(ctx context.Context, p CreatePlan, o Owner) (string, error) {
 	if err := ValidateEnv(p.Env); err != nil {
 		return "", err
@@ -232,6 +243,18 @@ func (r Runtime) Create(ctx context.Context, p CreatePlan, o Owner) (string, err
 		args = append(args, "--add-host", HostAlias+":host-gateway")
 	}
 	for _, m := range p.Mounts {
+		if m.Kind == "volume" || len(m.Options) > 0 {
+			value := m.Source + ":" + m.Target
+			options := append([]string(nil), m.Options...)
+			if m.ReadOnly && !strings.Contains(","+strings.Join(options, ",")+",", ",ro,") {
+				options = append(options, "ro")
+			}
+			if len(options) > 0 {
+				value += ":" + strings.Join(options, ",")
+			}
+			args = append(args, "--volume", value)
+			continue
+		}
 		if strings.ContainsRune(m.Source+m.Target, '\x00') {
 			return "", fmt.Errorf("mount path contains NUL")
 		}
@@ -268,6 +291,13 @@ func (r Runtime) Create(ctx context.Context, p CreatePlan, o Owner) (string, err
 		}
 		args = append(args, "--env-file", file.Name())
 	}
+	for _, port := range p.Ports {
+		args = append(args, "--publish", port)
+	}
+	if p.Metadata != "" {
+		args = append(args, "--label", "devcontainer.metadata="+p.Metadata)
+	}
+	args = append(args, p.RawArgs...)
 	args = append(args, "--entrypoint", "/bin/sleep", p.Image, "infinity")
 	b, err := r.capture(ctx, args...)
 	if err != nil {

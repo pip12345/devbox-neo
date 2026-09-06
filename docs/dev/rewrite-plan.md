@@ -321,7 +321,7 @@ It contains:
 - created time, last activity time, and last action;
 - image/container/runtime fingerprints for change detection, not as substitutes for recreation inputs;
 - session-owned final image tag, image ID, and image-input fingerprint;
-- concrete non-secret creation settings: workspace binding and read-only mode, other mounts, ports, primary network, safe literal env entries, safe raw Docker arguments, and container metadata;
+- concrete non-secret creation settings: workspace binding and read-only mode, other mounts, ports, primary network, public raw Docker arguments, and container metadata;
 - the recorded harness store/auth layout and non-secret runtime preparation contract, so recovery does not depend on a newer harness definition;
 - secret-source references and verification fingerprints, never secret values;
 - required hook/input paths and hashes for recorded preparation, plus setup completion tied to the container instance;
@@ -333,7 +333,7 @@ It contains:
 
 It does not retain permanent `cloned_from` or `relocated_from` history. Clone creates a new session ID; relocate preserves the session ID. Only an in-progress transfer journal is retained for recovery and removed after completion.
 
-Do not split durable recreation metadata into another host-side record. Do not persist live Docker runtime facts as session authority; inspect Docker for those facts. Do not persist secrets in the record. Treat all host-provided environment values and `${env:...}` substitutions as sensitive. Secrets are supported through environment/auth inputs, not launch argv, raw Docker arguments, or other ordinary settings; document that those fields must not contain secrets. Secret-bearing env values contribute through a salted/structured fingerprint and are redacted in config, status, and reconciliation output.
+Do not split durable recreation metadata into another host-side record. Do not persist live Docker runtime facts as session authority; inspect Docker for those facts. Do not persist secrets in the record. Classify sensitivity by destination field. Environment/auth values are sensitive regardless of whether they are literal or substituted. Names, paths, networks, launch argv, raw Docker arguments, and other ordinary settings are public configuration, including their substitutions; those fields must not contain secrets. Secret-bearing env values contribute through a salted/structured fingerprint and are redacted in config, status, and reconciliation output.
 
 ### Missing-container recovery
 
@@ -347,7 +347,7 @@ Recovery requires:
 - required recorded preparation inputs available with matching hashes;
 - every required secret-bearing value recoverable from a recorded source reference and matching its recorded verification fingerprint.
 
-For `${env:NAME}` inputs, retain the non-secret source expression and variable names and resolve them once from the invoking process environment. Managed auth references identify paths, not copies of credentials; normal credential rotation does not change the recorded mount contract. Literal secret-bearing inputs with no source reference are not persisted and make exact recovery unavailable. Do not invent a source, store a secret, or silently replace an old value with a changed one.
+For sensitive config environment inputs, retain a file/field/index reference with keyed fingerprints of the source expression and resolved assignment. Reread that exact expression and expand it once from the invoking process environment; do not copy literal credentials or expressions containing credentials into the record. Managed auth references identify paths, not copies of credentials; normal credential rotation does not change the recorded mount contract. Literal secret-bearing inputs with no source reference are not persisted and make exact recovery unavailable. Do not invent a source, store a secret, or silently replace an old value with a changed one.
 
 If these conditions hold, create from the recorded image and settings, preserve session identity/state, and rerun required per-container preparation. Do not rebuild a missing image or consult current config as an automatic recovery fallback. If an input is missing or changed, return an actionable recovery error before container mutation and point to `devbox recreate <target>` to explicitly use current configuration. An existing container does not need its old host env values merely to start or run commands.
 
@@ -487,7 +487,7 @@ The `env:` prefix explicitly selects a host environment variable, not a containe
 - An unset referenced variable is an error identifying the file, field, and variable name without disclosing its value. A variable set to an empty string is present; ordinary field validation still applies.
 - Expand once only. Do not interpret replacement text as another reference, run shell commands, support default-value expressions, or load `.env` files automatically.
 - Preserve expressions in source files and dashboard saves; never write expanded values back into configuration.
-- Track substituted values through merge provenance and redact them in human and JSON diagnostics, including validation errors. Do not persist the host-environment snapshot or dump expanded configuration into session records. Persist only the defined non-secret recorded settings and source references; secret-bearing values contribute only through secret-safe fingerprints.
+- Track substituted values through merge provenance. Redact environment/auth values in human and JSON diagnostics, including validation errors; ordinary configuration fields are public. Do not persist the host-environment snapshot or dump expanded configuration into session records. Persist only the defined non-secret recorded settings and source references; secret-bearing values contribute only through secret-safe fingerprints.
 - Apply this syntax only to Devbox global/profile/project configuration, not harness definitions, copied harness files, Dockerfiles, hooks, CLI arguments, or durable state. Harness-definition `${user}` remains a separate existing template contract.
 
 Excluded project configuration contributes no variable references and cannot fail explicit-profile resolution because a host variable is unset. Ordinary image/container/runtime change planning handles changes in expanded values; there is no separate environment-refresh lifecycle.
@@ -1545,7 +1545,7 @@ The rewrite is complete when:
 - Pi and OpenCode work through parsed built-in definitions;
 - a user can add or override a harness through `~/.devbox/harnesses/<name>/harness.json` without recompilation;
 - profile slots, default-profile/project layering, explicit-profile isolation, and standalone `inherit_profile: false` projects pass a complete resolution matrix;
-- `${env:NAME}` resolves from one host-environment snapshot in participating configuration without rewriting expressions, exposing substituted values in diagnostics, or persisting secret-bearing values in session records;
+- `${env:NAME}` resolves from one host-environment snapshot in participating configuration without rewriting expressions, exposing env/auth values in diagnostics, or persisting secret-bearing values in session records;
 - managed harness config synchronization preserves modified ordinary files, reports conflicts, applies schema-declared structured merges only while stopped, and defers changes without marking them applied while running;
 - Pi's declared `settings.json` keys update while all undeclared Pi-owned keys remain intact;
 - `on_exit` remains safe with concurrent attached commands;

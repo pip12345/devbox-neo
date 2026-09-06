@@ -120,7 +120,7 @@ func TestRecreateAllPreflightsAndPreservesRunningIntent(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := record(t, e, a.Name).SetupContainer
-	result, err := e.RecreateAll(ctx, true, "")
+	result, err := e.RecreateAll(ctx, true, Request{})
 	if err != nil || len(result) != 2 {
 		t.Fatal(result, err)
 	}

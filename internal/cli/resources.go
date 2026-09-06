@@ -84,12 +84,15 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 		init.Flags().StringVar(&selected, "harness", "", "Select a registry harness (projects also accept inherit)")
 		init.Flags().StringSliceVar(&artifacts, "artifact", nil, "Seed missing harness-config, setup.sh, entrypoint.sh, or Dockerfile (repeatable)")
 		init.Flags().BoolVar(&initJSON, "json", false, "Print the result and next steps as JSON; never prompt")
-		group.AddCommand(init)
+		group.AddCommand(init, configCommand(factory, kind))
 		if kind == "profile" {
 			group.AddCommand(profileList(factory), profileSet(factory), profileDelete(factory))
 		}
 		groups = append(groups, group)
 	}
+	global := &cobra.Command{Use: "global", Short: "Manage machine-local configuration"}
+	global.AddCommand(configCommand(factory, "global"))
+	groups = append(groups, global)
 	return groups
 }
 func interactive(cmd *cobra.Command) bool {

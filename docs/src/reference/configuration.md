@@ -18,6 +18,7 @@ Global `config.json`:
 | `default_profile` | empty |
 | `default_harness` | empty |
 | `ignore_project_overrides` | `false` |
+| `global_env` | empty array; `KEY=VALUE` or `KEY` host passthrough when present |
 
 Profile/project `config.json`:
 
@@ -29,6 +30,11 @@ Profile/project `config.json`:
 | `default_shell` | `["bash"]` | replace the whole argv |
 | `network` | `default` | replace; default, host, or an existing network |
 | `harness_args` | empty array | append |
+| `extra_env` | empty array | append `KEY=VALUE`; later assignments win |
+| `extra_mounts` | empty array | append `SOURCE:/absolute/target[:options]` |
+| `extra_ports` | empty array | append Docker numeric port declarations |
+| `docker_args` | empty array | append validated `--option=value` or supported boolean options |
+| `vscode.extensions` | empty array | append; emitted in container IDE metadata |
 | `inherit_profile` | `true` | project-only participation setting |
 
 Strict standard JSON: unknown fields, duplicate keys, comments, trailing commas, and unsupported versions fail. No old-format aliases are accepted.
@@ -51,9 +57,21 @@ Explicit `--profile` excludes every project artifact. Without it, the applicable
 
 Create/init support `--json` result and next-step output. Init without flags prompts in a terminal, keeps an already selected harness, and offers optional artifacts. Non-interactive init requires an existing selection or `--harness`; it never guesses. Explicit `--harness` does not prompt for artifacts. Source edits preserve unrelated fields and expressions without expanding them.
 
-## Pending options
+## Substitution, environment, and creation options
 
-Non-empty `global_env`, `extra_env`, `extra_mounts`, `extra_ports`, `docker_args`, and `vscode.extensions` are rejected by the current runtime. `${env:...}` substitution still requires further Phase 3 work. These are explicit implementation gates, not removed features or ignored values.
+`${env:NAME}` expands decoded string values from one host snapshot per operation. Property names are not expanded. Unset references fail; empty values count as present. Expansion is non-recursive and does not load `.env`, run shell commands, or interpret default-value syntax. Source copies and config edits retain expressions.
+
+Sensitivity is determined by field: env/auth values are sensitive; names, paths, networks, argv, Docker arguments, and other ordinary settings are public, including substitutions. Do not put credentials in public fields. Config output redacts env values and reports variable references separately.
+
+Environment precedence is harness defaults → global → profile → project → CLI. Within a layer, later assignments win. Explicit public raw `--env=KEY=VALUE` options take Docker CLI precedence. `DEVBOX_*` is reserved. Env values must be single-line with no NUL; values travel in a private env file, not process arguments.
+
+Root open and recreate accept `--harness`, `--harness-arg`, `--env`, `--volume`, `--port`, `--docker-arg`, `--network`, `--on-exit`, and `--read-only`. Bind sources must exist; relative extra binds resolve against the workspace, while bare source names designate user volumes. Extra/raw mounts cannot overlap workspace, runtime, store, or auth targets. Published ports are numeric, within 1–65535, with equal-size mapped ranges; host networking cannot publish ports.
+
+Raw Docker options cannot replace identity, ownership labels, user/workdir, entrypoint, primary network, managed mounts/env, IDE metadata, or the host gateway alias. Value-taking options must use one `--option=value` token; raw bind sources must be absolute.
+
+## Effective config display
+
+`global config --show`, `profile config <name> --show`, and `project config <folder> --show [--profile NAME]` display the normal resolver's effective values, layers, exclusions, contributors, artifact winners, and harness origin. Add `--json` for structured output. A sparse owner can be inspected before selecting a harness. Interactive dashboards remain pending.
 
 `setup.sh` runs once per successful container creation; changes require recreation. `entrypoint.sh` runs on each root open. Both run inside the container, never on the host.
 
@@ -71,4 +89,4 @@ Pi and OpenCode are embedded. A selected user definition at `harnesses/<name>/ha
 
 Desired harness files overlay defaults → participating profile → participating project. Only regular files/directories are accepted; symlinks are rejected. Ordinary managed files preserve executable intent using private `0600`/`0700` modes; later content or mode edits cause conflicts rather than overwrites. Structured JSON preserves live permissions and undeclared keys, while the definition's owned keys follow desired config.
 
-Secrets are supported only through auth/environment inputs. Do not put them in launch argv, Docker arguments, or ordinary settings. Definition-sourced runtime env is reconstructed from a verified source for recovery; values are not saved in session records. Values travel through a private temporary env file, not Docker process arguments; container env does not override the host client's environment. Multiline and NUL values are rejected before Docker work; broader host-env support remains pending.
+Secrets are supported only through auth/environment inputs. Do not put them in launch argv, Docker arguments, or ordinary settings. Definition env is reconstructed from its verified definition source. Config env uses recorded file/field/index references with keyed fingerprints of the original expression and resolved assignment. Changing either makes exact missing-container recovery unavailable; unrelated source edits do not. CLI-only env has no durable source and requires explicit recreation with its inputs after container loss. Existing-container access does not require those old values. No env values are saved in session records.

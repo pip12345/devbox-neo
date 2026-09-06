@@ -39,6 +39,14 @@ Bulk deletion, recreation, and reset acquire sorted complete operation-lock sets
 
 Secondary network commands inspect the actual attachment set under the operation lock. They never alter creation fingerprints, cannot detach the primary network, and are unavailable for host networking.
 
+## Host inputs and sensitivity
+
+Resolution captures one host environment snapshot, expands decoded configuration strings once, and tracks variable names by source field. Literal source bytes are retained for source edits/copies; expanded env values are never serialized into session state. Sensitivity follows the destination field: env/auth are sensitive, ordinary names/paths/settings are public.
+
+Sensitive config env uses file/field/index references. Each reference verifies the original expression and the resolved assignment with installation-keyed hashes. Recovery reads only those source entries; changing an unrelated config field does not replace the env contract. CLI-only values cannot be reconstructed and require explicit recreation after container loss. The existing-container access path never reads these sources.
+
+The Docker adapter validates mount/port/raw-argument boundaries and renders a private env file. Config display renders the same resolver trace, redacts env, and does not serialize the host snapshot or harness definition's env values.
+
 ## Desired versus recorded
 
 Resolution reads participating config/artifacts once, copies the desired file tree, and returns fingerprints. Execution does not reload desired configuration. The applied container fingerprint includes the actual image ID, not the current target of a mutable shared tag.

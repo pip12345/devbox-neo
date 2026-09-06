@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -78,6 +79,10 @@ type Spec struct {
 	Entrypoint   Hook
 	Fingerprints Fingerprints
 	ReadOnly     bool
+	EnvSources   []config.EnvSource
+	ExtraMounts  []docker.Mount
+	Metadata     string
+	Host         config.Host `json:"-"`
 }
 type Request struct {
 	Salt         string
@@ -89,6 +94,7 @@ type Request struct {
 	ReadOnly     bool
 	UID          int
 	GID          int
+	Host         config.Host `json:"-"`
 }
 
 func Resolve(q Request) (Spec, error) {
@@ -98,7 +104,12 @@ func Resolve(q Request) (Spec, error) {
 		return spec, err
 	}
 	q.Workspace = workspace.Workspace
-	r, err := artifact.Resolve(q.Home, q.Workspace, q.Profile, q.Overrides)
+	if q.Host == nil {
+		q.Host = config.Snapshot()
+	} else {
+		q.Host = maps.Clone(q.Host)
+	}
+	r, err := artifact.ResolveWithHost(q.Home, q.Workspace, q.Profile, q.Overrides, q.Host)
 	if err != nil {
 		return spec, err
 	}
@@ -114,6 +125,9 @@ func Resolve(q Request) (Spec, error) {
 		if identity.Name != q.ExpectedName {
 			return spec, fmt.Errorf("requested slot does not match its recorded identity")
 		}
+	}
+	if err = r.Settings.Validate(); err != nil {
+		return spec, err
 	}
 	h, err := harness.Load(q.Home, r.Settings.Harness)
 	if err != nil {
@@ -144,15 +158,69 @@ func Resolve(q Request) (Spec, error) {
 			}
 		}
 	}
-	// Refuse not-yet-delivered creation fields rather than creating an environment
-	// that silently ignores requested behavior. Remove each gate with its tests.
-	if len(r.Settings.Env)+len(r.Settings.DockerArgs)+len(r.Settings.Mounts)+len(r.Settings.Ports)+len(r.Settings.VSCode.Extensions) > 0 {
-		return spec, fmt.Errorf("env, raw Docker args, extra mounts/ports and IDE metadata await phase 3; no environment was changed")
-	}
 	if q.UID <= 0 || q.GID <= 0 {
 		return spec, fmt.Errorf("run the development CLI as a non-root user with a non-root primary group")
 	}
-	spec = Spec{Identity: identity, Settings: r.Settings, Harness: h, Trace: r.Trace, Files: files, ReadOnly: q.ReadOnly}
+	spec = Spec{Identity: identity, Settings: r.Settings, Harness: h, Trace: r.Trace, Files: files, ReadOnly: q.ReadOnly, Host: q.Host}
+	protected := []string{"/workspace", "/devbox"}
+	for _, store := range h.Definition.Stores {
+		protected = append(protected, store.Target)
+	}
+	for _, auth := range h.Definition.Auth {
+		protected = append(protected, auth.Target)
+	}
+	for _, value := range r.Settings.Mounts {
+		mount, err := docker.ParseMount(value, q.Workspace, q.Host["HOME"])
+		if err != nil {
+			return spec, fmt.Errorf("extra_mounts: %w", err)
+		}
+		spec.ExtraMounts = append(spec.ExtraMounts, mount)
+	}
+	if err = docker.ValidateExtraTargets(spec.ExtraMounts, protected); err != nil {
+		return spec, err
+	}
+	for _, mount := range spec.ExtraMounts {
+		protected = append(protected, mount.Target)
+	}
+	if err = docker.ValidateRaw(r.Settings.DockerArgs, protected, q.Workspace, q.Host["HOME"]); err != nil {
+		return spec, err
+	}
+	for _, port := range r.Settings.Ports {
+		if err = docker.ValidatePort(port); err != nil {
+			return spec, fmt.Errorf("extra_ports: %w", err)
+		}
+	}
+	if r.Settings.Network == "host" {
+		for _, arg := range r.Settings.DockerArgs {
+			if strings.HasPrefix(arg, "--publish=") || arg == "--publish-all" || arg == "--publish-all=true" {
+				return spec, fmt.Errorf("host networking cannot publish ports")
+			}
+		}
+	}
+	metadata, err := json.Marshal([]any{map[string]any{"remoteUser": "devuser", "containerUser": "devuser", "workspaceFolder": "/workspace", "customizations": map[string]any{"vscode": r.Settings.VSCode}}})
+	if err != nil {
+		return spec, err
+	}
+	spec.Metadata = string(metadata)
+	winning := map[string]config.EnvInput{}
+	for _, input := range r.Settings.EnvInputs {
+		name, _, _ := strings.Cut(input.Value, "=")
+		winning[name] = input
+	}
+	for _, arg := range r.Settings.DockerArgs {
+		if value, ok := strings.CutPrefix(arg, "--env="); ok {
+			key, _, _ := strings.Cut(value, "=")
+			delete(winning, key)
+		}
+	}
+	keys := make([]string, 0, len(winning))
+	for name := range winning {
+		keys = append(keys, name)
+	}
+	sort.Strings(keys)
+	for _, name := range keys {
+		spec.EnvSources = append(spec.EnvSources, winning[name].Seal(q.Salt))
+	}
 	if err = docker.ValidateEnv(spec.Env()); err != nil {
 		return Spec{}, err
 	}
@@ -175,15 +243,18 @@ func Resolve(q Request) (Spec, error) {
 	// Setup runs once per container. A changed setup input is pending creation
 	// work, not something a managed-config sync can mark as applied.
 	spec.Fingerprints.Container = Fingerprint(q.Salt, struct {
-		Identity Identity
-		Network  string
-		ReadOnly bool
-		Image    string
-		Stores   []harness.Store
-		Auth     []harness.Auth
-		Env      map[string]string
-		Setup    string
-	}{identity, r.Settings.Network, q.ReadOnly, spec.Fingerprints.Image, h.Definition.Stores, h.Definition.Auth, h.Definition.Env, spec.Setup.Hash})
+		Identity            Identity
+		Network             string
+		ReadOnly            bool
+		Image               string
+		Stores              []harness.Store
+		Auth                []harness.Auth
+		Env                 []string
+		Setup               string
+		ExtraMounts         []docker.Mount
+		Ports, RawArgs      []string
+		Metadata, HostAlias string
+	}{identity, r.Settings.Network, q.ReadOnly, spec.Fingerprints.Image, h.Definition.Stores, h.Definition.Auth, spec.Env(), spec.Setup.Hash, spec.ExtraMounts, r.Settings.Ports, r.Settings.DockerArgs, spec.Metadata, docker.HostAlias})
 	data := map[string]harness.File{}
 	for p, f := range files {
 		data[p] = harness.File{Data: f.Data, Mode: f.Mode & 0111}
@@ -266,14 +337,28 @@ func Compare(applied, desired Fingerprints) Change {
 	return NoChange
 }
 func (s Spec) Env() []string {
-	keys := make([]string, 0, len(s.Harness.Definition.Env))
-	for k := range s.Harness.Definition.Env {
-		keys = append(keys, k)
+	values := map[string]string{}
+	for key, value := range s.Harness.Definition.Env {
+		values[key] = value
+	}
+	for _, input := range s.Settings.EnvInputs {
+		key, value, _ := strings.Cut(input.Value, "=")
+		values[key] = value
+	}
+	for _, arg := range s.Settings.DockerArgs {
+		if value, ok := strings.CutPrefix(arg, "--env="); ok {
+			key, _, _ := strings.Cut(value, "=")
+			delete(values, key)
+		}
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	out := make([]string, 0, len(keys))
-	for _, k := range keys {
-		out = append(out, k+"="+s.Harness.Definition.Env[k])
+	for _, key := range keys {
+		out = append(out, key+"="+values[key])
 	}
 	return out
 }

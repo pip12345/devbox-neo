@@ -3,6 +3,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,6 +45,7 @@ type Record struct {
 	ImageTag        string                   `json:"image_tag"`
 	ImageID         string                   `json:"image_id"`
 	Creation        docker.CreatePlan        `json:"creation"`
+	EnvSources      []config.EnvSource       `json:"env_sources,omitempty"`
 	Definition      DefinitionInput          `json:"definition_input"`
 	Stores          []harness.Store          `json:"stores"`
 	Auth            []harness.Auth           `json:"auth"`
@@ -91,6 +93,23 @@ func (r Record) Validate(name string) error {
 	if (r.Setup.Path != "" && (!filepath.IsAbs(r.Setup.Path) || !hashPattern.MatchString(r.Setup.Hash))) || (r.Setup.Path == "" && r.Setup.Hash != "") {
 		return fmt.Errorf("invalid recorded setup input")
 	}
+	for _, source := range r.EnvSources {
+		if !hashPattern.MatchString(source.RawHash) || !hashPattern.MatchString(source.ValueHash) {
+			return fmt.Errorf("invalid recorded environment fingerprint")
+		}
+		switch source.Kind {
+		case "file":
+			if !filepath.IsAbs(source.Path) || source.Index < 0 || (source.Field != "global_env" && source.Field != "extra_env") {
+				return fmt.Errorf("invalid recorded environment source")
+			}
+		case "invocation":
+			if source.Path != "" || source.Field != "" {
+				return fmt.Errorf("invalid invocation environment source")
+			}
+		default:
+			return fmt.Errorf("unknown recorded environment source kind")
+		}
+	}
 	d := harness.Definition{Version: 1, Name: r.Definition.Name, Binary: r.Launch.Binary, Stores: r.Stores, Config: r.Config, Merge: r.Merge, Auth: r.Auth, Prepare: r.Prepare}
 	if err := d.Validate(); err != nil {
 		return fmt.Errorf("invalid recorded harness contract: %w", err)
@@ -102,15 +121,43 @@ func (r Record) Validate(name string) error {
 	for _, a := range r.Auth {
 		targets[a.Target] = false
 	}
-	if len(r.Creation.Mounts) != len(targets) {
-		return fmt.Errorf("incomplete recorded mounts")
+	protected := []string{"/devbox"}
+	for target := range targets {
+		protected = append(protected, target)
 	}
+	extra := []docker.Mount{}
 	for _, m := range r.Creation.Mounts {
+		if err := docker.ValidateStoredMount(m); err != nil {
+			return err
+		}
 		seen, known := targets[m.Target]
-		if !known || seen || !filepath.IsAbs(m.Source) || (m.Target == "/workspace" && m.Source != r.Identity.Workspace) {
-			return fmt.Errorf("invalid recorded mount")
+		if !known {
+			extra = append(extra, m)
+			continue
+		}
+		if seen || m.Kind == "volume" || (m.Target == "/workspace" && m.Source != r.Identity.Workspace) {
+			return fmt.Errorf("invalid recorded managed mount")
 		}
 		targets[m.Target] = true
+	}
+	for _, seen := range targets {
+		if !seen {
+			return fmt.Errorf("incomplete recorded mounts")
+		}
+	}
+	if err := docker.ValidateExtraTargets(extra, protected); err != nil {
+		return err
+	}
+	for _, port := range r.Creation.Ports {
+		if err := docker.ValidatePort(port); err != nil {
+			return err
+		}
+	}
+	if r.Creation.Network == "host" && len(r.Creation.Ports) > 0 {
+		return fmt.Errorf("host networking cannot publish ports")
+	}
+	if r.Creation.Metadata != "" && !json.Valid([]byte(r.Creation.Metadata)) {
+		return fmt.Errorf("invalid IDE metadata")
 	}
 	if err := (config.Settings{OnExit: r.Launch.OnExit, Shell: r.Launch.Shell, Harness: r.Definition.Name, Network: r.Creation.Network}).Validate(); err != nil {
 		return fmt.Errorf("invalid recorded settings: %w", err)

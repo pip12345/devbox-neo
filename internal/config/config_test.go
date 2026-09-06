@@ -13,7 +13,7 @@ func TestStrictJSON(t *testing.T) {
 		if err := os.WriteFile(path, []byte(input), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := ReadGlobal(path); err == nil {
+		if _, err := ReadGlobal(path, Host{}); err == nil {
 			t.Errorf("accepted %s", input)
 		}
 	}
@@ -36,10 +36,10 @@ func TestSparseMerge(t *testing.T) {
 func TestInheritanceFieldScope(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	os.WriteFile(path, []byte(`{"version":1,"inherit_profile":false}`), 0600)
-	if _, err := ReadLayer(path, false); err == nil {
+	if _, err := ReadLayer(path, false, Host{}); err == nil {
 		t.Fatal("profile accepted inheritance flag")
 	}
-	if _, err := ReadLayer(path, true); err != nil {
+	if _, err := ReadLayer(path, true, Host{}); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -271,8 +271,11 @@ func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 	return owner, c.Verify(owner)
 }
 
-func (e *Engine) RecreateAll(ctx context.Context, force bool, profile string) ([]string, error) {
-	names, err := e.selectContainers(ctx, Selection{All: true, Profile: profile})
+func (e *Engine) RecreateAll(ctx context.Context, force bool, options Request) ([]string, error) {
+	if options.Host == nil {
+		options.Host = config.Snapshot()
+	}
+	names, err := e.selectContainers(ctx, Selection{All: true, Profile: options.Profile})
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +306,11 @@ func (e *Engine) RecreateAll(ctx context.Context, force bool, profile string) ([
 		if !exists {
 			return nil, os.ErrNotExist
 		}
-		spec, err := e.Resolve(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, ExpectedName: r.Identity.Name})
+		request := options
+		request.Workspace = r.Identity.Workspace
+		request.Profile = r.Identity.Profile
+		request.ExpectedName = r.Identity.Name
+		spec, err := e.Resolve(request)
 		if err != nil {
 			return nil, err
 		}

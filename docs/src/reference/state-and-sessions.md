@@ -22,7 +22,7 @@ The default development home is `~/.devbox-neo`. Its important paths are:
 
 Profile/project creation stages a private `.devbox-create-*` directory beside its destination, then publishes it with a Linux no-replace rename. An interrupted staging directory is not a configured owner and is never adopted. Configuration locks remain outside the edited directories.
 
-Docker creation uses a private `0600` env file in the OS temporary directory, removed when the create command returns. Its contents and path are not persisted in session records.
+Docker creation uses a private `0600` env file in the OS temporary directory, removed when the create command returns. Its contents and temporary path are not persisted in session records. `env_sources` in the record holds only file/field/index references and keyed expression/value fingerprints. Invocation-only env is recorded as unrecoverable input, never copied into the record. Named external volumes must still exist for recovery.
 
 Locks remain outside removable session directories. Records are atomically replaced with restrictive permissions; corrupt state is not treated as absence.
 

@@ -35,9 +35,15 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 	if err != nil {
 		return result, err
 	}
+	host := config.Snapshot()
 	selected := options.Harness
+	keepSelection := false
 	if selected == "" && layer.Harness != nil {
-		selected = *layer.Harness
+		selected, _, err = config.ExpandString(*layer.Harness, host)
+		if err != nil {
+			return result, err
+		}
+		keepSelection = selected != ""
 	}
 	if selected == "" {
 		registry, err := harness.Enumerate(s.Home)
@@ -76,15 +82,18 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 		if err != nil {
 			return result, err
 		}
-		resolved, err := artifact.PreviewProject(s.Home, o.Workspace, proposed)
+		resolved, err := artifact.PreviewProject(s.Home, o.Workspace, proposed, host)
 		if err != nil {
 			return result, fmt.Errorf("harness inheritance is unavailable; initialize a lower layer or use --harness NAME: %w", err)
 		}
 		selected = resolved.Settings.Harness
+		if selected == "" {
+			return result, fmt.Errorf("harness inheritance is unavailable; initialize a lower layer or select --harness NAME")
+		}
 		if layer.Harness == nil {
 			desired = original
 		}
-	} else if layer.Harness == nil || *layer.Harness != selected {
+	} else if !keepSelection && (layer.Harness == nil || *layer.Harness != selected) {
 		desired, err = patch(original, "harness", selected, false)
 		if err != nil {
 			return result, err

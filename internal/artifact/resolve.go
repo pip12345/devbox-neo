@@ -23,6 +23,7 @@ type Trace struct {
 	Sources  map[string][]string `json:"sources"`
 }
 type Resolved struct {
+	Global   config.Global
 	Settings config.Settings
 	Layers   []Layer
 	Trace    Trace
@@ -31,22 +32,35 @@ type Resolved struct {
 }
 
 func Resolve(home, workspace, explicit string, override config.Layer) (Resolved, error) {
-	return resolve(home, workspace, explicit, override, nil)
+	return ResolveWithHost(home, workspace, explicit, override, config.Snapshot())
+}
+
+func ResolveWithHost(home, workspace, explicit string, override config.Layer, host config.Host) (Resolved, error) {
+	return resolve(home, workspace, explicit, override, nil, host)
 }
 
 // PreviewProject uses the normal participation rules for a proposed project
 // edit, before writing it. Initialization must not implement its own inheritance.
-func PreviewProject(home, workspace string, project config.Layer) (Resolved, error) {
-	return resolve(home, workspace, "", config.Layer{}, &project)
+func PreviewProject(home, workspace string, project config.Layer, host config.Host) (Resolved, error) {
+	if project.Raw != nil {
+		expanded, err := config.ResolveLayer(project.Raw, filepath.Join(workspace, ".devbox/config.json"), true, host)
+		if err != nil {
+			return Resolved{}, err
+		}
+		project = expanded
+	}
+	return resolve(home, workspace, "", config.Layer{}, &project, host)
 }
 
-func resolve(home, workspace, explicit string, override config.Layer, proposed *config.Layer) (Resolved, error) {
+func resolve(home, workspace, explicit string, override config.Layer, proposed *config.Layer, host config.Host) (Resolved, error) {
 	r := Resolved{Settings: config.Defaults(), Trace: Trace{Winners: map[string]string{}, Sources: map[string][]string{}}}
-	g, err := config.ReadGlobal(filepath.Join(home, "config.json"))
+	g, err := config.ReadGlobal(filepath.Join(home, "config.json"), host)
 	if err != nil {
 		return r, err
 	}
+	r.Global = g
 	r.Settings.Env = append(r.Settings.Env, g.GlobalEnv...)
+	r.Settings.EnvInputs = append(r.Settings.EnvInputs, g.EnvInputs...)
 	profile := explicit
 	if profile == "" {
 		profile = g.DefaultProfile
@@ -61,7 +75,7 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 		if proposed != nil {
 			l = *proposed
 		} else {
-			l, err = config.ReadLayer(projectPath, true)
+			l, err = config.ReadLayer(projectPath, true, host)
 		}
 		if os.IsNotExist(err) {
 			present, probeErr := hasProjectArtifacts(filepath.Dir(projectPath))
@@ -93,7 +107,7 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 		if err != nil {
 			return r, err
 		}
-		l, err := config.ReadLayer(filepath.Join(root, "config.json"), false)
+		l, err := config.ReadLayer(filepath.Join(root, "config.json"), false, host)
 		if os.IsNotExist(err) {
 			return r, fmt.Errorf("profile %q does not exist; use devbox-neo profile create %s, then devbox-neo profile init %s --harness <name>", profile, profile, profile)
 		}
@@ -132,13 +146,19 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 			r.Trace.Winners[name] = p
 		}
 	}
+	for _, value := range override.Env {
+		if err := config.ValidateEnvAssignment(value); err != nil {
+			return r, err
+		}
+		override.EnvInputs = append(override.EnvInputs, config.EnvInput{Value: value, Source: config.EnvSource{Kind: "invocation"}})
+	}
 	r.Settings.Apply(override)
 	contributions(r.Trace.Sources, "CLI", override)
 	if r.Settings.Harness == "" {
 		r.Settings.Harness = g.DefaultHarness
 		r.Trace.Sources["harness"] = []string{"global"}
 	}
-	if err = r.Settings.Validate(); err != nil {
+	if err = r.Settings.ValidateFields(); err != nil {
 		return r, err
 	}
 	return r, nil

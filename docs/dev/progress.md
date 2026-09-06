@@ -57,6 +57,14 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - Session deletion requires container absence, verifies image-tag association, and keeps external locks stable. Prune requires filters plus confirmation and rechecks age under lock.
 - These additions pass unit/fake-backed checks; real-Docker acceptance for the new image/network/session cases remains outstanding.
 
+## Configuration and environment — implemented
+
+- User-approved sensitivity rule: env/auth values are sensitive; ordinary configuration names, paths, networks, argv, and Docker arguments are public fields, including their substitutions.
+- `${env:NAME}` expands decoded strings from a captured host snapshot, not keys/raw JSON. Unset references fail; empty values are present; replacement text is not expanded recursively.
+- Global passthrough and layer/CLI env are supported. Config env recovery uses verified source entries; CLI-only values remain unavailable for exact missing-container recovery. Session records never contain env values.
+- Extra bind/volume mounts, published ports, protected raw Docker options, IDE metadata, and root/recreate creation flags are implemented. Host networking rejects published ports and managed targets/labels/env remain protected.
+- Scoped global/profile/project config `--show` and JSON output use the shared resolver, expose origins/exclusions/references, and redact env. Interactive config dashboards remain pending.
+
 ## Validation
 
 - `make check`: unit tests, race tests, and build pass.
@@ -81,13 +89,13 @@ It uses temporary homes and rewrite-only ownership labels, not the existing inst
 Continue the runtime/configuration work; do not claim interactive harness acceptance or schema freeze from fake-backed tests.
 
 - Phase 2: expanded real-Docker built-in/custom mapping and auth acceptance, provider login/continuation checks, and schema freeze.
-- Phase 3: host env substitution/reference recovery, full env/mount/port/raw-arg/IDE settings, runtime docs/assets, complete provenance, and config `--show`.
+- Phase 3: runtime docs/assets, remaining source-snapshot/provenance hardening, and real-Docker acceptance for expanded creation inputs.
 - Phase 4: generated in-container network facts/assets, remaining target/creation-option integration, and expanded real-Docker lifecycle/crash testing.
 - Phase 5: clone/relocate, transfer interruption recovery, and additional acceptance coverage for reset/prune/delete.
 - Phase 6: scoped config commands, dashboards, complete structured guidance, doctor, and complete documentation.
 - Phase 7: release hardening, performance/secret audits, and remaining acceptance tests.
 - Separate migration utility: not implemented.
 
-Definition env uses a private temporary env file, keeping values out of process arguments and avoiding container-env overrides of the host Docker client's environment. Multiline values are explicitly rejected before Docker work; the wider env feature remains pending.
+Container env uses a private temporary env file, keeping sensitive values out of process arguments and avoiding container-env overrides of the host Docker client's environment. Multiline/NUL env values are rejected before Docker work.
 
-Pending creation options are explicitly rejected instead of being silently ignored. Initial-creation failures can leave uncommitted host state when it cannot be safely classified; retries refuse to adopt it. This is not a production-ready cutover build.
+Unsupported inputs are rejected instead of being silently ignored. Initial-creation failures can leave uncommitted host state when it cannot be safely classified; retries refuse to adopt it. This is not a production-ready cutover build.

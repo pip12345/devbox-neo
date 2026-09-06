@@ -95,4 +95,27 @@ bin/devbox-neo stop /path/to/workspace --profile basic
 
 For existing containers these commands use the recorded contract, not current profile/project config. `shell` and `exec` require an existing container. A missing container can be recovered by `start` only if its recorded inputs remain available and unchanged; otherwise use explicit `recreate`.
 
-Secrets belong in auth or supported environment inputs, not launch arguments, raw Docker arguments, or ordinary settings. Host environment configuration/substitution is not implemented in this checkpoint and is rejected rather than used literally. Managed Pi and OpenCode auth persist at `~/.devbox-neo/auth/<harness>/auth.json`.
+## Environment and other creation settings
+
+Profile/project config can reference the host environment:
+
+```json
+{
+  "version": 1,
+  "harness": "pi",
+  "extra_env": ["WORK_TOKEN=${env:WORK_TOKEN}"],
+  "extra_mounts": ["${env:HOME}/data:/data:ro"],
+  "extra_ports": ["127.0.0.1:8080:8080"]
+}
+```
+
+References expand once per operation; unset references are errors. Env values are sensitive. Paths, names, argv, and other ordinary settings are public, so do not put credentials there. Env values must be single-line. Managed Pi/OpenCode auth persists at `~/.devbox-neo/auth/<harness>/auth.json`.
+
+Inspect effective values and provenance without starting Docker:
+
+```sh
+bin/devbox-neo profile config basic --show
+bin/devbox-neo project config /path/to/workspace --show --json
+```
+
+Env values are redacted. Global/profile/project env can be recovered from verified source entries after container loss. One-off `--env KEY=VALUE` has no durable source: use explicit `recreate --env KEY=VALUE` after container loss. Existing-container start/shell/exec do not need the old env inputs.
