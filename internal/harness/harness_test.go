@@ -14,7 +14,7 @@ func TestBuiltinAndUserOverrideUseSameSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if builtin.Origin != "builtin" || len(builtin.Definition.Merge) != 1 || builtin.Definition.Merge[0].Strategy != "json-keys" {
+	if builtin.Origin != "builtin" || len(builtin.Definition.Merge) != 2 || builtin.Definition.Merge[0].Strategy != "json-keys" {
 		t.Fatal("Pi did not use parsed declarations")
 	}
 	custom := builtin.Definition

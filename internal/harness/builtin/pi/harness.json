@@ -18,7 +18,8 @@
   ],
   "config": {"store": "home", "path": "."},
   "config_merge": [
-    {"path": "settings.json", "strategy": "json-keys", "owned_keys": ["packages", "extensions", "skills", "prompts", "themes", "npmCommand"]}
+    {"path": "settings.json", "strategy": "json-keys", "owned_keys": ["packages", "extensions", "skills", "prompts", "themes", "npmCommand"]},
+    {"path": "models.json", "strategy": "json-keys", "owned_keys": ["providers"]}
   ],
   "auth": [{"source": "auth.json", "target": "/home/devuser/.pi/agent/auth.json", "kind": "file", "create": true}],
   "session": {"reset_preserve": ["sessions"], "relocate": true, "clone": true},

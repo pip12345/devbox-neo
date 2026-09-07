@@ -755,6 +755,11 @@ A malformed user definition is a hard error when that harness is selected. `doct
         "themes",
         "npmCommand"
       ]
+    },
+    {
+      "path": "models.json",
+      "strategy": "json-keys",
+      "owned_keys": ["providers"]
     }
   ],
   "auth": [
@@ -817,6 +822,8 @@ prompts
 themes
 npmCommand
 ```
+
+Pi also declares `models.json` with `strategy: "json-keys"` and `owned_keys: ["providers"]`. The whole `providers` object follows the selected desired file rather than deep-merging provider entries; other live top-level keys remain untouched.
 
 This is required behavior, not an optional optimization. The merge engine is generic and available to built-in and user-defined harnesses; lifecycle code must not branch on the name `pi`.
 

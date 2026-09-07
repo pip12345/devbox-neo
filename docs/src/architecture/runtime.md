@@ -100,7 +100,7 @@ Linux process start ticks plus boot identity defend against PID reuse. Corrupt o
 
 The synchronizer never decides whether a running container is safe to modify; the application proves stopped/absent state under the operation lock. Running opens defer pending managed-file writes without advancing their manifest or claiming they were applied. Runtime-only hook/launch changes can advance the runtime fingerprint when the applied file manifest already matches desired inputs.
 
-Ordinary files require last-applied content/mode proof before update or deletion. Structured JSON owns only declared keys, preserves all other live keys and existing permissions, and reports invalid live objects as conflicts. Writes use same-directory temporary files; the new manifest commits only after non-conflicting writes succeed.
+Ordinary files require last-applied content/mode proof before update or deletion. Structured JSON owns only declared keys, preserves all other live keys and existing permissions, and reports invalid live objects as conflicts. Pi's definition applies this to selected `settings.json` keys and the whole `providers` key in `models.json`; both use the same generic synchronizer. Writes use same-directory temporary files; the new manifest commits only after non-conflicting writes succeed.
 
 ## Validation boundary
 

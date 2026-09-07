@@ -31,6 +31,8 @@ bin/devbox-neo profile list
 
 Re-running init keeps existing files. Optional artifacts are harness config, `setup.sh`, `entrypoint.sh`, and `Dockerfile`. Dashboards remain pending.
 
+For custom Pi providers, add `pi/models.json` to your profile or project `.devbox/` directory. Devbox synchronizes its `providers` object before starting a stopped container, preserving other live top-level keys.
+
 Open a workspace:
 
 ```sh
