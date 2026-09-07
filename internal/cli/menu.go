@@ -36,7 +36,7 @@ func (m menu) line(prompt string) (string, error) {
 func (m menu) choose(title string, choices []string, back string) (int, error) {
 	fmt.Fprintln(m.out, "\n"+title)
 	for i, choice := range choices {
-		prefix := fmt.Sprintf("  [%d] ", i+1)
+		prefix := menuPrefix(i + 1)
 		if err := writeConfigLine(m.out, prefix, choice, strings.Repeat(" ", len(prefix)), configDisplayWidth(m.out)); err != nil {
 			return -1, err
 		}
@@ -44,10 +44,14 @@ func (m menu) choose(title string, choices []string, back string) (int, error) {
 	return m.readChoice(len(choices), back)
 }
 
+func menuPrefix(number int) string {
+	return fmt.Sprintf("   %-4s ", fmt.Sprintf("[%d]", number))
+}
+
 func (m menu) readChoice(count int, back string) (int, error) {
-	fmt.Fprintf(m.out, "\n  [0] %s\n", back)
+	fmt.Fprintf(m.out, "\n%s%s\n", menuPrefix(0), back)
 	for {
-		line, err := m.line("\n> ")
+		line, err := m.line("\n   Choose a number > ")
 		if err != nil {
 			return -1, err
 		}

@@ -76,7 +76,7 @@ func TestConfigMenusEditAndResetEachScope(t *testing.T) {
 			}
 			n := fieldNumber(t, scope, key)
 			out, err := runMenu(t, s, owner, n+"\n1\n"+selection+"\n0\n")
-			if err != nil || !strings.Contains(out, "Saved ") || !strings.Contains(out, "(set here)") {
+			if err != nil || !strings.Contains(out, "Saved "+configLabel(key)+".") {
 				t.Fatal(out, err)
 			}
 			source, _ := s.ConfigSource(owner)

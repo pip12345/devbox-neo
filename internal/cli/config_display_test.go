@@ -17,23 +17,24 @@ import (
 
 func TestConfigRowsKeepListItemsBelowAlignedOrigins(t *testing.T) {
 	rows := []configDisplayRow{
-		{label: "Harness", value: "pi", origin: "(set here)"},
-		{label: "Extra mounts", value: []string{"/data:/data:ro", "/cache:/cache"}, origin: "(inherited)"},
-		{label: "Environment variables", value: []any{}, origin: "(inherited)"},
+		{label: "Harness", value: "pi", origin: "profile"},
+		{label: "Extra mounts", value: []string{"/data:/data:ro", "/cache:/cache"}, origin: "default", entryOrigins: []string{"default", "default"}},
+		{label: "Environment variables", value: []any{}, origin: "default"},
 	}
 	var out bytes.Buffer
 	if err := printConfigRows(&out, rows, "  ", 80); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "\n  - /data:/data:ro\n  - /cache:/cache\n") {
+	if !strings.Contains(strings.Join(strings.Fields(out.String()), " "), "- /data:/data:ro default - /cache:/cache default") {
 		t.Fatal("list entries are not separate indented items", out.String())
 	}
 	column := -1
 	for _, line := range strings.Split(out.String(), "\n") {
-		if !strings.Contains(line, "(set here)") && !strings.Contains(line, "(inherited)") {
+		if !strings.HasSuffix(line, "profile") && !strings.HasSuffix(line, "default") {
 			continue
 		}
-		if got := strings.Index(line, "("); column >= 0 && got != column {
+		parts := strings.Fields(line)
+		if got := strings.LastIndex(line, parts[len(parts)-1]); column >= 0 && got != column {
 			t.Fatal("origins shifted with list contents", out.String())
 		} else {
 			column = got
@@ -98,13 +99,13 @@ func TestConfigMenuDisplaysEveryListItemWithoutStretching(t *testing.T) {
 	if err != nil {
 		t.Fatal(out, err)
 	}
-	start := strings.Index(out, "Select a setting")
+	start := strings.Index(out, "Setting")
 	if start < 0 {
 		t.Fatal("no settings menu")
 	}
 	menu := out[start:]
 	for _, arg := range args[:12] {
-		if !strings.Contains(menu, "       - "+arg+"\n") {
+		if !strings.Contains(strings.Join(strings.Fields(menu), " "), "• "+arg+" profile") {
 			t.Fatal("list item missing from menu", arg, menu)
 		}
 	}
@@ -136,8 +137,8 @@ func TestConfigShowUsesMultilineValuesAndLeavesJSONUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatal(out, err)
 	}
-	for _, text := range []string{"\n  - --first\n  - --second\n", "\n  - TOKEN=<redacted>\n", "vscode.extensions:", "\n  - example.one\n  - example.two\n"} {
-		if !strings.Contains(out, text) {
+	for _, text := range []string{"- --first profile", "- --second profile", "- TOKEN=<redacted> profile", "vscode.extensions:", "- example.one profile", "- example.two profile"} {
+		if !strings.Contains(strings.Join(strings.Fields(out), " "), text) {
 			t.Fatal("missing multiline config detail", text, out)
 		}
 	}
@@ -145,8 +146,8 @@ func TestConfigShowUsesMultilineValuesAndLeavesJSONUnchanged(t *testing.T) {
 		if utf8.RuneCountInString(line) > 80 {
 			t.Fatal("--show exceeded the readable width", line)
 		}
-		if strings.HasPrefix(line, "vscode.extensions:") && !strings.Contains(line, "[profile]") {
-			t.Fatal("nested list lost its source annotation", line)
+		if strings.HasPrefix(line, "vscode.extensions:") && strings.TrimSpace(line) != "vscode.extensions:" {
+			t.Fatal("list heading repeated per-entry source annotations", line)
 		}
 	}
 	if strings.Contains(out, "do-not-print") || strings.Contains(out, "...") || strings.Count(out, "x") < 250 {
@@ -164,6 +165,9 @@ func TestConfigShowUsesMultilineValuesAndLeavesJSONUnchanged(t *testing.T) {
 	want, _ := json.Marshal(contents["harness_args"])
 	if !bytes.Equal(got, want) || strings.Contains(out, "do-not-print") {
 		t.Fatal("JSON values were reformatted or env was exposed", out)
+	}
+	if got := strings.Join(view.Trace.EntrySources["harness_args"], ","); got != "profile,profile,profile" {
+		t.Fatal("JSON did not retain per-entry provenance", got)
 	}
 	if _, ok := view.Values["vscode"].(map[string]any); !ok {
 		t.Fatal("JSON object was flattened by human display changes")

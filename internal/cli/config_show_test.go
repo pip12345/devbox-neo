@@ -25,12 +25,12 @@ func TestConfigShowUsesRuntimeLayersAndRedactsEnvironment(t *testing.T) {
 		t.Fatal("incorrect/redaction-unsafe resolved display", out)
 	}
 	out, err = resourceCLI(t, home, "project", "config", workspace, "--show")
-	if err != nil || !strings.Contains(out, "\n  - --base\n  - --project\n") || strings.Contains(out, "never-print-this") {
+	if err != nil || !strings.Contains(strings.Join(strings.Fields(out), " "), "- --base inherited - profile - --project project") || strings.Contains(out, "never-print-this") {
 		t.Fatal("human display lost list entries or redaction", out, err)
 	}
 	for _, line := range strings.Split(out, "\n") {
-		if strings.HasPrefix(line, "harness_args:") && !strings.Contains(line, "[profile -> project]") {
-			t.Fatal("human display lost contribution sources", line)
+		if strings.HasPrefix(line, "harness_args:") && strings.TrimSpace(line) != "harness_args:" {
+			t.Fatal("list heading should leave sources to individual entries", line)
 		}
 	}
 	os.WriteFile(filepath.Join(workspace, ".devbox/config.json"), []byte(`{"harness":"${env:UNSET_EXCLUDED}"}`), 0600)

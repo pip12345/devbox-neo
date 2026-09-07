@@ -39,7 +39,10 @@ func (s Service) ShowGlobal() (ConfigView, error) {
 		return ConfigView{}, err
 	}
 	values["global_env"] = config.RedactEnv(g.GlobalEnv)
-	trace := artifact.Trace{Layers: []artifact.Layer{{Name: "built-in default"}, {Name: "global", Path: path}}, Sources: map[string][]string{}}
+	trace := artifact.Trace{Layers: []artifact.Layer{{Name: "built-in default"}, {Name: "global", Path: path}}, Sources: map[string][]string{}, EntrySources: map[string][]string{}}
+	for range g.GlobalEnv {
+		trace.EntrySources["global_env"] = append(trace.EntrySources["global_env"], "global")
+	}
 	for key := range values {
 		trace.Sources[key] = []string{"built-in default"}
 	}

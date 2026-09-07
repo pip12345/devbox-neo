@@ -23,7 +23,7 @@ func TestEmptyListShowsOnlyAddAndBack(t *testing.T) {
 	if err := editList(m, s, owner, field); err != nil {
 		t.Fatal(err)
 	}
-	want := "\nNo extra mounts configured here.\n\nWhat would you like to do?\n  [1] Add mount\n\n  [0] Back\n\n> "
+	want := "\nNo extra mounts configured here.\n\nWhat would you like to do?\n   [1]  Add mount\n\n   [0]  Back\n\n   Choose a number > "
 	if out.String() != want {
 		t.Fatalf("empty list should be a simple add/back menu:\n%s", out.String())
 	}
@@ -135,26 +135,30 @@ func TestSettingsOverviewUsesReadableValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"Harness: pi (set here)", "Extra mounts: None (inherited)", "VS Code extensions: None (inherited)"} {
+	for _, text := range []string{"Harness pi profile", "Shell command bash default", "Extra mounts None default", "VS Code extensions None default"} {
 		if !strings.Contains(strings.Join(strings.Fields(out), " "), text) {
 			t.Fatalf("missing readable summary %q:\n%s", text, out)
 		}
 	}
 	originColumn := -1
 	for _, line := range strings.Split(out, "\n") {
-		if !strings.Contains(line, "(set here)") && !strings.Contains(line, "(inherited)") {
+		if !strings.HasPrefix(line, "   [") || strings.Contains(line, "[0]") {
 			continue
 		}
-		column := strings.Index(line, "(")
+		parts := strings.Fields(line)
+		column := strings.LastIndex(line, parts[len(parts)-1])
 		if originColumn >= 0 && column != originColumn {
 			t.Fatalf("origin labels are not aligned:\n%s", out)
 		}
 		originColumn = column
 	}
-	if originColumn < 0 || !strings.Contains(out, "\n\n  [0] Done\n\n> ") {
+	if originColumn < 0 || !strings.Contains(out, "\n\n   [0]  Done\n\n   Choose a number > ") {
 		t.Fatalf("missing aligned origins or menu spacing:\n%s", out)
 	}
-	for _, text := range []string{"local:", "effective:", "null", "[]", "{}"} {
+	if !strings.Contains(out, "Profile · basic") || !strings.Contains(out, "Setting") || !strings.Contains(out, "Value") || !strings.Contains(out, "Source") {
+		t.Fatal("missing title or column headings", out)
+	}
+	for _, text := range []string{"local:", "effective:", "null", "[]", "{}", "Changes save immediately", "Creation changes require", "Values include inherited", "Select a setting", s.Home} {
 		if strings.Contains(out, text) {
 			t.Fatalf("raw storage detail %q in the overview:\n%s", text, out)
 		}

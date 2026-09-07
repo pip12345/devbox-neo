@@ -21,6 +21,8 @@ type Trace struct {
 	Excluded []string            `json:"excluded"`
 	Winners  map[string]string   `json:"artifact_winners"`
 	Sources  map[string][]string `json:"sources"`
+	// EntrySources follows the resolved list order, including duplicate values.
+	EntrySources map[string][]string `json:"entry_sources,omitempty"`
 }
 type Resolved struct {
 	Global   config.Global
@@ -53,7 +55,10 @@ func PreviewProject(home, workspace string, project config.Layer, host config.Ho
 }
 
 func resolve(home, workspace, explicit string, override config.Layer, proposed *config.Layer, host config.Host) (Resolved, error) {
-	r := Resolved{Settings: config.Defaults(), Trace: Trace{Winners: map[string]string{}, Sources: map[string][]string{}}}
+	r := Resolved{Settings: config.Defaults(), Trace: Trace{Winners: map[string]string{}, Sources: map[string][]string{}, EntrySources: map[string][]string{}}}
+	for range r.Settings.Shell {
+		r.Trace.EntrySources["default_shell"] = append(r.Trace.EntrySources["default_shell"], "built-in default")
+	}
 	g, err := config.ReadGlobal(filepath.Join(home, "config.json"), host)
 	if err != nil {
 		return r, err
@@ -61,6 +66,7 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 	r.Global = g
 	r.Settings.Env = append(r.Settings.Env, g.GlobalEnv...)
 	r.Settings.EnvInputs = append(r.Settings.EnvInputs, g.EnvInputs...)
+	r.Trace.appendContribution("extra_env", "global", len(g.GlobalEnv))
 	profile := explicit
 	if profile == "" {
 		profile = g.DefaultProfile
@@ -127,7 +133,7 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 	for _, l := range r.Layers {
 		r.Settings.Apply(l.Config)
 		r.Trace.Layers = append(r.Trace.Layers, l)
-		contributions(r.Trace.Sources, l.Name, l.Config)
+		r.Trace.contributions(l.Name, l.Config)
 		for _, name := range SingletonNames {
 			p, err := fsutil.Path(l.Path, name)
 			if err != nil {
@@ -153,26 +159,44 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 		override.EnvInputs = append(override.EnvInputs, config.EnvInput{Value: value, Source: config.EnvSource{Kind: "invocation"}})
 	}
 	r.Settings.Apply(override)
-	contributions(r.Trace.Sources, "CLI", override)
+	r.Trace.contributions("CLI", override)
 	if r.Settings.Harness == "" {
 		r.Settings.Harness = g.DefaultHarness
-		r.Trace.Sources["harness"] = []string{"global"}
+		if g.DefaultHarness != "" {
+			r.Trace.Sources["harness"] = []string{"global"}
+		} else {
+			delete(r.Trace.Sources, "harness")
+		}
 	}
 	if err = r.Settings.ValidateFields(); err != nil {
 		return r, err
 	}
 	return r, nil
 }
-func contributions(out map[string][]string, name string, l config.Layer) {
+func (t *Trace) contributions(name string, l config.Layer) {
 	for key, set := range map[string]bool{"on_exit": l.OnExit != nil, "default_shell": l.Shell != nil, "harness": l.Harness != nil, "network": l.Network != nil} {
 		if set {
-			out[key] = []string{name}
+			t.Sources[key] = []string{name}
+		}
+	}
+	if l.Shell != nil {
+		t.EntrySources["default_shell"] = nil
+		for range *l.Shell {
+			t.EntrySources["default_shell"] = append(t.EntrySources["default_shell"], name)
 		}
 	}
 	for key, n := range map[string]int{"harness_args": len(l.HarnessArgs), "docker_args": len(l.DockerArgs), "extra_mounts": len(l.Mounts), "extra_env": len(l.Env), "extra_ports": len(l.Ports), "vscode.extensions": len(l.VSCode.Extensions)} {
-		if n > 0 {
-			out[key] = append(out[key], name)
-		}
+		t.appendContribution(key, name, n)
+	}
+}
+
+func (t *Trace) appendContribution(key, source string, count int) {
+	if count == 0 {
+		return
+	}
+	t.Sources[key] = append(t.Sources[key], source)
+	for i := 0; i < count; i++ {
+		t.EntrySources[key] = append(t.EntrySources[key], source)
 	}
 }
 

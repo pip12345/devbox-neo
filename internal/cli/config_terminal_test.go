@@ -41,6 +41,25 @@ func TestConfigCommandWithTerminalInputKeepsTerminalMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("NO_COLOR", "")
+	if err := os.Unsetenv("NO_COLOR"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TERM", "xterm")
+	if !configColors(slave).enabled || configColors(&bytes.Buffer{}).enabled {
+		t.Fatal("color must be limited to terminal output")
+	}
+	t.Setenv("NO_COLOR", "1")
+	if configColors(slave).enabled {
+		t.Fatal("NO_COLOR was ignored")
+	}
+	if err := os.Unsetenv("NO_COLOR"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TERM", "dumb")
+	if configColors(slave).enabled {
+		t.Fatal("dumb terminal received styling")
+	}
 	s := menuService(t)
 	input := fieldNumber(t, "global", "ignore_project_overrides") + "\n1\n1\n0\n"
 	if _, err = master.WriteString(input); err != nil {

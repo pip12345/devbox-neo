@@ -26,7 +26,6 @@ func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner
 }
 
 func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
-	fmt.Fprintln(m.out, "Changes save immediately. Creation changes require recreate; other changes apply on the next eligible open.")
 	fields := resource.ConfigFields(owner.Kind)
 	for {
 		source, err := s.ConfigSource(owner)
@@ -34,8 +33,10 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 			return err
 		}
 		view, resolveErr := s.ShowOwner(owner)
-		fmt.Fprintf(m.out, "\n%s configuration: %s\n", owner.Kind, displayCell(filepath.Join(owner.Root, "config.json")))
-		fmt.Fprintf(m.out, "Values include inherited settings. Edits affect only this %s.\n", configScopeName(owner.Kind))
+		fmt.Fprintln(m.out)
+		if err := writeStyledConfigLine(m.out, "", configMenuTitle(owner), "", configDisplayWidth(m.out), configColors(m.out).strong); err != nil {
+			return err
+		}
 		if resolveErr != nil {
 			fmt.Fprintf(m.out, "Effective configuration unavailable: %s\nShowing values configured here; you can still edit them.\n", displayCell(resolveErr.Error()))
 		} else if owner.Kind == "project" && slices.Contains(view.Trace.Excluded, "project") {
@@ -44,24 +45,41 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 		rows := make([]configDisplayRow, len(fields))
 		for i, field := range fields {
 			value := source[field.Key]
+			origin := owner.Kind
+			var entrySources []string
 			if resolveErr == nil {
+				key := field.Key
+				if field.Kind == "extensions" {
+					key = "vscode.extensions"
+				}
+				origin = configSourceForScope(owner.Kind, configSourceLabel(view.Trace.Sources[key]))
+				entrySources = view.Trace.EntrySources[key]
 				effective := view.Values[field.Key]
 				if field.Key == "inherit_profile" {
-					effective = true
-					if raw, exists := source[field.Key]; exists {
-						_ = json.Unmarshal(raw, &effective)
+					// This project participation switch is not a runtime Settings
+					// value. Its displayed value comes from project source or true.
+					var configured *bool
+					if raw := source[field.Key]; raw != nil {
+						_ = json.Unmarshal(raw, &configured)
+					}
+					effective, origin = true, "default"
+					if configured != nil {
+						effective, origin = *configured, "project"
 					}
 				}
 				value, _ = json.Marshal(effective)
 			}
-			origin := "set here"
-			if _, exists := source[field.Key]; !exists {
-				origin = "inherited"
+			rows[i] = configDisplayRow{label: configLabel(field.Key), value: menuConfigValue(value, field), origin: origin, command: field.Key == "default_shell"}
+			if resolveErr != nil {
+				_, items := configDisplayParts(rows[i].value)
+				for range items {
+					entrySources = append(entrySources, owner.Kind)
+				}
 			}
-			rows[i] = configDisplayRow{label: configLabel(field.Key), value: menuConfigValue(value, field), origin: "(" + origin + ")"}
+			rows[i].entryOrigins = configEntryOrigins(owner.Kind, entrySources)
 			if resolveErr != nil && source[field.Key] == nil {
 				rows[i].value = "Unavailable"
-				rows[i].origin = "(not set here)"
+				rows[i].origin = "unknown"
 			}
 		}
 		n, err := m.chooseConfig(rows)
@@ -109,11 +127,15 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 	}
 }
 
-func configScopeName(scope string) string {
-	if scope == "global" {
-		return "global configuration"
+func configMenuTitle(owner resource.Owner) string {
+	switch owner.Kind {
+	case "profile":
+		return "Profile · " + displayCell(owner.Name)
+	case "project":
+		return "Project · " + displayCell(filepath.Base(owner.Workspace))
+	default:
+		return "Global configuration"
 	}
-	return scope
 }
 
 func configLabel(key string) string {
@@ -291,7 +313,7 @@ func editList(m menu, s *resource.Service, owner resource.Owner, field resource.
 		labels := make([]string, len(entries))
 		for i, entry := range entries {
 			labels[i] = configEntryLabel(entry, field)
-			prefix := fmt.Sprintf("  [%d] ", i+1)
+			prefix := menuPrefix(i + 1)
 			if err := writeConfigLine(m.out, prefix, labels[i], strings.Repeat(" ", len(prefix)), configDisplayWidth(m.out)); err != nil {
 				return err
 			}

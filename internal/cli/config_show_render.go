@@ -3,7 +3,6 @@ package cli
 import (
 	"io"
 	"sort"
-	"strings"
 
 	"devbox/internal/resource"
 )
@@ -45,11 +44,12 @@ func printConfigView(out io.Writer, view resource.ConfigView) error {
 			}
 			value = nil
 		}
-		source := view.Trace.Sources[key]
-		if len(source) == 0 {
-			source = []string{"built-in default"}
-		}
-		rows = append(rows, configDisplayRow{label: displayCell(key), value: value, origin: "[" + displayCell(strings.Join(source, " -> ")) + "]"})
+		rows = append(rows, configDisplayRow{
+			label: displayCell(key), value: value,
+			origin:       configSourceForScope(view.Scope, configSourceLabel(view.Trace.Sources[key])),
+			entryOrigins: configEntryOrigins(view.Scope, view.Trace.EntrySources[key]),
+			command:      key == "default_shell",
+		})
 	}
 	keys := make([]string, 0, len(view.Values))
 	for key := range view.Values {
