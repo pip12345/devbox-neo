@@ -256,7 +256,7 @@ func chooseOne(reader *bufio.Reader, out io.Writer, title string, choices []stri
 	}
 	fmt.Fprintln(out, title)
 	for i, choice := range choices {
-		fmt.Fprintf(out, "  %d. %s\n", i+1, choice)
+		fmt.Fprintf(out, "  [%d] %s\n", i+1, choice)
 	}
 	fmt.Fprint(out, "> ")
 	line, err := reader.ReadString('\n')
@@ -272,7 +272,7 @@ func chooseOne(reader *bufio.Reader, out io.Writer, title string, choices []stri
 func chooseMany(reader *bufio.Reader, out io.Writer, title string, choices []string) ([]string, error) {
 	fmt.Fprintln(out, title)
 	for i, choice := range choices {
-		fmt.Fprintf(out, "  %d. %s\n", i+1, choice)
+		fmt.Fprintf(out, "  [%d] %s\n", i+1, choice)
 	}
 	fmt.Fprint(out, "> ")
 	line, err := reader.ReadString('\n')

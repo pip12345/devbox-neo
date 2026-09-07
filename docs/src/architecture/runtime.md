@@ -21,7 +21,9 @@ The implementation supports Linux only. `flock`, `/proc/<pid>/stat`, boot identi
 
 ## Configuration owners and registry
 
-`resource` owns create/init/default-selection mutations. It uses external, per-owner configuration locks and the same Linux lock primitive as the session store. Create stages the complete source tree and publishes it with `RENAME_NOREPLACE`; even an existing empty destination is preserved. Init validates requested artifacts before writing, creates files with no-replace publication, and commits harness selection after seeding. It does not own Docker lifecycle or seed implicit defaults.
+`resource` owns create/init/default-selection and setting-edit mutations. It uses external, per-owner configuration locks and the same Linux lock primitive as the session store. Create stages the complete source tree and publishes it with `RENAME_NOREPLACE`; even an existing empty destination is preserved. Init validates requested artifacts before writing, creates files with no-replace publication, and commits harness selection after seeding. It does not own Docker lifecycle or seed implicit defaults.
+
+Numbered CLI menus use canonical terminal input, not a full-screen framework or raw mode. They keep raw local source values separate from the effective resolver display. Menus and human `--show` share a row formatter: scalars inline, lists below, and bounded wrapping with aligned origin labels. Human nested fields use dotted paths matching resolver provenance; JSON output retains the original value structure. Display rows never feed configuration saves. Each completed scalar/list operation saves immediately without a draft or confirmation stage. List editors reload source before every operation, including after validation or conflict failures, so rejected changes are neither retained nor retried implicitly. `resource.SetConfigField` re-reads under the configuration-owner lock, compares the edited field as a JSON value, and patches only that field; unrelated concurrent edits and host expressions survive. Reset removes the source key. Source type/literal checks do not require all inherited or host-dependent settings to resolve, so the menu can repair individual settings while displaying an effective-resolution error. Runtime validation remains unchanged.
 
 Standalone project copying uses `artifact.SourceTree`: supported profile sources only, without global values or harness defaults. It adds `inherit_profile: false` while preserving expressions. Project init previews inheritance through the normal artifact resolver rather than duplicating layer selection.
 
@@ -37,7 +39,7 @@ Ancestors inside another mount are created in that mount's host source before co
 
 ## Inventory and destructive operations
 
-Container inventory uses one label-filtered list and one batched inspection. Durable-session inventory retains parse failures as explicit entries. Status resolves desired config separately from live facts; a desired-config failure is not a container failure.
+Container inventory uses one label-filtered list and one batched inspection. Views combine recorded activity/action/profile/harness with Docker's live state and container creation timestamp. The CLI owns table formatting and explicit name/activity sorting; it does not reload desired config or make per-row Docker queries. Durable-session inventory retains parse failures as explicit entries. Status resolves desired config separately from live facts; a desired-config failure is not a container failure.
 
 Bulk deletion, recreation, and reset acquire sorted complete operation-lock sets and preflight every target before mutations. Reset requires stopped/absent containers, preserves declared history, and leaves bind roots intact. Session deletion holds the short record lock during directory removal; external locks survive. Pruning rechecks age after acquiring locks. Dry-run preflight examines leases without reaping them.
 

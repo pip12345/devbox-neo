@@ -7,7 +7,7 @@ Executable: `devbox-neo`. `--home` selects an isolated home; the default is `~/.
 | Command | Behavior |
 |---|---|
 | `open <folder-or-name> [-- harness-args...]` | Resolve desired configuration and open; valid creation drift warns without replacing |
-| `list [--json]` | Batched inventory of installation-owned containers |
+| `list [--sort name\|last-active] [--wide] [--json]` | Container table with state, profile, last activity, and folder; default sort is name |
 | `status <target> [--json]` | Live state plus desired drift or a separate configuration error |
 | `start <target>` | Use recorded settings; recover a missing container when recorded inputs remain available |
 | `shell <target>` | Use the recorded shell in an existing container |
@@ -19,6 +19,8 @@ Executable: `devbox-neo`. `--home` selects an isolated home; the default is `~/.
 | `delete --all\|--stopped [--force] [--json]` | Bulk container deletion after complete lock-set preflight; force permits disrupting attached commands |
 
 `open` and `recreate` also accept `--harness`, `--harness-arg`, `--env`, `--volume`, `--port`, `--docker-arg`, `--network`, `--on-exit`, and `--read-only`. `--continue` belongs only to `open`. `--profile` retains `-p`; port publishing uses `--port` without that short flag. Config env is recoverable from verified source references; invocation-only env requires explicit recreation after container loss.
+
+`list --sort last-active` orders newest activity first, with name as the tie-breaker and unknown activity last. `--wide` adds the harness and last recorded action, and shows exact UTC activity/creation timestamps. Creation time comes from Docker, not session creation. `!` marks an error and `*` a pending transfer; details follow the table. `--json` retains structured records and follows the selected sorting. Last activity means recorded Devbox operations, not filesystem activity or only harness launches.
 
 Exact container names keep their recorded slots when defaults change. Open targets are arguments to `open`, so target names do not collide with top-level commands. Existing-container start/shell/exec and logs do not load desired configuration.
 
@@ -54,4 +56,4 @@ Network changes do not edit configuration or fingerprints. They survive stop/sta
 
 Reset never clears managed auth or shared caches. Store roots remain available for existing Docker bind mounts; the next normal open restores desired managed config. Session delete has no `--all` or age filters. Transfers require idle endpoints, an unused destination, and portable harness declarations for all copied state. Destination configuration controls creation; no workspace files or container-layer changes are copied. Cross-folder transfers retain the source slot unless clone selects another profile. Project destinations must be initialized. Pending transfers block ordinary mutations, including forced deletion; retry the same command to resume. Before commitment, destination inputs must still match the journal. After commitment, retry uses the recorded destination rather than desired configuration.
 
-For profile/project commands and scoped config `--show [--json]`, see [configuration](configuration.md#configuration-owner-commands). Interactive config dashboards remain pending.
+For numbered configuration menus and scoped config `--show [--json]`, see [configuration](configuration.md#configuration-owner-commands).

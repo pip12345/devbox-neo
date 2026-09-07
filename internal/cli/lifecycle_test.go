@@ -47,10 +47,13 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		err := root.Execute()
 		return out.String(), err
 	}
-	for _, args := range [][]string{{"list", "--json"}, {"status", result.Name, "--json"}, {"session", "show", result.Name, "--json"}, {"network", "env", result.Name, "--get", "DEVBOX_HOST"}, {"logs", result.Name}} {
+	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.Name, "--json"}, {"session", "show", result.Name, "--json"}, {"network", "env", result.Name, "--get", "DEVBOX_HOST"}, {"logs", result.Name}} {
 		if out, err := run(args...); err != nil || out == "" {
 			t.Fatal(args, out, err)
 		}
+	}
+	if _, err := run("list", "--sort", "wrong"); err == nil {
+		t.Fatal("invalid list ordering accepted")
 	}
 	destination := t.TempDir()
 	if out, err := run("session", "clone", result.Name, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {

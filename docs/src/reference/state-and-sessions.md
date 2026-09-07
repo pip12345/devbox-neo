@@ -25,7 +25,7 @@ Profile/project creation stages a private `.devbox-create-*` directory beside it
 
 Docker creation uses a private `0600` env file in the OS temporary directory, removed when the create command returns. Its contents and temporary path are not persisted in session records. `env_sources` in the record holds only file/field/index references and keyed expression/value fingerprints. Invocation-only env is recorded as unrecoverable input, never copied into the record. Named external volumes must still exist for recovery.
 
-Locks remain outside removable session directories. Records are atomically replaced with restrictive permissions; corrupt state is not treated as absence.
+Locks remain outside removable session directories. Records are atomically replaced with restrictive permissions; corrupt state is not treated as absence. Container listings use the record's `last_activity` and `last_action`; `created_at` in list output comes from Docker's current container, not the durable session's creation timestamp. No additional activity state is introduced.
 
 Containers carry installation, ownership-version, session, workspace, and slot labels. Images carry installation ownership only. Final image tags are `devbox-rewrite/session:<session-id>`. Names are lookup keys, never proof of ownership.
 

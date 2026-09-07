@@ -29,7 +29,9 @@ bin/devbox-neo profile init basic --harness pi --artifact harness-config,setup.s
 bin/devbox-neo profile list
 ```
 
-Re-running init keeps existing files. Optional artifacts are harness config, `setup.sh`, `entrypoint.sh`, and `Dockerfile`. Dashboards remain pending.
+Re-running init keeps existing files. Optional artifacts are harness config, `setup.sh`, `entrypoint.sh`, and `Dockerfile`.
+
+Use `bin/devbox-neo profile config basic` to edit settings in a numbered menu. Choose a setting and edit its value or reset it to inherited. Each valid operation saves immediately—there is no separate save or confirmation step. The overview and `--show` print list entries underneath each setting, wrapping long values instead of truncating them. Lists open directly: an empty list offers **Add**, while existing entries can be edited or removed. You edit only entries configured here. Press Enter to submit a value. Use `0` to go back or exit, or `:back` to cancel text entry; leaving the menu does not undo completed changes. The same menus are available through `global config` and `project config <folder>`. Input is visible; use `${env:NAME}` references rather than typing credentials.
 
 For custom Pi providers, add `pi/models.json` to your profile or project `.devbox/` directory. Devbox synchronizes its `providers` object before starting a stopped container, preserving other live top-level keys.
 
@@ -40,6 +42,8 @@ bin/devbox-neo open /path/to/workspace --profile basic
 ```
 
 The first open builds the image and starts Pi. Later opens reuse the container. The default `on_exit` policy stops it after the last attached Devbox command exits.
+
+Find recently used containers with `bin/devbox-neo list --sort last-active`. The table shows state, profile, last recorded Devbox activity, and folder. Add `--wide` for the harness, exact activity/creation times, and the last action, or `--json` for scripts.
 
 For a non-interactive launch check without provider credentials:
 

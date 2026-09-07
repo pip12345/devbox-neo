@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"time"
 
 	"devbox/internal/app"
 	"github.com/spf13/cobra"
@@ -13,8 +14,12 @@ import (
 type engineFactory func(*cobra.Command) (*app.Engine, error)
 
 func containerCommands(factory engineFactory, profile *string) []*cobra.Command {
-	var listJSON bool
-	list := &cobra.Command{Use: "list", Short: "List installation-owned containers", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	var listJSON, wide bool
+	var sortBy string
+	list := &cobra.Command{Use: "list", Short: "List containers with profile and last activity", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if sortBy != "name" && sortBy != "last-active" {
+			return fmt.Errorf("unknown container sort %q: use name or last-active", sortBy)
+		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
@@ -32,6 +37,7 @@ func containerCommands(factory engineFactory, profile *string) []*cobra.Command 
 			}
 			views = filtered
 		}
+		sortViews(views, sortBy)
 		if listJSON {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(views)
 		}
@@ -39,12 +45,11 @@ func containerCommands(factory engineFactory, profile *string) []*cobra.Command 
 			cmd.Println("No managed containers. Configure a profile/project, then open its folder.")
 			return nil
 		}
-		for _, view := range views {
-			printView(cmd, view)
-		}
-		return nil
+		return printContainerList(cmd.OutOrStdout(), views, wide, time.Now())
 	}}
 	list.Flags().BoolVar(&listJSON, "json", false, "Print container entries as JSON")
+	list.Flags().StringVar(&sortBy, "sort", "name", "Sort by name or last-active (newest first)")
+	list.Flags().BoolVar(&wide, "wide", false, "Include harness, exact activity/creation times, and last action")
 	var statusJSON bool
 	status := &cobra.Command{Use: "status <target>", Short: "Show live state and desired drift without hiding broken configuration", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := factory(cmd)

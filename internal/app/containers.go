@@ -23,6 +23,8 @@ type View struct {
 	Harness      string             `json:"harness,omitempty"`
 	SessionID    string             `json:"session_id,omitempty"`
 	LastActivity time.Time          `json:"last_activity,omitempty"`
+	LastAction   string             `json:"last_action,omitempty"`
+	CreatedAt    time.Time          `json:"created_at,omitempty"`
 	ContainerID  string             `json:"container_id,omitempty"`
 	Exists       bool               `json:"exists"`
 	Running      bool               `json:"running"`
@@ -33,7 +35,7 @@ type View struct {
 }
 
 func recordView(r store.Record) View {
-	return View{Name: r.Identity.Name, Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Harness: r.Definition.Name, SessionID: r.ID, LastActivity: r.Activity}
+	return View{Name: r.Identity.Name, Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Harness: r.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action}
 }
 func (e *Engine) List(ctx context.Context, sessions bool) ([]View, error) {
 	entries, err := e.Store.Inventory(ctx)
@@ -71,6 +73,7 @@ func (e *Engine) List(ctx context.Context, sessions bool) ([]View, error) {
 		} else if !found || entry.Pending == nil {
 			view.Error = "container has no durable record"
 		}
+		view.CreatedAt = container.Created
 		view.Pending = entry.Pending
 		result = append(result, view)
 		delete(records, name)
@@ -103,6 +106,7 @@ func (e *Engine) Status(ctx context.Context, target, profile string) (View, erro
 	view.Running = exists && c.State.Running
 	if exists {
 		view.ContainerID = c.ID
+		view.CreatedAt = c.Created
 	}
 	desired, resolveErr := e.Resolve(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, ExpectedName: r.Identity.Name})
 	if resolveErr != nil {

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"devbox/internal/docker"
 	"devbox/internal/environment"
@@ -24,6 +25,9 @@ func TestContainerViewsUseBatchedInventoryAndBrokenConfigDoesNotHideState(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
+	owned, _ := d.Snapshot(first.Name)
+	owned.Created = time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
+	d.SetContainer(owned)
 	foreign, _ := d.Snapshot(first.Name)
 	foreign.Name = "/foreign"
 	foreign.ID = strings.Repeat("f", 64)
@@ -36,6 +40,11 @@ func TestContainerViewsUseBatchedInventoryAndBrokenConfigDoesNotHideState(t *tes
 	}
 	if len(views) != 2 || len(d.History())-before != 2 {
 		t.Fatal("list did not use one inventory and one batched inspect")
+	}
+	for _, view := range views {
+		if view.Name == first.Name && (!view.CreatedAt.Equal(owned.Created) || view.LastActivity.IsZero() || view.LastAction == "" || view.Profile != q.Profile || view.Harness == "") {
+			t.Fatal("list lost live creation time or recorded details", view)
+		}
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
 	view, err := e.Status(ctx, first.Name, "")

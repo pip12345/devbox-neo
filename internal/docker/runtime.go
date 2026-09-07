@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 const Namespace = "devbox-rewrite"
@@ -31,10 +32,11 @@ func ImageLabels(installation string) map[string]string {
 }
 
 type Container struct {
-	ID    string `json:"Id"`
-	Name  string `json:"Name"`
-	Image string `json:"Image"`
-	State struct {
+	ID      string    `json:"Id"`
+	Name    string    `json:"Name"`
+	Image   string    `json:"Image"`
+	Created time.Time `json:"Created"`
+	State   struct {
 		Running  bool   `json:"Running"`
 		Status   string `json:"Status"`
 		ExitCode int    `json:"ExitCode"`

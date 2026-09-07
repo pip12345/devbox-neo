@@ -507,7 +507,9 @@ devbox profile config <name> --show
 devbox project config <folder> --show [--profile <name>]
 ```
 
-Without `--show`, each command opens its interactive dashboard. With `--show`, it prints the effective config and provenance tree non-interactively. `--json` makes that output machine-readable. There is no separate `--resolve`, `devbox config resolve`, or `devbox plan` command.
+Without `--show`, each command opens a numbered terminal settings menu. With `--show`, it prints the effective config and provenance tree non-interactively. `--json` makes that output machine-readable and requires `--show`; project config's `--profile` override also requires `--show`. There is no separate `--resolve`, `devbox config resolve`, or `devbox plan` command.
+
+Menus use canonical line input and shared selection/text controls without a TUI dependency. Local source values remain separate from effective/redacted display values. Each submitted operation immediately re-reads under the owning configuration lock, rejects a changed edited field, and preserves unrelated concurrent edits and source expressions. Reset removes the local key; list controls edit local contributions only. The overview shares its value formatter with human `--show`: scalars inline, list entries below the setting, aligned origins, and long values wrapped rather than truncated. Empty values display as `None`. Human nested fields use dotted paths for their source annotations; `--show --json` retains the original structure and complete values. Lists open directly with add/edit/remove actions relevant to their contents and reset only for an existing source key. Each operation saves immediately after validation; there are no drafts, save/discard actions, or additional confirmations. Back only navigates. Invalid or conflicting operations are reported without changing the saved field, and the editor reloads current source before the next operation. Source types and supported literal values are validated before saving, while effective cross-field and host-dependent validation remains with the normal resolver. Resolution errors stay visible without blocking local editing; malformed source schemas still require file repair. Enter submits input. Cancellation/EOF abandons incomplete input and retains completed changes.
 
 For profile config, effective resolution includes built-in defaults, global config, and the selected profile. For project config, it includes exactly the participating layers used by the `open` flow: built-in defaults, global config, the applicable profile, and project overrides when enabled. Explicit `--profile` excludes the project layer and all project artifacts; project `inherit_profile: false` excludes the profile layer and all profile artifacts. `--show` reports excluded layers without loading them.
 
@@ -1200,7 +1202,7 @@ The CLI is resource-first. Global, profile, and project configuration stays unde
 
 ```text
 devbox open <target> [-c] [-p NAME]
-devbox list
+devbox list [--sort name|last-active] [--wide] [--json]
 devbox status <target>
 devbox start <target>
 devbox stop <target>
@@ -1214,6 +1216,8 @@ devbox recreate --all [--image]
 devbox network inspect|env|connect|disconnect
 devbox session list|show|relocate|clone|reset|prune|delete
 ```
+
+`list` shows name, state, profile, last recorded Devbox activity, and folder. Default ordering is by name; `--sort last-active` puts newest activity first, breaks ties by name, and puts unknown activity last. `--wide` uses exact UTC activity timestamps and adds harness, last action, and Docker container creation time. Errors and pending transfers remain visible beside the table. JSON uses the same selected ordering. Listing does not load desired configuration or add per-row Docker calls.
 
 Container cleanup and session cleanup remain intentionally separate:
 

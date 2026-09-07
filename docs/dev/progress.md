@@ -36,7 +36,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - Pi, OpenCode, and a third custom fixture pass the same fake-backed lifecycle, storage mapping, auth/cache preservation, recreation, and recovery tests.
 - The real-Docker suite now covers all three definitions, creates profiles through the resource service, and checks in-container auth writes and preservation. These expanded cases have compiled but have not been executed here; schema freeze remains pending acceptance.
 
-## Configuration-owner workflow — implemented ahead of dashboards
+## Configuration-owner workflow — implemented
 
 - `profile create|init|list|set|delete` and `project create|init` are available without hand-written JSON.
 - Create publishes sparse config with no implicit harness or default profile. Init accepts explicit automation flags and terminal choices, keeps existing selections, and never overwrites artifacts.
@@ -50,7 +50,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - User-approved simplification: removed `Dockerfile.full`. Custom Debian-compatible bases always receive the Devbox runtime and harness layer.
 - One immutable image plan captures the selected Dockerfile, context files/permissions, ignore rules, host-ID build arguments, and runtime layer. Forced rebuilds disable cache for both stages; temporary intermediate tags are ownership-checked before cleanup.
 - Artifact-only projects participate through the shared resolver. Source copies preserve the active build context without mistaking excluded directories for harness configuration.
-- Container list/status/logs/delete, bulk recreation, and network inspect/env/connect/disconnect are wired into the CLI. Inventory batches Docker inspection; status reports broken desired config separately from live state.
+- Container list/status/logs/delete, bulk recreation, and network inspect/env/connect/disconnect are wired into the CLI. Inventory batches Docker inspection; status reports broken desired config separately from live state. List tables include profile and relative activity, with name/activity sorting and `--wide` for harness, exact activity/creation times, and last action.
 - Exact `open` targets keep their recorded slots, and explicit-profile access avoids unrelated corrupt session records.
 - Container deletion preserves durable state and image tags; complete selection locks and preflight precede bulk mutations. Fully labelled recordless owned containers can be deleted without adoption.
 - Session list/show/reset/prune/delete are wired. Reset requires stopped/absent containers and idle leases, preserves declared history by default, and never clears auth/shared caches or stable bind roots. Dry runs do not reap leases or change files.
@@ -63,7 +63,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - `${env:NAME}` expands decoded strings from a captured host snapshot, not keys/raw JSON. Unset references fail; empty values are present; replacement text is not expanded recursively.
 - Global passthrough and layer/CLI env are supported. Config env recovery uses verified source entries; CLI-only values remain unavailable for exact missing-container recovery. Session records never contain env values.
 - Extra bind/volume mounts, published ports, protected raw Docker options, IDE metadata, and root/recreate creation flags are implemented. Host networking rejects published ports and managed targets/labels/env remain protected.
-- Scoped global/profile/project config `--show` and JSON output use the shared resolver, expose origins/exclusions/references, and redact env. Interactive config dashboards remain pending.
+- Scoped global/profile/project config `--show` and JSON output use the shared resolver, expose origins/exclusions/references, and redact env. Numbered settings menus support scalar/list edits and reset-to-inherited without new dependencies. Each valid operation saves immediately; Back only navigates, with no draft or confirmation stage. Source edits use owner locks and same-field conflict checks, retain expressions and unrelated concurrent edits, and never save redacted display values. Resolution errors remain visible while local editing stays available. Automated coverage includes a Linux pseudo-terminal command test; manual terminal usability acceptance remains pending.
 
 ## Runtime documentation and network files — implemented
 
@@ -122,7 +122,7 @@ Continue the runtime/configuration work; do not claim interactive harness accept
 - Phase 3: remaining source-snapshot/provenance hardening and real-Docker acceptance for expanded creation inputs.
 - Phase 4: remaining target/creation-option integration, runtime-copy performance hardening, and expanded real-Docker lifecycle/crash testing.
 - Phase 5: real-Docker transfer/kill-point acceptance and additional acceptance coverage for reset/prune/delete.
-- Phase 6: scoped config commands, dashboards, complete structured guidance, doctor, and complete documentation.
+- Phase 6: remaining guided artifact workflows, menu usability acceptance, complete structured guidance, doctor, and complete documentation.
 - Phase 7: release hardening, performance/secret audits, and remaining acceptance tests.
 - Separate migration utility: not implemented.
 
