@@ -24,6 +24,16 @@ Executable: `devbox-neo`. `--home` selects an isolated home; the default is `~/.
 
 Exact container names keep their recorded slots when defaults change. Open targets are arguments to `open`, so target names do not collide with top-level commands. Existing-container start/shell/exec and logs do not load desired configuration. Attached `open`, `shell`, and `exec` forward the invoking terminal's display variables, including `TERM` and `COLORTERM`, without requiring recreation; see [environment precedence](configuration.md#substitution-environment-and-creation-options).
 
+## Completion
+
+`completion bash|zsh|fish|powershell` prints a shell completion script. Load it in your shell to complete command/flag names, recorded session targets, live container targets, profiles, valid harnesses, transfer slots, and fixed option values. Folder completion remains available where folders are accepted. For Bash, with the executable on `PATH`:
+
+```sh
+source <(devbox-neo completion bash)
+```
+
+Suggestions honor `--home` / `DEVBOX_HOME`. Completion does not initialize state, create locks, or modify Docker resources. Container suggestions use a bounded, installation-filtered Docker inventory; unavailable Docker quietly leaves folder completion available. Session suggestions use existing session directories, including corrupt records so they can still be addressed. Invalid harness overrides are not suggested and never fall back to the built-in.
+
 ## Networks
 
 | Command | Behavior |
@@ -43,7 +53,7 @@ Network changes do not edit configuration or fingerprints. They survive stop/sta
 
 | Command | Behavior |
 |---|---|
-| `session list [--json]` | Durable sessions cross-referenced with owned containers; corrupt records remain visible |
+| `session list [--sort name\|last-active] [--json]` | Durable session table with harness, profile, activity, container state, and folder; missing containers and corrupt records remain visible |
 | `session show <target> [--json]` | Recorded contract and live leases without desired resolution |
 | `session reset <target...> [--harness NAME\|--all-harnesses]` | Reset stopped/absent, idle session stores; preserve declared history |
 | `session reset --all [--include-history] [--dry-run] [--json]` | Complete-set preflight; include-history clears all selected environment-store contents |
@@ -53,6 +63,8 @@ Network changes do not edit configuration or fingerprints. They survive stop/sta
 | `session delete <target...> [--dry-run] [--json]` | Exact state deletion only after containers are gone; remove only verified session image tags |
 | `session prune --orphaned [--older-than DURATION] --dry-run` | Preview filtered state cleanup |
 | `session prune --orphaned [--older-than DURATION] --yes` | Confirm filtered state cleanup; age is rechecked while locked |
+
+`session list` shows `NAME`, `HARNESS`, `PROFILE`, `LAST ACTIVE`, `CONTAINER`, and `FOLDER`. `CONTAINER` is a live cross-reference (`running`, `stopped`, or `missing`), not a session lifecycle state. Default ordering is by name; `--sort last-active` puts newest activity first, breaks ties by name, and puts unknown activity last. JSON uses the same ordering. Stopped/missing container rows are subdued on supported terminals, with error and pending-transfer details below the table. `--older-than` and `--orphaned` belong only to `session prune`, not listing.
 
 Reset never clears managed auth or shared caches. Store roots remain available for existing Docker bind mounts; the next normal open restores desired managed config. Session delete has no `--all` or age filters. Transfers require idle endpoints, an unused destination, and portable harness declarations for all copied state. Destination configuration controls creation; no workspace files or container-layer changes are copied. Cross-folder transfers retain the source slot unless clone selects another profile. Project destinations must be initialized. Pending transfers block ordinary mutations, including forced deletion; retry the same command to resume. Before commitment, destination inputs must still match the journal. After commitment, retry uses the recorded destination rather than desired configuration.
 

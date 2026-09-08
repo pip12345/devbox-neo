@@ -12,7 +12,11 @@ import (
 func sessionCommands(factory engineFactory, profile *string) *cobra.Command {
 	group := &cobra.Command{Use: "session", Short: "Inspect, transfer, or clean durable session state"}
 	var listJSON bool
-	list := &cobra.Command{Use: "list", Short: "List durable sessions and their container state", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	var sortBy string
+	list := &cobra.Command{Use: "list", Short: "List durable sessions with harness, activity, and container state", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if sortBy != "name" && sortBy != "last-active" {
+			return fmt.Errorf("unknown session sort %q: use name or last-active", sortBy)
+		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
@@ -30,18 +34,18 @@ func sessionCommands(factory engineFactory, profile *string) *cobra.Command {
 			}
 			views = filtered
 		}
+		sortViews(views, sortBy)
 		if listJSON {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(views)
 		}
-		for _, view := range views {
-			printView(cmd, view)
-		}
 		if len(views) == 0 {
 			cmd.Println("No durable sessions. Configure a profile/project, then open its folder.")
+			return nil
 		}
-		return nil
+		return printSessionList(cmd.OutOrStdout(), views, time.Now())
 	}}
 	list.Flags().BoolVar(&listJSON, "json", false, "Print session entries as JSON")
+	list.Flags().StringVar(&sortBy, "sort", "name", "Sort by name or last-active (newest first)")
 	var showJSON bool
 	show := &cobra.Command{Use: "show <target>", Short: "Inspect the durable contract and active leases without desired configuration", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := factory(cmd)

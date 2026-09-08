@@ -53,6 +53,35 @@ func TestContainerListDetailsAndSorting(t *testing.T) {
 	}
 }
 
+func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	views := []app.View{
+		{Name: "recent", SessionID: "project", Harness: "pi", Workspace: "/work/project", LastActivity: now},
+		{Name: "older", Profile: "basic", Harness: "opencode", Exists: true, Workspace: "/work/api", LastActivity: now.Add(-2 * time.Hour)},
+		{Name: "broken", Error: "corrupt record", Pending: &store.Reservation{Mode: "clone", Phase: "prepare", Source: "older", Destination: "broken"}},
+	}
+	sortViews(views, "last-active")
+	var out bytes.Buffer
+	if err := printSessionList(&out, views, now); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(out.String(), "\n")
+	if got := strings.Fields(lines[0]); strings.Join(got, " ") != "NAME HARNESS PROFILE LAST ACTIVE CONTAINER FOLDER" {
+		t.Fatal("not a session-focused table", lines[0])
+	}
+	for _, want := range []string{"pi", ".project", "just now", "missing", "opencode", "basic", "2 hours ago", "stopped", "missing!*", "corrupt record", "pending clone"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing %q: %s", want, out.String())
+		}
+	}
+	if !strings.HasPrefix(lines[1], "recent ") || !strings.HasPrefix(lines[2], "older ") || !strings.HasPrefix(lines[3], "broken ") {
+		t.Fatal("incorrect session order", out.String())
+	}
+	if strings.Contains(out.String(), "\x1b") {
+		t.Fatal("non-terminal output contains styling")
+	}
+}
+
 func TestListTimesAndUnsafeCells(t *testing.T) {
 	now := time.Now()
 	for _, tt := range []struct {
@@ -63,11 +92,19 @@ func TestListTimesAndUnsafeCells(t *testing.T) {
 			t.Fatalf("got %s, want %s", got, tt.want)
 		}
 	}
+	views := []app.View{{Name: "test", Harness: "pi\nforged", Workspace: "/work/\nforged\t\x1b[31m"}}
 	var out bytes.Buffer
-	if err := printContainerList(&out, []app.View{{Name: "test", Workspace: "/work/\nforged\t\x1b[31m"}}, false, now); err != nil {
+	if err := printContainerList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 2 {
 		t.Fatal("unsafe path changed table structure", out.String())
+	}
+	out.Reset()
+	if err := printSessionList(&out, views, now); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 2 {
+		t.Fatal("unsafe session fields changed table structure", out.String())
 	}
 }

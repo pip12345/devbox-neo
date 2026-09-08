@@ -76,23 +76,8 @@ func printContainerList(out io.Writer, views []app.View, wide bool, now time.Tim
 	}
 	fmt.Fprintln(w, header)
 	for _, view := range views {
-		state := "missing"
-		if view.Exists {
-			state = "stopped"
-			if view.Running {
-				state = "running"
-			}
-		}
-		if view.Error != "" {
-			state += "!"
-		}
-		if view.Pending != nil {
-			state += "*"
-		}
-		profile := view.Profile
-		if profile == "" && view.SessionID != "" {
-			profile = ".project"
-		}
+		state := containerState(view)
+		profile := viewProfile(view)
 		activity := activityAge(view.LastActivity, now)
 		if wide {
 			activity = exactTime(view.LastActivity)
@@ -106,8 +91,49 @@ func printContainerList(out io.Writer, views []app.View, wide bool, now time.Tim
 	if err := w.Flush(); err != nil {
 		return err
 	}
+	return printListRows(out, views, table.String())
+}
+
+func printSessionList(out io.Writer, views []app.View, now time.Time) error {
+	var table bytes.Buffer
+	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "NAME\tHARNESS\tPROFILE\tLAST ACTIVE\tCONTAINER\tFOLDER")
+	for _, view := range views {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", displayCell(view.Name), displayCell(view.Harness), displayCell(viewProfile(view)), activityAge(view.LastActivity, now), containerState(view), displayCell(view.Workspace))
+	}
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	return printListRows(out, views, table.String())
+}
+
+func containerState(view app.View) string {
+	state := "missing"
+	if view.Exists {
+		state = "stopped"
+		if view.Running {
+			state = "running"
+		}
+	}
+	if view.Error != "" {
+		state += "!"
+	}
+	if view.Pending != nil {
+		state += "*"
+	}
+	return state
+}
+
+func viewProfile(view app.View) string {
+	if view.Profile == "" && view.SessionID != "" {
+		return ".project"
+	}
+	return view.Profile
+}
+
+func printListRows(out io.Writer, views []app.View, table string) error {
 	paint := terminalColors(out)
-	lines := strings.Split(strings.TrimSuffix(table.String(), "\n"), "\n")
+	lines := strings.Split(strings.TrimSuffix(table, "\n"), "\n")
 	for i, line := range lines {
 		if i > 0 && !(views[i-1].Exists && views[i-1].Running) {
 			line = paint.dim(line)

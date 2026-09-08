@@ -27,7 +27,9 @@ Harness config copies skip symlinks and other non-regular entries with host-side
 warnings. Skipped extension dependency links are not supplied by that source;
 install dependencies in the container if the extension needs them.
 
-Install development tools in the container when needed. Container-layer changes
+The runtime includes vim, zip, unzip, jq, net-tools, and iputils-ping alongside
+Bash, git, curl, sudo, and procps. Interactive Bash provides ll='ls -alF' and
+vi='vim'. Install other development tools in the container when needed. Container-layer changes
 survive stop/start but are lost on recreation. Workspace files and declared
 harness stores persist on the host. Devbox prepares parents for declared harness
 mounts, but unmounted directories remain container-local even when writable.

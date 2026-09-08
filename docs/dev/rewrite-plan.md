@@ -931,6 +931,8 @@ Use one layered `ImageBuildPlan`:
 - changing a user override of Pi/OpenCode therefore becomes pending image drift for each affected session, but does not block opening its existing container;
 - embedded runtime docs/assets have separate runtime hashes when they can be synchronized without rebuilding.
 
+The mandatory runtime includes Bash, CA certificates, curl, git, sudo, procps, vim, zip, unzip, jq, net-tools, and iputils-ping, plus system-wide interactive Bash aliases `ll='ls -alF'` and `vi='vim'`. These image inputs apply to default and custom-base images; ordinary recreation rebuilds when they change.
+
 Image planning and image execution are separate. Tests assert generated plans without invoking Docker.
 
 ## Session-Scoped Images and Rebuild Isolation
@@ -1221,6 +1223,8 @@ devbox session list|show|relocate|clone|reset|prune|delete
 
 `list` shows name, state, profile, last recorded Devbox activity, and folder. Default ordering is by name; `--sort last-active` puts newest activity first, breaks ties by name, and puts unknown activity last. `--wide` uses exact UTC activity timestamps and adds harness, last action, and Docker container creation time. Stopped and missing rows are dimmed on supported terminal output, while running rows and error/pending-transfer details remain undimmed. `NO_COLOR`, `TERM=dumb`, and non-terminal output disable styling. Align cells before adding ANSI escapes. JSON uses the same selected ordering. Listing does not load desired configuration or add per-row Docker calls.
 
+`session list [--sort name|last-active] [--json]` shows name, recorded harness, profile/project slot, last activity, live container state, and folder. The `CONTAINER` column is a cross-reference, not a session lifecycle state. It retains missing-container sessions and corrupt-record/pending-transfer diagnostics, uses the same sorting and styling rules as container listing, and applies the selected ordering to JSON. Cleanup filters remain exclusive to prune.
+
 Container cleanup and session cleanup remain intentionally separate:
 
 ```text
@@ -1311,6 +1315,8 @@ devbox doctor
 devbox completion
 devbox version
 ```
+
+Completion uses Cobra hooks for appropriate session/live-container targets, profiles, harnesses, transfer slots, and fixed option values, while retaining folder completion where supported. It is read-only: no home initialization, lock creation, or Docker mutation. Use the selected home, bounded installation-filtered Docker inventory for live container names, and registry enumeration for valid harness choices. Suggestions are lookup hints, not ownership proof; unavailable sources quietly omit suggestions.
 
 There is no `devbox harness` command group. Users manage `~/.devbox/harnesses/<name>/harness.json` directly. `doctor` validates all definitions, config dashboards expose valid harness choices, and scoped config `--show` output reports the selected definition and origin.
 

@@ -21,6 +21,35 @@ func putBuild(t *testing.T, p, body string) {
 		t.Fatal(err)
 	}
 }
+func TestBundledToolsAndAliasesInBothImageModes(t *testing.T) {
+	h, err := harness.Load(t.TempDir(), "pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(t.TempDir(), "Dockerfile")
+	putBuild(t, source, "FROM debian:bookworm-slim\n")
+	for _, winners := range []map[string]string{{}, {"Dockerfile": source}} {
+		plan, err := PlanImage(winners, h.Definition, 1000, 1000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(plan.FinalDockerfile("devbox-rewrite/build:custom"))
+		for _, want := range []string{"vim zip unzip jq net-tools iputils-ping", "echo \"alias ll='ls -alF'\" >> /etc/bash.bashrc", "echo \"alias vi='vim'\" >> /etc/bash.bashrc"} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("image mode %s lacks %q", plan.Mode, want)
+			}
+		}
+		if strings.Contains(text, "tmux") {
+			t.Fatal("unrequested tool installed")
+		}
+		before := plan.InputFingerprint()
+		plan.Runtime = []byte(strings.Replace(string(plan.Runtime), "vim zip unzip jq net-tools iputils-ping", "vim zip unzip jq", 1))
+		if before == plan.InputFingerprint() {
+			t.Fatal("bundled tool changes must invalidate the image fingerprint")
+		}
+	}
+}
+
 func TestImagePlansRespectCapturedContext(t *testing.T) {
 	h, err := harness.Load(t.TempDir(), "pi")
 	if err != nil {

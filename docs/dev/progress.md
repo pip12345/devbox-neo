@@ -95,6 +95,14 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - The runtime build now references the unique temporary base tag; cleanup still verifies the recorded image ID and installation ownership. Regression tests check the generated reference and cleanup after success or runtime-build failure.
 - A real-Docker rerun of this fix remains pending; fake-backed tests do not validate BuildKit resolution.
 
+## Tools, session listing, and completion — implemented
+
+- The mandatory runtime layer restores vim, zip, unzip, jq, net-tools, iputils-ping, and interactive Bash aliases `ll='ls -alF'` / `vi='vim'`. Both image modes share these inputs; ordinary recreation rebuilds when they change. No lifecycle changes or tmux installation were added.
+- Session listing now has name, harness, profile, last activity, container cross-reference, and folder columns. It shares existing formatting/styling and name/activity sorting, retains missing-container/corrupt/pending entries, and applies the same sorting to JSON. Prune flags and deletion behavior are unchanged.
+- Cobra completion suggests session/live-container targets, profiles, harnesses, transfer slots, and fixed option values. It bypasses initialization and locking readers, honors home selection, and uses bounded read-only Docker inventory. Tests verify no host writes, source-failure handling, invalid overrides, argument positions, and installation isolation.
+- Guide/reference/architecture docs and embedded guidance are aligned. Doctor remains deferred in [its separate plan](doctor-plan.md), not part of this implementation.
+- Rewrite `make check` and parent `make test` pass; `go vet ./...` passes and integration-tagged tests compile. The added real-Docker tool/alias check is unrun because this workspace has no Docker CLI. Actual shell completion in an interactive host shell also remains a manual acceptance check; automated tests exercise Cobra's completion protocol.
+
 ## Validation
 
 - `make check`: unit tests, race tests, and build pass.

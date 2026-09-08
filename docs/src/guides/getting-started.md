@@ -14,6 +14,15 @@ The binary is `bin/devbox-neo`. Its default home is `~/.devbox-neo`; container/s
 
 If upgrading from a build with `devbox-rewrite-` or folder-less session names, clear the old containers and durable sessions using the old build before switching. This is a clean session reset, not a migration; save any needed session data separately. The new build does not rename or delete old resources automatically.
 
+For Bash completion from this checkout:
+
+```sh
+export PATH="$PWD/bin:$PATH"
+source <(devbox-neo completion bash)
+```
+
+Tab suggests profiles, harnesses, session/container targets, and flag values using the selected home. See [completion](../reference/commands.md#completion) for other shells.
+
 ## Configure the first profile
 
 ```sh
@@ -47,6 +56,8 @@ The first open builds the image and starts Pi. Later opens reuse the container. 
 
 Find recently used containers with `bin/devbox-neo list --sort last-active`. The table shows state, profile, last recorded Devbox activity, and folder. Stopped and missing rows are subdued so running containers stand out; error and pending-transfer details remain readable. Add `--wide` for the harness, exact activity/creation times, and the last action, or `--json` for scripts.
 
+Use `bin/devbox-neo session list --sort last-active` to find durable sessions, including ones whose containers were deleted. Its table shows name, harness, profile, last activity, container state, and folder. Listing does not clean up state; use `session prune --orphaned --dry-run` to preview cleanup, adding `--older-than 720h` when you only want sessions inactive for more than 30 days. Repeat with `--yes` instead of `--dry-run` to delete eligible state.
+
 For a non-interactive launch check without provider credentials:
 
 ```sh
@@ -77,7 +88,9 @@ This copies the profile's supported source artifacts once and sets `inherit_prof
 bin/devbox-neo profile init basic --artifact Dockerfile
 ```
 
-Edit the generated Dockerfile to add tools to a Debian-compatible base. Its directory is the build context, so `COPY` can use sibling files. Use `.dockerignore` to exclude files that are not image inputs. Devbox always installs its runtime and harness afterward; there is no full override mode. Init never replaces an existing Dockerfile.
+The standard runtime already includes vim, zip, unzip, jq, net-tools (`ifconfig`), and iputils-ping (`ping`), alongside Bash, git, curl, sudo, and procps. Interactive Bash has `ll='ls -alF'` and `vi='vim'`.
+
+Edit the generated Dockerfile to add other tools to a Debian-compatible base. Its directory is the build context, so `COPY` can use sibling files. Use `.dockerignore` to exclude files that are not image inputs. Devbox always installs its runtime and harness afterward; there is no full override mode. Init never replaces an existing Dockerfile.
 
 The runtime layer prepares writable parents for declared harness mounts. If a custom base has incompatible permissions on those parents, correct the base image; do not recursively change ownership of mounted session/auth data. Use `recreate` to apply image-layer fixes to an existing environment.
 
@@ -90,7 +103,7 @@ bin/devbox-neo recreate /path/to/workspace --profile basic
 bin/devbox-neo recreate /path/to/workspace --profile basic --image
 ```
 
-`--image` disables build cache for the selected session. It does not promise to refresh upstream base images. Durable harness state is preserved.
+Ordinary `recreate` replaces the container using current configuration. It reuses the recorded image when image inputs are unchanged and the image is available; otherwise it builds with caching enabled. This includes changes to Devbox's bundled tools and aliases after a binary update. `--image` forces a no-cache build even when inputs are unchanged. It does not promise to refresh upstream base images. Durable harness state is preserved; changes made only inside the old container are lost.
 
 Managed config is synchronized only while stopped. If an open reports deferred configuration, stop the container when safe and open it again.
 

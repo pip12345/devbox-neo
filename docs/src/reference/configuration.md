@@ -84,6 +84,8 @@ Menus use a short scope title and Setting/Value/Source columns. Source labels ar
 
 An optional `Dockerfile` customizes a Debian-compatible base. Devbox builds it as an intermediate image, then always installs its runtime and selected harness on top. Without one, the base is `debian:bookworm-slim`. There is no `Dockerfile.full` mode.
 
+The runtime layer includes Bash, CA certificates, curl, git, sudo, procps, vim, zip, unzip, jq, net-tools, and iputils-ping. Interactive Bash provides `ll='ls -alF'` and `vi='vim'` through `/etc/bash.bashrc`. These are the same for default and custom-base images; host dotfiles are not imported. Changes to bundled packages or aliases are image inputs, so ordinary `recreate` rebuilds when they change. `--image` is only needed to force a no-cache build despite unchanged inputs.
+
 The selected Dockerfile's directory is the build context. `Dockerfile.dockerignore` takes precedence over `.dockerignore`; included regular files, directories, permissions, and ignore rules contribute to the image fingerprint. Symlinks and special files are rejected unless excluded. `HOST_UID` and `HOST_GID` build arguments are available. Ordinary builds use cache; `recreate --image` disables cache for both controlled stages.
 
 Profile-to-project copying includes the active build context and its ignore rules, preserving context-file permissions. Existing source files are never refreshed by init.

@@ -123,6 +123,15 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 		t.Fatalf("create/open: %v\n%s", err, output.String())
 	}
 	first := record(t, e, result.Name)
+	output.Reset()
+	if err := e.Exec(ctx, result.Name, "test", []string{"bash", "-ic", `set -eu; for tool in vim zip unzip jq ifconfig ping; do command -v "$tool"; done; alias ll; alias vi`}, false); err != nil {
+		t.Fatalf("bundled tool check: %v\n%s", err, output.String())
+	}
+	for _, alias := range []string{"alias ll='ls -alF'", "alias vi='vim'"} {
+		if !strings.Contains(output.String(), alias) {
+			t.Fatalf("missing Bash alias %q: %s", alias, output.String())
+		}
+	}
 	// Probe sibling-directory creation as the normal container user in both
 	// image-owned and bind-backed parents. Version-only launches can miss this
 	// for custom harnesses that do not initialize state on startup.

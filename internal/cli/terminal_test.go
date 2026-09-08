@@ -80,8 +80,13 @@ func TestListDimsOnlyInactiveRowsWithoutChangingAlignment(t *testing.T) {
 		{Name: "inactive-long-name", Exists: true, Workspace: "/work/b", Error: "broken record"},
 		{Name: "missing", Workspace: "/work/c", Pending: &store.Reservation{Mode: "clone", Phase: "prepare", Source: "a", Destination: "b"}},
 	}
-	for _, wide := range []bool{false, true} {
-		styled := terminalOutput(t, 80, func(out *os.File) error { return printContainerList(out, views, wide, now) })
+	renderers := []func(io.Writer) error{
+		func(out io.Writer) error { return printContainerList(out, views, false, now) },
+		func(out io.Writer) error { return printContainerList(out, views, true, now) },
+		func(out io.Writer) error { return printSessionList(out, views, now) },
+	}
+	for _, render := range renderers {
+		styled := terminalOutput(t, 80, func(out *os.File) error { return render(out) })
 		lines := strings.Split(styled, "\n")
 		for i, line := range lines {
 			shouldDim := i == 2 || i == 3
@@ -90,7 +95,7 @@ func TestListDimsOnlyInactiveRowsWithoutChangingAlignment(t *testing.T) {
 			}
 		}
 		var plain bytes.Buffer
-		if err := printContainerList(&plain, views, wide, now); err != nil {
+		if err := render(&plain); err != nil {
 			t.Fatal(err)
 		}
 		if strings.Contains(plain.String(), "\x1b") || unstyle(styled) != plain.String() {
@@ -104,9 +109,11 @@ func TestListDimsOnlyInactiveRowsWithoutChangingAlignment(t *testing.T) {
 			} else {
 				t.Setenv("TERM", "dumb")
 			}
-			text := terminalOutput(t, 80, func(out *os.File) error { return printContainerList(out, views, false, now) })
-			if strings.Contains(text, "\x1b") {
-				t.Fatal("disabled styling emitted ANSI", text)
+			for _, render := range renderers {
+				text := terminalOutput(t, 80, func(out *os.File) error { return render(out) })
+				if strings.Contains(text, "\x1b") {
+					t.Fatal("disabled styling emitted ANSI", text)
+				}
 			}
 		})
 	}

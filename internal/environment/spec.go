@@ -317,7 +317,7 @@ func Digest(v any) string {
 func ImageDockerfile(d harness.Definition, uid, gid int) []byte {
 	// Harness installation runs before its runtime cache/prefix env is applied:
 	// executables stay in the image, not under empty host cache bind mounts.
-	base := fmt.Sprintf("FROM debian:bookworm-slim\nUSER root\nRUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl git sudo procps && rm -rf /var/lib/apt/lists/*\nRUN (getent group %d >/dev/null || groupadd -g %d devuser) && (id devuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u %d -g %d devuser) && echo 'devuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/devuser && chmod 0440 /etc/sudoers.d/devuser\nUSER devuser\nENV HOME=/home/devuser USER=devuser\nWORKDIR /workspace\n", gid, gid, uid, gid)
+	base := fmt.Sprintf("FROM debian:bookworm-slim\nUSER root\nRUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl git sudo procps vim zip unzip jq net-tools iputils-ping && rm -rf /var/lib/apt/lists/*\nRUN echo \"alias ll='ls -alF'\" >> /etc/bash.bashrc && echo \"alias vi='vim'\" >> /etc/bash.bashrc\nRUN (getent group %d >/dev/null || groupadd -g %d devuser) && (id devuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u %d -g %d devuser) && echo 'devuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/devuser && chmod 0440 /etc/sudoers.d/devuser\nUSER devuser\nENV HOME=/home/devuser USER=devuser\nWORKDIR /workspace\n", gid, gid, uid, gid)
 	base += fmt.Sprintf("RUN test \"$(id -u devuser)\" = %d && test \"$(id -g devuser)\" = %d\n", uid, gid)
 	if d.Install.Shell != "" {
 		encoded, _ := json.Marshal([]string{"/bin/bash", "-o", "pipefail", "-c", d.Install.Shell})

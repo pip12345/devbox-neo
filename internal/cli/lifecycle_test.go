@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -52,8 +53,10 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 			t.Fatal(args, out, err)
 		}
 	}
-	if _, err := run("list", "--sort", "wrong"); err == nil {
-		t.Fatal("invalid list ordering accepted")
+	for _, args := range [][]string{{"list", "--sort", "wrong"}, {"session", "list", "--sort", "wrong"}, {"session", "list", "--orphaned"}, {"session", "list", "--older-than", "24h"}} {
+		if _, err := run(args...); err == nil {
+			t.Fatal("invalid list option accepted", args)
+		}
 	}
 	destination := t.TempDir()
 	if out, err := run("session", "clone", result.Name, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {
@@ -61,6 +64,23 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	}
 	if out, err := run("session", "clone", result.Name, destination, "--json"); err != nil || !strings.Contains(out, `"mode":"clone"`) {
 		t.Fatal(out, err)
+	}
+	for _, order := range []string{"name", "last-active"} {
+		out, err := run("session", "list", "--sort", order, "--json")
+		if err != nil {
+			t.Fatal(out, err)
+		}
+		var views []app.View
+		if err := json.Unmarshal([]byte(out), &views); err != nil || len(views) != 2 {
+			t.Fatal("session JSON lost entries", out, err)
+		}
+		if order == "name" && views[0].Name > views[1].Name || order == "last-active" && views[0].LastActivity.Before(views[1].LastActivity) {
+			t.Fatal("session JSON ignored sorting", out)
+		}
+		table, err := run("session", "list", "--sort", order)
+		if err != nil || !strings.Contains(table, "LAST ACTIVE") || !strings.Contains(table, "CONTAINER") || strings.Index(table, views[0].Name) > strings.Index(table, views[1].Name) {
+			t.Fatal("session text and JSON disagree", table, err)
+		}
 	}
 	if _, err := run("session", "relocate", result.Name, "--from", "test"); err == nil {
 		t.Fatal("incomplete slot flags accepted")
@@ -74,6 +94,9 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if out, err := run("delete", result.Name); err != nil || !strings.Contains(out, "retained") {
 		t.Fatal(out, err)
 	}
+	if out, err := run("session", "list"); err != nil || !strings.Contains(out, result.Name) || !strings.Contains(out, "missing") {
+		t.Fatal("session list hid a missing container", out, err)
+	}
 	if out, err := run("session", "prune", "--orphaned", "--dry-run"); err != nil || !strings.Contains(out, "Would delete") {
 		t.Fatal(out, err)
 	}
@@ -81,6 +104,31 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+func TestSessionListEmptyOutput(t *testing.T) {
+	state, err := store.Open(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: &dockertest.Daemon{}}}
+	for _, asJSON := range []bool{false, true} {
+		profile := ""
+		cmd := sessionCommands(func(*cobra.Command) (*app.Engine, error) { return engine, nil }, &profile)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		args := []string{"list"}
+		if asJSON {
+			args = append(args, "--json")
+		}
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if asJSON && strings.TrimSpace(out.String()) != "[]" || !asJSON && !strings.Contains(out.String(), "No durable sessions.") {
+			t.Fatal("incorrect empty session output", out.String())
+		}
+	}
+}
+
 func TestRemovedFullDockerfileIsNotAnInitChoice(t *testing.T) {
 	home := t.TempDir()
 	resourceCLI(t, home, "profile", "create", "test")
