@@ -24,7 +24,7 @@ bin/devbox-neo profile set basic
 
 `create` writes sparse config without choosing a harness. `init` selects the harness; `set` makes the profile the default. No defaults are selected implicitly. Use `--harness opencode` for OpenCode.
 
-In a terminal, `init` without flags offers harness and optional artifact choices. For automation, use explicit flags:
+In a terminal, `init` without flags offers harness and optional artifact choices. Init, profile selection, and config menus use consistent numbered choices with bold headings and subdued help text. For automation, use explicit flags:
 
 ```sh
 bin/devbox-neo profile init basic --harness pi --artifact harness-config,setup.sh
@@ -45,7 +45,7 @@ bin/devbox-neo open /path/to/workspace --profile basic
 
 The first open builds the image and starts Pi. Later opens reuse the container. The default `on_exit` policy stops it after the last attached Devbox command exits.
 
-Find recently used containers with `bin/devbox-neo list --sort last-active`. The table shows state, profile, last recorded Devbox activity, and folder. Add `--wide` for the harness, exact activity/creation times, and the last action, or `--json` for scripts.
+Find recently used containers with `bin/devbox-neo list --sort last-active`. The table shows state, profile, last recorded Devbox activity, and folder. Stopped and missing rows are subdued so running containers stand out; error and pending-transfer details remain readable. Add `--wide` for the harness, exact activity/creation times, and the last action, or `--json` for scripts.
 
 For a non-interactive launch check without provider credentials:
 
@@ -106,6 +106,8 @@ bin/devbox-neo stop /path/to/workspace --profile basic
 ```
 
 For existing containers these commands use the recorded contract, not current profile/project config. `shell` and `exec` require an existing container. A missing container can be recovered by `start` only if its recorded inputs remain available and unchanged; otherwise use explicit `recreate`.
+
+Shells and harness launches receive your current terminal's `TERM`, `COLORTERM`, and related display settings. Reconnect with `shell` to pick up terminal changes; no recreation or Bash config edit is needed for forwarding. Devbox does not import your host prompt or dotfiles.
 
 ## Copy or move a session
 

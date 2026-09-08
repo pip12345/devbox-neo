@@ -39,7 +39,7 @@ func New() *cobra.Command {
 		if f, ok := cmd.InOrStdin().(*os.File); ok {
 			tty = terminal(f)
 		}
-		return &app.Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(), TTY: tty}, UID: os.Getuid(), GID: os.Getgid()}, nil
+		return &app.Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(), TTY: tty}, TerminalEnv: app.TerminalEnv(os.LookupEnv), UID: os.Getuid(), GID: os.Getgid()}, nil
 	}
 	var resume bool
 	var openFlags creationFlags

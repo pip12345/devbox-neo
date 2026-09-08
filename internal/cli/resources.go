@@ -74,7 +74,7 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 				}
 				if !cmd.Flags().Changed("harness") && !cmd.Flags().Changed("artifact") {
 					options.ChooseArtifacts = func(choices []string) ([]string, error) {
-						return chooseMany(reader, cmd.OutOrStdout(), "Optional artifacts (Enter for none)", choices)
+						return chooseMany(reader, cmd.OutOrStdout(), "Optional artifacts", choices)
 					}
 				}
 			}
@@ -254,11 +254,12 @@ func chooseOne(reader *bufio.Reader, out io.Writer, title string, choices []stri
 	if len(choices) == 0 {
 		return "", fmt.Errorf("no valid choices are available")
 	}
-	fmt.Fprintln(out, title)
-	for i, choice := range choices {
-		fmt.Fprintf(out, "  [%d] %s\n", i+1, choice)
+	if err := writeMenuChoices(out, title, choices); err != nil {
+		return "", err
 	}
-	fmt.Fprint(out, "> ")
+	if _, err := fmt.Fprint(out, menuChoicePrompt); err != nil {
+		return "", err
+	}
 	line, err := reader.ReadString('\n')
 	if err != nil && err != io.EOF {
 		return "", err
@@ -270,11 +271,18 @@ func chooseOne(reader *bufio.Reader, out io.Writer, title string, choices []stri
 	return choices[n-1], nil
 }
 func chooseMany(reader *bufio.Reader, out io.Writer, title string, choices []string) ([]string, error) {
-	fmt.Fprintln(out, title)
-	for i, choice := range choices {
-		fmt.Fprintf(out, "  [%d] %s\n", i+1, choice)
+	if err := writeMenuChoices(out, title, choices); err != nil {
+		return nil, err
 	}
-	fmt.Fprint(out, "> ")
+	if _, err := fmt.Fprintln(out); err != nil {
+		return nil, err
+	}
+	if err := writeMenuHint(out, "   Enter comma-separated numbers, or Enter for none."); err != nil {
+		return nil, err
+	}
+	if _, err := fmt.Fprint(out, "\n   Choose numbers > "); err != nil {
+		return nil, err
+	}
 	line, err := reader.ReadString('\n')
 	if err != nil && err != io.EOF {
 		return nil, err

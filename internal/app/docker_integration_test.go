@@ -137,6 +137,10 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	if err = e.Exec(ctx, result.Name, "", []string{"sh", "-c", `test -r /devbox/AGENTS.md && test -r /devbox/docs/index.md && test -r /devbox/network/inspect.json && test ! -w /devbox/docs/index.md && . /devbox/network/env && test -n "$DEVBOX_HOST"`}, false); err != nil {
 		t.Fatal("runtime docs/network contract", err)
 	}
+	e.TerminalEnv = []string{"TERM=xterm-256color", "COLORTERM=truecolor"}
+	if err = e.Exec(ctx, result.Name, "", []string{"sh", "-c", `test "$TERM" = xterm-256color && test "$COLORTERM" = truecolor`}, false); err != nil {
+		t.Fatal("existing-container terminal forwarding", err)
+	}
 	marker := ""
 	for _, declared := range first.Stores {
 		if declared.Scope == "environment" {

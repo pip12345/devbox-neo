@@ -33,13 +33,35 @@ func (m menu) line(prompt string) (string, error) {
 	return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"), nil
 }
 
-func (m menu) choose(title string, choices []string, back string) (int, error) {
-	fmt.Fprintln(m.out, "\n"+title)
+func writeMenuTitle(out io.Writer, title string) error {
+	if _, err := fmt.Fprintln(out); err != nil {
+		return err
+	}
+	return writeStyledConfigLine(out, "", title, "", configDisplayWidth(out), terminalColors(out).strong)
+}
+
+func writeMenuHint(out io.Writer, text string) error {
+	return writeStyledConfigLine(out, "", text, "", configDisplayWidth(out), terminalColors(out).dim)
+}
+
+func writeMenuChoices(out io.Writer, title string, choices []string) error {
+	if err := writeMenuTitle(out, title); err != nil {
+		return err
+	}
 	for i, choice := range choices {
 		prefix := menuPrefix(i + 1)
-		if err := writeConfigLine(m.out, prefix, choice, strings.Repeat(" ", len(prefix)), configDisplayWidth(m.out)); err != nil {
-			return -1, err
+		if err := writeConfigLine(out, prefix, choice, strings.Repeat(" ", len(prefix)), configDisplayWidth(out)); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+const menuChoicePrompt = "\n   Choose a number > "
+
+func (m menu) choose(title string, choices []string, back string) (int, error) {
+	if err := writeMenuChoices(m.out, title, choices); err != nil {
+		return -1, err
 	}
 	return m.readChoice(len(choices), back)
 }
@@ -51,7 +73,7 @@ func menuPrefix(number int) string {
 func (m menu) readChoice(count int, back string) (int, error) {
 	fmt.Fprintf(m.out, "\n%s%s\n", menuPrefix(0), back)
 	for {
-		line, err := m.line("\n   Choose a number > ")
+		line, err := m.line(menuChoicePrompt)
 		if err != nil {
 			return -1, err
 		}

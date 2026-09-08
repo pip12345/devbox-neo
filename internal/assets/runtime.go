@@ -40,6 +40,10 @@ journals or session directories by hand.
 Do not modify /devbox: it is Devbox-owned runtime data. Do not add a project
 Dockerfile to make an ad-hoc tool installation persistent without user approval.
 Devbox does not enforce network egress restrictions or provide an offline mode.
+
+Attached shell, harness, and exec commands receive the invoking terminal's TERM,
+COLORTERM, and related display variables. These are not durable session settings;
+reconnecting refreshes them without recreation. Host shell dotfiles are not imported.
 `
 
 func Files() (map[string][]byte, error) {

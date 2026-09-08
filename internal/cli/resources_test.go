@@ -80,7 +80,7 @@ func TestPromptParsingAndCancellation(t *testing.T) {
 	if err != nil || selected != "opencode" {
 		t.Fatal(selected, err)
 	}
-	if !strings.Contains(out.String(), "[1] pi") || !strings.Contains(out.String(), "[2] opencode") {
+	if !strings.Contains(out.String(), "[1]  pi") || !strings.Contains(out.String(), "[2]  opencode") {
 		t.Fatal("prompt choices are not bracketed", out.String())
 	}
 	out.Reset()
@@ -88,7 +88,7 @@ func TestPromptParsingAndCancellation(t *testing.T) {
 	if err != nil || len(multiple) != 2 {
 		t.Fatal(multiple, err)
 	}
-	if !strings.Contains(out.String(), "[1] pi") || !strings.Contains(out.String(), "[2] opencode") {
+	if !strings.Contains(out.String(), "[1]  pi") || !strings.Contains(out.String(), "[2]  opencode") {
 		t.Fatal("multi-select choices are not bracketed", out.String())
 	}
 	_, err = chooseOne(bufio.NewReader(strings.NewReader("garbage\n")), &out, "Harness", choices)

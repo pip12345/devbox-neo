@@ -22,11 +22,12 @@ import (
 )
 
 type Engine struct {
-	Store   *store.Store
-	Docker  docker.Runtime
-	Streams docker.Streams
-	UID     int
-	GID     int
+	Store       *store.Store
+	Docker      docker.Runtime
+	Streams     docker.Streams
+	TerminalEnv []string
+	UID         int
+	GID         int
 }
 type Request struct {
 	Workspace    string
@@ -485,7 +486,11 @@ func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker
 	if err = prepareMountParents(record); err != nil {
 		return c, err
 	}
-	id, err := e.Docker.Create(ctx, record.Creation, e.owner(record))
+	// Terminal defaults are invocation-local; configured env takes precedence at
+	// creation. Recovery uses today's terminal without changing the saved contract.
+	plan := record.Creation
+	plan.Env = append(append([]string(nil), e.TerminalEnv...), plan.Env...)
+	id, err := e.Docker.Create(ctx, plan, e.owner(record))
 	if err != nil {
 		return c, err
 	}
@@ -516,14 +521,14 @@ func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker
 		return c, err
 	}
 	for _, argv := range record.Prepare {
-		if err = e.Docker.Exec(ctx, c, e.owner(record), argv, docker.Streams{Out: e.Streams.Out, Err: e.Streams.Err}); err != nil {
+		if err = e.Docker.Exec(ctx, c, e.owner(record), argv, nil, docker.Streams{Out: e.Streams.Out, Err: e.Streams.Err}); err != nil {
 			return c, err
 		}
 	}
 	if err = e.runHook(ctx, c, record, record.Setup); err != nil {
 		return c, err
 	}
-	if err = e.Docker.Exec(ctx, c, e.owner(record), []string{"sh", "-c", `command -v "$1" >/dev/null`, "--", record.Launch.Binary}, docker.Streams{Err: e.Streams.Err}); err != nil {
+	if err = e.Docker.Exec(ctx, c, e.owner(record), []string{"sh", "-c", `command -v "$1" >/dev/null`, "--", record.Launch.Binary}, nil, docker.Streams{Err: e.Streams.Err}); err != nil {
 		return c, err
 	}
 	ok = true
@@ -533,7 +538,7 @@ func (e *Engine) runHook(ctx context.Context, c docker.Container, r store.Record
 	if hook.Path == "" {
 		return nil
 	}
-	return e.Docker.Exec(ctx, c, e.owner(r), []string{"bash", "-s"}, docker.Streams{In: bytes.NewReader(hook.Data), Out: e.Streams.Out, Err: e.Streams.Err})
+	return e.Docker.Exec(ctx, c, e.owner(r), []string{"bash", "-s"}, nil, docker.Streams{In: bytes.NewReader(hook.Data), Out: e.Streams.Out, Err: e.Streams.Err})
 }
 func (e *Engine) stopUnattached(l *store.Locked, r store.Record) error {
 	if r.ID == "" || r.Launch.OnExit != "stop" {
@@ -584,7 +589,7 @@ func (e *Engine) attach(ctx context.Context, l *store.Locked, c docker.Container
 	if err = l.Close(); err != nil {
 		return err
 	}
-	return e.Docker.Exec(ctx, c, e.owner(r), argv, e.Streams)
+	return e.Docker.Exec(ctx, c, e.owner(r), argv, e.TerminalEnv, e.Streams)
 }
 func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, error) {
 	s, err := e.Resolve(q)

@@ -64,28 +64,6 @@ func configDisplayWidth(out io.Writer) int {
 	return readableWidth
 }
 
-type configPaint struct{ enabled bool }
-
-func configColors(out io.Writer) configPaint {
-	_, noColor := os.LookupEnv("NO_COLOR")
-	file, ok := out.(*os.File)
-	return configPaint{enabled: ok && !noColor && os.Getenv("TERM") != "dumb" && terminal(file)}
-}
-
-func (p configPaint) dim(text string) string {
-	if !p.enabled || text == "" {
-		return text
-	}
-	return "\x1b[2m" + text + "\x1b[0m"
-}
-
-func (p configPaint) strong(text string) string {
-	if !p.enabled || text == "" {
-		return text
-	}
-	return "\x1b[1m" + text + "\x1b[0m"
-}
-
 // Hard wrapping preserves every character, including whitespace in argv and
 // paths. Continuations have no bullet/number so they cannot look like new items.
 func writeConfigLine(out io.Writer, prefix, text, continuation string, width int) error {
@@ -198,7 +176,7 @@ func printConfigRows(out io.Writer, rows []configDisplayRow, itemIndent string, 
 // The menu uses a labelled table; --show retains named fields without menu
 // numbers. Both use the same value wrapping and per-entry source placement.
 func renderConfigRows(out io.Writer, rows []configDisplayRow, itemIndent string, width int, menuTable bool) error {
-	paint := configColors(out)
+	paint := terminalColors(out)
 	labelWidth, valueWidth, originWidth := 0, 0, 0
 	for _, row := range rows {
 		scalar, items := row.parts()
@@ -271,7 +249,7 @@ func renderConfigRows(out io.Writer, rows []configDisplayRow, itemIndent string,
 	return nil
 }
 
-func writeConfigValue(out io.Writer, prefix, text, origin, continuation string, originColumn, width int, paint configPaint) error {
+func writeConfigValue(out io.Writer, prefix, text, origin, continuation string, originColumn, width int, paint terminalPaint) error {
 	if origin == "" {
 		line := prefix + text
 		if text == "" {

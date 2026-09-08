@@ -22,7 +22,7 @@ Implemented and covered by unit/fake-backed tests:
 - Create/open/reopen, non-blocking creation drift, stopped-only config synchronization, running-container deferral, and explicit recreation with durable state preserved.
 - No-cache forced rebuilds; explicit recreation builds a missing image, whereas recorded recovery refuses it.
 - Per-container setup and every-open entrypoint scripts. Setup inputs belong to creation fingerprints because synchronization cannot claim a changed setup script already ran.
-- Config-independent existing-container start/shell/exec and recorded recovery for the currently supported inputs. Definition-sourced env values are not stored in session JSON.
+- Config-independent existing-container start/shell/exec and recorded recovery for the currently supported inputs. Definition-sourced env values are not stored in session JSON. Terminal display variables are forwarded at creation/recovery and refreshed for attached commands without entering session records or fingerprints; unit/fake-backed coverage passes, while the added live-Docker forwarding check and manual Bash prompt rerun remain pending.
 - Failure propagation, failed-commit cleanup, cancellation cleanup, concurrent-lease safety, and preserved foreground exit/signal status.
 - A custom fixture already exercises the same generic engine; this does not complete the full Phase 2 schema/acceptance gate.
 
@@ -50,7 +50,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - User-approved simplification: removed `Dockerfile.full`. Custom Debian-compatible bases always receive the Devbox runtime and harness layer.
 - One immutable image plan captures the selected Dockerfile, context files/permissions, ignore rules, host-ID build arguments, and runtime layer. Forced rebuilds disable cache for both stages; temporary intermediate tags are ownership-checked before cleanup.
 - Artifact-only projects participate through the shared resolver. Source copies preserve the active build context without mistaking excluded directories for harness configuration.
-- Container list/status/logs/delete, bulk recreation, and network inspect/env/connect/disconnect are wired into the CLI. Inventory batches Docker inspection; status reports broken desired config separately from live state. List tables include profile and relative activity, with name/activity sorting and `--wide` for harness, exact activity/creation times, and last action.
+- Container list/status/logs/delete, bulk recreation, and network inspect/env/connect/disconnect are wired into the CLI. Inventory batches Docker inspection; status reports broken desired config separately from live state. List tables include profile and relative activity, with name/activity sorting and `--wide` for harness, exact activity/creation times, and last action. Stopped/missing rows are dimmed after alignment while running rows and separate diagnostics stay undimmed; terminal capability/opt-out checks preserve plain output.
 - Exact `open` targets keep their recorded slots, and explicit-profile access avoids unrelated corrupt session records.
 - Container deletion preserves durable state and image tags; complete selection locks and preflight precede bulk mutations. Fully labelled recordless owned containers can be deleted without adoption.
 - Session list/show/reset/prune/delete are wired. Reset requires stopped/absent containers and idle leases, preserves declared history by default, and never clears auth/shared caches or stable bind roots. Dry runs do not reap leases or change files.
@@ -63,7 +63,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - `${env:NAME}` expands decoded strings from a captured host snapshot, not keys/raw JSON. Unset references fail; empty values are present; replacement text is not expanded recursively.
 - Global passthrough and layer/CLI env are supported. Config env recovery uses verified source entries; CLI-only values remain unavailable for exact missing-container recovery. Session records never contain env values.
 - Extra bind/volume mounts, published ports, protected raw Docker options, IDE metadata, and root/recreate creation flags are implemented. Host networking rejects published ports and managed targets/labels/env remain protected.
-- Scoped global/profile/project config `--show` and JSON output use the shared resolver, expose origins/exclusions/references, and redact env. Numbered settings menus support scalar/list edits and reset-to-inherited without new dependencies. Each valid operation saves immediately; Back only navigates, with no draft or confirmation stage. Source edits use owner locks and same-field conflict checks, retain expressions and unrelated concurrent edits, and never save redacted display values. Resolution errors remain visible while local editing stays available. Automated coverage includes a Linux pseudo-terminal command test; manual terminal usability acceptance remains pending.
+- Scoped global/profile/project config `--show` and JSON output use the shared resolver, expose origins/exclusions/references, and redact env. Numbered settings menus support scalar/list edits and reset-to-inherited without new dependencies. Each valid operation saves immediately; Back only navigates, with no draft or confirmation stage. Source edits use owner locks and same-field conflict checks, retain expressions and unrelated concurrent edits, and never save redacted display values. Resolution errors remain visible while local editing stays available. Config submenus, profile/project init, and profile selection share bold headings, aligned choices, wrapped text, and dim secondary instructions without changing input rules. Automated coverage includes Linux pseudo-terminal config/init commands and styled/plain list/menu checks; manual terminal usability acceptance remains pending.
 
 ## Runtime documentation and network files — implemented
 
@@ -98,6 +98,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 ## Validation
 
 - `make check`: unit tests, race tests, and build pass.
+- Terminal forwarding and list/menu styling update: `make test`, `make test-race`, and `make build` pass; integration-tagged tests compile. Live terminal/Docker acceptance remains pending.
 - `go vet ./...`: passes.
 - `make install-go`: downloaded and checksum-verified the pinned Linux amd64 toolchain successfully; arm64 has a verified official checksum but was not executed here.
 - Integration-tagged tests compile.
@@ -126,6 +127,6 @@ Continue the runtime/configuration work; do not claim interactive harness accept
 - Phase 7: release hardening, performance/secret audits, and remaining acceptance tests.
 - Separate migration utility: not implemented.
 
-Container env uses a private temporary env file, keeping sensitive values out of process arguments and avoiding container-env overrides of the host Docker client's environment. Multiline/NUL env values are rejected before Docker work.
+Container creation env uses a private temporary env file, keeping configured sensitive values out of process arguments and avoiding container-env overrides of the host Docker client's environment. Attached commands forward only the captured terminal display allowlist through Docker exec env arguments. Multiline/NUL env values are rejected before Docker work.
 
 Unsupported inputs are rejected instead of being silently ignored. Initial-creation failures can leave uncommitted host state when it cannot be safely classified; retries refuse to adopt it. This is not a production-ready cutover build.

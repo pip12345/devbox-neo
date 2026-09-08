@@ -332,7 +332,7 @@ func (r Runtime) Remove(ctx context.Context, c Container, o Owner) error {
 	_, err := r.capture(ctx, "rm", c.ID)
 	return err
 }
-func (r Runtime) Exec(ctx context.Context, c Container, o Owner, argv []string, s Streams) error {
+func (r Runtime) Exec(ctx context.Context, c Container, o Owner, argv, env []string, s Streams) error {
 	if err := c.Verify(o); err != nil {
 		return err
 	}
@@ -345,6 +345,12 @@ func (r Runtime) Exec(ctx context.Context, c Container, o Owner, argv []string, 
 	}
 	if s.TTY {
 		args = append(args, "--tty")
+	}
+	if err := ValidateEnv(env); err != nil {
+		return err
+	}
+	for _, entry := range env {
+		args = append(args, "--env", entry)
 	}
 	args = append(args, c.ID)
 	args = append(args, argv...)

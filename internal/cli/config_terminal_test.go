@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -12,23 +11,7 @@ import (
 )
 
 func TestConfigCommandWithTerminalInputKeepsTerminalMode(t *testing.T) {
-	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR|unix.O_NOCTTY, 0)
-	if err != nil {
-		t.Skipf("pseudo-terminal unavailable: %v", err)
-	}
-	defer master.Close()
-	if err = unix.IoctlSetPointerInt(int(master.Fd()), unix.TIOCSPTLCK, 0); err != nil {
-		t.Fatal(err)
-	}
-	number, err := unix.IoctlGetInt(int(master.Fd()), unix.TIOCGPTN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	slave, err := os.OpenFile(fmt.Sprintf("/dev/pts/%d", number), os.O_RDWR|unix.O_NOCTTY, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer slave.Close()
+	master, slave := testTerminal(t)
 	for _, size := range []struct{ columns, want int }{{52, 52}, {120, 80}} {
 		if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 24, Col: uint16(size.columns)}); err != nil {
 			t.Fatal(err)
@@ -46,18 +29,18 @@ func TestConfigCommandWithTerminalInputKeepsTerminalMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TERM", "xterm")
-	if !configColors(slave).enabled || configColors(&bytes.Buffer{}).enabled {
+	if !terminalColors(slave).enabled || terminalColors(&bytes.Buffer{}).enabled {
 		t.Fatal("color must be limited to terminal output")
 	}
 	t.Setenv("NO_COLOR", "1")
-	if configColors(slave).enabled {
+	if terminalColors(slave).enabled {
 		t.Fatal("NO_COLOR was ignored")
 	}
 	if err := os.Unsetenv("NO_COLOR"); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("TERM", "dumb")
-	if configColors(slave).enabled {
+	if terminalColors(slave).enabled {
 		t.Fatal("dumb terminal received styling")
 	}
 	s := menuService(t)

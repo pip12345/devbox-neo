@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"sort"
@@ -65,7 +66,10 @@ func exactTime(at time.Time) string {
 }
 
 func printContainerList(out io.Writer, views []app.View, wide bool, now time.Time) error {
-	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	// Align plain cells before styling whole rows: tabwriter counts ANSI escapes
+	// as visible text, which would otherwise shift columns on inactive rows.
+	var table bytes.Buffer
+	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
 	header := "NAME\tSTATE\tPROFILE\tLAST ACTIVE\tFOLDER"
 	if wide {
 		header += "\tHARNESS\tLAST ACTION\tCREATED"
@@ -101,6 +105,16 @@ func printContainerList(out io.Writer, views []app.View, wide bool, now time.Tim
 	}
 	if err := w.Flush(); err != nil {
 		return err
+	}
+	paint := terminalColors(out)
+	lines := strings.Split(strings.TrimSuffix(table.String(), "\n"), "\n")
+	for i, line := range lines {
+		if i > 0 && !(views[i-1].Exists && views[i-1].Running) {
+			line = paint.dim(line)
+		}
+		if _, err := fmt.Fprintln(out, line); err != nil {
+			return err
+		}
 	}
 	for _, view := range views {
 		if view.Error != "" {

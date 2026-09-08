@@ -33,8 +33,7 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 			return err
 		}
 		view, resolveErr := s.ShowOwner(owner)
-		fmt.Fprintln(m.out)
-		if err := writeStyledConfigLine(m.out, "", configMenuTitle(owner), "", configDisplayWidth(m.out), configColors(m.out).strong); err != nil {
+		if err := writeMenuTitle(m.out, configMenuTitle(owner)); err != nil {
 			return err
 		}
 		if resolveErr != nil {
@@ -87,7 +86,12 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 			return err
 		}
 		field := fields[n]
-		fmt.Fprintf(m.out, "\n%s (%s)\n%s\n", configLabel(field.Key), field.Key, field.Help)
+		if err := writeMenuTitle(m.out, fmt.Sprintf("%s (%s)", configLabel(field.Key), field.Key)); err != nil {
+			return err
+		}
+		if err := writeMenuHint(m.out, field.Help); err != nil {
+			return err
+		}
 		if field.Kind == "list" || field.Kind == "extensions" {
 			if err = editList(m, s, owner, field); err != nil {
 				return err
@@ -306,9 +310,12 @@ func editList(m menu, s *resource.Service, owner resource.Owner, field resource.
 			return err
 		}
 		if len(entries) == 0 {
-			fmt.Fprintf(m.out, "\nNo %s configured here.\n", strings.ToLower(configLabel(field.Key)))
-		} else {
-			fmt.Fprintf(m.out, "\n%s configured here:\n", configLabel(field.Key))
+			fmt.Fprintln(m.out)
+			if err := writeMenuHint(m.out, fmt.Sprintf("No %s configured here.", strings.ToLower(configLabel(field.Key)))); err != nil {
+				return err
+			}
+		} else if err := writeMenuTitle(m.out, configLabel(field.Key)+" configured here:"); err != nil {
+			return err
 		}
 		labels := make([]string, len(entries))
 		for i, entry := range entries {
