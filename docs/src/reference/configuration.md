@@ -6,7 +6,7 @@ The complete intended schema is in [the rewrite plan](../../dev/rewrite-plan.md#
 
 Resolution: `--home` → `DEVBOX_HOME` → `~/.devbox-neo`.
 
-The old `~/.devbox` and its descendants are rejected. Docker resources use the `devbox-rewrite` namespace, including ownership labels.
+The old `~/.devbox` and its descendants are rejected. Container/session names use `devbox-`; Docker ownership labels and image tags retain the `devbox-rewrite` namespace.
 
 ## Usable fields
 

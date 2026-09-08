@@ -10,7 +10,9 @@ From the rewrite repository:
 make check
 ```
 
-The binary is `bin/devbox-neo`. Its default home is `~/.devbox-neo`; it uses separate Docker names and labels. `--home` overrides `DEVBOX_HOME`, which overrides the default. The old `~/.devbox` is rejected, including when an inherited environment variable selects it.
+The binary is `bin/devbox-neo`. Its default home is `~/.devbox-neo`; container/session names include the folder and a short hash, such as `devbox-myapp-<hash>.profile-basic`, while Docker ownership labels and image tags retain the development namespace. `--home` overrides `DEVBOX_HOME`, which overrides the default. The old `~/.devbox` is rejected, including when an inherited environment variable selects it.
+
+If upgrading from a build with `devbox-rewrite-` or folder-less session names, clear the old containers and durable sessions using the old build before switching. This is a clean session reset, not a migration; save any needed session data separately. The new build does not rename or delete old resources automatically.
 
 ## Configure the first profile
 

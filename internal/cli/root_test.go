@@ -18,7 +18,10 @@ func TestExecutableName(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	if !strings.Contains(help, "open") || strings.Contains(help, "devbox-neo <target>") || strings.Contains(help, "devbox-rewrite") {
+	if !strings.HasPrefix(help, "Persistent development environments\n") {
+		t.Fatalf("incorrect help description: %s", help)
+	}
+	if !strings.Contains(help, "open") || strings.Contains(help, "devbox-neo <target>") || strings.Contains(help, "rewrite") {
 		t.Fatalf("incorrect root help: %s", help)
 	}
 	if strings.Contains(help, "--continue") || strings.Contains(help, "--network string") {

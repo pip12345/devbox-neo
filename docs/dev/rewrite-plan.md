@@ -392,7 +392,7 @@ External lock paths remain outside removable session directories so deletion can
 
 ### Container/session boundary
 
-A session is durable Devbox state and recreation identity. A container is disposable Docker runtime linked to the session through deterministic naming and ownership/session-ID labels.
+A session is durable Devbox state and recreation identity. A container is disposable Docker runtime linked to the session through deterministic naming and ownership/session-ID labels. Container/session names use `devbox-<folder>-<12-hex-hash>.profile-<name>` or `devbox-<folder>-<12-hex-hash>.project`, hashing the full canonical workspace path and slot. The canonical folder basename is lowercased, sanitized to `a-z0-9_.-` with invalid runs replaced by `-`, and limited to 32 characters. Edge punctuation is trimmed; an empty result becomes `workspace`. The prefix is independent of the Docker ownership namespace.
 
 Read and mutation commands preserve that boundary:
 
@@ -1534,7 +1534,7 @@ During development:
 - build the development binary as `devbox-neo`;
 - default the development rewrite to `~/.devbox-neo`, with `--home` taking priority over `DEVBOX_HOME`; reject the conventional old `~/.devbox` and its descendants even when selected through an override or symlink alias;
 - use temporary isolated homes for tests, not the user's persistent `~/.devbox-neo`;
-- use distinct development labels and container/image name prefixes;
+- use `devbox-` container/session names, while retaining `devbox-rewrite.*` ownership labels and `devbox-rewrite/` image tags; earlier container/session names without a folder or with `devbox-rewrite-` require a clean session reset, with no automatic migration or deletion;
 - never inspect or mutate current Devbox resources by prefix alone.
 
 Retain this manual clean-cutover alternative for users who do not want to import old state:

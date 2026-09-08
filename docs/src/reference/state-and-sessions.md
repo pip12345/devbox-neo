@@ -27,7 +27,9 @@ Docker creation uses a private `0600` env file in the OS temporary directory, re
 
 Locks remain outside removable session directories. Records are atomically replaced with restrictive permissions; corrupt state is not treated as absence. Container listings use the record's `last_activity` and `last_action`; `created_at` in list output comes from Docker's current container, not the durable session's creation timestamp. No additional activity state is introduced.
 
-Containers carry installation, ownership-version, session, workspace, and slot labels. Images carry installation ownership only. Final image tags are `devbox-rewrite/session:<session-id>`. Names are lookup keys, never proof of ownership.
+Container names are `devbox-<folder>-<12-hex-hash>.profile-<name>` or `devbox-<folder>-<12-hex-hash>.project`. The hash is derived from the full canonical workspace path and slot. The folder is the canonical path's basename, lowercased and limited to 32 characters from `a-z0-9_.-`. Invalid character runs become `-`; edge punctuation is trimmed. Empty results use `workspace`. Session directory names match container names. Earlier names without the folder or with `devbox-rewrite-` require a clean session reset; there is no automatic migration or deletion.
+
+Containers carry installation, ownership-version, session, workspace, and slot labels under `devbox-rewrite.*`. Images carry installation ownership only. Final image tags are `devbox-rewrite/session:<session-id>`. Names are lookup keys, never proof of ownership.
 
 Built-in mappings (targets are inside the container):
 

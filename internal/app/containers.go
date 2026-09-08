@@ -163,7 +163,7 @@ func (e *Engine) selectContainers(ctx context.Context, selection Selection) ([]s
 		for _, target := range selection.Targets {
 			r, err := e.Locate(ctx, target, selection.Profile)
 			if err != nil {
-				if os.IsNotExist(err) && strings.HasPrefix(target, docker.Namespace+"-") && !strings.ContainsAny(target, "/\\") {
+				if os.IsNotExist(err) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
 					names[target] = true
 					continue
 				}

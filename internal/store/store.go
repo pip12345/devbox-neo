@@ -165,7 +165,7 @@ func (r Record) Validate(name string) error {
 	return nil
 }
 func validName(name string) bool {
-	return strings.HasPrefix(name, docker.Namespace+"-") && filepath.Base(name) == name && !strings.ContainsAny(name, "/\\\x00\r\n")
+	return strings.HasPrefix(name, environment.ContainerPrefix) && filepath.Base(name) == name && !strings.ContainsAny(name, "/\\\x00\r\n")
 }
 func Open(ctx context.Context, home string) (*Store, error) {
 	absolute, err := filepath.Abs(home)

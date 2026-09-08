@@ -74,7 +74,7 @@ func (e *Engine) inspect(ctx context.Context, r store.Record) (docker.Container,
 // Open keeps the operation lock through stopped-only synchronization, startup,
 // and lease creation. The long foreground command runs after releasing it.
 func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error) {
-	if strings.HasPrefix(q.Workspace, docker.Namespace+"-") && !strings.ContainsAny(q.Workspace, "/\\") {
+	if strings.HasPrefix(q.Workspace, environment.ContainerPrefix) && !strings.ContainsAny(q.Workspace, "/\\") {
 		r, loadErr := e.Store.Read(ctx, q.Workspace)
 		if loadErr != nil {
 			return result, loadErr

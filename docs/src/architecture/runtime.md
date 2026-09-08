@@ -19,6 +19,8 @@ flowchart TD
 
 The implementation supports Linux only. `flock`, `/proc/<pid>/stat`, boot identity, terminal ioctls, and Linux process exit status are used directly. There is no portability layer or legacy runtime path.
 
+`environment.ContainerPrefix` defines the `devbox-` container/session lookup convention independently of `docker.Namespace`, which still defines `devbox-rewrite.*` ownership labels and image tags. Names include a sanitized, bounded canonical folder basename, followed by 12 hex characters of the hash of the full canonical workspace path plus slot, and `.profile-<name>` / `.project` suffixes. Sanitization and truncation affect only the readable folder, not the hash input; symlink aliases resolve to the same name. Session records validate against this naming rule; earlier names require a clean reset, not a runtime compatibility path. Docker ownership verification is unchanged.
+
 ## Configuration owners and registry
 
 `resource` owns create/init/default-selection and setting-edit mutations. It uses external, per-owner configuration locks and the same Linux lock primitive as the session store. Create stages the complete source tree and publishes it with `RENAME_NOREPLACE`; even an existing empty destination is preserved. Init validates requested artifacts before writing, creates files with no-replace publication, and commits harness selection after seeding. It does not own Docker lifecycle or seed implicit defaults.

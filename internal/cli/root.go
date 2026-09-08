@@ -16,7 +16,7 @@ var Version = "dev"
 
 func New() *cobra.Command {
 	var home, profile string
-	root := &cobra.Command{Use: "devbox-neo", Short: "Persistent development environments (scratch rewrite)", SilenceUsage: true, SilenceErrors: true}
+	root := &cobra.Command{Use: "devbox-neo", Short: "Persistent development environments", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().StringVar(&home, "home", "", "Devbox home (default ~/.devbox-neo; DEVBOX_HOME overrides)")
 	root.PersistentFlags().StringVarP(&profile, "profile", "p", "", "Select a profile slot")
 	initialize := func(cmd *cobra.Command) (*store.Store, error) {

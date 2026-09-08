@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -21,6 +22,9 @@ import (
 	"devbox/internal/filesync"
 	"devbox/internal/harness"
 )
+
+// ContainerPrefix is a lookup convention, independent of Docker ownership labels.
+const ContainerPrefix = "devbox-"
 
 type Identity struct {
 	Workspace string `json:"workspace"`
@@ -54,9 +58,19 @@ func Identify(workspace, profile string, project bool) (Identity, error) {
 	return Identity{Workspace: canonical, Slot: slot, Profile: selected, Name: ContainerName(canonical, slot)}, nil
 }
 
+var unsafeFolderCharacters = regexp.MustCompile(`[^a-z0-9_.-]+`)
+
 func ContainerName(workspace, slot string) string {
+	// The folder is a readable hint, not identity: truncation and sanitization
+	// must not change which full workspace path and slot feed the hash.
+	folder := unsafeFolderCharacters.ReplaceAllString(strings.ToLower(filepath.Base(workspace)), "-")
+	folder = strings.Trim(folder, "-_.")
+	folder = strings.TrimRight(folder[:min(len(folder), 32)], "-_.")
+	if folder == "" {
+		folder = "workspace"
+	}
 	sum := sha256.Sum256([]byte(workspace + "\x00" + slot))
-	return docker.Namespace + "-" + hex.EncodeToString(sum[:12]) + "." + strings.ReplaceAll(slot, ":", "-")
+	return ContainerPrefix + folder + "-" + hex.EncodeToString(sum[:6]) + "." + strings.ReplaceAll(slot, ":", "-")
 }
 
 type Fingerprints struct {

@@ -46,7 +46,7 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string,
 		id, err := transferSlot(q.Source, q.From)
 		return id.Name, err
 	}
-	if strings.HasPrefix(q.Source, docker.Namespace+"-") && !strings.ContainsAny(q.Source, "/\\") {
+	if strings.HasPrefix(q.Source, environment.ContainerPrefix) && !strings.ContainsAny(q.Source, "/\\") {
 		return q.Source, nil
 	}
 	r, err := e.Locate(ctx, q.Source, "")

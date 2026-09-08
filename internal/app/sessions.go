@@ -7,11 +7,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"devbox/internal/docker"
 	"time"
 
 	"devbox/internal/config"
+	"devbox/internal/environment"
 	"devbox/internal/harness"
 	"devbox/internal/store"
 )
@@ -25,7 +24,7 @@ type SessionDetails struct {
 
 func (e *Engine) SessionShow(ctx context.Context, target, profile string) (SessionDetails, error) {
 	r, err := e.Locate(ctx, target, profile)
-	if os.IsNotExist(err) && strings.HasPrefix(target, docker.Namespace+"-") && !strings.ContainsAny(target, "/\\") {
+	if os.IsNotExist(err) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
 		pending, pendingErr := e.Store.Pending(target)
 		if pendingErr != nil {
 			return SessionDetails{}, pendingErr

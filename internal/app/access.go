@@ -9,14 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"devbox/internal/docker"
 	"devbox/internal/environment"
 	"devbox/internal/store"
 )
 
 // Locate uses only durable identity, never desired config or the harness registry.
 func (e *Engine) Locate(ctx context.Context, target, profile string) (store.Record, error) {
-	if strings.HasPrefix(target, docker.Namespace+"-") && !strings.ContainsAny(target, "/\\") {
+	if strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
 		return e.Store.Read(ctx, target)
 	}
 	id, err := environment.Identify(target, "", true)
