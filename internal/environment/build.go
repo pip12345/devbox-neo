@@ -2,6 +2,7 @@ package environment
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"devbox/internal/artifact"
@@ -28,13 +29,14 @@ done`, "mount-parents"}
 }
 
 type ImageBuildPlan struct {
-	Mode       string
-	Source     string
-	Dockerfile []byte
-	Context    map[string]artifact.ContextFile
-	Runtime    []byte
-	Arguments  map[string]string
-	Ignore     []byte
+	Mode         string
+	Source       string
+	Dockerfile   []byte
+	Context      map[string]artifact.ContextFile
+	Runtime      []byte
+	Arguments    map[string]string
+	Ignore       []byte
+	IgnoreSource string
 }
 
 func PlanImage(winners map[string]string, d harness.Definition, uid, gid int) (ImageBuildPlan, error) {
@@ -54,18 +56,11 @@ func PlanImage(winners map[string]string, d harness.Definition, uid, gid int) (I
 	plan.Dockerfile = captured.Dockerfile
 	plan.Context = captured.Files
 	plan.Ignore = captured.Ignore
+	if captured.IgnoreName != "" {
+		plan.IgnoreSource = filepath.Join(filepath.Dir(source), captured.IgnoreName)
+	}
 	plan.Arguments = map[string]string{"HOST_UID": fmt.Sprint(uid), "HOST_GID": fmt.Sprint(gid)}
 	return plan, nil
-}
-func (p ImageBuildPlan) InputFingerprint() string {
-	// Source location is provenance. Temporary directories and session tags must
-	// not make identical content appear different across sessions or invocations.
-	return Digest(struct {
-		Mode                        string
-		Dockerfile, Runtime, Ignore []byte
-		Context                     map[string]artifact.ContextFile
-		Arguments                   map[string]string
-	}{p.Mode, p.Dockerfile, p.Runtime, p.Ignore, p.Context, p.Arguments})
 }
 func (p ImageBuildPlan) FinalDockerfile(base string) []byte {
 	if p.Mode == "normal" {

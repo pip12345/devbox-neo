@@ -45,7 +45,10 @@ Devbox does not enforce network egress restrictions or provide an offline mode.
 On the host, devbox-neo status --all shows which existing containers need recreation
 or rebuilding from changed local inputs; it does not check upstream releases.
 Ordinary recreate builds changed image inputs automatically. Open prints creation
-drift warnings first, before startup, then continues immediately.
+drift reasons first, before startup, then continues immediately. Status and open
+share detailed setting/file changes; env reasons show variable names, never values.
+Session record schema 2 requires a complete applied-input snapshot. Older development
+records require a clean reset with the previous build; there is no automatic migration.
 
 Attached shell, harness, and exec commands receive the invoking terminal's TERM,
 COLORTERM, and related display variables. These are not durable session settings;

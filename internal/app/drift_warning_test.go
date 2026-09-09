@@ -46,7 +46,7 @@ func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 			warned := false
 			before := len(d.History())
 			writer := warningWriter(func(p []byte) (int, error) {
-				if strings.Contains(string(p), "using recorded creation settings") {
+				if strings.Contains(string(p), "this container differs from current configuration") {
 					if output.Len() != 0 || len(d.History()) != before {
 						t.Fatal("creation warning was not first", output.String())
 					}
@@ -86,7 +86,7 @@ func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 			if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "creation_drift" {
 				t.Fatal("typed warning missing", result)
 			}
-			if strings.Count(output.String(), "using recorded creation settings") != 1 || !strings.Contains(output.String(), "skipping non-regular") || !strings.Contains(output.String(), "entrypoint output") {
+			if strings.Count(output.String(), "this container differs from current configuration") != 1 || !strings.Contains(output.String(), "skipping non-regular") || !strings.Contains(output.String(), "entrypoint output") {
 				t.Fatal("warning duplicated or subsequent output lost", output.String())
 			}
 			if string(getFile(t, liveFile)) != "new config" {
@@ -109,7 +109,7 @@ func TestOpenCancelledAfterCreationWarningDoesNotMutate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	e.Streams.Err = warningWriter(func(p []byte) (int, error) {
-		if strings.Contains(string(p), "using recorded creation settings") {
+		if strings.Contains(string(p), "this container differs from current configuration") {
 			cancel()
 		}
 		return len(p), nil

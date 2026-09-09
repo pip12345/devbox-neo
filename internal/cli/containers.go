@@ -88,6 +88,9 @@ func containerCommands(factory engineFactory, profile *string) []*cobra.Command 
 			cmd.Printf("Desired configuration error: %s\n", view.ConfigError)
 		} else {
 			cmd.Printf("Desired change: %s\n", view.Desired)
+			for _, inputChange := range view.PendingInputChanges {
+				cmd.Printf("  - [%s] %s\n", inputChange.Scope, inputChange)
+			}
 		}
 		return nil
 	}}

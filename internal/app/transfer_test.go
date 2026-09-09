@@ -99,6 +99,10 @@ func TestTransferIdentityStateAndRunningPolicy(t *testing.T) {
 				if copied.Identity.Workspace != target || copied.Action != mode {
 					t.Fatal("wrong destination contract", copied.Identity)
 				}
+				view, err := e.Status(ctx, result.Destination, "")
+				if err != nil || view.Desired != environment.NoChange || len(view.PendingInputChanges) != 0 || copied.Inputs.Container.Identity != copied.Identity {
+					t.Fatal("destination did not commit its own input baseline", view, err)
+				}
 				data, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", result.Destination, rel))
 				if err != nil || string(data) != "conversation" {
 					t.Fatal("lost state", err)

@@ -42,6 +42,7 @@ type Record struct {
 	Activity        time.Time                `json:"last_activity"`
 	Action          string                   `json:"last_action"`
 	Applied         environment.Fingerprints `json:"fingerprints"`
+	Inputs          environment.Inputs       `json:"inputs"`
 	ImageTag        string                   `json:"image_tag"`
 	ImageID         string                   `json:"image_id"`
 	Creation        docker.CreatePlan        `json:"creation"`
@@ -59,12 +60,21 @@ type Record struct {
 	ManifestVersion int                      `json:"manifest_version"`
 }
 
+const RecordVersion = 2
+
+// Runtime synchronization must advance its explanation baseline together with
+// its fingerprint. Image/container inputs remain committed until recreation.
+func (r *Record) ApplyRuntime(inputs environment.RuntimeInputs) {
+	r.Inputs.Runtime = inputs
+	r.Applied.Runtime = inputs.Fingerprint()
+}
+
 var idPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 var hashPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func (r Record) Validate(name string) error {
-	if r.Version != 1 || r.Ownership != 1 || r.ManifestVersion != 1 {
-		return fmt.Errorf("unsupported session record version")
+	if r.Version != RecordVersion || r.Ownership != 1 || r.ManifestVersion != 1 {
+		return fmt.Errorf("unsupported session record version; a clean development session reset is required")
 	}
 	if !idPattern.MatchString(r.ID) || r.Identity.Name != name || !validName(name) || !filepath.IsAbs(r.Identity.Workspace) || r.Identity.Slot == "" {
 		return fmt.Errorf("invalid session identity")
@@ -80,6 +90,12 @@ func (r Record) Validate(name string) error {
 	}
 	if !hashPattern.MatchString(r.Applied.Image) || !hashPattern.MatchString(r.Applied.Container) || !hashPattern.MatchString(r.Applied.Runtime) || !hashPattern.MatchString(r.Definition.Hash) {
 		return fmt.Errorf("invalid recorded fingerprints")
+	}
+	if err := r.Inputs.Validate(); err != nil {
+		return err
+	}
+	if r.Inputs.Container.Identity != r.Identity || r.Inputs.Image.Harness != r.Definition.Name || r.Inputs.Image.Definition.Hash != r.Definition.Hash || r.Inputs.FingerprintsFor(r.ImageID) != r.Applied {
+		return fmt.Errorf("recorded inputs do not match the committed fingerprints or identity")
 	}
 	if r.Launch.Binary == "" || len(r.Launch.Shell) == 0 || (r.Launch.OnExit != "stop" && r.Launch.OnExit != "running") || !config.Name.MatchString(r.Definition.Name) {
 		return fmt.Errorf("invalid recorded launch contract")

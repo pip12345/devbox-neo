@@ -9,7 +9,7 @@ The default development home is `~/.devbox-neo`. Its important paths are:
 | `harnesses/<name>/` | User definition and optional defaults |
 | `auth/<harness>/` | Managed persistent authentication |
 | `cache/harnesses/<harness>/<store>/` | Shared declared harness caches |
-| `sessions/<container>/session.json` | Durable identity, creation, launch, source verification, and activity |
+| `sessions/<container>/session.json` | Durable identity, creation, launch, source verification, applied input snapshot, and activity |
 | `sessions/<container>/active/` | Attached-command leases |
 | `sessions/<container>/harnesses/<harness>/stores/<store>/` | Environment-scoped harness state |
 | `sessions/<container>/harnesses/<harness>/managed-config.json` | Last applied file/key ownership and conflicts |
@@ -24,6 +24,10 @@ The default development home is `~/.devbox-neo`. Its important paths are:
 Profile/project creation stages a private `.devbox-create-*` directory beside its destination, then publishes it with a Linux no-replace rename. An interrupted staging directory is not a configured owner and is never adopted. Configuration locks remain outside the edited directories.
 
 Docker creation uses a private `0600` env file in the OS temporary directory, removed when the create command returns. Its contents and temporary path are not persisted in session records. `env_sources` in the record holds only file/field/index references and keyed expression/value fingerprints. Invocation-only configured env is recorded as unrecoverable input, never copied into the record. Automatic terminal passthrough is separate: it adds no env-source references or fingerprints and is captured afresh from the invoking terminal during creation/recovery and attachment. Named external volumes must still exist for recovery.
+
+Session records use schema version `2` and require `inputs.image`, `inputs.container`, and `inputs.runtime`. This snapshot contains public settings, source paths, file hashes/modes, and keyed env hashes—not file contents or env/auth values. Raw `--env` values are redacted in the diagnostic snapshot. The three fingerprints are derived from these inputs and validated against them. Image/container baselines advance only when creation/recreation commits; the runtime baseline advances with its applied fingerprint after successful synchronization. Status and pending-change warnings never advance either baseline.
+
+Version-1 records and incomplete snapshots are rejected. Existing development containers and durable session records require a clean reset using the previous build before switching; save any needed session data separately. This is not the `session reset` command, which only clears selected harness stores. There is no compatibility reader, migration, automatic deletion, or guessed historical baseline. Global/profile/project config versions remain unchanged.
 
 Locks remain outside removable session directories. Records are atomically replaced with restrictive permissions; corrupt state is not treated as absence. Container listings use the record's `last_activity` and `last_action`; `created_at` in list output comes from Docker's current container, not the durable session's creation timestamp. No additional activity state is introduced.
 

@@ -42,9 +42,9 @@ func TestBundledToolsAndAliasesInBothImageModes(t *testing.T) {
 		if strings.Contains(text, "tmux") {
 			t.Fatal("unrequested tool installed")
 		}
-		before := plan.InputFingerprint()
+		before := plan.inputs(h, "test").fingerprint()
 		plan.Runtime = []byte(strings.Replace(string(plan.Runtime), "vim zip unzip jq net-tools iputils-ping", "vim zip unzip jq", 1))
-		if before == plan.InputFingerprint() {
+		if before == plan.inputs(h, "test").fingerprint() {
 			t.Fatal("bundled tool changes must invalidate the image fingerprint")
 		}
 	}
@@ -71,15 +71,15 @@ func TestImagePlansRespectCapturedContext(t *testing.T) {
 	if _, ok := first.Context["ignored"]; ok {
 		t.Fatal("ignored file captured")
 	}
-	hash := first.InputFingerprint()
+	hash := first.inputs(h, "test").fingerprint()
 	putBuild(t, filepath.Join(root, "ignored"), "changed")
 	second, err := PlanImage(map[string]string{"Dockerfile": normal}, h.Definition, 1000, 1001)
-	if err != nil || second.InputFingerprint() != hash {
+	if err != nil || second.inputs(h, "test").fingerprint() != hash {
 		t.Fatal("excluded file caused drift", err)
 	}
 	putBuild(t, filepath.Join(root, "included"), "two")
 	second, err = PlanImage(map[string]string{"Dockerfile": normal}, h.Definition, 1000, 1001)
-	if err != nil || second.InputFingerprint() == hash {
+	if err != nil || second.inputs(h, "test").fingerprint() == hash {
 		t.Fatal("context change missed", err)
 	}
 	if string(first.Context["included"].Data) != "one" {

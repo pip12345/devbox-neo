@@ -40,9 +40,11 @@ type Request struct {
 	Host         config.Host
 }
 type Diagnostic struct {
-	Code    string
-	Message string
-	Command []string
+	Code                string
+	Message             string
+	Command             []string
+	Change              environment.Change
+	PendingInputChanges []environment.InputChange
 }
 type Result struct {
 	Name        string
@@ -67,7 +69,19 @@ func (e *Engine) resolutionWarnings(spec environment.Spec) {
 func (e *Engine) diagnose(result *Result, diagnostic Diagnostic) {
 	result.Diagnostics = append(result.Diagnostics, diagnostic)
 	if e.Streams.Err != nil {
-		fmt.Fprintf(e.Streams.Err, "Warning: %s\n  %s\n", diagnostic.Message, strings.Join(diagnostic.Command, " "))
+		fmt.Fprintf(e.Streams.Err, "Warning: %s\n", diagnostic.Message)
+		for _, inputChange := range diagnostic.PendingInputChanges {
+			fmt.Fprintf(e.Streams.Err, "  - %s\n", inputChange)
+		}
+		if diagnostic.Code == "creation_drift" {
+			fmt.Fprintln(e.Streams.Err, "\nOpening the existing container without applying these creation changes.")
+			if diagnostic.Change == environment.RebuildAndRecreate {
+				fmt.Fprintln(e.Streams.Err, "Rebuild image and recreate:")
+			} else {
+				fmt.Fprintln(e.Streams.Err, "Recreate to apply changes:")
+			}
+		}
+		fmt.Fprintf(e.Streams.Err, "  %s\n", strings.Join(diagnostic.Command, " "))
 	}
 }
 func (e *Engine) owner(r store.Record) docker.Owner {
@@ -121,9 +135,9 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 		return result, err
 	}
 	if !fresh {
-		change := environment.Compare(record.Applied, spec.FingerprintsFor(record.ImageID))
-		if change == environment.Recreate || change == environment.RebuildAndRecreate {
-			e.diagnose(&result, Diagnostic{Code: "creation_drift", Message: "using recorded creation settings; changes are pending", Command: []string{"devbox-neo", "recreate", record.Identity.Name}})
+		drift := environment.CompareInputs(record.Inputs, spec.Inputs)
+		if drift.Change == environment.Recreate || drift.Change == environment.RebuildAndRecreate {
+			e.diagnose(&result, Diagnostic{Code: "creation_drift", Message: "this container differs from current configuration:", Command: []string{"devbox-neo", "recreate", record.Identity.Name}, Change: drift.Change, PendingInputChanges: drift.PendingCreationChanges()})
 		}
 	}
 	e.resolutionWarnings(spec)
@@ -154,7 +168,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 					err = e.sync(lock, spec)
 				}
 				if err == nil {
-					record.Applied.Runtime = spec.Fingerprints.Runtime
+					record.ApplyRuntime(spec.Inputs.Runtime)
 				}
 			} else if compatible && record.Applied.Runtime != spec.Fingerprints.Runtime {
 				manifest, pathErr := lock.Path(filepath.Join("harnesses", record.Definition.Name, "managed-config.json"))
@@ -166,7 +180,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 					return result, checkErr
 				}
 				if current {
-					record.Applied.Runtime = spec.Fingerprints.Runtime
+					record.ApplyRuntime(spec.Inputs.Runtime)
 				} else {
 					e.diagnose(&result, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; stop, then open to apply", Command: []string{"devbox-neo", "stop", record.Identity.Name}})
 				}
@@ -464,7 +478,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		}
 		removed = true
 	}
-	record = store.Record{Version: 1, ID: id, Identity: s.Identity, Created: created, Activity: time.Now().UTC(), Action: "create", Applied: s.FingerprintsFor(image.ID), ImageTag: docker.Namespace + "/session:" + id, ImageID: image.ID, Creation: docker.CreatePlan{Name: s.Identity.Name, Image: image.ID, Network: s.Settings.Network, Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports, RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata}, EnvSources: s.EnvSources, Definition: store.DefinitionInput{Name: s.Harness.Definition.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash}, Stores: s.Harness.Definition.Stores, Auth: s.Harness.Definition.Auth, Config: s.Harness.Definition.Config, Merge: s.Harness.Definition.Merge, Prepare: s.Harness.Definition.Prepare, Launch: store.Launch{Binary: s.Harness.Definition.Binary, Args: append(append([]string(nil), s.Harness.Definition.Launch.Args...), s.Settings.HarnessArgs...), Continue: s.Harness.Definition.Launch.Continue, Shell: s.Settings.Shell, OnExit: s.Settings.OnExit}, Setup: s.Setup, Ownership: 1, ManifestVersion: 1}
+	record = store.Record{Version: store.RecordVersion, ID: id, Identity: s.Identity, Created: created, Activity: time.Now().UTC(), Action: "create", Applied: s.FingerprintsFor(image.ID), Inputs: s.Inputs, ImageTag: docker.Namespace + "/session:" + id, ImageID: image.ID, Creation: docker.CreatePlan{Name: s.Identity.Name, Image: image.ID, Network: s.Settings.Network, Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports, RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata}, EnvSources: s.EnvSources, Definition: store.DefinitionInput{Name: s.Harness.Definition.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash}, Stores: s.Harness.Definition.Stores, Auth: s.Harness.Definition.Auth, Config: s.Harness.Definition.Config, Merge: s.Harness.Definition.Merge, Prepare: s.Harness.Definition.Prepare, Launch: store.Launch{Binary: s.Harness.Definition.Binary, Args: append(append([]string(nil), s.Harness.Definition.Launch.Args...), s.Settings.HarnessArgs...), Continue: s.Harness.Definition.Launch.Continue, Shell: s.Settings.Shell, OnExit: s.Settings.OnExit}, Setup: s.Setup, Ownership: 1, ManifestVersion: 1}
 	if previous != nil {
 		record.Activity = previous.Activity
 		record.Action = "recreate"
@@ -738,7 +752,7 @@ func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, 
 		if err = e.sync(l, *desired); err != nil {
 			return docker.Container{}, err
 		}
-		r.Applied.Runtime = desired.Fingerprints.Runtime
+		r.ApplyRuntime(desired.Inputs.Runtime)
 	}
 	c, err := e.materialize(ctx, *r)
 	if err != nil {

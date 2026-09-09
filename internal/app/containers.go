@@ -17,21 +17,22 @@ import (
 )
 
 type View struct {
-	Name         string             `json:"name"`
-	Workspace    string             `json:"workspace,omitempty"`
-	Profile      string             `json:"profile,omitempty"`
-	Harness      string             `json:"harness,omitempty"`
-	SessionID    string             `json:"session_id,omitempty"`
-	LastActivity time.Time          `json:"last_activity,omitempty"`
-	LastAction   string             `json:"last_action,omitempty"`
-	CreatedAt    time.Time          `json:"created_at,omitempty"`
-	ContainerID  string             `json:"container_id,omitempty"`
-	Exists       bool               `json:"exists"`
-	Running      bool               `json:"running"`
-	Error        string             `json:"error,omitempty"`
-	Desired      environment.Change `json:"desired_change,omitempty"`
-	ConfigError  string             `json:"config_error,omitempty"`
-	Pending      *store.Reservation `json:"pending_transfer,omitempty"`
+	Name                string                    `json:"name"`
+	Workspace           string                    `json:"workspace,omitempty"`
+	Profile             string                    `json:"profile,omitempty"`
+	Harness             string                    `json:"harness,omitempty"`
+	SessionID           string                    `json:"session_id,omitempty"`
+	LastActivity        time.Time                 `json:"last_activity,omitempty"`
+	LastAction          string                    `json:"last_action,omitempty"`
+	CreatedAt           time.Time                 `json:"created_at,omitempty"`
+	ContainerID         string                    `json:"container_id,omitempty"`
+	Exists              bool                      `json:"exists"`
+	Running             bool                      `json:"running"`
+	Error               string                    `json:"error,omitempty"`
+	Desired             environment.Change        `json:"desired_change,omitempty"`
+	PendingInputChanges []environment.InputChange `json:"pending_input_changes,omitempty"`
+	ConfigError         string                    `json:"config_error,omitempty"`
+	Pending             *store.Reservation        `json:"pending_transfer,omitempty"`
 }
 
 func recordView(r store.Record) View {
@@ -162,7 +163,8 @@ func (e *Engine) desiredStatus(view *View, r store.Record) {
 	if err != nil {
 		view.ConfigError = err.Error()
 	} else {
-		view.Desired = environment.Compare(r.Applied, desired.FingerprintsFor(r.ImageID))
+		report := environment.CompareInputs(r.Inputs, desired.Inputs)
+		view.Desired, view.PendingInputChanges = report.Change, report.PendingInputChanges
 	}
 }
 func (e *Engine) Logs(ctx context.Context, target, profile string, follow bool, tail string) error {

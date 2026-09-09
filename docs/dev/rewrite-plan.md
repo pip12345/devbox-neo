@@ -282,7 +282,7 @@ Avoid a generic `service` package containing unrelated policy. The public applic
 - harness config sync plan;
 - hook plan;
 - launch command;
-- derived image, container, and runtime fingerprints.
+- a secret-free typed input snapshot with derived image, container, and runtime fingerprints and detailed comparison reasons.
 
 All collection fields are copied before the spec is returned. Execution does not mutate it.
 
@@ -292,7 +292,7 @@ Use one canonical spec with three derived fingerprints:
 
 | Fingerprint | Inputs | Required action |
 |---|---|---|
-| Image | Dockerfiles, Devbox image assets, harness install definition | rebuild image and recreate container |
+| Image | Dockerfile, included build context and permissions, ignore rules, generated Devbox image layer, effective harness definition, build arguments | rebuild image and recreate container |
 | Container | image ID, mounts, env, ports, primary network, harness stores/auth, raw Docker args, per-container setup inputs | recreate container |
 | Runtime | every-open entrypoint hook, harness config desired tree, runtime assets, launch defaults | synchronize or run without recreate |
 
@@ -301,6 +301,8 @@ The resolver produces a typed `ChangePlan`:
 ```text
 NoChange | RuntimeSync | Recreate | RebuildAndRecreate
 ```
+
+The implementation captures `environment.Inputs` from the same resolved bytes and settings used for creation. Its typed image/container/runtime sections generate both aggregate fingerprints and structured `pending_input_changes` (`scope`, `code`, `field`, optional key/path and safe before/after values). Env values are represented by keyed hashes and reported by variable name only; source file contents are hashed, not saved or displayed. Source locations explain content changes but do not independently change image fingerprints. Relative input names, contents, and relevant permissions remain significant. Reasons identify independent leaf changes rather than repeating derived image-to-container hash propagation.
 
 `ChangePlan` describes differences, not permission to mutate. The application applies command policy to it: explicit recreation applies creation-time changes; `open` reports them as pending and uses the recorded container contract. Managed harness config synchronization is deferred while the container is running. Starting a stopped container is a lifecycle operation, not a `Restart` change kind.
 
@@ -314,7 +316,8 @@ Store one durable record at:
 
 It contains:
 
-- schema version;
+- schema version `2` (strict current format; older development records require a clean reset, with no compatibility reader or migration);
+- required image/container/runtime input snapshots, with committed fingerprints validated against them;
 - immutable random session ID;
 - deterministic container name, workspace, slot, and profile;
 - harness name and effective definition origin;
@@ -329,6 +332,8 @@ It contains:
 - Docker ownership version;
 - lifecycle policy required for stale-lease cleanup;
 - managed config manifest version and location.
+
+Creation and recreation commit all input snapshots. Runtime synchronization advances only its snapshot and fingerprint together; warnings and status inspection never advance baselines. Recovery preserves recorded image/container inputs. Transfers commit the destination's own resolved inputs.
 
 It does not retain permanent `cloned_from` or `relocated_from` history. Clone creates a new session ID; relocate preserves the session ID. Only an in-progress transfer journal is retained for recovery and removed after completion. Session views expose its pending summary; the journal is external to both removable session trees.
 
@@ -1002,15 +1007,13 @@ Drift remains a non-fatal diagnostic, not an error.
 Example:
 
 ```text
-Warning: the existing container uses earlier creation settings.
-  - primary network changed
-  - environment changed
+Warning: this container differs from current configuration:
+  - network: default -> host
+  - environment variable API_TOKEN changed
 
-Using the existing container unchanged.
-Apply changes later with:
-  devbox recreate .
-
-Launching pi...
+Opening the existing container without applying these creation changes.
+Recreate to apply changes:
+  devbox-neo recreate <container-name>
 ```
 
 There is no `--existing` mode because existing-container reuse is the default.

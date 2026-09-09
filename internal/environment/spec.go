@@ -94,6 +94,7 @@ type Spec struct {
 	Setup        Hook
 	Entrypoint   Hook
 	Fingerprints Fingerprints
+	Inputs       Inputs
 	ReadOnly     bool
 	EnvSources   []config.EnvSource
 	ExtraMounts  []docker.Mount
@@ -252,42 +253,12 @@ func Resolve(q Request) (Spec, error) {
 	if err != nil {
 		return spec, err
 	}
-	spec.Fingerprints.Image = Digest(struct {
-		Build      string
-		Definition string
-	}{spec.Build.InputFingerprint(), h.Hash})
-	// Setup runs once per container. A changed setup input is pending creation
-	// work, not something a managed-config sync can mark as applied.
-	spec.Fingerprints.Container = Fingerprint(q.Salt, struct {
-		Identity            Identity
-		Network             string
-		ReadOnly            bool
-		Image               string
-		Stores              []harness.Store
-		Auth                []harness.Auth
-		Env                 []string
-		Setup               string
-		ExtraMounts         []docker.Mount
-		Ports, RawArgs      []string
-		Metadata, HostAlias string
-	}{identity, r.Settings.Network, q.ReadOnly, spec.Fingerprints.Image, h.Definition.Stores, h.Definition.Auth, spec.Env(), spec.Setup.Hash, spec.ExtraMounts, r.Settings.Ports, r.Settings.DockerArgs, spec.Metadata, docker.HostAlias})
-	data := map[string]harness.File{}
-	for p, f := range files {
-		data[p] = harness.File{Data: f.Data, Mode: f.Mode & 0111}
-	}
 	runtimeHash, err := assets.Hash()
 	if err != nil {
 		return spec, err
 	}
-	spec.Fingerprints.Runtime = Digest(struct {
-		Assets     string
-		Files      map[string]harness.File
-		Entrypoint string
-		Launch     harness.Launch
-		Args       []string
-		OnExit     string
-		Shell      []string
-	}{runtimeHash, data, spec.Entrypoint.Hash, h.Definition.Launch, r.Settings.HarnessArgs, r.Settings.OnExit, r.Settings.Shell})
+	spec.Inputs = spec.captureInputs(q.Salt, runtimeHash)
+	spec.Fingerprints = spec.Inputs.Fingerprints()
 	return spec, nil
 }
 func readHook(path string) (Hook, error) {
@@ -333,9 +304,7 @@ func ImageDockerfile(d harness.Definition, uid, gid int) []byte {
 }
 
 func (s Spec) FingerprintsFor(imageID string) Fingerprints {
-	f := s.Fingerprints
-	f.Container = Digest(struct{ Inputs, ImageID string }{f.Container, imageID})
-	return f
+	return s.Fingerprints.ForImage(imageID)
 }
 
 type Change string

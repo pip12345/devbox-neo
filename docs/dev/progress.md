@@ -106,9 +106,10 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 ## Bulk status and early drift warning — implemented
 
 - `status --all [--profile NAME] [--json]` shows existing managed containers with separate live state and local-input drift. It shares inventory ownership/instance checks and single-target desired comparison, retains per-container failures, and excludes missing-container sessions. Ordinary listing remains free of desired resolution.
-- Container/image drift recommends ordinary recreation; runtime changes do not imply rebuilding. Upstream-version discovery and general doctor checks remain out of scope.
+- Container/image drift recommends ordinary recreation; runtime changes do not imply rebuilding. `environment.Inputs` now supplies both fingerprints and detailed reasons shared by open and single/bulk status, including safe setting values, changed files/permissions, and env variable names without values. Upstream-version discovery and general doctor checks remain out of scope.
+- Session schema 2 requires a complete applied-input snapshot and validates it against committed fingerprints. Creation/recreation commits all inputs; runtime application advances its snapshot and hash together, including recovery. Transfers commit destination inputs. Older development records require a clean reset; no compatibility, migration, or guessed baselines were added.
 - Open reports creation drift before resolution warnings, recovery, synchronization, startup, and entrypoint/harness output, then continues immediately without an artificial delay.
-- Fake-backed tests cover drift classifications, broken records/config, pending transfers, profile selection, Docker inventory failure, JSON/table output, warning ordering, immediate continuation, and cancellation. Rewrite `make test` and `make check`, plus parent `make test`, pass. Live-Docker acceptance has not been run because this workspace has no Docker CLI.
+- Fake-backed tests cover drift classifications, broken records/config, pending transfers, profile selection, Docker inventory failure, JSON/table output, warning ordering, immediate continuation, cancellation, detailed reason coverage/redaction, strict record validation, baseline commit/failure/defer behavior, and transfer destination baselines. Rewrite `make test` and `make check`, plus parent `make test`, pass. Live-Docker acceptance has not been run because this workspace has no Docker CLI.
 
 ## Validation
 

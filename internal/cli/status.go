@@ -42,6 +42,16 @@ func printStatusList(out io.Writer, views []app.View) error {
 		return err
 	}
 	for _, view := range views {
+		if len(view.PendingInputChanges) > 0 {
+			if _, err := fmt.Fprintf(out, "%s:\n", displayCell(view.Name)); err != nil {
+				return err
+			}
+			for _, inputChange := range view.PendingInputChanges {
+				if _, err := fmt.Fprintf(out, "  - [%s] %s\n", inputChange.Scope, inputChange); err != nil {
+					return err
+				}
+			}
+		}
 		if view.ConfigError != "" {
 			if _, err := fmt.Fprintf(out, "! %s: desired configuration: %s\n", displayCell(view.Name), displayCell(view.ConfigError)); err != nil {
 				return err

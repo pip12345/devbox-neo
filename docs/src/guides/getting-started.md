@@ -12,7 +12,7 @@ make check
 
 The binary is `bin/devbox-neo`. Its default home is `~/.devbox-neo`; container/session names include the folder and a short hash, such as `devbox-myapp-<hash>.profile-basic`, while Docker ownership labels and image tags retain the development namespace. `--home` overrides `DEVBOX_HOME`, which overrides the default. The old `~/.devbox` is rejected, including when an inherited environment variable selects it.
 
-If upgrading from a build with `devbox-rewrite-` or folder-less session names, clear the old containers and durable sessions using the old build before switching. This is a clean session reset, not a migration; save any needed session data separately. The new build does not rename or delete old resources automatically.
+If upgrading from a build with version-1 session records, `devbox-rewrite-` names, or folder-less session names, clear the old containers and durable sessions using the old build before switching. This is a clean session reset, not a migration; save any needed session data separately. The new build does not rename or delete old resources automatically.
 
 For Bash completion from this checkout:
 
@@ -103,9 +103,9 @@ bin/devbox-neo status --all
 bin/devbox-neo status --all --profile basic
 ```
 
-The table separates running/stopped state from pending changes. `Rebuild + recreate needed` means image inputs changed; `Recreate needed` means only container inputs changed. `Runtime changes` do not need a rebuild. `Cannot check` means the diagnostic needs attention, not that the container is up to date. This checks local inputs, not newer upstream package or base-image releases.
+The table separates running/stopped state from pending changes. Reasons below each affected container name explain which settings or files changed. For one container, use `status <name>`. `Rebuild + recreate needed` means image inputs changed; `Recreate needed` means only container inputs changed. `Runtime changes` do not need a rebuild. `Cannot check` means the diagnostic needs attention, not that the container is up to date. This checks local inputs, not newer upstream package or base-image releases.
 
-Valid creation changes warn instead of replacing the existing container. On `open`, the warning appears first, before startup and entrypoint output, and opening continues immediately. Apply changes explicitly:
+Valid creation changes warn instead of replacing the existing container. On `open`, specific reasons such as `network: default -> host`, changed Dockerfile/build-context paths, or changed environment variable names appear first, before startup and entrypoint output. Env values and file contents are not shown. Opening continues immediately with the existing creation settings. Apply changes explicitly:
 
 ```sh
 bin/devbox-neo recreate /path/to/workspace --profile basic

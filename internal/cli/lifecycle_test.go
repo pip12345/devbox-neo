@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -69,6 +72,24 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	}
 	if out, err := run("status", "--all", "--profile", "absent"); err != nil || !strings.Contains(out, "No matching managed containers.") {
 		t.Fatal("incorrect empty bulk status", out, err)
+	}
+	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host","extra_env":["TOKEN=private-status-value"]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"status", result.Name}, {"status", "--all"}} {
+		out, err := run(args...)
+		if err != nil || !strings.Contains(out, "[container] network: default -> host") || !strings.Contains(out, "environment variable TOKEN added") || strings.Contains(out, "private-status-value") {
+			t.Fatal("status text lost reasons or leaked env", out, err)
+		}
+	}
+	out, err = run("status", result.Name, "--json")
+	var single app.View
+	if err != nil || json.Unmarshal([]byte(out), &single) != nil || len(single.PendingInputChanges) != 2 || strings.Contains(out, "private-status-value") || !strings.Contains(out, `"pending_input_changes":`) || strings.Contains(out, `"reasons":`) {
+		t.Fatal("single status JSON lost reasons or leaked env", out, err)
+	}
+	out, err = run("status", "--all", "--json")
+	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews) != 1 || !reflect.DeepEqual(single.PendingInputChanges, statusViews[0].PendingInputChanges) {
+		t.Fatal("bulk and single JSON disagree", out, err)
 	}
 	destination := t.TempDir()
 	if out, err := run("session", "clone", result.Name, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {
