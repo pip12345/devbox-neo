@@ -42,6 +42,10 @@ journals or session directories by hand.
 Do not modify /devbox: it is Devbox-owned runtime data. Do not add a project
 Dockerfile to make an ad-hoc tool installation persistent without user approval.
 Devbox does not enforce network egress restrictions or provide an offline mode.
+On the host, devbox-neo status --all shows which existing containers need recreation
+or rebuilding from changed local inputs; it does not check upstream releases.
+Ordinary recreate builds changed image inputs automatically. Open prints creation
+drift warnings first, before startup, then continues immediately.
 
 Attached shell, harness, and exec commands receive the invoking terminal's TERM,
 COLORTERM, and related display variables. These are not durable session settings;

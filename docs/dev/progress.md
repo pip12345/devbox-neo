@@ -103,6 +103,13 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - Guide/reference/architecture docs and embedded guidance are aligned. Doctor remains deferred in [its separate plan](doctor-plan.md), not part of this implementation.
 - Rewrite `make check` and parent `make test` pass; `go vet ./...` passes and integration-tagged tests compile. The added real-Docker tool/alias check is unrun because this workspace has no Docker CLI. Actual shell completion in an interactive host shell also remains a manual acceptance check; automated tests exercise Cobra's completion protocol.
 
+## Bulk status and early drift warning — implemented
+
+- `status --all [--profile NAME] [--json]` shows existing managed containers with separate live state and local-input drift. It shares inventory ownership/instance checks and single-target desired comparison, retains per-container failures, and excludes missing-container sessions. Ordinary listing remains free of desired resolution.
+- Container/image drift recommends ordinary recreation; runtime changes do not imply rebuilding. Upstream-version discovery and general doctor checks remain out of scope.
+- Open reports creation drift before resolution warnings, recovery, synchronization, startup, and entrypoint/harness output, then continues immediately without an artificial delay.
+- Fake-backed tests cover drift classifications, broken records/config, pending transfers, profile selection, Docker inventory failure, JSON/table output, warning ordering, immediate continuation, and cancellation. Rewrite `make test` and `make check`, plus parent `make test`, pass. Live-Docker acceptance has not been run because this workspace has no Docker CLI.
+
 ## Validation
 
 - `make check`: unit tests, race tests, and build pass.

@@ -96,7 +96,16 @@ The runtime layer prepares writable parents for declared harness mounts. If a cu
 
 ## Apply changes explicitly
 
-Valid creation changes warn instead of replacing the existing container:
+Check which existing containers need changes:
+
+```sh
+bin/devbox-neo status --all
+bin/devbox-neo status --all --profile basic
+```
+
+The table separates running/stopped state from pending changes. `Rebuild + recreate needed` means image inputs changed; `Recreate needed` means only container inputs changed. `Runtime changes` do not need a rebuild. `Cannot check` means the diagnostic needs attention, not that the container is up to date. This checks local inputs, not newer upstream package or base-image releases.
+
+Valid creation changes warn instead of replacing the existing container. On `open`, the warning appears first, before startup and entrypoint output, and opening continues immediately. Apply changes explicitly:
 
 ```sh
 bin/devbox-neo recreate /path/to/workspace --profile basic

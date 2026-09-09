@@ -34,6 +34,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	run := func(args ...string) (string, error) {
 		root := &cobra.Command{Use: "devbox-neo", SilenceUsage: true, SilenceErrors: true}
 		profile := ""
+		root.PersistentFlags().StringVar(&profile, "profile", "", "Select a profile")
 		factory := func(cmd *cobra.Command) (*app.Engine, error) {
 			engine.Streams.Out = cmd.OutOrStdout()
 			engine.Streams.Err = cmd.ErrOrStderr()
@@ -48,15 +49,26 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		err := root.Execute()
 		return out.String(), err
 	}
-	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.Name, "--json"}, {"session", "show", result.Name, "--json"}, {"network", "env", result.Name, "--get", "DEVBOX_HOST"}, {"logs", result.Name}} {
+	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.Name, "--json"}, {"status", "--all"}, {"status", "--all", "--json"}, {"session", "show", result.Name, "--json"}, {"network", "env", result.Name, "--get", "DEVBOX_HOST"}, {"logs", result.Name}} {
 		if out, err := run(args...); err != nil || out == "" {
 			t.Fatal(args, out, err)
 		}
 	}
-	for _, args := range [][]string{{"list", "--sort", "wrong"}, {"session", "list", "--sort", "wrong"}, {"session", "list", "--orphaned"}, {"session", "list", "--older-than", "24h"}} {
+	for _, args := range [][]string{{"status"}, {"status", result.Name, "--all"}, {"status", result.Name, result.Name}, {"list", "--sort", "wrong"}, {"session", "list", "--sort", "wrong"}, {"session", "list", "--orphaned"}, {"session", "list", "--older-than", "24h"}} {
 		if _, err := run(args...); err == nil {
 			t.Fatal("invalid list option accepted", args)
 		}
+	}
+	out, err := run("status", "--all", "--profile", "test", "--json")
+	var statusViews []app.View
+	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews) != 1 || statusViews[0].Name != result.Name || statusViews[0].Desired != "NoChange" {
+		t.Fatal("bulk status JSON did not include drift", out, err)
+	}
+	if out, err := run("status", "--all", "--profile", "absent", "--json"); err != nil || strings.TrimSpace(out) != "[]" {
+		t.Fatal("bulk status ignored profile filtering", out, err)
+	}
+	if out, err := run("status", "--all", "--profile", "absent"); err != nil || !strings.Contains(out, "No matching managed containers.") {
+		t.Fatal("incorrect empty bulk status", out, err)
 	}
 	destination := t.TempDir()
 	if out, err := run("session", "clone", result.Name, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {

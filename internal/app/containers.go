@@ -37,15 +37,24 @@ type View struct {
 func recordView(r store.Record) View {
 	return View{Name: r.Identity.Name, Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Harness: r.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action}
 }
-func (e *Engine) List(ctx context.Context, sessions bool) ([]View, error) {
+func (e *Engine) inventory(ctx context.Context) ([]store.Entry, []docker.Container, error) {
 	entries, err := e.Store.Inventory(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	live, err := e.Docker.Inventory(ctx, e.Store.Installation)
+	return entries, live, err
+}
+
+func (e *Engine) List(ctx context.Context, sessions bool) ([]View, error) {
+	entries, live, err := e.inventory(ctx)
 	if err != nil {
 		return nil, err
 	}
+	return e.inventoryViews(entries, live, sessions), nil
+}
+
+func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, sessions bool) []View {
 	records := map[string]store.Entry{}
 	for _, entry := range entries {
 		records[entry.Name] = entry
@@ -90,8 +99,44 @@ func (e *Engine) List(ctx context.Context, sessions bool) ([]View, error) {
 		}
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
+	return result
+}
+
+// StatusAll enriches the same inventory snapshot as List. Resolution failures
+// belong to individual rows; neither they nor missing records imply no drift.
+func (e *Engine) StatusAll(ctx context.Context, profile string) ([]View, error) {
+	entries, live, err := e.inventory(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if profile != "" {
+		selected := []docker.Container{}
+		for _, container := range live {
+			if container.Config.Labels[docker.Namespace+".slot"] == "profile:"+profile {
+				selected = append(selected, container)
+			}
+		}
+		live = selected
+	}
+	records := map[string]store.Record{}
+	for _, entry := range entries {
+		if entry.Err == nil && entry.Record.ID != "" {
+			records[entry.Name] = entry.Record
+		}
+	}
+	result := []View{}
+	for _, view := range e.inventoryViews(entries, live, false) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if r, ok := records[view.Name]; ok && view.Error == "" && view.Pending == nil {
+			e.desiredStatus(&view, r)
+		}
+		result = append(result, view)
+	}
 	return result, nil
 }
+
 func (e *Engine) Status(ctx context.Context, target, profile string) (View, error) {
 	r, err := e.Locate(ctx, target, profile)
 	if err != nil {
@@ -108,13 +153,17 @@ func (e *Engine) Status(ctx context.Context, target, profile string) (View, erro
 		view.ContainerID = c.ID
 		view.CreatedAt = c.Created
 	}
-	desired, resolveErr := e.Resolve(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, ExpectedName: r.Identity.Name})
-	if resolveErr != nil {
-		view.ConfigError = resolveErr.Error()
+	e.desiredStatus(&view, r)
+	return view, nil
+}
+
+func (e *Engine) desiredStatus(view *View, r store.Record) {
+	desired, err := e.Resolve(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, ExpectedName: r.Identity.Name})
+	if err != nil {
+		view.ConfigError = err.Error()
 	} else {
 		view.Desired = environment.Compare(r.Applied, desired.FingerprintsFor(r.ImageID))
 	}
-	return view, nil
 }
 func (e *Engine) Logs(ctx context.Context, target, profile string, follow bool, tail string) error {
 	r, err := e.Locate(ctx, target, profile)

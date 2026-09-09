@@ -49,14 +49,26 @@ type Result struct {
 	Diagnostics []Diagnostic
 }
 
+func (e *Engine) resolveSpec(q Request) (environment.Spec, error) {
+	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, ExpectedName: q.ExpectedName, Overrides: q.Overrides, ReadOnly: q.ReadOnly, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
+}
 func (e *Engine) Resolve(q Request) (environment.Spec, error) {
-	spec, err := environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, ExpectedName: q.ExpectedName, Overrides: q.Overrides, ReadOnly: q.ReadOnly, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
+	spec, err := e.resolveSpec(q)
+	e.resolutionWarnings(spec)
+	return spec, err
+}
+func (e *Engine) resolutionWarnings(spec environment.Spec) {
 	if e.Streams.Err != nil {
 		for _, warning := range spec.Warnings {
 			fmt.Fprintf(e.Streams.Err, "Warning: %s\n", warning)
 		}
 	}
-	return spec, err
+}
+func (e *Engine) diagnose(result *Result, diagnostic Diagnostic) {
+	result.Diagnostics = append(result.Diagnostics, diagnostic)
+	if e.Streams.Err != nil {
+		fmt.Fprintf(e.Streams.Err, "Warning: %s\n  %s\n", diagnostic.Message, strings.Join(diagnostic.Command, " "))
+	}
 }
 func (e *Engine) owner(r store.Record) docker.Owner {
 	return docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot}
@@ -87,8 +99,11 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 		q.Profile = r.Identity.Profile
 		q.ExpectedName = r.Identity.Name
 	}
-	spec, err := e.Resolve(q)
+	// Defer resolution warnings so creation drift is visible before any other
+	// open output, especially before entrypoint or harness output can scroll it away.
+	spec, err := e.resolveSpec(q)
 	if err != nil {
+		e.resolutionWarnings(spec)
 		return result, err
 	}
 	result.Name = spec.Identity.Name
@@ -105,6 +120,13 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 	if err != nil && !fresh {
 		return result, err
 	}
+	if !fresh {
+		change := environment.Compare(record.Applied, spec.FingerprintsFor(record.ImageID))
+		if change == environment.Recreate || change == environment.RebuildAndRecreate {
+			e.diagnose(&result, Diagnostic{Code: "creation_drift", Message: "using recorded creation settings; changes are pending", Command: []string{"devbox-neo", "recreate", record.Identity.Name}})
+		}
+	}
+	e.resolutionWarnings(spec)
 	var c docker.Container
 	started := false
 	defer func() {
@@ -126,10 +148,6 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 			started = err == nil
 		}
 		if err == nil {
-			change := environment.Compare(record.Applied, spec.FingerprintsFor(record.ImageID))
-			if change == environment.Recreate || change == environment.RebuildAndRecreate {
-				result.Diagnostics = append(result.Diagnostics, Diagnostic{Code: "creation_drift", Message: "using recorded creation settings; changes are pending", Command: []string{"devbox-neo", "recreate", record.Identity.Name}})
-			}
 			compatible := record.Definition.Hash == spec.Harness.Hash
 			if compatible && !c.State.Running {
 				if err = lock.RequireIdle(); err == nil {
@@ -150,7 +168,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 				if current {
 					record.Applied.Runtime = spec.Fingerprints.Runtime
 				} else {
-					result.Diagnostics = append(result.Diagnostics, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; stop, then open to apply", Command: []string{"devbox-neo", "stop", record.Identity.Name}})
+					e.diagnose(&result, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; stop, then open to apply", Command: []string{"devbox-neo", "stop", record.Identity.Name}})
 				}
 			}
 			if compatible {
@@ -186,11 +204,6 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 		argv = append(argv, record.Launch.Continue...)
 	}
 	argv = append(argv, q.Args...)
-	for _, d := range result.Diagnostics {
-		if e.Streams.Err != nil {
-			fmt.Fprintf(e.Streams.Err, "Warning: %s\n  %s\n", d.Message, strings.Join(d.Command, " "))
-		}
-	}
 	err = e.attach(ctx, lock, c, record, "open", argv)
 	return result, err
 }

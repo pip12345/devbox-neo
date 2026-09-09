@@ -2,7 +2,7 @@
 
 ## Status
 
-Planning only. Doctor is excluded from the current tools, session-list, and completion implementation scope. Implement it separately later.
+Planning only. Doctor is excluded from the current tools, session-list, and completion implementation scope. Implement it separately later. Container drift overview is available independently through `status --all`; a future doctor should reuse that comparison rather than duplicate it.
 
 ## Goal
 

@@ -50,11 +50,31 @@ func containerCommands(factory engineFactory, profile *string) []*cobra.Command 
 	list.Flags().BoolVar(&listJSON, "json", false, "Print container entries as JSON")
 	list.Flags().StringVar(&sortBy, "sort", "name", "Sort by name or last-active (newest first)")
 	list.Flags().BoolVar(&wide, "wide", false, "Include harness, exact activity/creation times, and last action")
-	var statusJSON bool
-	status := &cobra.Command{Use: "status <target>", Short: "Show live state and desired drift without hiding broken configuration", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	var statusJSON, statusAll bool
+	status := &cobra.Command{Use: "status [target]", Short: "Show live state and desired drift for one target or --all", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if statusAll && len(args) != 0 {
+			return fmt.Errorf("--all does not accept an exact target")
+		}
+		if !statusAll && len(args) != 1 {
+			return fmt.Errorf("provide a target or --all")
+		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
+		}
+		if statusAll {
+			views, err := e.StatusAll(cmd.Context(), *profile)
+			if err != nil {
+				return err
+			}
+			if statusJSON {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(views)
+			}
+			if len(views) == 0 {
+				cmd.Println("No matching managed containers.")
+				return nil
+			}
+			return printStatusList(cmd.OutOrStdout(), views)
 		}
 		view, err := e.Status(cmd.Context(), args[0], *profile)
 		if err != nil {
@@ -72,6 +92,7 @@ func containerCommands(factory engineFactory, profile *string) []*cobra.Command 
 		return nil
 	}}
 	status.Flags().BoolVar(&statusJSON, "json", false, "Print status as JSON")
+	status.Flags().BoolVar(&statusAll, "all", false, "Check all managed containers, optionally filtered by --profile")
 	var follow bool
 	var tail string
 	logs := &cobra.Command{Use: "logs <target>", Short: "Read the container's Docker logs", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {

@@ -992,10 +992,12 @@ When an owned container exists, the root flow:
 
 1. resolves current desired configuration;
 2. compares it with the session's recorded container contract;
-3. opens the existing container even when creation-time drift exists;
-4. launches the harness recorded for that container;
+3. prints any creation-drift warning and recreation command first, before recovery, synchronization, startup, or entrypoint output, then continues immediately;
+4. opens the existing container even when creation-time drift exists;
 5. applies only runtime-safe behavior compatible with the recorded harness;
-6. prints a concise pending-change warning and recreation command.
+6. launches the harness recorded for that container.
+
+Drift remains a non-fatal diagnostic, not an error.
 
 Example:
 
@@ -1038,7 +1040,7 @@ For an existing container, `start`, `shell`, and `exec` do not load desired glob
 
 If no container exists but a session does, `start` uses the strict recorded recovery conditions. Only a brand-new target with no durable session is created from current resolved configuration. `shell` and `exec` require an existing container and never turn into creation commands.
 
-`status` reports live container facts even when desired configuration cannot be resolved. It reports either pending drift or an explicit desired-config diagnostic; invalid desired config does not imply container failure.
+`status` reports live container facts even when desired configuration cannot be resolved. It reports either pending drift or an explicit desired-config diagnostic; invalid desired config does not imply container failure. `status --all [--profile NAME] [--json]` applies this comparison across existing installation-managed containers using batched inventory, with separate state and change columns. It excludes retained sessions without containers and keeps invalid records, ownership/instance mismatches, and pending transfers visibly unclassified. Both container and image drift recommend ordinary recreation. It detects changed local inputs, not newer upstream releases.
 
 ### Hard failures
 
@@ -1207,7 +1209,8 @@ The CLI is resource-first. Global, profile, and project configuration stays unde
 ```text
 devbox open <target> [-c] [-p NAME]
 devbox list [--sort name|last-active] [--wide] [--json]
-devbox status <target>
+devbox status <target> [--json]
+devbox status --all [--profile NAME] [--json]
 devbox start <target>
 devbox stop <target>
 devbox delete [target...]
