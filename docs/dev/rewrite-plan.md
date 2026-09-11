@@ -194,7 +194,7 @@ User definitions override built-ins by name. For example:
 ~/.devbox/harnesses/pi/harness.json
 ```
 
-replaces the embedded Pi definition completely. The registry must report the effective origin through scoped config `--show` output and `doctor` diagnostics.
+replaces the embedded Pi definition completely. The registry must report the effective origin through scoped config `--show` output and actionable errors.
 
 ## Design Principles
 
@@ -597,7 +597,7 @@ Provide exact next commands for these common states:
 | selected harness is missing | owning `profile config`, `project config`, or `init` command |
 | profile/project already exists on `create` | its `config` and `init` commands |
 | `init` runs before `create` | exact prerequisite `create` command |
-| custom harness JSON is invalid | file, field error, and `devbox doctor` |
+| custom harness JSON is invalid | identify the file and validation error; correct it before retrying |
 | container deletion succeeds | state-preserved message, `start`, and exact `session delete` command |
 | session deletion is blocked by a container | exact `devbox delete` command first |
 | primary network is missing | `docker network create <name>` or owning config command |
@@ -710,7 +710,7 @@ A user may configure a harness through the dashboard and skip artifact initializ
 5. Reject duplicate user definitions, invalid names, unsafe mount targets, and unsupported schema versions.
 6. Return each effective definition with origin `builtin` or its user file path.
 
-A malformed user definition is a hard error when that harness is selected. `doctor` validates every user definition and reports invalid entries without hiding valid ones. Config dashboards list only valid effective definitions and identify user overrides.
+A malformed user definition is a hard error when that harness is selected. Registry enumeration reports invalid user definitions without hiding valid ones. Config dashboards list only valid effective definitions and identify user overrides.
 
 ### Proposed harness schema
 
@@ -724,7 +724,7 @@ A malformed user definition is a hard error when that harness is selected. `doct
     "path": ["/home/${user}/.local/bin"]
   },
   "launch": {
-    "args": [],
+    "args": ["--tui-mode", "fullscreen"],
     "continue_args": ["-c"]
   },
   "env": {
@@ -815,7 +815,7 @@ internal/harness/builtin/pi/
 internal/harness/builtin/opencode/
 ```
 
-Each directory contains `harness.json` and `defaults/`. Built-ins are parsed through the same strict loader as user definitions.
+Each directory contains `harness.json` and `defaults/`. Built-ins are parsed through the same strict loader as user definitions. Pi's default launch includes `--tui-mode fullscreen` (upstream experimental). It overrides Pi's saved `tuiMode`; later `harness_args` or one-off `--tui-mode regular` arguments take precedence. Existing recorded Pi environments must be recreated to adopt the changed definition. No harness-specific engine branch or setting-merge rule is added.
 
 ## Managed Harness Config Synchronization
 
@@ -1317,14 +1317,13 @@ These are retained contracts, not additional command families. Removed workflows
 ### Utility commands
 
 ```text
-devbox doctor
 devbox completion
 devbox version
 ```
 
-Completion uses Cobra hooks for appropriate session/live-container targets, profiles, harnesses, transfer slots, and fixed option values, while retaining folder completion where supported. It is read-only: no home initialization, lock creation, or Docker mutation. Use the selected home, bounded installation-filtered Docker inventory for live container names, and registry enumeration for valid harness choices. Suggestions are lookup hints, not ownership proof; unavailable sources quietly omit suggestions.
+Completion uses Cobra hooks for appropriate session/live-container targets, profiles, harnesses, transfer slots, and fixed option values, while retaining folder completion where supported. Generated shell scripts register `devbox-neo` and an existing `dbx` shortcut against the same handlers, without defining or changing the shortcut. It is read-only: no home initialization, lock creation, or Docker mutation. Use the selected home, bounded installation-filtered Docker inventory for live container names, and registry enumeration for valid harness choices. Suggestions are lookup hints, not ownership proof; unavailable sources quietly omit suggestions.
 
-There is no `devbox harness` command group. Users manage `~/.devbox/harnesses/<name>/harness.json` directly. `doctor` validates all definitions, config dashboards expose valid harness choices, and scoped config `--show` output reports the selected definition and origin.
+There is no `devbox harness` command group. Users manage `~/.devbox/harnesses/<name>/harness.json` directly. Registry enumeration validates definitions, config dashboards expose valid harness choices, and scoped config `--show` output reports the selected definition and origin. A general doctor command is not planned; status owns pending-change inspection.
 
 ### Remove
 
@@ -1358,7 +1357,7 @@ Use typed errors for:
 - pending transfer;
 - Docker command failure and passthrough exit status.
 
-`--json` renders stable error codes and structured details for scoped config output, list, status, and doctor. Human errors include the failed operation, target, reason, and next command.
+`commanderror.Error` and `commanderror.Step` carry shared codes, safe messages, known targets, next-step argv, and underlying causes. Resource and lifecycle failures use the same CLI renderer. Commands that already support `--json` emit one error object on stdout with `error`, `message`, `operation`, optional `target`, `next_steps`, and `related_errors`, then exit nonzero. Success JSON formats are unchanged. Interactive/streaming commands retain human errors on stderr and untouched child output; no global JSON mode is added. Flag-parse diagnostics do not echo rejected values. Causes stay available to `errors.Is`/`errors.As` without being serialized. Joined cleanup failures remain visible; Docker/child exit codes remain authoritative. Human next commands preserve an explicit home and are shell-quoted; external Docker diagnostic commands do not receive Devbox flags.
 
 Non-blocking diagnostics such as valid creation-time drift and deferred managed-config synchronization use separate typed result data with reasons and suggested commands; they are not represented as errors or non-zero exit status. Invalid participating configuration remains an error in normal open.
 
@@ -1439,7 +1438,6 @@ Build the first complete runtime path before dashboards or exhaustive package im
 - implement `project create --from-profile` as a one-time supported-artifact copy with `inherit_profile: false`, no destination overwrite, no flattening, and no ongoing synchronization;
 - implement explicit init harness choices, valid inheritance, automation equivalents, and idempotent no-overwrite artifact seeding;
 - implement centralized structured `next_steps`, fresh-home onboarding, creation/empty-state hints, and actionable errors;
-- integrate registry, store, and Docker diagnostics into doctor, validating all user harness definitions without hiding valid ones;
 - add shell completion and write guide, reference, and architecture docs together;
 - check the retained workflow table and removed-feature list against help, schemas, tests, defaults, and assets.
 

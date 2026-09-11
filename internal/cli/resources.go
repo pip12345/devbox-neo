@@ -3,13 +3,13 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strconv"
 	"strings"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/harness"
 	"devbox/internal/resource"
 	"github.com/spf13/cobra"
@@ -99,48 +99,9 @@ func interactive(cmd *cobra.Command) bool {
 	f, ok := cmd.InOrStdin().(*os.File)
 	return ok && terminal(f)
 }
-func shellQuote(value string) string {
-	if value != "" && !strings.ContainsAny(value, " \t\r\n'\"\\$`;&|<>()*?[]{}!") {
-		return value
-	}
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
-}
-func scopedSteps(cmd *cobra.Command, steps []resource.Step, home string) []resource.Step {
-	// Preserve an explicit installation selection, not the result of normal
-	// default/environment resolution. Those resolve naturally on the next command.
-	flag := cmd.Flag("home")
-	explicit := flag != nil && flag.Changed
-	result := make([]resource.Step, 0, len(steps))
-	for _, step := range steps {
-		args := append([]string(nil), step.Command...)
-		if explicit {
-			args = append([]string{step.Command[0], "--home", home}, step.Command[1:]...)
-		}
-		result = append(result, resource.Step{Command: args, Reason: step.Reason})
-	}
-	return result
-}
-func stepsText(steps []resource.Step) string {
-	var out strings.Builder
-	for _, step := range steps {
-		args := make([]string, len(step.Command))
-		for i, arg := range step.Command {
-			args[i] = shellQuote(arg)
-		}
-		fmt.Fprintf(&out, "  %s\n", strings.Join(args, " "))
-	}
-	return out.String()
-}
-func resourceError(cmd *cobra.Command, err error, home string) error {
-	var actionable *resource.Error
-	if errors.As(err, &actionable) && len(actionable.Next) > 0 {
-		return fmt.Errorf("%w\n\nNext:\n%s", err, stepsText(scopedSteps(cmd, actionable.Next, home)))
-	}
-	return err
-}
 func renderResource(cmd *cobra.Command, result resource.Result, err error, asJSON bool, home string) error {
 	if err != nil {
-		return resourceError(cmd, err, home)
+		return err
 	}
 	result.Next = scopedSteps(cmd, result.Next, home)
 	if asJSON {
@@ -180,7 +141,7 @@ func profileList(factory resourceFactory) *cobra.Command {
 		}
 		if len(profiles) == 0 {
 			fmt.Fprintln(cmd.OutOrStdout(), "No profiles.\n\nNext:")
-			fmt.Fprint(cmd.OutOrStdout(), stepsText(scopedSteps(cmd, []resource.Step{{Command: []string{"devbox-neo", "profile", "create", "default"}}}, s.Home)))
+			fmt.Fprint(cmd.OutOrStdout(), stepsText(scopedSteps(cmd, []commanderror.Step{{Command: []string{"devbox-neo", "profile", "create", "default"}}}, s.Home)))
 			return nil
 		}
 		for _, p := range profiles {
@@ -238,7 +199,7 @@ func profileSet(factory resourceFactory) *cobra.Command {
 			}
 		}
 		if err = s.SetDefault(cmd.Context(), name); err != nil {
-			return resourceError(cmd, err, s.Home)
+			return err
 		}
 		if name == "" {
 			cmd.Println("Default profile cleared.")

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/fsutil"
 )
 
@@ -23,7 +24,7 @@ func (s Service) DeleteProfile(ctx context.Context, name string) (Result, error)
 	defer fsutil.Unlock(lock)
 	info, err := os.Stat(owner.Root)
 	if os.IsNotExist(err) {
-		return result, &Error{Code: "owner_missing", Message: "profile does not exist", Next: []Step{owner.step("create", "Create this profile")}}
+		return result, commanderror.New("owner_missing", "Profile does not exist", owner.Root, err, owner.step("create", "Create this profile"))
 	}
 	if err != nil {
 		return result, err
@@ -45,6 +46,6 @@ func (s Service) DeleteProfile(ctx context.Context, name string) (Result, error)
 	if err = parent.Sync(); err != nil {
 		return result, err
 	}
-	result.Next = []Step{{Command: []string{"devbox-neo", "profile", "list"}, Reason: "Inspect remaining profiles"}, {Command: []string{"devbox-neo", "profile", "set", "--clear"}, Reason: "Clear the default if it referred to the deleted profile"}}
+	result.Next = []commanderror.Step{{Command: []string{"devbox-neo", "profile", "list"}, Reason: "Inspect remaining profiles"}, {Command: []string{"devbox-neo", "profile", "set", "--clear"}, Reason: "Clear the default if it referred to the deleted profile"}}
 	return result, nil
 }

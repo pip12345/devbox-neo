@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	"devbox/internal/artifact"
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/fsutil"
 	"devbox/internal/harness"
@@ -19,27 +20,19 @@ import (
 
 type Service struct{ Home string }
 type Owner struct{ Kind, Name, Root, Workspace string }
-type Step struct {
-	Command []string `json:"command"`
-	Reason  string   `json:"reason"`
-}
 type Result struct {
-	Path     string   `json:"path"`
-	Harness  string   `json:"harness,omitempty"`
-	Created  []string `json:"created,omitempty"`
-	Skipped  []string `json:"skipped,omitempty"`
-	Warnings []string `json:"warnings,omitempty"`
-	Next     []Step   `json:"next_steps,omitempty"`
-}
-type Error struct {
-	Code    string
-	Message string
-	Next    []Step
+	Path     string              `json:"path"`
+	Harness  string              `json:"harness,omitempty"`
+	Created  []string            `json:"created,omitempty"`
+	Skipped  []string            `json:"skipped,omitempty"`
+	Warnings []string            `json:"warnings,omitempty"`
+	Next     []commanderror.Step `json:"next_steps,omitempty"`
 }
 
-func (e *Error) Error() string                  { return e.Message }
-func (o Owner) Command(action string) []string  { return []string{"devbox-neo", o.Kind, action, o.Name} }
-func (o Owner) step(action, reason string) Step { return Step{o.Command(action), reason} }
+func (o Owner) Command(action string) []string { return []string{"devbox-neo", o.Kind, action, o.Name} }
+func (o Owner) step(action, reason string) commanderror.Step {
+	return commanderror.Step{Command: o.Command(action), Reason: reason}
+}
 
 func (s Service) Profile(name string) (Owner, error) {
 	if !config.Name.MatchString(name) {
@@ -82,7 +75,7 @@ func readLayer(o Owner) ([]byte, config.Layer, error) {
 	}
 	b, err := os.ReadFile(p)
 	if os.IsNotExist(err) {
-		return nil, config.Layer{}, &Error{Code: "owner_missing", Message: fmt.Sprintf("%s configuration is missing: %s", o.Kind, p), Next: []Step{o.step("create", "Create the configuration owner first")}}
+		return nil, config.Layer{}, commanderror.New("owner_missing", fmt.Sprintf("%s configuration is missing", o.Kind), p, err, o.step("create", "Create the configuration owner first"))
 	}
 	if err != nil {
 		return nil, config.Layer{}, err
@@ -125,7 +118,7 @@ func (s Service) Create(ctx context.Context, o Owner, fromProfile string) (Resul
 	}
 	defer fsutil.Unlock(lock)
 	if _, err = os.Lstat(o.Root); err == nil {
-		return result, &Error{Code: "owner_exists", Message: fmt.Sprintf("%s already exists", o.Root), Next: []Step{o.step("init", "Initialize missing artifacts without overwriting files")}}
+		return result, commanderror.New("owner_exists", "Configuration already exists", o.Root, nil, o.step("init", "Initialize missing artifacts without overwriting files"))
 	} else if !os.IsNotExist(err) {
 		return result, err
 	}
@@ -231,7 +224,7 @@ func (s Service) Create(ctx context.Context, o Owner, fromProfile string) (Resul
 	for _, name := range names {
 		result.Created = append(result.Created, filepath.Join(o.Root, name))
 	}
-	result.Next = []Step{o.step("init", "Select a harness and optional artifacts")}
+	result.Next = []commanderror.Step{o.step("init", "Select a harness and optional artifacts")}
 	return result, nil
 }
 

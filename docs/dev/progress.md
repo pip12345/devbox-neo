@@ -100,8 +100,8 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - The mandatory runtime layer restores vim, zip, unzip, jq, net-tools, iputils-ping, and interactive Bash aliases `ll='ls -alF'` / `vi='vim'`. Both image modes share these inputs; ordinary recreation rebuilds when they change. No lifecycle changes or tmux installation were added.
 - Session listing now has name, harness, profile, last activity, container cross-reference, and folder columns. It shares existing formatting/styling and name/activity sorting, retains missing-container/corrupt/pending entries, and applies the same sorting to JSON. Prune flags and deletion behavior are unchanged.
 - Cobra completion suggests session/live-container targets, profiles, harnesses, transfer slots, and fixed option values. It bypasses initialization and locking readers, honors home selection, and uses bounded read-only Docker inventory. Tests verify no host writes, source-failure handling, invalid overrides, argument positions, and installation isolation.
-- Guide/reference/architecture docs and embedded guidance are aligned. Doctor remains deferred in [its separate plan](doctor-plan.md), not part of this implementation.
-- Rewrite `make check` and parent `make test` pass; `go vet ./...` passes and integration-tagged tests compile. The added real-Docker tool/alias check is unrun because this workspace has no Docker CLI. Actual shell completion in an interactive host shell also remains a manual acceptance check; automated tests exercise Cobra's completion protocol.
+- Guide/reference/architecture docs and embedded guidance are aligned. A general doctor command is [not planned](doctor-plan.md); status and actionable command failures cover the selected workflows.
+- Rewrite `make check` and parent `make test` pass; `go vet ./...` passes and integration-tagged tests compile. The added real-Docker tool/alias check is unrun because this workspace has no Docker CLI. Actual shell completion in an interactive host shell also remains a manual acceptance check; automated tests exercise Cobra's completion protocol. Generated scripts now register both `devbox-neo` and an existing `dbx` shortcut without defining aliases. Bash subprocess tests cover alias/function preservation and flag forwarding; all four shell generators and `--no-descriptions` are covered. Live Zsh/Fish/PowerShell checks remain unrun.
 
 ## Bulk status and early drift warning — implemented
 
@@ -110,6 +110,14 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - Session schema 2 requires a complete applied-input snapshot and validates it against committed fingerprints. Creation/recreation commits all inputs; runtime application advances its snapshot and hash together, including recovery. Transfers commit destination inputs. Older development records require a clean reset; no compatibility, migration, or guessed baselines were added.
 - Open reports creation drift before resolution warnings, recovery, synchronization, startup, and entrypoint/harness output, then continues immediately without an artificial delay.
 - Fake-backed tests cover drift classifications, broken records/config, pending transfers, profile selection, Docker inventory failure, JSON/table output, warning ordering, immediate continuation, cancellation, detailed reason coverage/redaction, strict record validation, baseline commit/failure/defer behavior, and transfer destination baselines. Rewrite `make test` and `make check`, plus parent `make test`, pass. Live-Docker acceptance has not been run because this workspace has no Docker CLI.
+
+## Shared command errors and Pi fullscreen — implemented
+
+- Resource and lifecycle failures share `commanderror.Error`/`Step`; the process boundary prints errors once. Existing JSON commands emit structured failures on stdout, while streaming commands keep human stderr and unchanged child output. Codes/targets/next steps come from owners, not message matching; causes and foreground exit statuses are retained. Unknown errors remain `command_failed` rather than guessed categories.
+- Added actionable handling for configuration/harness selection, missing/ambiguous targets, invalid records, missing containers, active leases, ownership/instance failures, managed-file conflicts, recovery, pending transfers, and Docker failures. Retry argv uses journal endpoints and retains explicit home selection. No automatic repair or force-next-step behavior was added.
+- Pi defaults to `--tui-mode fullscreen` through its built-in launch definition; profile/project harness arguments or one-off `--tui-mode regular` override it. Existing recorded environments require recreation to adopt the definition. Fullscreen is experimental upstream; live Pi acceptance remains unrun here.
+- Unit tests cover JSON/human routing, private causes, next-step scoping, cleanup diagnostics, exit codes, absence/corruption boundaries, transfer retry commands, and Pi launch/override ordering. Rewrite `make test`/`make check`, vet, integration-test compilation, and parent `make test` pass. Live Docker and fullscreen UI checks remain unrun here.
+- The executable remains `devbox-neo`. The obsolete rename task and deferred doctor scope were removed.
 
 ## Validation
 
@@ -139,7 +147,7 @@ Continue the runtime/configuration work; do not claim interactive harness accept
 - Phase 3: remaining source-snapshot/provenance hardening and real-Docker acceptance for expanded creation inputs.
 - Phase 4: remaining target/creation-option integration, runtime-copy performance hardening, and expanded real-Docker lifecycle/crash testing.
 - Phase 5: real-Docker transfer/kill-point acceptance and additional acceptance coverage for reset/prune/delete.
-- Phase 6: remaining guided artifact workflows, menu usability acceptance, complete structured guidance, doctor, and complete documentation.
+- Phase 6: remaining guided artifact workflow audit, menu usability acceptance, and documentation coverage; shared error/next-step handling is implemented and a doctor command is not planned.
 - Phase 7: release hardening, performance/secret audits, and remaining acceptance tests.
 - Separate migration utility: not implemented.
 

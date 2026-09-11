@@ -1,11 +1,17 @@
 package config
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
 
-func TestMissingHarnessGuidanceSeparatesProfileAndProjectCommands(t *testing.T) {
+	"devbox/internal/commanderror"
+)
+
+func TestMissingHarnessIsTypedWithoutInventingAnOwner(t *testing.T) {
 	err := Defaults().Validate()
-	want := "no harness selected.\n\nFor a profile:\n  devbox-neo profile init <name> --harness <harness>\n\nFor a project:\n  devbox-neo project init <folder> --harness <harness>"
-	if err == nil || err.Error() != want {
+	var actionable *commanderror.Error
+	if !errors.As(err, &actionable) || actionable.Code != "harness_required" || len(actionable.Next) != 0 || strings.Contains(err.Error(), "devbox-neo") {
 		t.Fatalf("unexpected guidance: %v", err)
 	}
 }

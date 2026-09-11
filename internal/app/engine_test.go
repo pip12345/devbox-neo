@@ -10,7 +10,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/docker"
 	"devbox/internal/docker/dockertest"
 	"devbox/internal/environment"
@@ -46,6 +48,9 @@ func record(t *testing.T, e *Engine, name string) store.Record {
 		t.Fatal(err)
 	}
 	return r
+}
+func argvSuffix(args, suffix []string) bool {
+	return len(args) >= len(suffix) && slices.Equal(args[len(args)-len(suffix):], suffix)
 }
 func count(d *dockertest.Daemon, verb string) int {
 	n := 0
@@ -200,7 +205,8 @@ func TestRecordedRecoveryUsesOriginalDefinitionAndSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	creates := count(d, "create")
-	if _, err = e.Start(ctx, result.Name, ""); err == nil || !strings.Contains(err.Error(), "devbox-neo recreate "+result.Name) {
+	var recoveryError *commanderror.Error
+	if _, err = e.Start(ctx, result.Name, ""); !errors.As(err, &recoveryError) || recoveryError.Code != "recovery_unavailable" || !slices.Equal(recoveryError.Next[0].Command, []string{"devbox-neo", "recreate", result.Name}) {
 		t.Fatalf("want actionable recovery error: %v", err)
 	}
 	if count(d, "create") != creates {
@@ -314,7 +320,8 @@ func TestOwnershipAndDaemonErrorsFailClosed(t *testing.T) {
 }
 func TestForegroundStatusAndConcurrentLeases(t *testing.T) {
 	e, d, q := fixture(t)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	result, err := e.Open(ctx, q)
 	if err != nil {
 		t.Fatal(err)
@@ -322,8 +329,10 @@ func TestForegroundStatusAndConcurrentLeases(t *testing.T) {
 	var mu sync.Mutex
 	arrived := make(chan struct{}, 2)
 	release := make(chan struct{})
+	r := record(t, e, result.Name)
+	launch := append([]string{r.Launch.Binary}, r.Launch.Args...)
 	d.Attached = func(ctx context.Context, c docker.Command) error {
-		if c.Args[len(c.Args)-1] != "pi" {
+		if !argvSuffix(c.Args, launch) {
 			return nil
 		}
 		arrived <- struct{}{}
@@ -342,8 +351,13 @@ func TestForegroundStatusAndConcurrentLeases(t *testing.T) {
 		wg.Add(1)
 		go func(i int) { defer wg.Done(); _, err := e.Open(ctx, q); mu.Lock(); errs[i] = err; mu.Unlock() }(i)
 	}
-	<-arrived
-	<-arrived
+	for range 2 {
+		select {
+		case <-arrived:
+		case <-ctx.Done():
+			t.Fatal("attached harness did not arrive", ctx.Err())
+		}
+	}
 	if err = e.Stop(ctx, result.Name, "", false); err == nil {
 		t.Fatal("stop allowed live leases")
 	}

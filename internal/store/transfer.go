@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/environment"
 	"devbox/internal/fsutil"
@@ -37,6 +38,26 @@ type Reservation struct {
 	Destination string `json:"destination"`
 	Mode        string `json:"mode"`
 	Phase       string `json:"phase"`
+	retry       commanderror.Step
+}
+
+// RetryStep uses the journal's exact endpoints, including same-folder slots.
+// It does not rediscover defaults or depend on the source record still existing.
+func (j Transfer) RetryStep() commanderror.Step {
+	if j.Source.Workspace == j.Destination.Workspace {
+		slot := func(id environment.Identity) string {
+			if id.Slot == "project" {
+				return ".project"
+			}
+			return id.Profile
+		}
+		return commanderror.Next("Resume the pending transfer", "session", j.Mode, j.Source.Workspace, "--from", slot(j.Source), "--to", slot(j.Destination))
+	}
+	args := []string{"session", j.Mode, j.Source.Name, j.Destination.Workspace}
+	if j.Mode == "clone" && j.Destination.Profile != j.Source.Profile {
+		args = append(args, "--profile", j.Destination.Profile)
+	}
+	return commanderror.Next("Resume the pending transfer", args...)
 }
 
 func (j Transfer) Validate() error {
@@ -59,6 +80,9 @@ func (j Transfer) Validate() error {
 		if (id.Slot == "project" && id.Profile != "") || (id.Slot != "project" && (!config.Name.MatchString(id.Profile) || id.Slot != "profile:"+id.Profile)) {
 			return fmt.Errorf("invalid transfer slot")
 		}
+	}
+	if j.Source.Workspace != j.Destination.Workspace && ((j.Mode == "relocate" && j.Source.Slot != j.Destination.Slot) || (j.Mode == "clone" && j.Source.Profile != "" && j.Destination.Profile == "")) {
+		return fmt.Errorf("unsupported cross-folder transfer slots")
 	}
 	if j.Source.Name == j.Destination.Name {
 		return fmt.Errorf("transfer endpoints must differ")
@@ -139,7 +163,7 @@ func (s *Store) Pending(name string) (*Reservation, error) {
 			if pending != nil {
 				return nil, fmt.Errorf("conflicting transfer journals")
 			}
-			pending = &Reservation{ID: j.ID, Source: j.Source.Name, Destination: j.Destination.Name, Mode: j.Mode, Phase: j.Phase}
+			pending = &Reservation{ID: j.ID, Source: j.Source.Name, Destination: j.Destination.Name, Mode: j.Mode, Phase: j.Phase, retry: j.RetryStep()}
 		}
 	}
 	return pending, nil
@@ -153,7 +177,7 @@ func (l *Locked) RequireAvailable() error {
 		return err
 	}
 	if pending != nil {
-		return fmt.Errorf("pending transfer %s (%s).\nRetry the same session %s command.\nSource: %s\nDestination: %s", pending.ID, pending.Phase, pending.Mode, pending.Source, pending.Destination)
+		return commanderror.New("pending_transfer", fmt.Sprintf("pending transfer %s (%s); resume it before other session operations", pending.ID, pending.Phase), l.Name, nil, pending.retry)
 	}
 	return nil
 }

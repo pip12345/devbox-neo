@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/environment"
 	"devbox/internal/harness"
@@ -24,7 +26,7 @@ type SessionDetails struct {
 
 func (e *Engine) SessionShow(ctx context.Context, target, profile string) (SessionDetails, error) {
 	r, err := e.Locate(ctx, target, profile)
-	if os.IsNotExist(err) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
+	if errors.Is(err, os.ErrNotExist) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
 		pending, pendingErr := e.Store.Pending(target)
 		if pendingErr != nil {
 			return SessionDetails{}, pendingErr
@@ -154,7 +156,8 @@ func (e *Engine) ResetSessions(ctx context.Context, options ResetOptions) ([]Res
 			return nil, err
 		}
 		if exists && c.State.Running {
-			return nil, fmt.Errorf("session %s must be stopped before reset", r.Identity.Name)
+			return nil, commanderror.New("container_running", "session must be stopped before reset", r.Identity.Name, nil,
+				commanderror.Next("Stop the container, then retry reset", "stop", r.Identity.Name))
 		}
 		harnesses := []string{r.Definition.Name}
 		if options.Harness != "" {
@@ -320,7 +323,7 @@ func (e *Engine) PruneSessions(ctx context.Context, options PruneOptions) ([]str
 		return nil, fmt.Errorf("provide --orphaned or --older-than")
 	}
 	if !options.DryRun && !options.Confirm {
-		return nil, fmt.Errorf("filtered state deletion requires confirmation.\nPreview with --dry-run.\nThen repeat with --yes to confirm deletion.")
+		return nil, commanderror.New("confirmation_required", "filtered state deletion requires confirmation; preview with --dry-run, then repeat with --yes", "", nil)
 	}
 	views, err := e.List(ctx, true)
 	if err != nil {
@@ -384,7 +387,8 @@ func (e *Engine) deleteSessionNames(ctx context.Context, names []string, dryRun 
 			return nil, err
 		}
 		if exists {
-			return nil, fmt.Errorf("session %s still has a container.\n\nDelete the container first:\n  devbox-neo delete %s\nThen retry session deletion.", r.Identity.Name, r.Identity.Name)
+			return nil, commanderror.New("container_present", "session still has a container; delete the container before deleting its session", r.Identity.Name, nil,
+				commanderror.Next("Delete only the container, then retry session deletion", "delete", r.Identity.Name))
 		}
 		image, tagged, err := e.Docker.TaggedImage(ctx, r.ImageTag)
 		if err != nil {

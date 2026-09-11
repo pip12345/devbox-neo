@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"devbox/internal/artifact"
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/fsutil"
 	"devbox/internal/harness"
@@ -292,7 +293,7 @@ func Sync(root, manifestPath, store string, desired map[string]artifact.File, me
 		return err
 	}
 	if len(conflicts.Paths) > 0 {
-		return conflicts
+		return commanderror.New("managed_config_conflict", conflicts.Error()+"; resolve the preserved files, then retry", root, conflicts)
 	}
 	return nil
 }

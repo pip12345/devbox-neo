@@ -57,6 +57,11 @@ func TestRuntimeDocsAndNetworkFactsAreStagedAndCleaned(t *testing.T) {
 }
 func TestFailedRuntimeCopyDoesNotLaunchOrLeaveStaging(t *testing.T) {
 	e, d, q := fixture(t)
+	spec, err := e.Resolve(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	launch := append([]string{spec.Harness.Definition.Binary}, spec.Harness.Definition.Launch.Args...)
 	d.Fail = func(args []string) error {
 		if args[0] == "cp" {
 			return errors.New("copy failed")
@@ -71,7 +76,7 @@ func TestFailedRuntimeCopyDoesNotLaunchOrLeaveStaging(t *testing.T) {
 		t.Fatal("staging cleanup failed", files, err)
 	}
 	for _, args := range d.History() {
-		if args[0] == "exec" && args[len(args)-1] == "pi" {
+		if args[0] == "exec" && argvSuffix(args, launch) {
 			t.Fatal("harness launched after runtime failure")
 		}
 	}

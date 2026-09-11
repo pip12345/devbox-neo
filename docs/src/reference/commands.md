@@ -31,6 +31,14 @@ When `open` detects container/image drift, it prints those specific creation rea
 
 Exact container names keep their recorded slots when defaults change. Open targets are arguments to `open`, so target names do not collide with top-level commands. Existing-container start/shell/exec and logs do not load desired configuration. Attached `open`, `shell`, and `exec` forward the invoking terminal's display variables, including `TERM` and `COLORTERM`, without requiring recreation; see [environment precedence](configuration.md#substitution-environment-and-creation-options).
 
+## Errors and next steps
+
+Commands return typed failures with stable codes, safe messages, known targets, and optional `next_steps` argv arrays. Human errors are printed once on stderr with the operation, target, and copyable commands. Commands supporting `--json` instead emit one error object on stdout and exit nonzero; success JSON shapes are unchanged. Error fields are `error` (code), `message`, `operation`, optional `target`, `next_steps`, and `related_errors` for joined failures. Interactive `open`, `shell`, and `exec` do not gain a JSON mode, and child output is unchanged. Flag errors do not echo rejected values.
+
+Common codes include `configuration_missing`, `profile_missing`, `harness_required`, `unknown_harness`, `invalid_harness_definition`, `invalid_configuration`, `configuration_unavailable`, `session_missing`, `ambiguous_target`, `container_missing`, `session_busy`, `ownership_mismatch`, `container_mismatch`, `managed_config_conflict`, `recovery_unavailable`, `pending_transfer`, `transfer_failed`, `docker_unavailable`, and `docker_inventory_unavailable`. Other Docker failures use `docker_command_failed`; unclassified errors use `command_failed`. Cancellation/deadline failures remain nonzero. Docker/child exit status is preserved even when cleanup also fails.
+
+Next steps retain an explicit `--home`, use exact known targets, and never execute automatically. No `--force` action is suggested by default. If a failure requires manual repair, the message identifies what needs attention rather than inventing a repair command. Error reporting does not initialize homes, repair records, or adopt containers.
+
 ## Completion
 
 `completion bash|zsh|fish|powershell` prints a shell completion script. Load it in your shell to complete command/flag names, recorded session targets, live container targets, profiles, valid harnesses, transfer slots, and fixed option values. Folder completion remains available where folders are accepted. For Bash, with the executable on `PATH`:
@@ -38,6 +46,8 @@ Exact container names keep their recorded slots when defaults change. Open targe
 ```sh
 source <(devbox-neo completion bash)
 ```
+
+The loaded script registers both `devbox-neo` and `dbx`. It does not define `dbx` or change an existing alias/function; completion invokes that shortcut with its existing flags. Regenerate and reload previously saved scripts to pick up this registration. With command-name-based Bash/Fish autoloading, also install the generated script under the `dbx` completion filename (`dbx` / `dbx.fish`), or source it at shell startup. Zsh's generated autoload header covers both names.
 
 Suggestions honor `--home` / `DEVBOX_HOME`. Completion does not initialize state, create locks, or modify Docker resources. Container suggestions use a bounded, installation-filtered Docker inventory; unavailable Docker quietly leaves folder completion available. Session suggestions use existing session directories, including corrupt records so they can still be addressed. Invalid harness overrides are not suggested and never fall back to the built-in.
 

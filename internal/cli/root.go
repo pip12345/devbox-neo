@@ -135,6 +135,8 @@ func New() *cobra.Command {
 		}
 		return &resource.Service{Home: state.Home}, nil
 	})...)
+	bindCompletionScripts(root)
 	bindCompletions(root, docker.Runtime{Runner: docker.ExecRunner{}})
+	bindCommandErrors(root)
 	return root
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"devbox/internal/commanderror"
 	"devbox/internal/fsutil"
 	"devbox/internal/store"
 	"errors"
@@ -208,7 +209,8 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	if !c.State.Running {
 		t.Fatal("source not restarted")
 	}
-	if _, err = e.Start(ctx, opened.Name, ""); err == nil || !strings.Contains(err.Error(), "pending transfer") || !strings.Contains(err.Error(), "\nRetry the same session relocate command.\nSource: "+opened.Name+"\nDestination: ") {
+	var pendingError *commanderror.Error
+	if _, err = e.Start(ctx, opened.Name, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "devbox-neo session relocate "+opened.Name+" "+opts.Destination {
 		t.Fatal("pending source not guarded", err)
 	}
 	j, err := e.Store.ReadTransfer(opened.Name)

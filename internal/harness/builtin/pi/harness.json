@@ -6,7 +6,7 @@
     "shell": "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs && sudo rm -rf /var/lib/apt/lists/* && curl -fsSL https://pi.dev/install.sh | sudo -E sh",
     "path": ["/home/${user}/.local/bin"]
   },
-  "launch": {"args": [], "continue_args": ["-c"]},
+  "launch": {"args": ["--tui-mode", "fullscreen"], "continue_args": ["-c"]},
   "env": {
     "NPM_CONFIG_PREFIX": "/home/devuser/.local",
     "NPM_CONFIG_CACHE": "/home/devuser/.npm"

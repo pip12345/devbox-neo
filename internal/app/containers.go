@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/docker"
 	"devbox/internal/environment"
@@ -177,7 +179,8 @@ func (e *Engine) Logs(ctx context.Context, target, profile string, follow bool, 
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("container is missing")
+		return commanderror.New("container_missing", "container is missing; logs are not retained after container deletion", r.Identity.Name, nil,
+			commanderror.Next("Inspect retained session state", "session", "show", r.Identity.Name))
 	}
 	return e.Docker.Logs(ctx, c, e.owner(r), follow, tail, e.Streams.Out, e.Streams.Err)
 }
@@ -214,7 +217,7 @@ func (e *Engine) selectContainers(ctx context.Context, selection Selection) ([]s
 		for _, target := range selection.Targets {
 			r, err := e.Locate(ctx, target, selection.Profile)
 			if err != nil {
-				if os.IsNotExist(err) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
+				if errors.Is(err, os.ErrNotExist) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
 					names[target] = true
 					continue
 				}

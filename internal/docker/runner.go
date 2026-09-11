@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
+
+	"devbox/internal/commanderror"
 )
 
 type Command struct {
@@ -62,10 +64,11 @@ func (r ExecRunner) Run(ctx context.Context, c Command) error {
 		if code < 1 {
 			code = 1
 		}
-		return errors.Join(&ExitError{Code: code, Operation: operation}, ctx.Err())
+		failure := &ExitError{Code: code, Operation: operation}
+		return errors.Join(commanderror.New("docker_command_failed", failure.Error(), "", failure), ctx.Err())
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	return fmt.Errorf("cannot execute Docker CLI: %w", err)
+	return commanderror.New("docker_unavailable", "cannot execute Docker CLI; check its installation, PATH, and executable permissions", binary, err)
 }

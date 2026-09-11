@@ -2,10 +2,12 @@
 package artifact
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/fsutil"
 	"devbox/internal/harness"
@@ -54,8 +56,14 @@ func PreviewProject(home, workspace string, project config.Layer, host config.Ho
 	return resolve(home, workspace, "", config.Layer{}, &project, host)
 }
 
-func resolve(home, workspace, explicit string, override config.Layer, proposed *config.Layer, host config.Host) (Resolved, error) {
-	r := Resolved{Settings: config.Defaults(), Trace: Trace{Winners: map[string]string{}, Sources: map[string][]string{}, EntrySources: map[string][]string{}}}
+func resolve(home, workspace, explicit string, override config.Layer, proposed *config.Layer, host config.Host) (r Resolved, err error) {
+	defer func() {
+		var actionable *commanderror.Error
+		if err != nil && !errors.As(err, &actionable) {
+			err = commanderror.New("invalid_configuration", err.Error(), workspace, err)
+		}
+	}()
+	r = Resolved{Settings: config.Defaults(), Trace: Trace{Winners: map[string]string{}, Sources: map[string][]string{}, EntrySources: map[string][]string{}}}
 	for range r.Settings.Shell {
 		r.Trace.EntrySources["default_shell"] = append(r.Trace.EntrySources["default_shell"], "built-in default")
 	}
@@ -115,7 +123,9 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 		}
 		l, err := config.ReadLayer(filepath.Join(root, "config.json"), false, host)
 		if os.IsNotExist(err) {
-			return r, fmt.Errorf("profile %q does not exist.\n\nNext:\n  devbox-neo profile create %s\n  devbox-neo profile init %s --harness <name>", profile, profile, profile)
+			return r, commanderror.New("profile_missing", fmt.Sprintf("profile %q does not exist", profile), root, err,
+				commanderror.Next("Create the selected profile", "profile", "create", profile),
+				commanderror.Next("Select a harness", "profile", "init", profile, "--harness", "<name>"))
 		}
 		if err != nil {
 			return r, err
@@ -127,7 +137,10 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 		r.Layers = append(r.Layers, Layer{Name: "project", Path: filepath.Dir(projectPath), Config: *project})
 	}
 	if len(r.Layers) == 0 {
-		return r, fmt.Errorf("no profile or project configuration applies.\n\nNext:\n  devbox-neo profile create <name>\n  devbox-neo profile set <name>\n\nOr create project configuration:\n  devbox-neo project create <folder>")
+		return r, commanderror.New("configuration_missing", "no profile or project configuration applies", workspace, nil,
+			commanderror.Next("Create a profile", "profile", "create", "<name>"),
+			commanderror.Next("Select the default profile", "profile", "set", "<name>"),
+			commanderror.Next("Alternatively, create project configuration", "project", "create", workspace))
 	}
 	r.Trace.Layers = append(r.Trace.Layers, Layer{Name: "built-in default"}, Layer{Name: "global", Path: filepath.Join(home, "config.json")})
 	for _, l := range r.Layers {

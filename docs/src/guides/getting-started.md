@@ -21,7 +21,7 @@ export PATH="$PWD/bin:$PATH"
 source <(devbox-neo completion bash)
 ```
 
-Tab suggests profiles, harnesses, session/container targets, and flag values using the selected home. See [completion](../reference/commands.md#completion) for other shells.
+The loaded script also enables completion for an existing `dbx` shortcut; it does not create the alias. Reload it after upgrading. Tab suggests profiles, harnesses, session/container targets, and flag values using the selected home. See [completion](../reference/commands.md#completion) for other shells.
 
 ## Configure the first profile
 
@@ -118,6 +118,14 @@ Managed config is synchronized only while stopped. If an open reports deferred c
 
 Harness config copies warn and skip symlinks and other non-regular entries. Opening continues, but skipped files are not supplied by that source. If an extension needs skipped `node_modules/.bin` links, install its dependencies inside the container; copying the source tree does not preserve those links.
 
+Pi starts in fullscreen TUI mode by default (an experimental upstream mode). To use regular mode for one open:
+
+```sh
+bin/devbox-neo open /path/to/workspace --profile basic -- --tui-mode regular
+```
+
+For a persistent override, set the profile/project `harness_args` to `["--tui-mode", "regular"]`. Recreate existing recorded Pi environments to adopt the new built-in default. A cached image with an older Pi that does not support `--tui-mode` needs an explicit `recreate --image` to reinstall Pi; ordinary recreation does not promise upstream updates.
+
 ## Access without desired configuration
 
 ```sh
@@ -126,6 +134,8 @@ bin/devbox-neo shell /path/to/workspace --profile basic
 bin/devbox-neo exec /path/to/workspace --profile basic -- git status
 bin/devbox-neo stop /path/to/workspace --profile basic
 ```
+
+Failures now include a code, the failed operation, and safe next commands when available. Follow the suggested command, then retry; Devbox does not run repairs or force flags automatically. Commands already supporting `--json` also return structured failures on stdout with a nonzero exit code.
 
 For existing containers these commands use the recorded contract, not current profile/project config. `shell` and `exec` require an existing container. A missing container can be recovered by `start` only if its recorded inputs remain available and unchanged; otherwise use explicit `recreate`.
 

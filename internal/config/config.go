@@ -4,10 +4,13 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"regexp"
+
+	"devbox/internal/commanderror"
 )
 
 type Global struct {
@@ -124,8 +127,9 @@ func value(d *json.Decoder) error {
 	_, err = d.Token()
 	return err
 }
-func ReadGlobal(path string, host Host) (Global, error) {
-	g := Global{Version: 1}
+func ReadGlobal(path string, host Host) (g Global, err error) {
+	defer func() { err = configurationError(path, err) }()
+	g = Global{Version: 1}
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return g, nil
@@ -168,8 +172,9 @@ func ReadLayer(path string, project bool, host Host) (Layer, error) {
 	}
 	return ResolveLayer(b, path, project, host)
 }
-func ResolveLayer(b []byte, path string, project bool, host Host) (Layer, error) {
-	l := Layer{Version: 1}
+func ResolveLayer(b []byte, path string, project bool, host Host) (l Layer, err error) {
+	defer func() { err = configurationError(path, err) }()
+	l = Layer{Version: 1}
 	raw, err := ParseLayer(b, project)
 	if err != nil {
 		return l, fmt.Errorf("%s: invalid layer: %w", path, err)
@@ -186,6 +191,24 @@ func ResolveLayer(b []byte, path string, project bool, host Host) (Layer, error)
 	l.References = refs
 	l.EnvInputs, err = envInputs(raw.Env, l.Env, path, "extra_env", host, false)
 	return l, err
+}
+
+// ReadLayer deliberately returns missing-file errors unchanged: participation
+// and fresh-state decisions belong to its callers, before public diagnostics.
+func configurationError(path string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var actionable *commanderror.Error
+	if errors.As(err, &actionable) {
+		return err
+	}
+	code := "invalid_configuration"
+	var pathError *os.PathError
+	if errors.As(err, &pathError) {
+		code = "configuration_unavailable"
+	}
+	return commanderror.New(code, err.Error(), path, err)
 }
 
 // Source operations validate shape without resolving values. Copying a profile
@@ -239,7 +262,7 @@ func (s Settings) Validate() error {
 		return err
 	}
 	if s.Harness == "" {
-		return fmt.Errorf("no harness selected.\n\nFor a profile:\n  devbox-neo profile init <name> --harness <harness>\n\nFor a project:\n  devbox-neo project init <folder> --harness <harness>")
+		return commanderror.New("harness_required", "no harness selected", "", nil)
 	}
 	return nil
 }

@@ -50,6 +50,12 @@ share detailed setting/file changes; env reasons show variable names, never valu
 Session record schema 2 requires a complete applied-input snapshot. Older development
 records require a clean reset with the previous build; there is no automatic migration.
 
+The built-in Pi launch defaults to --tui-mode fullscreen (upstream experimental).
+A later --tui-mode regular in harness_args or one-off harness arguments overrides it.
+Existing recorded environments require recreation to adopt changed harness defaults.
+Host CLI failures include error codes and next commands where safe; suggestions do
+not run automatically. Existing --json commands also return structured failures.
+
 Attached shell, harness, and exec commands receive the invoking terminal's TERM,
 COLORTERM, and related display variables. These are not durable session settings;
 reconnecting refreshes them without recreation. Host shell dotfiles are not imported.

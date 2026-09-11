@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/docker"
 	"devbox/internal/environment"
@@ -54,7 +55,7 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string,
 		return r.Identity.Name, nil
 	}
 	// After committed source cleanup, its external journal is still retryable.
-	if !os.IsNotExist(err) {
+	if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
 	workspace, pathErr := filepath.Abs(q.Source)
@@ -119,7 +120,8 @@ func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode 
 			return nil, fmt.Errorf("harness %s does not support %s", d.Name, mode)
 		}
 		if d.Name == source.Definition.Name && environment.Fingerprint(e.Store.Installation, effective.Hash) != source.Definition.Hash {
-			return nil, fmt.Errorf("source harness definition changed.\n\nNext:\n  devbox-neo recreate %s\nThen retry the transfer.", source.Identity.Name)
+			return nil, commanderror.New("harness_definition_changed", "source harness definition changed; recreate before retrying the transfer", source.Identity.Name, nil,
+				commanderror.Next("Apply the current harness definition", "recreate", source.Identity.Name))
 		}
 		path, err := l.Path(filepath.Join("harnesses", d.Name, "stores"))
 		if err != nil {
@@ -143,6 +145,10 @@ func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode 
 		definitions = append(definitions, d)
 	}
 	return definitions, nil
+}
+
+func transferFailure(j store.Transfer, err error) error {
+	return commanderror.New("transfer_failed", fmt.Sprintf("session %s did not complete: %v", j.Mode, err), j.Source.Name, err, j.RetryStep())
 }
 
 // Transfer has two durable phases: source-authoritative preparation, then
@@ -174,7 +180,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if journal != nil {
 		sourceIdentity = journal.Source
 	} else {
-		source, err := e.Store.Read(ctx, sourceName)
+		source, err := e.readSession(ctx, sourceName)
 		if err != nil {
 			return result, err
 		}
@@ -216,7 +222,11 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		if q.DryRun {
 			return result, nil
 		}
-		return result, e.finishTransfer(ctx, sourceLock, destLock, *journal)
+		err = e.finishTransfer(ctx, sourceLock, destLock, *journal)
+		if err != nil {
+			err = transferFailure(*journal, err)
+		}
+		return result, err
 	}
 	source, err := sourceLock.ReadRecord(ctx)
 	if err != nil {
@@ -230,7 +240,8 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		return result, err
 	}
 	if q.Mode == "clone" && exists && c.State.Running {
-		return result, fmt.Errorf("clone requires a stopped or absent source container")
+		return result, commanderror.New("container_running", "clone requires a stopped or absent source container", source.Identity.Name, nil,
+			commanderror.Next("Stop the source, then retry clone", "stop", source.Identity.Name))
 	}
 	definitions, err := e.transferDefinitions(sourceLock, source, q.Mode)
 	if err != nil {
@@ -328,7 +339,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			}
 		}
 		if err != nil {
-			err = fmt.Errorf("%w\n\nRetry the same session %s command.\nSource: %s\nDestination: %s", err, journal.Mode, journal.Source.Name, journal.Destination.Name)
+			err = transferFailure(*journal, err)
 		}
 	}()
 	if exists && c.State.Running {

@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"devbox/internal/artifact"
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/filesync"
 	"devbox/internal/fsutil"
@@ -59,7 +60,7 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 		}
 		if options.ChooseHarness == nil {
 			command := append(o.Command("init"), "--harness", "<name>")
-			return result, &Error{Code: "harness_required", Message: "no harness selected. No configuration was changed.", Next: []Step{{Command: command, Reason: "Select an available harness: " + fmt.Sprint(choices)}}}
+			return result, commanderror.New("harness_required", "No harness selected; choose one with --harness. No configuration was changed.", o.Root, nil, commanderror.Step{Command: command, Reason: "Select an available harness: " + fmt.Sprint(choices)})
 		}
 		selected, err = options.ChooseHarness(choices, registry.Invalid)
 		if err != nil {
@@ -186,9 +187,9 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 		}
 	}
 	if o.Kind == "profile" {
-		result.Next = []Step{o.step("set", "Use this profile by default"), {Command: []string{"devbox-neo", "open", "<folder>", "--profile", o.Name}, Reason: "Open a workspace explicitly with this profile"}}
+		result.Next = []commanderror.Step{o.step("set", "Use this profile by default"), {Command: []string{"devbox-neo", "open", "<folder>", "--profile", o.Name}, Reason: "Open a workspace explicitly with this profile"}}
 	} else {
-		result.Next = []Step{{Command: []string{"devbox-neo", "open", o.Workspace}, Reason: "Open this project"}}
+		result.Next = []commanderror.Step{{Command: []string{"devbox-neo", "open", o.Workspace}, Reason: "Open this project"}}
 	}
 	return result, nil
 }

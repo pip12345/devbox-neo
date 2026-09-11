@@ -1,11 +1,13 @@
 package artifact
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/harness"
 )
@@ -29,21 +31,30 @@ func TestMissingConfigurationGuidanceIncludesDefaultProfileSelection(t *testing.
 		if err == nil {
 			t.Fatal("unselected configuration should fail")
 		}
-		want := "no profile or project configuration applies.\n\nNext:\n" +
-			"  devbox-neo profile create <name>\n" +
-			"  devbox-neo profile set <name>\n\n" +
-			"Or create project configuration:\n  devbox-neo project create <folder>"
-		if err.Error() != want {
-			t.Fatalf("unexpected guidance:\n%s", err)
+		var actionable *commanderror.Error
+		if !errors.As(err, &actionable) || actionable.Code != "configuration_missing" || len(actionable.Next) != 3 {
+			t.Fatalf("unexpected guidance: %v", err)
+		}
+		want := [][]string{{"devbox-neo", "profile", "create", "<name>"}, {"devbox-neo", "profile", "set", "<name>"}, {"devbox-neo", "project", "create", work}}
+		for i, step := range actionable.Next {
+			if !reflect.DeepEqual(step.Command, want[i]) {
+				t.Fatal(step, want[i])
+			}
 		}
 	}
 }
 
 func TestMissingProfileGuidanceOrdersCreationBeforeInitialization(t *testing.T) {
 	_, err := Resolve(t.TempDir(), t.TempDir(), "missing", config.Layer{})
-	want := "profile \"missing\" does not exist.\n\nNext:\n  devbox-neo profile create missing\n  devbox-neo profile init missing --harness <name>"
-	if err == nil || err.Error() != want {
+	var actionable *commanderror.Error
+	if !errors.As(err, &actionable) || actionable.Code != "profile_missing" || len(actionable.Next) != 2 {
 		t.Fatalf("unexpected guidance: %v", err)
+	}
+	want := [][]string{{"devbox-neo", "profile", "create", "missing"}, {"devbox-neo", "profile", "init", "missing", "--harness", "<name>"}}
+	for i, step := range actionable.Next {
+		if !reflect.DeepEqual(step.Command, want[i]) {
+			t.Fatal(step, want[i])
+		}
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/fsutil"
 )
@@ -84,23 +86,29 @@ type Effective struct {
 	Warnings   []string
 }
 
-func Load(home, name string) (Effective, error) {
-	var result Effective
+func Load(home, name string) (result Effective, err error) {
 	if !config.Name.MatchString(name) {
-		return result, fmt.Errorf("invalid harness name")
+		return result, commanderror.New("invalid_harness", "invalid harness name", name, nil)
 	}
+	origin := filepath.Join(home, "harnesses", name, "harness.json")
+	defer func() {
+		var actionable *commanderror.Error
+		if err != nil && !errors.As(err, &actionable) {
+			err = commanderror.New("invalid_harness_definition", err.Error(), origin, err)
+		}
+	}()
 	user, err := fsutil.Path(home, filepath.Join("harnesses", name, "harness.json"))
 	if err != nil {
 		return result, err
 	}
 	b, err := os.ReadFile(user)
 	var defaults Tree
-	origin := user
+	origin = user
 	if os.IsNotExist(err) {
 		origin = "builtin"
 		b, err = builtins.ReadFile("builtin/" + name + "/harness.json")
 		if os.IsNotExist(err) {
-			return result, fmt.Errorf("unknown harness %q", name)
+			return result, commanderror.New("unknown_harness", fmt.Sprintf("unknown harness %q; select an available harness or add its definition", name), name, err)
 		}
 		if err == nil {
 			var source fs.FS

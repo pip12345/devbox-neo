@@ -72,7 +72,11 @@ func TestTerminalEnvCreationAttachmentAndRecovery(t *testing.T) {
 				t.Fatalf("attached command missing %q: %q", entry, last)
 			}
 		}
-		if last[len(last)-1] != wantArg {
+		want := []string{wantArg}
+		if wantArg == spec.Harness.Definition.Binary {
+			want = append(want, spec.Harness.Definition.Launch.Args...)
+		}
+		if !argvSuffix(last, want) {
 			t.Fatal("wrong attached command", last)
 		}
 	}

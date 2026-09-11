@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/docker"
 	"devbox/internal/environment"
@@ -319,9 +320,12 @@ func (s *Store) Read(ctx context.Context, name string) (Record, error) {
 		return record, err
 	}
 	if err = config.Decode(b, &record); err != nil {
-		return record, fmt.Errorf("corrupt session record: %w", err)
+		return record, commanderror.New("invalid_session_record", fmt.Sprintf("corrupt session record: %v", err), path, err)
 	}
-	return record, record.Validate(name)
+	if err = record.Validate(name); err != nil {
+		return record, commanderror.New("invalid_session_record", err.Error(), path, err)
+	}
+	return record, nil
 }
 func (l *Locked) Save(record Record) error {
 	if err := l.check(); err != nil {

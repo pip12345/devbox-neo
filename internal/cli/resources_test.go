@@ -22,7 +22,10 @@ func resourceCLI(t *testing.T, home string, args ...string) (string, error) {
 	cmd.SetErr(&out)
 	cmd.SetIn(strings.NewReader(""))
 	cmd.SetArgs(append([]string{"--home", home}, args...))
-	err := cmd.Execute()
+	invoked, err := cmd.ExecuteC()
+	if err != nil {
+		RenderError(invoked, err)
+	}
 	return out.String(), err
 }
 func TestFreshHomeCanBeConfiguredWithoutDockerOrManualJSON(t *testing.T) {
@@ -68,8 +71,8 @@ func TestResourceAutomationDoesNotPromptAndScopesNextSteps(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "--harness") {
 		t.Fatal("automation guessed a harness", err)
 	}
-	_, err = resourceCLI(t, home, "profile", "init", "missing", "--harness", "pi")
-	if err == nil || !strings.Contains(err.Error(), "profile create missing") || !strings.Contains(err.Error(), shellQuote(home)) {
+	out, err = resourceCLI(t, home, "profile", "init", "missing", "--harness", "pi")
+	if err == nil || !strings.Contains(out, "profile create missing") || !strings.Contains(out, shellQuote(home)) {
 		t.Fatal("missing owner has no scoped next step", err)
 	}
 }

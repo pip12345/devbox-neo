@@ -3,11 +3,13 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 )
 
@@ -34,7 +36,8 @@ func TestConfigEnvironmentRecoveryNeverStoresOrAdoptsValues(t *testing.T) {
 	d.Forget(result.Name)
 	t.Setenv("DEVBOX_TEST_TOKEN", "new-secret")
 	creates := count(d, "create")
-	if _, err = e.Start(ctx, result.Name, ""); err == nil || !strings.Contains(err.Error(), "recreate") {
+	var recoveryError *commanderror.Error
+	if _, err = e.Start(ctx, result.Name, ""); !errors.As(err, &recoveryError) || recoveryError.Code != "recovery_unavailable" || len(recoveryError.Next) != 1 {
 		t.Fatal("changed env was adopted", err)
 	}
 	if count(d, "create") != creates {

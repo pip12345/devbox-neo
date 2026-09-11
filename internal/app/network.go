@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/docker"
 	"devbox/internal/store"
@@ -49,7 +50,8 @@ func (e *Engine) NetworkFacts(ctx context.Context, target, profile string) (Netw
 		return NetworkFacts{}, err
 	}
 	if !exists {
-		return NetworkFacts{}, fmt.Errorf("container is missing")
+		return NetworkFacts{}, commanderror.New("container_missing", "container is missing; there are no live network facts", r.Identity.Name, nil,
+			commanderror.Next("Start or recover the recorded container", "start", r.Identity.Name))
 	}
 	return networkFacts(r, c), nil
 }
@@ -75,7 +77,8 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, profile, name string
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("container is missing")
+		return commanderror.New("container_missing", "container is missing", r.Identity.Name, nil,
+			commanderror.Next("Start or recover the recorded container", "start", r.Identity.Name))
 	}
 	if r.Creation.Network == "host" || c.HostConfig.NetworkMode == "host" {
 		return fmt.Errorf("host-network containers cannot attach secondary networks")
@@ -89,7 +92,8 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, profile, name string
 		}
 	}
 	if !connect && actual == facts.Primary {
-		return fmt.Errorf("cannot disconnect the primary network.\nChange the network configuration, then recreate:\n  devbox-neo recreate %s", r.Identity.Name)
+		return commanderror.New("primary_network_protected", "cannot disconnect the primary network; change the network configuration before recreating", r.Identity.Name, nil,
+			commanderror.Next("Apply the changed network configuration", "recreate", r.Identity.Name))
 	}
 	_, attached := facts.Networks[actual]
 	if connect && attached {

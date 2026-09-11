@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/fsutil"
 )
@@ -151,7 +152,8 @@ func (l *Locked) RequireIdle() error {
 		return err
 	}
 	if len(active) > 0 {
-		return fmt.Errorf("session has %d active attached command(s)", len(active))
+		return commanderror.New("session_busy", fmt.Sprintf("session has %d active attached command(s); close them before retrying", len(active)), l.Name, nil,
+			commanderror.Next("Inspect active commands", "session", "show", l.Name))
 	}
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	"devbox/internal/artifact"
 	"devbox/internal/assets"
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/docker"
 	"devbox/internal/filesync"
@@ -144,7 +146,15 @@ func Resolve(q Request) (Spec, error) {
 		}
 	}
 	if err = r.Settings.Validate(); err != nil {
-		return spec, err
+		var actionable *commanderror.Error
+		if errors.As(err, &actionable) && actionable.Code == "harness_required" {
+			step := commanderror.Next("Select a harness", "project", "init", workspace.Workspace, "--harness", "<name>")
+			if identity.Profile != "" {
+				step = commanderror.Next("Select a harness", "profile", "init", identity.Profile, "--harness", "<name>")
+			}
+			return spec, commanderror.New(actionable.Code, actionable.Message, identity.Name, err, step)
+		}
+		return spec, commanderror.New("invalid_configuration", err.Error(), workspace.Workspace, err)
 	}
 	h, err := harness.Load(q.Home, r.Settings.Harness)
 	if err != nil {

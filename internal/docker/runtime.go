@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"devbox/internal/commanderror"
 )
 
 const Namespace = "devbox-rewrite"
@@ -60,11 +63,11 @@ type Endpoint struct {
 
 func (c Container) Verify(o Owner) error {
 	if c.ID == "" || o.Installation == "" || o.Session == "" || o.Workspace == "" || o.Slot == "" {
-		return fmt.Errorf("incomplete container ownership proof")
+		return commanderror.New("ownership_mismatch", "incomplete container ownership proof; inspect the Docker resource before proceeding", c.Name, nil)
 	}
 	for key, value := range o.Labels() {
 		if c.Config.Labels[key] != value {
-			return fmt.Errorf("container ownership mismatch (%s)", key)
+			return commanderror.New("ownership_mismatch", fmt.Sprintf("container ownership mismatch (%s); refusing to use this container", key), c.Name, nil)
 		}
 	}
 	return nil
@@ -79,11 +82,11 @@ type Image struct {
 
 func (i Image) Verify(installation string) error {
 	if i.ID == "" || installation == "" {
-		return fmt.Errorf("incomplete image ownership proof")
+		return commanderror.New("ownership_mismatch", "incomplete image ownership proof", i.ID, nil)
 	}
 	for k, v := range ImageLabels(installation) {
 		if i.Config.Labels[k] != v {
-			return fmt.Errorf("image ownership mismatch (%s)", k)
+			return commanderror.New("ownership_mismatch", fmt.Sprintf("image ownership mismatch (%s)", k), i.ID, nil)
 		}
 	}
 	return nil
@@ -126,6 +129,13 @@ type Runtime struct{ Runner Runner }
 func (r Runtime) capture(ctx context.Context, args ...string) ([]byte, error) {
 	var out bytes.Buffer
 	err := r.Runner.Run(ctx, Command{Args: args, Stdout: &out})
+	if err != nil && len(args) > 1 && args[0] == "container" && args[1] == "ls" && ctx.Err() == nil {
+		var unavailable *commanderror.Error
+		if !errors.As(err, &unavailable) || unavailable.Code != "docker_unavailable" {
+			err = commanderror.New("docker_inventory_unavailable", "Cannot list Docker containers; check daemon access and permissions", "", err,
+				commanderror.Step{Command: []string{"docker", "info"}, Reason: "Check Docker daemon access"})
+		}
+	}
 	return out.Bytes(), err
 }
 func (r Runtime) Inspect(ctx context.Context, name string) (Container, bool, error) {

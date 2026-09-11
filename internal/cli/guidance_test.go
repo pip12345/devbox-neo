@@ -36,7 +36,10 @@ func TestResourceSuggestionsOnlyCarryExplicitHome(t *testing.T) {
 					args = append([]string{"--home", home}, args...)
 				}
 				cmd.SetArgs(args)
-				err := cmd.Execute()
+				invoked, err := cmd.ExecuteC()
+				if err != nil {
+					RenderError(invoked, err)
+				}
 				return out.String(), err
 			}
 			check := func(text string) {
@@ -64,16 +67,16 @@ func TestResourceSuggestionsOnlyCarryExplicitHome(t *testing.T) {
 			if !explicit && !strings.Contains(out, "  devbox-neo profile init basic\n") {
 				t.Fatal("default suggestion is not minimal", out)
 			}
-			_, err = run("profile", "init", "basic")
+			out, err = run("profile", "init", "basic")
 			if err == nil {
 				t.Fatal("expected harness selection guidance")
 			}
-			check(err.Error())
-			_, err = run("profile", "set", "missing")
+			check(out)
+			out, err = run("profile", "set", "missing")
 			if err == nil {
 				t.Fatal("expected missing-profile guidance")
 			}
-			check(err.Error())
+			check(out)
 			out, err = run("profile", "create", "json", "--json")
 			if err != nil {
 				t.Fatal(err)
