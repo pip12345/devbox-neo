@@ -60,7 +60,7 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 	defer func() {
 		var actionable *commanderror.Error
 		if err != nil && !errors.As(err, &actionable) {
-			err = commanderror.New("invalid_configuration", err.Error(), workspace, err)
+			err = commanderror.New("invalid_configuration", "Invalid configuration: "+err.Error(), workspace, err)
 		}
 	}()
 	r = Resolved{Settings: config.Defaults(), Trace: Trace{Winners: map[string]string{}, Sources: map[string][]string{}, EntrySources: map[string][]string{}}}
@@ -123,9 +123,9 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 		}
 		l, err := config.ReadLayer(filepath.Join(root, "config.json"), false, host)
 		if os.IsNotExist(err) {
-			return r, commanderror.New("profile_missing", fmt.Sprintf("profile %q does not exist", profile), root, err,
-				commanderror.Next("Create the selected profile", "profile", "create", profile),
-				commanderror.Next("Select a harness", "profile", "init", profile, "--harness", "<name>"))
+			return r, commanderror.New("profile_missing", fmt.Sprintf("Profile %q does not exist.", profile), root, err,
+				commanderror.Next("Create profile", "profile", "create", profile),
+				commanderror.Next("Then select a harness", "profile", "init", profile, "--harness", "<name>"))
 		}
 		if err != nil {
 			return r, err
@@ -137,10 +137,10 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 		r.Layers = append(r.Layers, Layer{Name: "project", Path: filepath.Dir(projectPath), Config: *project})
 	}
 	if len(r.Layers) == 0 {
-		return r, commanderror.New("configuration_missing", "no profile or project configuration applies", workspace, nil,
+		return r, commanderror.New("configuration_missing", "No profile or project configuration selected.", workspace, nil,
 			commanderror.Next("Create a profile", "profile", "create", "<name>"),
-			commanderror.Next("Select the default profile", "profile", "set", "<name>"),
-			commanderror.Next("Alternatively, create project configuration", "project", "create", workspace))
+			commanderror.Next("Then select it as default", "profile", "set", "<name>"),
+			commanderror.Next("Or configure this project", "project", "create", workspace))
 	}
 	r.Trace.Layers = append(r.Trace.Layers, Layer{Name: "built-in default"}, Layer{Name: "global", Path: filepath.Join(home, "config.json")})
 	for _, l := range r.Layers {

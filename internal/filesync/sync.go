@@ -39,7 +39,7 @@ type Manifest struct {
 type Conflicts struct{ Paths []string }
 
 func (c *Conflicts) Error() string {
-	return fmt.Sprintf("managed configuration conflicts at %v; live files were preserved", c.Paths)
+	return fmt.Sprintf("Configuration conflicts at %v; live files preserved.", c.Paths)
 }
 func hash(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 func object(b []byte) (map[string]json.RawMessage, error) {
@@ -293,7 +293,7 @@ func Sync(root, manifestPath, store string, desired map[string]artifact.File, me
 		return err
 	}
 	if len(conflicts.Paths) > 0 {
-		return commanderror.New("managed_config_conflict", conflicts.Error()+"; resolve the preserved files, then retry", root, conflicts)
+		return commanderror.New("managed_config_conflict", conflicts.Error(), root, conflicts)
 	}
 	return nil
 }

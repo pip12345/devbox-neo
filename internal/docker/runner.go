@@ -34,7 +34,7 @@ type ExitError struct {
 }
 
 func (e *ExitError) Error() string {
-	return fmt.Sprintf("docker %s failed (exit %d)", e.Operation, e.Code)
+	return fmt.Sprintf("Docker %s failed (exit %d).", e.Operation, e.Code)
 }
 
 func (r ExecRunner) Run(ctx context.Context, c Command) error {
@@ -70,5 +70,5 @@ func (r ExecRunner) Run(ctx context.Context, c Command) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	return commanderror.New("docker_unavailable", "cannot execute Docker CLI; check its installation, PATH, and executable permissions", binary, err)
+	return commanderror.New("docker_unavailable", "Cannot run Docker: "+err.Error(), binary, err)
 }

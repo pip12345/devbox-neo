@@ -154,7 +154,7 @@ func Resolve(q Request) (Spec, error) {
 			}
 			return spec, commanderror.New(actionable.Code, actionable.Message, identity.Name, err, step)
 		}
-		return spec, commanderror.New("invalid_configuration", err.Error(), workspace.Workspace, err)
+		return spec, commanderror.New("invalid_configuration", "Invalid configuration: "+err.Error(), workspace.Workspace, err)
 	}
 	h, err := harness.Load(q.Home, r.Settings.Harness)
 	if err != nil {

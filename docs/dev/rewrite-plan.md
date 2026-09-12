@@ -565,10 +565,8 @@ After profile creation:
 ```text
 Created profile "python".
 
-Next:
+Select a harness and optional artifacts:
   devbox profile init python
-  devbox profile config python
-  devbox profile set python
 ```
 
 After project creation:
@@ -576,10 +574,8 @@ After project creation:
 ```text
 Created /work/api/.devbox/config.json.
 
-Next:
+Select a harness and optional artifacts:
   devbox project init /work/api
-  devbox project config /work/api
-  devbox open /work/api --create
 ```
 
 `init` is described as the guided path for harness selection and optional artifacts, not as hidden work performed by `create`.
@@ -618,17 +614,17 @@ Hints are structured application data, not strings scattered across Cobra handle
 ```json
 {
   "error": "profile_missing",
-  "message": "Profile \"rust\" does not exist",
+  "message": "Profile \"rust\" does not exist.",
   "next_steps": [
     {
       "command": ["devbox", "profile", "create", "rust"],
-      "reason": "Create the selected profile"
+      "reason": "Create profile"
     }
   ]
 }
 ```
 
-Human rendering prints copyable shell commands. JSON rendering preserves argv arrays so callers do not parse prose.
+Human errors use `Error: <message>` and separate `Target:` context when known; codes and operation names remain in JSON, not the human header. Messages describe the problem briefly, retaining validation, conflict, ownership, and recovery details. Human command rendering uses each step's reason as a label above its copyable command, without a generic `Next:` heading. Reasons mark sequential actions with `Then` and alternatives with `Or`; put the recommended action first. JSON rendering preserves codes, operation metadata, and argv arrays so callers do not parse prose. Cancellation and timeout messages are concise; flag failures never echo rejected values.
 
 ### Hint guardrails
 

@@ -17,8 +17,8 @@ import (
 func (e *Engine) readSession(ctx context.Context, name string) (store.Record, error) {
 	r, err := e.Store.Read(ctx, name)
 	if os.IsNotExist(err) {
-		err = commanderror.New("session_missing", "no durable session was found", name, err,
-			commanderror.Next("Find an existing session", "session", "list"))
+		err = commanderror.New("session_missing", "Session not found.", name, err,
+			commanderror.Next("List sessions", "session", "list"))
 	}
 	return r, err
 }
@@ -30,7 +30,7 @@ func (e *Engine) Locate(ctx context.Context, target, profile string) (store.Reco
 	}
 	id, err := environment.Identify(target, "", true)
 	if err != nil {
-		return store.Record{}, commanderror.New("workspace_unavailable", err.Error(), target, err)
+		return store.Record{}, commanderror.New("workspace_unavailable", "Cannot access workspace: "+err.Error(), target, err)
 	}
 	if profile != "" {
 		id, err := environment.Identify(target, profile, false)
@@ -57,12 +57,12 @@ func (e *Engine) Locate(ctx context.Context, target, profile string) (store.Reco
 		}
 	}
 	if len(matches) == 0 {
-		return store.Record{}, commanderror.New("session_missing", "no durable session was found for this workspace", id.Workspace, os.ErrNotExist,
-			commanderror.Next("Find an existing session", "session", "list"))
+		return store.Record{}, commanderror.New("session_missing", "No session found for this workspace.", id.Workspace, os.ErrNotExist,
+			commanderror.Next("List sessions", "session", "list"))
 	}
 	if len(matches) > 1 {
-		return store.Record{}, commanderror.New("ambiguous_target", "workspace has multiple recorded slots; select --profile or an exact container name", id.Workspace, nil,
-			commanderror.Next("Find the exact session name", "session", "list"))
+		return store.Record{}, commanderror.New("ambiguous_target", "Multiple environments found. Select a profile or container name.", id.Workspace, nil,
+			commanderror.Next("List sessions", "session", "list"))
 	}
 	return matches[0], nil
 }
@@ -131,8 +131,8 @@ func (e *Engine) Stop(ctx context.Context, target, profile string, force bool) e
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "container is missing", r.Identity.Name, nil,
-			commanderror.Next("Inspect retained session state", "session", "show", r.Identity.Name))
+		return commanderror.New("container_missing", "Container not found.", r.Identity.Name, nil,
+			commanderror.Next("Inspect session", "session", "show", r.Identity.Name))
 	}
 	if c.State.Running {
 		if err = e.Docker.Stop(ctx, c, e.owner(r)); err != nil {
@@ -165,8 +165,8 @@ func (e *Engine) Exec(ctx context.Context, target, profile string, argv []string
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "shell and exec require an existing container", r.Identity.Name, nil,
-			commanderror.Next("Start or recover the recorded container, then retry", "start", r.Identity.Name))
+		return commanderror.New("container_missing", "Container not found.", r.Identity.Name, nil,
+			commanderror.Next("Start or restore, then retry", "start", r.Identity.Name))
 	}
 	started := false
 	defer func() {

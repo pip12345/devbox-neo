@@ -94,7 +94,7 @@ func (e *Engine) inspect(ctx context.Context, r store.Record) (docker.Container,
 	if err == nil && exists {
 		err = c.Verify(e.owner(r))
 		if err == nil && (c.Image != r.ImageID || (r.SetupContainer != "" && c.ID != r.SetupContainer)) {
-			err = commanderror.New("container_mismatch", "container instance does not match the committed creation contract; inspect the Docker resource before proceeding", r.Identity.Name, nil)
+			err = commanderror.New("container_mismatch", "Container identity does not match this session.", r.Identity.Name, nil)
 		}
 	}
 	return c, exists, err
@@ -114,9 +114,9 @@ func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
 	}
 	defer lock.Close()
 	if _, err = lock.Load(); err == nil {
-		return result, commanderror.New("session_exists", "a durable session already exists; creation never replaces it", result.Name, nil,
-			commanderror.Next("Open the existing session", "open", result.Name),
-			commanderror.Next("Apply current creation settings", "recreate", result.Name))
+		return result, commanderror.New("session_exists", "Environment already exists.", result.Name, nil,
+			commanderror.Next("Open", "open", result.Name),
+			commanderror.Next("Or recreate with current configuration", "recreate", result.Name))
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return result, err
 	}
@@ -128,8 +128,8 @@ func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
 		return result, err
 	}
 	if err = e.Docker.Stop(ctx, c, e.owner(record)); err != nil {
-		return result, commanderror.New("create_stop_failed", "session was created, but its prepared container could not be stopped", result.Name, err,
-			commanderror.Next("Stop the created container", "stop", result.Name))
+		return result, commanderror.New("create_stop_failed", "Environment created, but stopping it failed.", result.Name, err,
+			commanderror.Next("Stop", "stop", result.Name))
 	}
 	return result, nil
 }
@@ -141,9 +141,13 @@ func creationRequired(workspace, profile string, cause error) error {
 		create = append(create, "--profile", profile)
 		open = append(open, "--profile", profile)
 	}
-	return commanderror.New("session_missing", "no durable session was found; creation must be explicit", workspace, cause,
-		commanderror.Next("Create a stopped environment", create...),
-		commanderror.Next("Create and open the environment", open...))
+	message := "No environment exists."
+	if profile != "" {
+		message = fmt.Sprintf("No environment exists (profile: %s).", profile)
+	}
+	return commanderror.New("session_missing", message, workspace, cause,
+		commanderror.Next("Create and open", open...),
+		commanderror.Next("Or create only", create...))
 }
 
 // Open keeps the operation lock through stopped-only synchronization, startup,
@@ -351,10 +355,10 @@ func (e *Engine) mountPlan(l *store.Locked, s environment.Spec) ([]docker.Mount,
 			info, err = os.Stat(source)
 		}
 		if err != nil {
-			return nil, commanderror.New("auth_unavailable", "required managed auth source unavailable; restore the source before retrying", source, err)
+			return nil, commanderror.New("auth_unavailable", "Cannot access authentication "+auth.Kind+".", source, err)
 		}
 		if (auth.Kind == "directory" && !info.IsDir()) || (auth.Kind == "file" && !info.Mode().IsRegular()) {
-			return nil, commanderror.New("invalid_auth_path", "managed auth source has wrong kind", source, nil)
+			return nil, commanderror.New("invalid_auth_path", "Expected an authentication "+auth.Kind+".", source, nil)
 		}
 		mounts = append(mounts, docker.Mount{Source: source, Target: auth.Target})
 	}
@@ -705,7 +709,7 @@ func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, e
 
 func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, desired *environment.Spec) (docker.Container, error) {
 	unavailable := func(reason string, cause error) (docker.Container, error) {
-		return docker.Container{}, commanderror.New("recovery_unavailable", "recorded recovery unavailable: "+reason, r.Identity.Name, cause,
+		return docker.Container{}, commanderror.New("recovery_unavailable", "Cannot restore container: "+reason, r.Identity.Name, cause,
 			commanderror.Next("Recreate with current configuration", "recreate", r.Identity.Name))
 	}
 	if err := l.RequireIdle(); err != nil {

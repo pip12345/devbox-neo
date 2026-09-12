@@ -79,7 +79,7 @@ func TestErrorRenderingPreservesStreamsStatusAndJoinedCleanup(t *testing.T) {
 			if report.Code != "docker_command_failed" || len(report.Related) != 1 || report.Related[0].Code != "cleanup_failed" || stderr.Len() != 0 {
 				t.Fatal(report, stderr.String())
 			}
-		} else if out.String() != "child output\n" || strings.Count(stderr.String(), "Error [") != 2 || !strings.Contains(stderr.String(), "cleanup failed") {
+		} else if out.String() != "child output\n" || strings.Count(stderr.String(), "Error:") != 2 || !strings.Contains(stderr.String(), "cleanup failed") {
 			t.Fatal("stream output or cleanup diagnostic lost", out.String(), stderr.String())
 		}
 	}
@@ -194,6 +194,61 @@ func TestErrorNextStepsScopeOnlyDevboxCommands(t *testing.T) {
 	}
 	if text := stepsText(scoped); !strings.Contains(text, shellQuote(home)) {
 		t.Fatal(text)
+	}
+}
+
+func TestHumanErrorsUseShortHeaderAndLabeledActions(t *testing.T) {
+	cmd := &cobra.Command{Use: "open"}
+	cmd.Flags().String("home", "", "")
+	if err := cmd.Flags().Set("home", "/home/custom home"); err != nil {
+		t.Fatal(err)
+	}
+	var out, stderr bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&stderr)
+	failure := commanderror.New("session_missing", "No environment exists (profile: basic).", "/work/project", errors.New("private cause"),
+		commanderror.Next("Create and open", "open", "/work/project", "--create", "--profile", "basic"),
+		commanderror.Next("Or create only", "create", "/work/project", "--profile", "basic"))
+	if code := RenderError(cmd, failure); code != 1 {
+		t.Fatal(code)
+	}
+	want := "Error: No environment exists (profile: basic).\n" +
+		"Target: /work/project\n\n" +
+		"Create and open:\n  devbox-neo --home '/home/custom home' open /work/project --create --profile basic\n\n" +
+		"Or create only:\n  devbox-neo --home '/home/custom home' create /work/project --profile basic\n"
+	if stderr.String() != want || out.Len() != 0 {
+		t.Fatalf("got %q; want %q", stderr.String(), want)
+	}
+}
+
+func TestHumanErrorsKeepDetailsWithoutExposingCauses(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"cancelled", context.Canceled, "Error: Cancelled.\n"},
+		{"timeout", context.DeadlineExceeded, "Error: Operation timed out.\n"},
+		{"path", &os.PathError{Op: "open", Path: "/work/missing", Err: os.ErrNotExist}, "Error: Cannot access path: file does not exist\nTarget: /work/missing\n"},
+		{"validation", commanderror.New("invalid_configuration", "Invalid configuration: network cannot be empty", "/work/config.json", errors.New("private config value")), "Error: Invalid configuration: network cannot be empty\nTarget: /work/config.json\n"},
+		{"ownership", commanderror.New("ownership_mismatch", "Cannot verify Devbox ownership of this image: incomplete identity.", "sha256:image", nil), "Error: Cannot verify Devbox ownership of this image: incomplete identity.\nTarget: sha256:image\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: "test"}
+			var out bytes.Buffer
+			cmd.SetErr(&out)
+			if code := RenderError(cmd, tt.err); code != 1 || out.String() != tt.want {
+				t.Fatalf("code %d, got %q; want %q", code, out.String(), tt.want)
+			}
+		})
+	}
+}
+
+func TestActionLabelsEscapeTerminalControls(t *testing.T) {
+	steps := []commanderror.Step{commanderror.Next("Inspect\n\x1b[31m", "session", "show", "a'b")}
+	text := stepsText(steps)
+	if strings.Contains(text, "\x1b") || !strings.Contains(text, shellQuote("a'b")) || strings.Count(text, "\n") != 2 {
+		t.Fatalf("unsafe label or unquoted command: %q", text)
 	}
 }
 

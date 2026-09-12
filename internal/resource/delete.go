@@ -24,7 +24,7 @@ func (s Service) DeleteProfile(ctx context.Context, name string) (Result, error)
 	defer fsutil.Unlock(lock)
 	info, err := os.Stat(owner.Root)
 	if os.IsNotExist(err) {
-		return result, commanderror.New("owner_missing", "Profile does not exist", owner.Root, err, owner.step("create", "Create this profile"))
+		return result, commanderror.New("owner_missing", "Profile does not exist.", owner.Root, err, owner.step("create", "Create profile"))
 	}
 	if err != nil {
 		return result, err

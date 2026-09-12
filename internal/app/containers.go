@@ -179,8 +179,8 @@ func (e *Engine) Logs(ctx context.Context, target, profile string, follow bool, 
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "container is missing; logs are not retained after container deletion", r.Identity.Name, nil,
-			commanderror.Next("Inspect retained session state", "session", "show", r.Identity.Name))
+		return commanderror.New("container_missing", "Container not found; its logs are unavailable.", r.Identity.Name, nil,
+			commanderror.Next("Inspect session", "session", "show", r.Identity.Name))
 	}
 	return e.Docker.Logs(ctx, c, e.owner(r), follow, tail, e.Streams.Out, e.Streams.Err)
 }

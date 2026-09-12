@@ -120,8 +120,8 @@ func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode 
 			return nil, fmt.Errorf("harness %s does not support %s", d.Name, mode)
 		}
 		if d.Name == source.Definition.Name && environment.Fingerprint(e.Store.Installation, effective.Hash) != source.Definition.Hash {
-			return nil, commanderror.New("harness_definition_changed", "source harness definition changed; recreate before retrying the transfer", source.Identity.Name, nil,
-				commanderror.Next("Apply the current harness definition", "recreate", source.Identity.Name))
+			return nil, commanderror.New("harness_definition_changed", "Harness definition changed. Recreate before transferring.", source.Identity.Name, nil,
+				commanderror.Next("Recreate with current harness definition", "recreate", source.Identity.Name))
 		}
 		path, err := l.Path(filepath.Join("harnesses", d.Name, "stores"))
 		if err != nil {
@@ -148,7 +148,7 @@ func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode 
 }
 
 func transferFailure(j store.Transfer, err error) error {
-	return commanderror.New("transfer_failed", fmt.Sprintf("session %s did not complete: %v", j.Mode, err), j.Source.Name, err, j.RetryStep())
+	return commanderror.New("transfer_failed", fmt.Sprintf("Session %s failed: %v", j.Mode, err), j.Source.Name, err, j.RetryStep())
 }
 
 // Transfer has two durable phases: source-authoritative preparation, then
@@ -240,8 +240,8 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		return result, err
 	}
 	if q.Mode == "clone" && exists && c.State.Running {
-		return result, commanderror.New("container_running", "clone requires a stopped or absent source container", source.Identity.Name, nil,
-			commanderror.Next("Stop the source, then retry clone", "stop", source.Identity.Name))
+		return result, commanderror.New("container_running", "Stop the source container before cloning.", source.Identity.Name, nil,
+			commanderror.Next("Stop, then retry clone", "stop", source.Identity.Name))
 	}
 	definitions, err := e.transferDefinitions(sourceLock, source, q.Mode)
 	if err != nil {

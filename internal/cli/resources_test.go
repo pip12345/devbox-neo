@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"devbox/internal/artifact"
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 )
 
@@ -67,8 +69,9 @@ func TestResourceAutomationDoesNotPromptAndScopesNextSteps(t *testing.T) {
 	if err != nil || !strings.Contains(out, `"next_steps"`) || !strings.Contains(out, `"--home"`) {
 		t.Fatal(out, err)
 	}
-	_, err = resourceCLI(t, home, "profile", "init", "basic")
-	if err == nil || !strings.Contains(err.Error(), "--harness") {
+	out, err = resourceCLI(t, home, "profile", "init", "basic")
+	var missing *commanderror.Error
+	if !errors.As(err, &missing) || missing.Code != "harness_required" || !strings.Contains(out, "--harness") {
 		t.Fatal("automation guessed a harness", err)
 	}
 	out, err = resourceCLI(t, home, "profile", "init", "missing", "--harness", "pi")

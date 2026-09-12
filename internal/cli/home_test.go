@@ -2,10 +2,13 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"devbox/internal/commanderror"
 )
 
 func TestDefaultHomeIsNeo(t *testing.T) {
@@ -17,7 +20,8 @@ func TestDefaultHomeIsNeo(t *testing.T) {
 	cmd.SetErr(new(bytes.Buffer))
 	cmd.SetArgs([]string{"open", t.TempDir()})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "no profile or project configuration") {
+	var missing *commanderror.Error
+	if !errors.As(err, &missing) || missing.Code != "configuration_missing" {
 		t.Fatalf("expected fresh-home guidance, got %v", err)
 	}
 	if _, err = os.Stat(filepath.Join(home, ".devbox-neo/config.json")); err != nil {

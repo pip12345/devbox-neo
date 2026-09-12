@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"devbox/internal/commanderror"
 	"devbox/internal/harness"
 	"encoding/json"
 	"errors"
@@ -91,10 +92,11 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 	if err != nil || details.Pending == nil {
 		t.Fatal("pending cleanup not inspectable", err)
 	}
-	if _, err = e.Open(ctx, q); err == nil || !strings.Contains(err.Error(), "pending transfer") {
+	var pendingError *commanderror.Error
+	if _, err = e.Open(ctx, q); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" {
 		t.Fatal("source name became available during cleanup", err)
 	}
-	if _, err = e.Create(ctx, q); err == nil || !strings.Contains(err.Error(), "pending transfer") {
+	if _, err = e.Create(ctx, q); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" {
 		t.Fatal("create reused a reserved source during cleanup", err)
 	}
 	// The destination can also lose its container before cleanup finishes. Its

@@ -320,10 +320,10 @@ func (s *Store) Read(ctx context.Context, name string) (Record, error) {
 		return record, err
 	}
 	if err = config.Decode(b, &record); err != nil {
-		return record, commanderror.New("invalid_session_record", fmt.Sprintf("corrupt session record: %v", err), path, err)
+		return record, commanderror.New("invalid_session_record", fmt.Sprintf("Invalid session state: %v", err), path, err)
 	}
 	if err = record.Validate(name); err != nil {
-		return record, commanderror.New("invalid_session_record", err.Error(), path, err)
+		return record, commanderror.New("invalid_session_record", "Invalid session state: "+err.Error(), path, err)
 	}
 	return record, nil
 }

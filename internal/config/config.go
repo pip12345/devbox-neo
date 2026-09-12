@@ -203,12 +203,12 @@ func configurationError(path string, err error) error {
 	if errors.As(err, &actionable) {
 		return err
 	}
-	code := "invalid_configuration"
+	code, message := "invalid_configuration", "Invalid configuration: "+err.Error()
 	var pathError *os.PathError
 	if errors.As(err, &pathError) {
-		code = "configuration_unavailable"
+		code, message = "configuration_unavailable", "Cannot read configuration: "+pathError.Err.Error()
 	}
-	return commanderror.New(code, err.Error(), path, err)
+	return commanderror.New(code, message, path, err)
 }
 
 // Source operations validate shape without resolving values. Copying a profile
@@ -262,7 +262,7 @@ func (s Settings) Validate() error {
 		return err
 	}
 	if s.Harness == "" {
-		return commanderror.New("harness_required", "no harness selected", "", nil)
+		return commanderror.New("harness_required", "No harness selected.", "", nil)
 	}
 	return nil
 }

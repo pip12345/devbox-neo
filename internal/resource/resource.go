@@ -75,7 +75,7 @@ func readLayer(o Owner) ([]byte, config.Layer, error) {
 	}
 	b, err := os.ReadFile(p)
 	if os.IsNotExist(err) {
-		return nil, config.Layer{}, commanderror.New("owner_missing", fmt.Sprintf("%s configuration is missing", o.Kind), p, err, o.step("create", "Create the configuration owner first"))
+		return nil, config.Layer{}, commanderror.New("owner_missing", fmt.Sprintf("Missing %s configuration.", o.Kind), p, err, o.step("create", "Create configuration"))
 	}
 	if err != nil {
 		return nil, config.Layer{}, err
@@ -118,7 +118,7 @@ func (s Service) Create(ctx context.Context, o Owner, fromProfile string) (Resul
 	}
 	defer fsutil.Unlock(lock)
 	if _, err = os.Lstat(o.Root); err == nil {
-		return result, commanderror.New("owner_exists", "Configuration already exists", o.Root, nil, o.step("init", "Initialize missing artifacts without overwriting files"))
+		return result, commanderror.New("owner_exists", "Configuration already exists.", o.Root, nil, o.step("init", "Initialize missing artifacts"))
 	} else if !os.IsNotExist(err) {
 		return result, err
 	}

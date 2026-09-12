@@ -121,7 +121,7 @@ func renderResource(cmd *cobra.Command, result resource.Result, err error, asJSO
 		fmt.Fprintf(cmd.OutOrStdout(), "Kept existing %s\n", path)
 	}
 	if len(result.Next) > 0 {
-		fmt.Fprintf(cmd.OutOrStdout(), "\nNext:\n%s", stepsText(result.Next))
+		fmt.Fprintf(cmd.OutOrStdout(), "\n%s", stepsText(result.Next))
 	}
 	return nil
 }
@@ -140,8 +140,8 @@ func profileList(factory resourceFactory) *cobra.Command {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(profiles)
 		}
 		if len(profiles) == 0 {
-			fmt.Fprintln(cmd.OutOrStdout(), "No profiles.\n\nNext:")
-			fmt.Fprint(cmd.OutOrStdout(), stepsText(scopedSteps(cmd, []commanderror.Step{{Command: []string{"devbox-neo", "profile", "create", "default"}}}, s.Home)))
+			fmt.Fprint(cmd.OutOrStdout(), "No profiles.\n\n")
+			fmt.Fprint(cmd.OutOrStdout(), stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Create profile", "profile", "create", "default")}, s.Home)))
 			return nil
 		}
 		for _, p := range profiles {

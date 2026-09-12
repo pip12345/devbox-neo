@@ -88,13 +88,13 @@ type Effective struct {
 
 func Load(home, name string) (result Effective, err error) {
 	if !config.Name.MatchString(name) {
-		return result, commanderror.New("invalid_harness", "invalid harness name", name, nil)
+		return result, commanderror.New("invalid_harness", "Invalid harness name.", name, nil)
 	}
 	origin := filepath.Join(home, "harnesses", name, "harness.json")
 	defer func() {
 		var actionable *commanderror.Error
 		if err != nil && !errors.As(err, &actionable) {
-			err = commanderror.New("invalid_harness_definition", err.Error(), origin, err)
+			err = commanderror.New("invalid_harness_definition", "Invalid harness definition: "+err.Error(), origin, err)
 		}
 	}()
 	user, err := fsutil.Path(home, filepath.Join("harnesses", name, "harness.json"))
@@ -108,7 +108,7 @@ func Load(home, name string) (result Effective, err error) {
 		origin = "builtin"
 		b, err = builtins.ReadFile("builtin/" + name + "/harness.json")
 		if os.IsNotExist(err) {
-			return result, commanderror.New("unknown_harness", fmt.Sprintf("unknown harness %q; select an available harness or add its definition", name), name, err)
+			return result, commanderror.New("unknown_harness", "Unknown harness.", name, err)
 		}
 		if err == nil {
 			var source fs.FS

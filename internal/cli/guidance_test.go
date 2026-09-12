@@ -44,8 +44,8 @@ func TestResourceSuggestionsOnlyCarryExplicitHome(t *testing.T) {
 			}
 			check := func(text string) {
 				t.Helper()
-				if !strings.Contains(text, "\nNext:\n") {
-					t.Fatal("missing separate next-step block", text)
+				if strings.Contains(text, "\nNext:\n") || !strings.Contains(text, ":\n  devbox-neo ") {
+					t.Fatal("missing labeled command", text)
 				}
 				if strings.Contains(text, "--home") != explicit {
 					t.Fatal("wrong home propagation", text)

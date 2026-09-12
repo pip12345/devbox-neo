@@ -35,7 +35,7 @@ func profileDelete(factory resourceFactory) *cobra.Command {
 		if asJSON {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
 		}
-		cmd.Printf("Deleted profile %s. Containers, sessions, and global defaults are unchanged.\n\nNext:\n%s", args[0], stepsText(result.Next))
+		cmd.Printf("Deleted profile %s. Containers, sessions, and global defaults are unchanged.\n\n%s", args[0], stepsText(result.Next))
 		return nil
 	}}
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "Delete without prompting")

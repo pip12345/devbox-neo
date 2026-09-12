@@ -152,7 +152,11 @@ func (l *Locked) RequireIdle() error {
 		return err
 	}
 	if len(active) > 0 {
-		return commanderror.New("session_busy", fmt.Sprintf("session has %d active attached command(s); close them before retrying", len(active)), l.Name, nil,
+		noun := "commands"
+		if len(active) == 1 {
+			noun = "command"
+		}
+		return commanderror.New("session_busy", fmt.Sprintf("Environment is in use by %d %s.", len(active), noun), l.Name, nil,
 			commanderror.Next("Inspect active commands", "session", "show", l.Name))
 	}
 	return nil

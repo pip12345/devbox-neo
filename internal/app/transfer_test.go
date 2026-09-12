@@ -85,7 +85,8 @@ func TestTransferIdentityStateAndRunningPolicy(t *testing.T) {
 				opts := TransferOptions{Mode: mode, Source: opened.Name, Destination: target}
 				result, err := e.Transfer(ctx, opts)
 				if mode == "clone" && running {
-					if err == nil || !strings.Contains(err.Error(), "stopped") {
+					var runningError *commanderror.Error
+					if !errors.As(err, &runningError) || runningError.Code != "container_running" {
 						t.Fatal(err)
 					}
 					return

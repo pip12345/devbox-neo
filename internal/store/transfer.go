@@ -51,13 +51,13 @@ func (j Transfer) RetryStep() commanderror.Step {
 			}
 			return id.Profile
 		}
-		return commanderror.Next("Resume the pending transfer", "session", j.Mode, j.Source.Workspace, "--from", slot(j.Source), "--to", slot(j.Destination))
+		return commanderror.Next("Resume transfer", "session", j.Mode, j.Source.Workspace, "--from", slot(j.Source), "--to", slot(j.Destination))
 	}
 	args := []string{"session", j.Mode, j.Source.Name, j.Destination.Workspace}
 	if j.Mode == "clone" && j.Destination.Profile != j.Source.Profile {
 		args = append(args, "--profile", j.Destination.Profile)
 	}
-	return commanderror.Next("Resume the pending transfer", args...)
+	return commanderror.Next("Resume transfer", args...)
 }
 
 func (j Transfer) Validate() error {
@@ -177,7 +177,7 @@ func (l *Locked) RequireAvailable() error {
 		return err
 	}
 	if pending != nil {
-		return commanderror.New("pending_transfer", fmt.Sprintf("pending transfer %s (%s); resume it before other session operations", pending.ID, pending.Phase), l.Name, nil, pending.retry)
+		return commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", l.Name, nil, pending.retry)
 	}
 	return nil
 }

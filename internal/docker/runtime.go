@@ -63,11 +63,11 @@ type Endpoint struct {
 
 func (c Container) Verify(o Owner) error {
 	if c.ID == "" || o.Installation == "" || o.Session == "" || o.Workspace == "" || o.Slot == "" {
-		return commanderror.New("ownership_mismatch", "incomplete container ownership proof; inspect the Docker resource before proceeding", c.Name, nil)
+		return commanderror.New("ownership_mismatch", "Cannot verify Devbox ownership of this container: incomplete identity.", c.Name, nil)
 	}
 	for key, value := range o.Labels() {
 		if c.Config.Labels[key] != value {
-			return commanderror.New("ownership_mismatch", fmt.Sprintf("container ownership mismatch (%s); refusing to use this container", key), c.Name, nil)
+			return commanderror.New("ownership_mismatch", fmt.Sprintf("Cannot verify Devbox ownership of this container: label %s does not match.", key), c.Name, nil)
 		}
 	}
 	return nil
@@ -82,11 +82,11 @@ type Image struct {
 
 func (i Image) Verify(installation string) error {
 	if i.ID == "" || installation == "" {
-		return commanderror.New("ownership_mismatch", "incomplete image ownership proof", i.ID, nil)
+		return commanderror.New("ownership_mismatch", "Cannot verify Devbox ownership of this image: incomplete identity.", i.ID, nil)
 	}
 	for k, v := range ImageLabels(installation) {
 		if i.Config.Labels[k] != v {
-			return commanderror.New("ownership_mismatch", fmt.Sprintf("image ownership mismatch (%s)", k), i.ID, nil)
+			return commanderror.New("ownership_mismatch", fmt.Sprintf("Cannot verify Devbox ownership of this image: label %s does not match.", k), i.ID, nil)
 		}
 	}
 	return nil
@@ -132,8 +132,8 @@ func (r Runtime) capture(ctx context.Context, args ...string) ([]byte, error) {
 	if err != nil && len(args) > 1 && args[0] == "container" && args[1] == "ls" && ctx.Err() == nil {
 		var unavailable *commanderror.Error
 		if !errors.As(err, &unavailable) || unavailable.Code != "docker_unavailable" {
-			err = commanderror.New("docker_inventory_unavailable", "Cannot list Docker containers; check daemon access and permissions", "", err,
-				commanderror.Step{Command: []string{"docker", "info"}, Reason: "Check Docker daemon access"})
+			err = commanderror.New("docker_inventory_unavailable", "Cannot list Docker containers.", "", err,
+				commanderror.Step{Command: []string{"docker", "info"}, Reason: "Check Docker access"})
 		}
 	}
 	return out.Bytes(), err

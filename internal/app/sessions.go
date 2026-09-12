@@ -156,8 +156,8 @@ func (e *Engine) ResetSessions(ctx context.Context, options ResetOptions) ([]Res
 			return nil, err
 		}
 		if exists && c.State.Running {
-			return nil, commanderror.New("container_running", "session must be stopped before reset", r.Identity.Name, nil,
-				commanderror.Next("Stop the container, then retry reset", "stop", r.Identity.Name))
+			return nil, commanderror.New("container_running", "Stop the container before resetting its session.", r.Identity.Name, nil,
+				commanderror.Next("Stop, then retry reset", "stop", r.Identity.Name))
 		}
 		harnesses := []string{r.Definition.Name}
 		if options.Harness != "" {
@@ -323,7 +323,7 @@ func (e *Engine) PruneSessions(ctx context.Context, options PruneOptions) ([]str
 		return nil, fmt.Errorf("provide --orphaned or --older-than")
 	}
 	if !options.DryRun && !options.Confirm {
-		return nil, commanderror.New("confirmation_required", "filtered state deletion requires confirmation; preview with --dry-run, then repeat with --yes", "", nil)
+		return nil, commanderror.New("confirmation_required", "Deletion requires --yes. Preview with --dry-run.", "", nil)
 	}
 	views, err := e.List(ctx, true)
 	if err != nil {
@@ -387,8 +387,8 @@ func (e *Engine) deleteSessionNames(ctx context.Context, names []string, dryRun 
 			return nil, err
 		}
 		if exists {
-			return nil, commanderror.New("container_present", "session still has a container; delete the container before deleting its session", r.Identity.Name, nil,
-				commanderror.Next("Delete only the container, then retry session deletion", "delete", r.Identity.Name))
+			return nil, commanderror.New("container_present", "Delete the container before deleting its session.", r.Identity.Name, nil,
+				commanderror.Next("Delete container, then retry session deletion", "delete", r.Identity.Name))
 		}
 		image, tagged, err := e.Docker.TaggedImage(ctx, r.ImageTag)
 		if err != nil {

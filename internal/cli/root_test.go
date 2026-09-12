@@ -87,7 +87,7 @@ func TestPlainOpenAndStartRejectMissingSessionWithScopedGuidance(t *testing.T) {
 			if code := Execute(context.Background(), cmd); code != 1 {
 				t.Fatal(code)
 			}
-			for _, want := range []string{"Error [session_missing]", "devbox-neo --home " + home + " create " + workspace + " --profile test", "open " + workspace + " --create --profile test"} {
+			for _, want := range []string{"Error: No environment exists (profile: test).", "devbox-neo --home " + home + " create " + workspace + " --profile test", "open " + workspace + " --create --profile test"} {
 				if !strings.Contains(out.String(), want) {
 					t.Fatal("missing guidance", want, out.String())
 				}

@@ -32,7 +32,7 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 			if q.Profile != "" {
 				want = append(want, "--profile", q.Profile)
 			}
-			if len(missing.Next) != 2 || !reflect.DeepEqual(missing.Next[0].Command, want) {
+			if len(missing.Next) != 2 || !reflect.DeepEqual(missing.Next[1].Command, want) {
 				t.Fatal(missing.Next)
 			}
 			entries, err := os.ReadDir(filepath.Join(e.Store.Home, "sessions"))

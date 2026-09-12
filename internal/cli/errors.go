@@ -54,14 +54,15 @@ func RenderError(cmd *cobra.Command, err error) int {
 	} else {
 		var print func(errorReport)
 		print = func(r errorReport) {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Error [%s] during %s: %s\n", displayCell(r.Code), displayCell(r.Operation), displayCell(r.Message))
+			fmt.Fprintf(cmd.ErrOrStderr(), "Error: %s\n", displayCell(r.Message))
 			if r.Target != "" {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Target: %s\n", displayCell(r.Target))
 			}
 			if len(r.Next) > 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "\nNext:\n%s", stepsText(r.Next))
+				fmt.Fprintf(cmd.ErrOrStderr(), "\n%s", stepsText(r.Next))
 			}
 			for _, related := range r.Related {
+				fmt.Fprintln(cmd.ErrOrStderr())
 				print(related)
 			}
 		}
@@ -94,23 +95,24 @@ func describeError(err error) errorReport {
 	case errors.As(err, &actionable):
 		r.Code, r.Target, r.Next = actionable.Code, actionable.Target, actionable.Next
 	case errors.Is(err, context.Canceled):
-		r.Code = "cancelled"
+		r.Code, r.Message = "cancelled", "Cancelled."
 	case errors.Is(err, context.DeadlineExceeded):
-		r.Code = "deadline_exceeded"
+		r.Code, r.Message = "deadline_exceeded", "Operation timed out."
 	case errors.As(err, &path):
 		r.Code, r.Target = "path_unavailable", path.Path
+		r.Message = "Cannot access path: " + path.Err.Error()
 	}
 	return r
 }
 
 func bindCommandErrors(root *cobra.Command) {
 	help := func(cmd *cobra.Command) commanderror.Step {
-		return commanderror.Step{Command: append(strings.Fields(cmd.CommandPath()), "--help"), Reason: "Check command usage"}
+		return commanderror.Step{Command: append(strings.Fields(cmd.CommandPath()), "--help"), Reason: "Usage"}
 	}
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		// Flag parser errors can include a rejected --env value. Keep the cause
 		// for programmatic inspection, not in the public message.
-		return commanderror.New("invalid_flags", "Invalid command-line flags; check their names and values.", "", err, help(cmd))
+		return commanderror.New("invalid_flags", "Invalid command-line options.", "", err, help(cmd))
 	})
 	var visit func(*cobra.Command)
 	visit = func(cmd *cobra.Command) {
@@ -152,7 +154,13 @@ func scopedSteps(cmd *cobra.Command, steps []commanderror.Step, home string) []c
 
 func stepsText(steps []commanderror.Step) string {
 	var out strings.Builder
-	for _, step := range steps {
+	for i, step := range steps {
+		if i > 0 {
+			out.WriteByte('\n')
+		}
+		if step.Reason != "" {
+			fmt.Fprintf(&out, "%s:\n", displayCell(step.Reason))
+		}
 		args := make([]string, len(step.Command))
 		for i, arg := range step.Command {
 			args[i] = shellQuote(arg)
