@@ -42,7 +42,7 @@ func New() *cobra.Command {
 		return &app.Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(), TTY: tty}, TerminalEnv: app.TerminalEnv(os.LookupEnv), UID: os.Getuid(), GID: os.Getgid()}, nil
 	}
 	var createFlags creationFlags
-	create := &cobra.Command{Use: "create <folder>", Short: "Create a new environment and leave it stopped without launching its harness", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	create := &cobra.Command{Use: "create <folder>", Short: "Create a new environment", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
 			return err
