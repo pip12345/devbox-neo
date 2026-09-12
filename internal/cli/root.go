@@ -18,7 +18,7 @@ func New() *cobra.Command {
 	var home, profile string
 	root := &cobra.Command{Use: "devbox-neo", Short: "Persistent development environments", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().StringVar(&home, "home", "", "Devbox home (default ~/.devbox-neo; DEVBOX_HOME overrides)")
-	root.PersistentFlags().StringVarP(&profile, "profile", "p", "", "Select a profile slot")
+	root.PersistentFlags().StringVarP(&profile, "profile", "p", "", "Use a named profile")
 	initialize := func(cmd *cobra.Command) (*store.Store, error) {
 		userHome, err := os.UserHomeDir()
 		if err != nil {
@@ -70,12 +70,12 @@ func New() *cobra.Command {
 		_, err = e.Open(cmd.Context(), q)
 		return err
 	}}
-	open.Flags().StringVar(&onExit, "on-exit", "", "After the last attached command: stop or running")
+	open.Flags().StringVar(&onExit, "on-exit", "", "After the last command exits: stop (stop container) or running (leave running)")
 	open.Flags().StringArrayVar(&harnessArgs, "harness-arg", nil, "Pass an argument to the harness (repeatable)")
-	open.Flags().BoolVarP(&resume, "continue", "c", false, "Continue the recorded harness session")
+	open.Flags().BoolVarP(&resume, "continue", "c", false, "Continue the previous harness session")
 	root.AddCommand(open)
 	root.AddCommand(&cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { cmd.Println(Version); return nil }})
-	root.AddCommand(&cobra.Command{Use: "start <target>", Short: "Start an existing session using recorded settings", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	root.AddCommand(&cobra.Command{Use: "start <target>", Short: "Start an existing container or restore it from saved session settings", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
 			return err
@@ -84,23 +84,23 @@ func New() *cobra.Command {
 		return err
 	}})
 	var force bool
-	stop := &cobra.Command{Use: "stop <target>", Short: "Stop an owned container", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	stop := &cobra.Command{Use: "stop <target>", Short: "Stop a Devbox container", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
 			return err
 		}
 		return e.Stop(cmd.Context(), args[0], profile, force)
 	}}
-	stop.Flags().BoolVar(&force, "force", false, "Permit disruption of attached Devbox commands")
+	stop.Flags().BoolVar(&force, "force", false, "Stop even if commands are still running")
 	root.AddCommand(stop)
-	root.AddCommand(&cobra.Command{Use: "shell <target>", Short: "Use the recorded shell without loading desired configuration", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	root.AddCommand(&cobra.Command{Use: "shell <target>", Short: "Open a shell in an existing container", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
 			return err
 		}
 		return e.Exec(cmd.Context(), args[0], profile, nil, true)
 	}})
-	root.AddCommand(&cobra.Command{Use: "exec <target> -- <argv...>", Short: "Run argv in an existing container without loading desired configuration", Args: cobra.MinimumNArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	root.AddCommand(&cobra.Command{Use: "exec <target> -- <argv...>", Short: "Run a command in an existing container", Args: cobra.MinimumNArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		if cmd.ArgsLenAtDash() != 1 {
 			return fmt.Errorf("exec requires -- after its target")
 		}
@@ -112,7 +112,7 @@ func New() *cobra.Command {
 	}})
 	var image, recreateAll bool
 	var recreateFlags creationFlags
-	recreate := &cobra.Command{Use: "recreate [target]", Short: "Explicitly apply current creation settings, preserving session state", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	recreate := &cobra.Command{Use: "recreate [target]", Short: "Recreate the container with current settings, keeping session data", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
 			return err
@@ -138,7 +138,7 @@ func New() *cobra.Command {
 	}}
 	recreateFlags.Bind(recreate)
 	recreate.Flags().BoolVar(&image, "image", false, "Rebuild the image without using the build cache")
-	recreate.Flags().BoolVar(&recreateAll, "all", false, "Recreate all selected owned containers after complete preflight")
+	recreate.Flags().BoolVar(&recreateAll, "all", false, "Recreate all Devbox containers, add --profile NAME to recreate all belonging to one profile")
 	root.AddCommand(recreate)
 	root.AddCommand(containerCommands(engine, &profile)...)
 	root.AddCommand(sessionCommands(engine, &profile))

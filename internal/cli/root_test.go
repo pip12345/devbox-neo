@@ -39,15 +39,79 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 		{"open", "harness-arg", "Pass an argument to the harness (repeatable)"},
 		{"recreate", "harness-arg", "Pass an argument to the harness (repeatable)"},
 		{"recreate", "image", "Rebuild the image without using the build cache"},
+		{"recreate", "all", "Recreate all Devbox containers, add --profile NAME to recreate all belonging to one profile"},
+		{"create", "on-exit", "After the last command exits: stop (stop container) or running (leave running)"},
+		{"open", "on-exit", "After the last command exits: stop (stop container) or running (leave running)"},
+		{"recreate", "on-exit", "After the last command exits: stop (stop container) or running (leave running)"},
+		{"open", "profile", "Use a named profile"},
+		{"create", "harness", "Choose the harness to install"},
+		{"create", "network", "Docker network to use: default, host, or an existing network name"},
+		{"create", "env", "Set a container environment variable: KEY=VALUE (repeatable)"},
+		{"create", "volume", "Mount SOURCE:TARGET[:OPTIONS] in the container (repeatable)"},
+		{"create", "port", "Publish [HOST_IP:]HOST_PORT:CONTAINER_PORT (repeatable)"},
+		{"create", "docker-arg", "Pass a Docker option, e.g. --docker-arg=--memory=2g (repeatable)"},
+		{"stop", "force", "Stop even if commands are still running"},
+		{"delete", "force", "Delete even if commands are still running"},
+		{"profile delete", "force", "Delete without prompting"},
+		{"global config", "show", "Show resolved settings and where they come from"},
+		{"profile config", "show", "Show resolved settings and where they come from"},
+		{"project config", "show", "Show resolved settings and where they come from"},
+		{"project config", "profile", "With --show, use this profile instead of the project's configuration"},
+		{"profile init", "harness", "Choose a harness by name"},
+		{"project init", "harness", "Choose a harness by name, or inherit to use the profile/global setting"},
+		{"session clone", "from", "Source profile name or .project"},
+		{"session clone", "to", "Destination profile name or .project in the same folder"},
+		{"session relocate", "from", "Source profile name or .project"},
+		{"session relocate", "to", "Destination profile name or .project in the same folder"},
+		{"session reset", "include-history", "Also delete saved history"},
+		{"session prune", "older-than", "Only sessions inactive longer than this duration, e.g. 24h"},
 	} {
-		cmd, _, err := New().Find([]string{tt.command})
+		cmd, _, err := New().Find(strings.Fields(tt.command))
 		if err != nil {
 			t.Fatal(err)
 		}
-		flag := cmd.Flags().Lookup(tt.flag)
+		flag := cmd.Flag(tt.flag)
 		if flag == nil || flag.Usage != tt.description {
 			t.Fatalf("wrong help for %s --%s: %v", tt.command, tt.flag, flag)
 		}
+	}
+}
+
+func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
+	home := t.TempDir()
+	before := completionSnapshot(t, home)
+	for _, tt := range []struct{ command, description string }{
+		{"profile create", "Create a named profile"},
+		{"project create", "Create project configuration in .devbox/"},
+		{"profile init", "Choose a harness and add optional configuration files"},
+		{"project init", "Choose a harness and add optional configuration files"},
+		{"shell", "Open a shell in an existing container"},
+		{"exec", "Run a command in an existing container"},
+		{"recreate", "Recreate the container with current settings, keeping session data"},
+		{"status", "Show container status and pending configuration changes"},
+		{"session show", "Show saved session settings and active commands"},
+		{"session reset", "Reset harness state, keeping saved history (containers must be stopped)"},
+		{"session clone", "Copy session state to another folder or profile"},
+		{"session relocate", "Move session state to another folder or profile"},
+		{"session prune", "Delete sessions matching --orphaned and/or --older-than"},
+	} {
+		t.Run(tt.command, func(t *testing.T) {
+			root := New()
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+			args := append([]string{"--home", home}, strings.Fields(tt.command)...)
+			root.SetArgs(append(args, "--help"))
+			if err := root.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasPrefix(out.String(), tt.description) {
+				t.Fatalf("wrong help description: %s", out.String())
+			}
+		})
+	}
+	if !reflect.DeepEqual(before, completionSnapshot(t, home)) {
+		t.Fatal("help initialized home")
 	}
 }
 

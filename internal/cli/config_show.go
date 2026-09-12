@@ -21,7 +21,7 @@ func configCommand(factory resourceFactory, scope string) *cobra.Command {
 		use += " <folder>"
 		args = cobra.ExactArgs(1)
 	}
-	cmd := &cobra.Command{Use: use, Short: "Edit local settings or show effective configuration and sources", Args: args, RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: use, Short: "Edit settings or show resolved settings and where they come from", Args: args, RunE: func(cmd *cobra.Command, args []string) error {
 		if !show && asJSON {
 			return fmt.Errorf("--json requires --show")
 		}
@@ -63,10 +63,10 @@ func configCommand(factory resourceFactory, scope string) *cobra.Command {
 		}
 		return printConfigView(cmd.OutOrStdout(), view)
 	}}
-	cmd.Flags().BoolVar(&show, "show", false, "Print effective values and provenance without prompting")
+	cmd.Flags().BoolVar(&show, "show", false, "Show resolved settings and where they come from")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print --show output as JSON")
 	if scope == "project" {
-		cmd.Flags().StringVar(&selectedProfile, "profile", "", "Select an explicit profile and exclude project artifacts")
+		cmd.Flags().StringVar(&selectedProfile, "profile", "", "With --show, use this profile instead of the project's configuration")
 	}
 	return cmd
 }

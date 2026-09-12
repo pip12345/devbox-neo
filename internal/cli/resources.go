@@ -29,12 +29,16 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 			return s.Project(name)
 		}
 		argument := "<name>"
+		createHelp := "Create a named profile"
+		harnessHelp := "Choose a harness by name"
 		if kind == "project" {
 			argument = "<folder>"
+			createHelp = "Create project configuration in .devbox/"
+			harnessHelp = "Choose a harness by name, or inherit to use the profile/global setting"
 		}
 		var from string
 		var createJSON bool
-		create := &cobra.Command{Use: "create " + argument, Short: "Create sparse configuration without choosing a harness", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		create := &cobra.Command{Use: "create " + argument, Short: createHelp, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 			s, err := factory(cmd)
 			if err != nil {
 				return err
@@ -47,14 +51,14 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 			return renderResource(cmd, result, err, createJSON, s.Home)
 		}}
 		if kind == "project" {
-			create.Flags().StringVar(&from, "from-profile", "", "Copy supported profile artifacts once, without profile inheritance")
+			create.Flags().StringVar(&from, "from-profile", "", "Copy a profile's configuration and files into the project without linking them")
 		}
 		create.Flags().BoolVar(&createJSON, "json", false, "Print the result and next steps as JSON")
 		group.AddCommand(create)
 		var selected string
 		var artifacts []string
 		var initJSON bool
-		init := &cobra.Command{Use: "init " + argument, Short: "Select a harness and optionally seed missing artifacts", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		init := &cobra.Command{Use: "init " + argument, Short: "Choose a harness and add optional configuration files", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 			s, err := factory(cmd)
 			if err != nil {
 				return err
@@ -81,8 +85,8 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 			result, err := s.Init(cmd.Context(), o, options)
 			return renderResource(cmd, result, err, initJSON, s.Home)
 		}}
-		init.Flags().StringVar(&selected, "harness", "", "Select a registry harness (projects also accept inherit)")
-		init.Flags().StringSliceVar(&artifacts, "artifact", nil, "Seed missing harness-config, setup.sh, entrypoint.sh, or Dockerfile (repeatable)")
+		init.Flags().StringVar(&selected, "harness", "", harnessHelp)
+		init.Flags().StringSliceVar(&artifacts, "artifact", nil, "Add missing files: harness-config, setup.sh, entrypoint.sh, or Dockerfile (repeatable)")
 		init.Flags().BoolVar(&initJSON, "json", false, "Print the result and next steps as JSON; never prompt")
 		group.AddCommand(init, configCommand(factory, kind))
 		if kind == "profile" {
@@ -90,7 +94,7 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 		}
 		groups = append(groups, group)
 	}
-	global := &cobra.Command{Use: "global", Short: "Manage machine-local configuration"}
+	global := &cobra.Command{Use: "global", Short: "Manage global configuration"}
 	global.AddCommand(configCommand(factory, "global"))
 	groups = append(groups, global)
 	return groups

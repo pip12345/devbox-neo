@@ -49,9 +49,9 @@ func containerCommands(factory engineFactory, profile *string) []*cobra.Command 
 	}}
 	list.Flags().BoolVar(&listJSON, "json", false, "Print container entries as JSON")
 	list.Flags().StringVar(&sortBy, "sort", "name", "Sort by name or last-active (newest first)")
-	list.Flags().BoolVar(&wide, "wide", false, "Include harness, exact activity/creation times, and last action")
+	list.Flags().BoolVar(&wide, "wide", false, "Also show the harness, full activity and creation timestamps, and last action")
 	var statusJSON, statusAll bool
-	status := &cobra.Command{Use: "status [target]", Short: "Show live state and desired drift for one target or --all", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	status := &cobra.Command{Use: "status [target]", Short: "Show container status and pending configuration changes", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if statusAll && len(args) != 0 {
 			return fmt.Errorf("--all does not accept an exact target")
 		}
@@ -95,7 +95,7 @@ func containerCommands(factory engineFactory, profile *string) []*cobra.Command 
 		return nil
 	}}
 	status.Flags().BoolVar(&statusJSON, "json", false, "Print status as JSON")
-	status.Flags().BoolVar(&statusAll, "all", false, "Check all managed containers, optionally filtered by --profile")
+	status.Flags().BoolVar(&statusAll, "all", false, "Check all Devbox containers, add --profile NAME to check all belonging to one profile")
 	var follow bool
 	var tail string
 	logs := &cobra.Command{Use: "logs <target>", Short: "Read the container's Docker logs", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
@@ -114,7 +114,7 @@ func containerCommands(factory engineFactory, profile *string) []*cobra.Command 
 	logs.Flags().BoolVarP(&follow, "follow", "f", false, "Follow logs until interrupted")
 	logs.Flags().StringVar(&tail, "tail", "100", "Number of trailing lines, or all")
 	var all, stopped, force, deleteJSON bool
-	remove := &cobra.Command{Use: "delete [target...]", Short: "Delete containers while preserving sessions and image tags", Args: cobra.ArbitraryArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	remove := &cobra.Command{Use: "delete [target...]", Short: "Delete containers, keeping session data and images for recovery", Args: cobra.ArbitraryArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := factory(cmd)
 		if err != nil {
 			return err
@@ -134,9 +134,9 @@ func containerCommands(factory engineFactory, profile *string) []*cobra.Command 
 		}
 		return nil
 	}}
-	remove.Flags().BoolVar(&all, "all", false, "Select all owned containers")
-	remove.Flags().BoolVar(&stopped, "stopped", false, "Select stopped owned containers")
-	remove.Flags().BoolVar(&force, "force", false, "Permit disruption of active attached commands")
+	remove.Flags().BoolVar(&all, "all", false, "Delete all Devbox containers, add --profile NAME to delete all belonging to one profile")
+	remove.Flags().BoolVar(&stopped, "stopped", false, "Delete stopped Devbox containers, optionally limited by --profile NAME")
+	remove.Flags().BoolVar(&force, "force", false, "Delete even if commands are still running")
 	remove.Flags().BoolVar(&deleteJSON, "json", false, "Print deleted names as JSON")
 	return []*cobra.Command{list, status, logs, remove, networkCommands(factory, profile)}
 }
@@ -157,8 +157,8 @@ func printView(cmd *cobra.Command, view app.View) {
 	}
 }
 func networkCommands(factory engineFactory, profile *string) *cobra.Command {
-	group := &cobra.Command{Use: "network", Short: "Inspect networking or attach existing secondary networks"}
-	inspect := &cobra.Command{Use: "inspect <target>", Short: "Print live network facts as JSON", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	group := &cobra.Command{Use: "network", Short: "Show container networking or connect and disconnect additional networks"}
+	inspect := &cobra.Command{Use: "inspect <target>", Short: "Show the container's networks, IP addresses, and gateways as JSON", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := factory(cmd)
 		if err != nil {
 			return err
@@ -170,7 +170,7 @@ func networkCommands(factory engineFactory, profile *string) *cobra.Command {
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(facts)
 	}}
 	var key string
-	env := &cobra.Command{Use: "env <target>", Short: "Print shell-safe network exports", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	env := &cobra.Command{Use: "env <target>", Short: "Print network variables as shell export commands", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := factory(cmd)
 		if err != nil {
 			return err
@@ -202,7 +202,7 @@ func networkCommands(factory engineFactory, profile *string) *cobra.Command {
 	group.AddCommand(inspect, env)
 	for _, action := range []string{"connect", "disconnect"} {
 		action := action
-		group.AddCommand(&cobra.Command{Use: action + " <network> <target>", Short: action + " an existing secondary network without editing configuration", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		group.AddCommand(&cobra.Command{Use: action + " <network> <target>", Short: action + " an existing Docker network without changing saved configuration", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := factory(cmd)
 			if err != nil {
 				return err

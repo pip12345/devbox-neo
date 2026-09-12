@@ -14,14 +14,14 @@ type creationFlags struct {
 
 func (f *creationFlags) Bind(cmd *cobra.Command) {
 	flags := cmd.Flags()
-	flags.StringVar(&f.network, "network", "", "Primary Docker network")
-	flags.StringVar(&f.onExit, "on-exit", "", "After the last attached command: stop or running")
-	flags.StringVar(&f.harness, "harness", "", "Select an effective harness definition")
-	flags.BoolVar(&f.readOnly, "read-only", false, "Mount the workspace read-only at creation")
-	flags.StringArrayVarP(&f.env, "env", "e", nil, "Container KEY=VALUE (sensitive; invocation-only values require explicit recreation for recovery)")
-	flags.StringArrayVarP(&f.mounts, "volume", "v", nil, "Extra SOURCE:/absolute/target[:options] mount")
-	flags.StringArrayVar(&f.ports, "port", nil, "Published [HOST_IP:]HOST_PORT:CONTAINER_PORT")
-	flags.StringArrayVar(&f.raw, "docker-arg", nil, "Raw Docker option; value-taking options use --option=value")
+	flags.StringVar(&f.network, "network", "", "Docker network to use: default, host, or an existing network name")
+	flags.StringVar(&f.onExit, "on-exit", "", "After the last command exits: stop (stop container) or running (leave running)")
+	flags.StringVar(&f.harness, "harness", "", "Choose the harness to install")
+	flags.BoolVar(&f.readOnly, "read-only", false, "Mount the project folder read-only")
+	flags.StringArrayVarP(&f.env, "env", "e", nil, "Set a container environment variable: KEY=VALUE (repeatable)")
+	flags.StringArrayVarP(&f.mounts, "volume", "v", nil, "Mount SOURCE:TARGET[:OPTIONS] in the container (repeatable)")
+	flags.StringArrayVar(&f.ports, "port", nil, "Publish [HOST_IP:]HOST_PORT:CONTAINER_PORT (repeatable)")
+	flags.StringArrayVar(&f.raw, "docker-arg", nil, "Pass a Docker option, e.g. --docker-arg=--memory=2g (repeatable)")
 	flags.StringArrayVar(&f.harnessArgs, "harness-arg", nil, "Pass an argument to the harness (repeatable)")
 }
 func (f *creationFlags) Request(cmd *cobra.Command, workspace, profile string) app.Request {
