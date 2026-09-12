@@ -13,7 +13,7 @@ import (
 func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}

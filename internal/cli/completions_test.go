@@ -120,7 +120,7 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 		{[]string{"--home", explicit, "project", "config", ".", "--profile", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "project", "create", ".", "--from-profile", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "session", "clone", ".", "--to", ""}, []string{".project", "basic", "broken"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "open", "--harness", ""}, []string{"custom", "opencode"}, cobra.ShellCompDirectiveNoFileComp},
+		{[]string{"--home", explicit, "recreate", "--harness", ""}, []string{"custom", "opencode"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "project", "init", ".", "--harness", ""}, []string{"custom", "inherit", "opencode"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "session", "list", "--sort", ""}, []string{"last-active", "name"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "open", "--on-exit", ""}, []string{"running", "stop"}, cobra.ShellCompDirectiveNoFileComp},

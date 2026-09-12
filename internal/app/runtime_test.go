@@ -32,7 +32,7 @@ func TestRuntimeDocsAndNetworkFactsAreStagedAndCleaned(t *testing.T) {
 		}
 		return json.Unmarshal(b, &facts)
 	}
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestFailedRuntimeCopyDoesNotLaunchOrLeaveStaging(t *testing.T) {
 		}
 		return nil
 	}
-	if _, err := e.Open(context.Background(), q); err == nil {
+	if _, err := e.Create(context.Background(), q); err == nil {
 		t.Fatal("copy failure ignored")
 	}
 	files, err := filepath.Glob(filepath.Join(e.Store.Home, ".runtime-*"))

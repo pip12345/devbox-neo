@@ -36,7 +36,6 @@ type Request struct {
 	ExpectedName string
 	Overrides    config.Layer
 	ReadOnly     bool
-	Create       bool
 	Continue     bool
 	Args         []string
 	Host         config.Host
@@ -175,18 +174,15 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 	}
 	defer lock.Close()
 	record, err := lock.Load()
-	fresh := errors.Is(err, os.ErrNotExist)
-	if err != nil && !fresh {
-		return result, err
-	}
-	if fresh && !q.Create {
+	if errors.Is(err, os.ErrNotExist) {
 		return result, creationRequired(q.Workspace, spec.Identity.Profile, err)
 	}
-	if !fresh {
-		drift := environment.CompareInputs(record.Inputs, spec.Inputs)
-		if drift.Change == environment.Recreate || drift.Change == environment.RebuildAndRecreate {
-			e.diagnose(&result, Diagnostic{Code: "creation_drift", Message: "this container differs from current configuration:", Command: []string{"devbox-neo", "recreate", record.Identity.Name}, Change: drift.Change, PendingInputChanges: drift.PendingCreationChanges()})
-		}
+	if err != nil {
+		return result, err
+	}
+	drift := environment.CompareInputs(record.Inputs, spec.Inputs)
+	if drift.Change == environment.Recreate || drift.Change == environment.RebuildAndRecreate {
+		e.diagnose(&result, Diagnostic{Code: "creation_drift", Message: "this container differs from current configuration:", Command: []string{"devbox-neo", "recreate", record.Identity.Name}, Change: drift.Change, PendingInputChanges: drift.PendingCreationChanges()})
 	}
 	e.resolutionWarnings(spec)
 	var c docker.Container
@@ -196,49 +192,41 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 			err = errors.Join(err, e.stopUnattached(lock, record))
 		}
 	}()
-	if fresh {
-		if err = e.requireNew(ctx, lock); err != nil {
-			return result, err
-		}
-		record, c, err = e.create(ctx, lock, spec, nil, false)
+	var exists bool
+	c, exists, err = e.inspect(ctx, record)
+	if err == nil && !exists {
+		c, err = e.recover(ctx, lock, &record, &spec)
 		started = err == nil
-	} else {
-		var exists bool
-		c, exists, err = e.inspect(ctx, record)
-		if err == nil && !exists {
-			c, err = e.recover(ctx, lock, &record, &spec)
-			started = err == nil
-		}
-		if err == nil {
-			compatible := record.Definition.Hash == spec.Harness.Hash
-			if compatible && !c.State.Running {
-				if err = lock.RequireIdle(); err == nil {
-					err = e.sync(lock, spec)
-				}
-				if err == nil {
-					record.ApplyRuntime(spec.Inputs.Runtime)
-				}
-			} else if compatible && record.Applied.Runtime != spec.Fingerprints.Runtime {
-				manifest, pathErr := lock.Path(filepath.Join("harnesses", record.Definition.Name, "managed-config.json"))
-				if pathErr != nil {
-					return result, pathErr
-				}
-				current, checkErr := filesync.Current(manifest, spec.Files, spec.Harness.Definition.Merge)
-				if checkErr != nil {
-					return result, checkErr
-				}
-				if current {
-					record.ApplyRuntime(spec.Inputs.Runtime)
-				} else {
-					e.diagnose(&result, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; stop, then open to apply", Command: []string{"devbox-neo", "stop", record.Identity.Name}})
-				}
+	}
+	if err == nil {
+		compatible := record.Definition.Hash == spec.Harness.Hash
+		if compatible && !c.State.Running {
+			if err = lock.RequireIdle(); err == nil {
+				err = e.sync(lock, spec)
 			}
-			if compatible {
-				record.Launch.Args = append(append([]string(nil), spec.Harness.Definition.Launch.Args...), spec.Settings.HarnessArgs...)
+			if err == nil {
+				record.ApplyRuntime(spec.Inputs.Runtime)
 			}
-			record.Launch.OnExit = spec.Settings.OnExit
-			record.Launch.Shell = append([]string(nil), spec.Settings.Shell...)
+		} else if compatible && record.Applied.Runtime != spec.Fingerprints.Runtime {
+			manifest, pathErr := lock.Path(filepath.Join("harnesses", record.Definition.Name, "managed-config.json"))
+			if pathErr != nil {
+				return result, pathErr
+			}
+			current, checkErr := filesync.Current(manifest, spec.Files, spec.Harness.Definition.Merge)
+			if checkErr != nil {
+				return result, checkErr
+			}
+			if current {
+				record.ApplyRuntime(spec.Inputs.Runtime)
+			} else {
+				e.diagnose(&result, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; stop, then open to apply", Command: []string{"devbox-neo", "stop", record.Identity.Name}})
+			}
 		}
+		if compatible {
+			record.Launch.Args = append(append([]string(nil), spec.Harness.Definition.Launch.Args...), spec.Settings.HarnessArgs...)
+		}
+		record.Launch.OnExit = spec.Settings.OnExit
+		record.Launch.Shell = append([]string(nil), spec.Settings.Shell...)
 	}
 	if err != nil {
 		return result, err

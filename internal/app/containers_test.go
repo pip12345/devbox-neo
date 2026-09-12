@@ -15,13 +15,13 @@ import (
 func TestContainerViewsUseBatchedInventoryAndBrokenConfigDoesNotHideState(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	first, err := e.Open(ctx, q)
+	first, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
 	secondRequest := q
 	secondRequest.Workspace = t.TempDir()
-	second, err := e.Open(ctx, secondRequest)
+	second, err := e.Create(ctx, secondRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,12 +58,12 @@ func TestContainerViewsUseBatchedInventoryAndBrokenConfigDoesNotHideState(t *tes
 func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	first, err := e.Open(ctx, q)
+	first, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
 	q.Workspace = t.TempDir()
-	second, err := e.Open(ctx, q)
+	second, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,12 +116,12 @@ func getFile(t *testing.T, p string) []byte {
 func TestRecreateAllPreflightsAndPreservesRunningIntent(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	a, err := e.Open(ctx, q)
+	a, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
 	q.Workspace = t.TempDir()
-	b, err := e.Open(ctx, q)
+	b, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestRecreateAllPreflightsAndPreservesRunningIntent(t *testing.T) {
 func TestSecondaryNetworksDoNotChangeCreationContract(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestExactRootTargetKeepsItsSlotWhenDefaultsChange(t *testing.T) {
 	ctx := context.Background()
 	q.Profile = ""
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi"}`)
-	first, err := e.Open(ctx, q)
+	first, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestExactRootTargetKeepsItsSlotWhenDefaultsChange(t *testing.T) {
 func TestOwnedContainerWithoutRecordCanBeDeletedButNeverAdopted(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestOwnedContainerWithoutRecordCanBeDeletedButNeverAdopted(t *testing.T) {
 func TestExplicitProfileLocateIgnoresUnrelatedCorruptRecords(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
-	first, err := e.Open(ctx, q)
+	first, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}

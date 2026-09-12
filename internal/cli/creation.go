@@ -22,7 +22,7 @@ func (f *creationFlags) Bind(cmd *cobra.Command) {
 	flags.StringArrayVarP(&f.mounts, "volume", "v", nil, "Extra SOURCE:/absolute/target[:options] mount")
 	flags.StringArrayVar(&f.ports, "port", nil, "Published [HOST_IP:]HOST_PORT:CONTAINER_PORT")
 	flags.StringArrayVar(&f.raw, "docker-arg", nil, "Raw Docker option; value-taking options use --option=value")
-	flags.StringArrayVar(&f.harnessArgs, "harness-arg", nil, "Append an exact non-secret harness argument")
+	flags.StringArrayVar(&f.harnessArgs, "harness-arg", nil, "Pass an argument to the harness (repeatable)")
 }
 func (f *creationFlags) Request(cmd *cobra.Command, workspace, profile string) app.Request {
 	q := app.Request{Workspace: workspace, Profile: profile, ReadOnly: f.readOnly}

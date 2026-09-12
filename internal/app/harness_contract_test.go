@@ -38,7 +38,7 @@ func TestBuiltinAndCustomHarnessesShareLifecycleAndStorage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			result, err := e.Open(ctx, q)
+			result, err := createAndOpen(ctx, e, q)
 			if err != nil {
 				t.Fatal(err)
 			}

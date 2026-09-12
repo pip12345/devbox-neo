@@ -30,8 +30,15 @@ func fixture(t *testing.T) (*Engine, *dockertest.Daemon, Request) {
 	}
 	write(t, filepath.Join(home, "profiles", "test", "config.json"), `{"version":1,"harness":"pi"}`)
 	d := &dockertest.Daemon{}
-	return &Engine{Store: s, Docker: docker.Runtime{Runner: d}, Streams: docker.Streams{Out: new(bytes.Buffer), Err: new(bytes.Buffer)}, UID: 1000, GID: 1000}, d, Request{Workspace: workspace, Profile: "test", Create: true}
+	return &Engine{Store: s, Docker: docker.Runtime{Runner: d}, Streams: docker.Streams{Out: new(bytes.Buffer), Err: new(bytes.Buffer)}, UID: 1000, GID: 1000}, d, Request{Workspace: workspace, Profile: "test"}
 }
+func createAndOpen(ctx context.Context, e *Engine, q Request) (Result, error) {
+	if result, err := e.Create(ctx, q); err != nil {
+		return result, err
+	}
+	return e.Open(ctx, q)
+}
+
 func write(t *testing.T, path, data string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -64,7 +71,7 @@ func count(d *dockertest.Daemon, verb string) int {
 func TestCreateReopenDriftAndRecreate(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +160,7 @@ func TestInvalidDesiredHarnessJSONDoesNotTouchDocker(t *testing.T) {
 func TestInvalidConfigOnlyBlocksDesiredOpen(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +186,7 @@ func TestInvalidConfigOnlyBlocksDesiredOpen(t *testing.T) {
 func TestRecordedRecoveryUsesOriginalDefinitionAndSettings(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +227,7 @@ func TestRunningManagedConfigIsDeferred(t *testing.T) {
 	write(t, path, `{"version":1,"harness":"pi","on_exit":"running"}`)
 	settings := filepath.Join(e.Store.Home, "profiles/test/pi/settings.json")
 	write(t, settings, `{"packages":["old"]}`)
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +269,7 @@ func TestRuntimeOnlyChangesDoNotClaimFileDeferral(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","on_exit":"running"}`)
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +298,7 @@ func TestRuntimeOnlyChangesDoNotClaimFileDeferral(t *testing.T) {
 func TestOwnershipAndDaemonErrorsFailClosed(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +329,7 @@ func TestForegroundStatusAndConcurrentLeases(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +408,7 @@ func TestFailedRecordCommitIsNotSuccessfulCreation(t *testing.T) {
 		}
 		return nil
 	}
-	if _, err = e.Open(ctx, q); err == nil {
+	if _, err = e.Create(ctx, q); err == nil {
 		t.Fatal("commit failure hidden")
 	}
 	if _, exists := d.Snapshot(s.Identity.Name); exists {
@@ -414,7 +421,7 @@ func TestFailedRecordCommitIsNotSuccessfulCreation(t *testing.T) {
 func TestMissingImageRequiresExplicitRecreate(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +446,7 @@ func TestMissingImageRequiresExplicitRecreate(t *testing.T) {
 func TestFailedReplacementKeepsRecordedRecovery(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,7 +504,7 @@ func TestRecordedValuesNeverPersistHarnessEnv(t *testing.T) {
 	def := `{"version":1,"name":"custom","binary":"true","install":{"shell":"","path":[]},"launch":{"args":[],"continue_args":[]},"env":{"API_TOKEN":"sentinel-secret"},"stores":[{"name":"home","scope":"environment","target":"/home/devuser/.custom"}],"config":{"store":"home","path":"."},"session":{},"prepare":[]}`
 	write(t, filepath.Join(e.Store.Home, "harnesses/custom/harness.json"), def)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"custom"}`)
-	result, err := e.Open(context.Background(), q)
+	result, err := createAndOpen(context.Background(), e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -528,7 +535,7 @@ func TestRecordedValuesNeverPersistHarnessEnv(t *testing.T) {
 func TestRecoverySynchronizesBeforeStartup(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +559,7 @@ func TestHookFailureStopsNewlyStartedContainer(t *testing.T) {
 		}
 		return nil
 	}
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	var exit *docker.ExitError
 	if !errors.As(err, &exit) || exit.Code != 19 {
 		t.Fatalf("hook error: %v", err)
@@ -564,7 +571,7 @@ func TestHookFailureStopsNewlyStartedContainer(t *testing.T) {
 }
 func TestCancellationReleasesLease(t *testing.T) {
 	e, d, q := fixture(t)
-	result, err := e.Open(context.Background(), q)
+	result, err := createAndOpen(context.Background(), e, q)
 	if err != nil {
 		t.Fatal(err)
 	}

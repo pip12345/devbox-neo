@@ -24,7 +24,7 @@ func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 			e, d, q := fixture(t)
 			ctx := context.Background()
 			write(t, filepath.Join(e.Store.Home, "profiles/test/entrypoint.sh"), "echo entrypoint-marker")
-			result, err := e.Open(ctx, q)
+			result, err := createAndOpen(ctx, e, q)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -98,7 +98,7 @@ func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 
 func TestOpenCancelledAfterCreationWarningDoesNotMutate(t *testing.T) {
 	e, d, q := fixture(t)
-	result, err := e.Open(context.Background(), q)
+	result, err := createAndOpen(context.Background(), e, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestOpenCancelledAfterCreationWarningDoesNotMutate(t *testing.T) {
 func TestOpenWithoutCreationDriftDiagnostics(t *testing.T) {
 	e, _, q := fixture(t)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","on_exit":"running"}`)
-	if _, err := e.Open(context.Background(), q); err != nil {
+	if _, err := createAndOpen(context.Background(), e, q); err != nil {
 		t.Fatal(err)
 	}
 	for _, change := range []string{"unchanged", "runtime-only", "runtime-deferred"} {

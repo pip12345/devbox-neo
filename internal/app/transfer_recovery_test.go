@@ -43,7 +43,7 @@ func TestTransferChecksHarnessPolicyBeforeMutation(t *testing.T) {
 func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Open(ctx, q)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 func TestTransferRetriesPreparedButUncommittedDestination(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Open(ctx, q)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestTransferCancellationRestoresSource(t *testing.T) {
 func TestTransferCopiesOpaqueLinksNotAuthOrCaches(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Open(ctx, q)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}

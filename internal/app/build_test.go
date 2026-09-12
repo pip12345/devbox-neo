@@ -40,7 +40,7 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 		}
 		return nil
 	}
-	result, err := e.Open(context.Background(), q)
+	result, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestLayeredBuildCleansBaseTagAfterRuntimeFailure(t *testing.T) {
 		}
 		return failure
 	}
-	if _, err := e.Open(context.Background(), q); !errors.Is(err, failure) {
+	if _, err := e.Create(context.Background(), q); !errors.Is(err, failure) {
 		t.Fatal("runtime build failure was not returned", err)
 	}
 	for _, args := range d.History() {
@@ -107,7 +107,7 @@ func TestSeedingHigherPriorityDockerfileWarnsWithoutReplacement(t *testing.T) {
 	ctx := context.Background()
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi"}`)
 	q.Profile = ""
-	first, err := e.Open(ctx, q)
+	first, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}

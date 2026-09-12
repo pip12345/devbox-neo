@@ -30,7 +30,7 @@ func TestNestedMountParentsUseBackingSourcesAndSurviveReset(t *testing.T) {
 	}
 	write(t, filepath.Join(e.Store.Home, "harnesses/third/harness.json"), string(b))
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"third"}`)
-	opened, err := e.Open(ctx, q)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestMountParentPreparationRejectsMissingRootsAndSymlinks(t *testing.T) {
 			ctx := context.Background()
 			seedThird(t, e.Store.Home)
 			write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"third"}`)
-			opened, err := e.Open(ctx, q)
+			opened, err := e.Create(ctx, q)
 			if err != nil {
 				t.Fatal(err)
 			}

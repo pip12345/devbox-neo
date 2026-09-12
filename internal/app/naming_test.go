@@ -12,7 +12,7 @@ import (
 
 func TestSessionNamesAreIndependentOfDevelopmentOwnershipNamespace(t *testing.T) {
 	e, d, q := fixture(t)
-	opened, err := e.Open(context.Background(), q)
+	opened, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
 	}

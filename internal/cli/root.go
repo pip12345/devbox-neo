@@ -52,9 +52,10 @@ func New() *cobra.Command {
 	}}
 	createFlags.Bind(create)
 	root.AddCommand(create)
-	var resume, createIfMissing bool
-	var openFlags creationFlags
-	open := &cobra.Command{Use: "open <target> [-- harness-args...]", Short: "Open an existing environment and launch its harness; use --create to create if missing", Args: cobra.MinimumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	var resume bool
+	var onExit string
+	var harnessArgs []string
+	open := &cobra.Command{Use: "open <target> [-- harness-args...]", Short: "Open an existing environment and launch its harness", Args: cobra.MinimumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 && cmd.ArgsLenAtDash() != 1 {
 			return fmt.Errorf("use -- before one-off harness arguments")
 		}
@@ -62,15 +63,15 @@ func New() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		q := openFlags.Request(cmd, args[0], profile)
-		q.Create = createIfMissing
-		q.Continue = resume
-		q.Args = args[1:]
+		q := app.Request{Workspace: args[0], Profile: profile, Continue: resume, Args: args[1:], Overrides: config.Layer{HarnessArgs: harnessArgs}}
+		if cmd.Flags().Changed("on-exit") {
+			q.Overrides.OnExit = &onExit
+		}
 		_, err = e.Open(cmd.Context(), q)
 		return err
 	}}
-	openFlags.Bind(open)
-	open.Flags().BoolVar(&createIfMissing, "create", false, "Create the environment if no session exists")
+	open.Flags().StringVar(&onExit, "on-exit", "", "After the last attached command: stop or running")
+	open.Flags().StringArrayVar(&harnessArgs, "harness-arg", nil, "Pass an argument to the harness (repeatable)")
 	open.Flags().BoolVarP(&resume, "continue", "c", false, "Continue the recorded harness session")
 	root.AddCommand(open)
 	root.AddCommand(&cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { cmd.Println(Version); return nil }})
@@ -136,7 +137,7 @@ func New() *cobra.Command {
 		return err
 	}}
 	recreateFlags.Bind(recreate)
-	recreate.Flags().BoolVar(&image, "image", false, "Force a no-cache build (does not promise refreshed upstream bases)")
+	recreate.Flags().BoolVar(&image, "image", false, "Rebuild the image without using the build cache")
 	recreate.Flags().BoolVar(&recreateAll, "all", false, "Recreate all selected owned containers after complete preflight")
 	root.AddCommand(recreate)
 	root.AddCommand(containerCommands(engine, &profile)...)

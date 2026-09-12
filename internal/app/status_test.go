@@ -18,7 +18,7 @@ import (
 
 func TestStatusAllLeavesPendingTransfersUnclassified(t *testing.T) {
 	e, _, q := fixture(t)
-	result, err := e.Open(context.Background(), q)
+	result, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 	for _, profile := range []string{"clean", "runtime", "container", "image", "invalid", "corrupt", "recordless", "mismatch", "missing"} {
 		q.Profile = profile
 		write(t, filepath.Join(e.Store.Home, "profiles", profile, "config.json"), `{"version":1,"harness":"pi","on_exit":"running"}`)
-		result, err := e.Open(ctx, q)
+		result, err := createAndOpen(ctx, e, q)
 		if err != nil {
 			t.Fatal(err)
 		}

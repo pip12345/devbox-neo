@@ -30,7 +30,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	resources.Init(ctx, owner, resource.InitOptions{Harness: "pi"})
 	daemon := &dockertest.Daemon{}
 	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: daemon}, UID: 1000, GID: 1000}
-	result, err := engine.Open(ctx, app.Request{Workspace: t.TempDir(), Profile: "test", Create: true})
+	result, err := engine.Create(ctx, app.Request{Workspace: t.TempDir(), Profile: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

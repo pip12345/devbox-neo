@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -43,6 +44,10 @@ func TestOpenWarnsAndSkipsConfigSymlinks(t *testing.T) {
 			if err := os.Symlink("../sdk/cli.js", link); err != nil {
 				t.Fatal(err)
 			}
+			if _, err := e.Create(context.Background(), q); err != nil {
+				t.Fatal(err)
+			}
+			e.Streams.Err = new(bytes.Buffer)
 			for i := 0; i < 2; i++ {
 				result, err := e.Open(context.Background(), q)
 				if err != nil {

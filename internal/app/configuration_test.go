@@ -19,7 +19,7 @@ func TestConfigEnvironmentRecoveryNeverStoresOrAdoptsValues(t *testing.T) {
 	t.Setenv("DEVBOX_TEST_TOKEN", "sentinel-secret")
 	file := filepath.Join(e.Store.Home, "profiles/test/config.json")
 	write(t, file, `{"version":1,"harness":"pi","extra_env":["TOKEN=${env:DEVBOX_TEST_TOKEN}","OTHER=literal"]}`)
-	result, err := e.Open(ctx, q)
+	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestPublicSubstitutionsAndCreationOptionsUseOneSnapshot(t *testing.T) {
 	if !strings.Contains(strings.Join(spec.Env(), "\n"), "KEY=snapshot-value") {
 		t.Fatal("resolved values reread host state")
 	}
-	result, err := e.Open(ctx, q)
+	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestInvalidCreationOptionsFailBeforeDocker(t *testing.T) {
 func TestCLIOnlyEnvironmentRequiresExplicitRecreation(t *testing.T) {
 	e, d, q := fixture(t)
 	q.Overrides.Env = []string{"TOKEN=invocation-secret"}
-	result, err := e.Open(context.Background(), q)
+	result, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestFileAndVolumeMountRecoveryChecksKinds(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "file")
 	os.WriteFile(file, []byte("data"), 0600)
 	q.Overrides.Mounts = []string{file + ":/extra-file", "shared-volume:/shared"}
-	result, err := e.Open(context.Background(), q)
+	result, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,7 +11,7 @@ import (
 func TestResetPreservesHistoryAuthCacheAndStableBindRoots(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,12 +63,12 @@ func TestResetPreservesHistoryAuthCacheAndStableBindRoots(t *testing.T) {
 func TestBulkResetDoesNotProceedAgainstRunningContainer(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
-	a, err := e.Open(ctx, q)
+	a, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
 	q.Workspace = t.TempDir()
-	b, err := e.Open(ctx, q)
+	b, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestBulkResetDoesNotProceedAgainstRunningContainer(t *testing.T) {
 func TestSessionDeleteRejectsContainersAndPreservesExternalLocks(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestSessionDeleteRejectsContainersAndPreservesExternalLocks(t *testing.T) {
 func TestPruneRequiresConfirmationAndRechecksActivity(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestPruneRequiresConfirmationAndRechecksActivity(t *testing.T) {
 func TestSessionShowDoesNotResolveDesiredConfig(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
-	result, err := e.Open(ctx, q)
+	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestSessionShowDoesNotResolveDesiredConfig(t *testing.T) {
 }
 func TestResetUnlinksSymlinksWithoutFollowingThem(t *testing.T) {
 	e, _, q := fixture(t)
-	result, err := e.Open(context.Background(), q)
+	result, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
 	}

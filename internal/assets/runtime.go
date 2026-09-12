@@ -43,9 +43,10 @@ Do not modify /devbox: it is Devbox-owned runtime data. Do not add a project
 Dockerfile to make an ad-hoc tool installation persistent without user approval.
 Devbox does not enforce network egress restrictions or provide an offline mode.
 On the host, devbox-neo create <folder> prepares a new environment and leaves it
-stopped without launching a harness. Plain open/start require an existing session;
-open <folder> --create explicitly creates if missing and then opens. They still
-recover a missing container for retained session state without --create.
+stopped without launching a harness. Open/start require an existing session and
+never create new sessions. They still recover a missing container for retained
+session state. Container-setting flags belong to create/recreate; open accepts
+launch settings, continuation, and harness arguments.
 On the host, devbox-neo status --all shows which existing containers need recreation
 or rebuilding from changed local inputs; it does not check upstream releases.
 Ordinary recreate builds changed image inputs automatically. Open prints creation
@@ -59,8 +60,8 @@ A later --tui-mode regular in harness_args or one-off harness arguments override
 Existing recorded environments require recreation to adopt changed harness defaults.
 Host CLI failures show short messages, target context, and labeled next commands.
 Suggestions do not run automatically; Then marks a sequence and Or an alternative.
-Generic creation hints show only create, without profile flags or the advanced
-open --create shortcut. Missing-environment hints retain the folder you entered.
+Generic creation hints show only create, without profile flags.
+Missing-environment hints retain the folder you entered.
 They use normal configuration selection, not a replay of prior flags.
 Existing --json commands retain error codes, operation names, and structured failures.
 

@@ -80,7 +80,7 @@ func TestTerminalEnvCreationAttachmentAndRecovery(t *testing.T) {
 			t.Fatal("wrong attached command", last)
 		}
 	}
-	result, err := e.Open(ctx, q)
+	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}

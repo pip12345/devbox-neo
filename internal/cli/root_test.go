@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -32,6 +33,24 @@ func TestExecutableName(t *testing.T) {
 	}
 }
 
+func TestFlagHelpDescribesActions(t *testing.T) {
+	for _, tt := range []struct{ command, flag, description string }{
+		{"create", "harness-arg", "Pass an argument to the harness (repeatable)"},
+		{"open", "harness-arg", "Pass an argument to the harness (repeatable)"},
+		{"recreate", "harness-arg", "Pass an argument to the harness (repeatable)"},
+		{"recreate", "image", "Rebuild the image without using the build cache"},
+	} {
+		cmd, _, err := New().Find([]string{tt.command})
+		if err != nil {
+			t.Fatal(err)
+		}
+		flag := cmd.Flags().Lookup(tt.flag)
+		if flag == nil || flag.Usage != tt.description {
+			t.Fatalf("wrong help for %s --%s: %v", tt.command, tt.flag, flag)
+		}
+	}
+}
+
 func TestOpenCommandOwnsTargetAndFlags(t *testing.T) {
 	cmd := New()
 	out := new(bytes.Buffer)
@@ -41,10 +60,35 @@ func TestOpenCommandOwnsTargetAndFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	for _, text := range []string{"open <target>", "--create", "--continue", "--network string"} {
+	for _, text := range []string{"open <target>", "--continue", "--on-exit", "--harness-arg"} {
 		if !strings.Contains(help, text) {
 			t.Fatalf("open help is missing %q: %s", text, help)
 		}
+	}
+	for _, flag := range []string{"create", "network", "env", "volume", "port", "docker-arg", "read-only", "harness"} {
+		if strings.Contains(help, "--"+flag+" ") {
+			t.Fatalf("open help advertises creation flag %q: %s", flag, help)
+		}
+	}
+}
+
+func TestOpenRejectsCreationFlagsBeforeInitialization(t *testing.T) {
+	for _, flag := range []string{"--create", "--network=host", "--env=TOKEN=private-value", "--volume=/tmp:/extra", "--port=8080:80", "--docker-arg=--init", "--read-only", "--harness=pi"} {
+		t.Run(strings.SplitN(flag, "=", 2)[0], func(t *testing.T) {
+			home := t.TempDir()
+			before := completionSnapshot(t, home)
+			cmd := New()
+			out := new(bytes.Buffer)
+			cmd.SetOut(out)
+			cmd.SetErr(out)
+			cmd.SetArgs([]string{"--home", home, "open", ".", flag})
+			if code := Execute(context.Background(), cmd); code != 1 || !strings.Contains(out.String(), "Invalid command-line options.") || strings.Contains(out.String(), "private-value") {
+				t.Fatalf("unexpected flag handling: exit %d, %s", code, out)
+			}
+			if !reflect.DeepEqual(before, completionSnapshot(t, home)) {
+				t.Fatal("rejected flag initialized home")
+			}
+		})
 	}
 }
 

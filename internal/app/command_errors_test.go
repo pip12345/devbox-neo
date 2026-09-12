@@ -32,7 +32,7 @@ func TestTypedSessionAbsenceDoesNotCreateOnStart(t *testing.T) {
 func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Open(ctx, q)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 func TestRecoveryErrorRetainsDockerFailureIdentity(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Open(ctx, q)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestRecoveryErrorRetainsDockerFailureIdentity(t *testing.T) {
 func TestPiDefaultsToFullscreenAndAllowsLaterOverrides(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Open(ctx, q)
+	opened, err := createAndOpen(ctx, e, q)
 	if err != nil {
 		t.Fatal(err)
 	}

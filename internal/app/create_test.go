@@ -17,7 +17,6 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 	for _, project := range []bool{false, true} {
 		t.Run(map[bool]string{false: "profile", true: "project"}[project], func(t *testing.T) {
 			e, d, q := fixture(t)
-			q.Create = false
 			if project {
 				q.Profile = ""
 				write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi","inherit_profile":false}`)
@@ -38,14 +37,12 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 			if err != nil || len(entries) != 0 || len(d.History()) != 0 {
 				t.Fatal("plain open created state or touched Docker", entries, err, d.History())
 			}
-			q.Create = true
-			opened, err := e.Open(ctx, q)
+			opened, err := e.Create(ctx, q)
 			if err != nil {
 				t.Fatal(err)
 			}
 			first := record(t, e, opened.Name)
-			for _, allow := range []bool{false, true} {
-				q.Create = allow
+			for range 2 {
 				if _, err = e.Open(ctx, q); err != nil {
 					t.Fatal(err)
 				}
@@ -59,7 +56,6 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 
 func TestCreatePreparesWithoutOpeningAndLeavesStopped(t *testing.T) {
 	e, d, q := fixture(t)
-	q.Create = false
 	ctx := context.Background()
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","on_exit":"running"}`)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/setup.sh"), "echo setup\n")
@@ -95,6 +91,36 @@ func TestCreatePreparesWithoutOpeningAndLeavesStopped(t *testing.T) {
 	}
 }
 
+func TestOpenLaunchOverridesDoNotRecreate(t *testing.T) {
+	e, d, q := fixture(t)
+	ctx := context.Background()
+	created, err := e.Create(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := record(t, e, created.Name)
+	onExit := "running"
+	q.Overrides.OnExit = &onExit
+	q.Overrides.HarnessArgs = []string{"--version"}
+	q.Continue = true
+	q.Args = []string{"--one-off"}
+	if _, err = e.Open(ctx, q); err != nil {
+		t.Fatal(err)
+	}
+	after := record(t, e, created.Name)
+	c, _ := d.Snapshot(created.Name)
+	if count(d, "create") != 1 || count(d, "build") != 1 || !c.State.Running || after.Launch.OnExit != "running" || !reflect.DeepEqual(after.Inputs.Container, before.Inputs.Container) || !reflect.DeepEqual(after.Inputs.Image, before.Inputs.Image) {
+		t.Fatal("launch overrides changed creation settings or lost on-exit policy")
+	}
+	want := []string{"pi", "--tui-mode", "fullscreen", "--version", "-c", "--one-off"}
+	for _, args := range d.History() {
+		if args[0] == "exec" && argvSuffix(args, want) {
+			return
+		}
+	}
+	t.Fatal("launch overrides did not reach the harness", d.History())
+}
+
 func TestCreateRefusesExistingSessionEvenWithoutContainer(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
@@ -119,11 +145,10 @@ func TestCreateRefusesExistingSessionEvenWithoutContainer(t *testing.T) {
 	}
 }
 
-func TestExistingSessionRecoveryDoesNotRequireCreateFlag(t *testing.T) {
+func TestExistingSessionRecoveryStillRestoresMissingContainer(t *testing.T) {
 	for _, action := range []string{"open", "start"} {
 		t.Run(action, func(t *testing.T) {
 			e, d, q := fixture(t)
-			q.Create = false
 			ctx := context.Background()
 			result, err := e.Create(ctx, q)
 			if err != nil {
@@ -198,7 +223,7 @@ func TestCreateRejectsCorruptOrUncommittedState(t *testing.T) {
 	}
 }
 
-func TestOpenCreateDoesNotInventMissingExactSession(t *testing.T) {
+func TestOpenDoesNotInventMissingExactSession(t *testing.T) {
 	e, d, q := fixture(t)
 	spec, err := e.Resolve(q)
 	if err != nil {

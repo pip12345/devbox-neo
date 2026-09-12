@@ -19,7 +19,7 @@ import (
 func TestTransferResumesJournalBeforeDestinationCreation(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Open(ctx, q)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestTransferIdentityStateAndRunningPolicy(t *testing.T) {
 			t.Run(mode+map[bool]string{false: "-stopped", true: "-running"}[running], func(t *testing.T) {
 				e, d, q := fixture(t)
 				ctx := context.Background()
-				opened, err := e.Open(ctx, q)
+				opened, err := e.Create(ctx, q)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -139,7 +139,7 @@ func TestTransferFromMissingWorkspaceAndContainer(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			e, d, q := fixture(t)
 			ctx := context.Background()
-			opened, err := e.Open(ctx, q)
+			opened, err := e.Create(ctx, q)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -156,7 +156,7 @@ func TestTransferFromMissingWorkspaceAndContainer(t *testing.T) {
 func TestTransferSlotsAndDryRun(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Open(ctx, q)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 func TestTransferCommittedRetryOnlyCleansSource(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Open(ctx, q)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,12 +289,12 @@ func TestTransferCommittedRetryOnlyCleansSource(t *testing.T) {
 func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Open(ctx, q)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
 	dest := t.TempDir()
-	destOpen, err := e.Open(ctx, Request{Workspace: dest, Profile: q.Profile, Create: true})
+	destOpen, err := e.Create(ctx, Request{Workspace: dest, Profile: q.Profile})
 	if err != nil {
 		t.Fatal(err)
 	}

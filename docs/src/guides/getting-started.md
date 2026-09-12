@@ -53,7 +53,7 @@ bin/devbox-neo create /path/to/workspace --profile basic
 bin/devbox-neo open /path/to/workspace --profile basic
 ```
 
-`create` builds the image and runs preparation/setup, then leaves the container stopped without launching Pi. It refuses an existing session. `open` starts the existing environment and launches its harness. Plain `open` and `start` never create a new session. If none exists, the error suggests `create` with the folder you entered. This generic hint uses normal configuration selection, without profile flags. The default `on_exit` policy stops the container after the last attached Devbox command exits.
+`create` builds the image and runs preparation/setup, then leaves the container stopped without launching Pi. It refuses an existing session. `open` starts the existing environment and launches its harness. Container options such as `--network`, `--env`, and `--harness` belong to `create` or `recreate`, not `open`. Plain `open` and `start` never create a new session. If none exists, the error suggests `create` with the folder you entered. This generic hint uses normal configuration selection, without profile flags. The default `on_exit` policy stops the container after the last attached Devbox command exits.
 
 Find recently used containers with `bin/devbox-neo list --sort last-active`. The table shows state, profile, last recorded Devbox activity, and folder. Stopped and missing rows are subdued so running containers stand out; error and pending-transfer details remain readable. Add `--wide` for the harness, exact activity/creation times, and the last action, or `--json` for scripts.
 
@@ -139,7 +139,7 @@ bin/devbox-neo stop /path/to/workspace --profile basic
 
 Failures now include a code, the failed operation, and safe next commands when available. Follow the suggested command, then retry; Devbox does not run repairs or force flags automatically. Commands already supporting `--json` also return structured failures on stdout with a nonzero exit code.
 
-For existing containers these commands use the recorded contract, not current profile/project config. `shell` and `exec` require an existing container. If session state remains but its container is missing, `open` and `start` still recover it when its recorded inputs remain available and unchanged; otherwise use explicit `recreate`. Recovery does not require `--create`.
+For existing containers these commands use the recorded contract, not current profile/project config. `shell` and `exec` require an existing container. If session state remains but its container is missing, `open` and `start` still recover it when its recorded inputs remain available and unchanged; otherwise use explicit `recreate`. New environments must be created with `create`.
 
 Shells and harness launches receive your current terminal's `TERM`, `COLORTERM`, and related display settings. Reconnect with `shell` to pick up terminal changes; no recreation or Bash config edit is needed for forwarding. Devbox does not import your host prompt or dotfiles.
 
