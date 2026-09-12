@@ -6,11 +6,12 @@ Executable: `devbox-neo`. `--home` selects an isolated home; the default is `~/.
 
 | Command | Behavior |
 |---|---|
-| `open <folder-or-name> [-- harness-args...]` | Resolve desired configuration and open; valid creation drift warns first without replacing |
+| `create <folder>` | Create a new environment, run preparation/setup, and leave it stopped without launching its harness; refuse an existing session |
+| `open <folder-or-name> [--create] [-- harness-args...]` | Resolve desired configuration and open an existing session; `--create` opts into creation if missing; valid creation drift warns first without replacing |
 | `list [--sort name\|last-active] [--wide] [--json]` | Container table with state, profile, last activity, and folder; default sort is name |
 | `status <target> [--json]` | Live state plus desired drift or a separate configuration error |
 | `status --all [--profile NAME] [--json]` | Existing managed containers, sorted by name, with separate live state and pending-change classifications |
-| `start <target>` | Use recorded settings; recover a missing container when recorded inputs remain available |
+| `start <target>` | Start an existing session using recorded settings; recover a missing container when recorded inputs remain available; never create a new session |
 | `shell <target>` | Use the recorded shell in an existing container |
 | `exec <target> -- <argv...>` | Execute exact argv in an existing container |
 | `logs <target> [--follow] [--tail N\|all]` | Docker container logs, not a transcript of attached `exec` output |
@@ -19,7 +20,7 @@ Executable: `devbox-neo`. `--home` selects an isolated home; the default is `~/.
 | `delete <target...>` | Delete containers only; retain session state and image tags |
 | `delete --all\|--stopped [--force] [--json]` | Bulk container deletion after complete lock-set preflight; force permits disrupting attached commands |
 
-`open` and `recreate` also accept `--harness`, `--harness-arg`, `--env`, `--volume`, `--port`, `--docker-arg`, `--network`, `--on-exit`, and `--read-only`. `--continue` belongs only to `open`. `--profile` retains `-p`; port publishing uses `--port` without that short flag. Config env is recoverable from verified source references; invocation-only env requires explicit recreation after container loss.
+`create`, `open`, and `recreate` also accept `--harness`, `--harness-arg`, `--env`, `--volume`, `--port`, `--docker-arg`, `--network`, `--on-exit`, and `--read-only`. `--continue` and `--create` belong only to `open`. Plain `open` and `start` require an existing session. They can still recover its missing container under the recorded recovery conditions without `--create`. `open --create` never replaces an existing session and requires a folder for new creation; a missing exact session name is not a creation target. `--profile` retains `-p`; port publishing uses `--port` without that short flag. Config env is recoverable from verified source references; invocation-only env requires explicit recreation after container loss.
 
 `list --sort last-active` orders newest activity first, with name as the tie-breaker and unknown activity last. `--wide` adds the harness and last recorded action, and shows exact UTC activity/creation timestamps. Creation time comes from Docker, not session creation. Stopped and missing rows are dimmed on supported terminal output; running rows remain normal. `NO_COLOR`, `TERM=dumb`, and non-terminal output disable styling. `!` marks an error and `*` a pending transfer; their details remain undimmed below the table. `--json` retains structured records and follows the selected sorting. Last activity means recorded Devbox operations, not filesystem activity or only harness launches.
 

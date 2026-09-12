@@ -30,7 +30,7 @@ func fixture(t *testing.T) (*Engine, *dockertest.Daemon, Request) {
 	}
 	write(t, filepath.Join(home, "profiles", "test", "config.json"), `{"version":1,"harness":"pi"}`)
 	d := &dockertest.Daemon{}
-	return &Engine{Store: s, Docker: docker.Runtime{Runner: d}, Streams: docker.Streams{Out: new(bytes.Buffer), Err: new(bytes.Buffer)}, UID: 1000, GID: 1000}, d, Request{Workspace: workspace, Profile: "test"}
+	return &Engine{Store: s, Docker: docker.Runtime{Runner: d}, Streams: docker.Streams{Out: new(bytes.Buffer), Err: new(bytes.Buffer)}, UID: 1000, GID: 1000}, d, Request{Workspace: workspace, Profile: "test", Create: true}
 }
 func write(t *testing.T, path, data string) {
 	t.Helper()

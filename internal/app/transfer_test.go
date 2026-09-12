@@ -187,8 +187,11 @@ func TestTransferSlotsAndDryRun(t *testing.T) {
 func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Start(ctx, q.Workspace, q.Profile)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.Start(ctx, opened.Name, ""); err != nil {
 		t.Fatal(err)
 	}
 	rel := "harnesses/pi/stores/home/sessions/history.json"
@@ -290,7 +293,7 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	dest := t.TempDir()
-	destOpen, err := e.Open(ctx, Request{Workspace: dest, Profile: q.Profile})
+	destOpen, err := e.Open(ctx, Request{Workspace: dest, Profile: q.Profile, Create: true})
 	if err != nil {
 		t.Fatal(err)
 	}

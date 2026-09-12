@@ -25,11 +25,8 @@ func TestTransferChecksHarnessPolicyBeforeMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(e.Store.Home, "harnesses/pi/harness.json"), string(b))
-	opened, err := e.Start(ctx, q.Workspace, q.Profile)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err = e.Stop(ctx, opened.Name, "", false); err != nil {
 		t.Fatal(err)
 	}
 	before := count(d, "stop") + count(d, "create")
@@ -97,6 +94,9 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 	if _, err = e.Open(ctx, q); err == nil || !strings.Contains(err.Error(), "pending transfer") {
 		t.Fatal("source name became available during cleanup", err)
 	}
+	if _, err = e.Create(ctx, q); err == nil || !strings.Contains(err.Error(), "pending transfer") {
+		t.Fatal("create reused a reserved source during cleanup", err)
+	}
 	// The destination can also lose its container before cleanup finishes. Its
 	// committed record remains the recovery authority, not current config.
 	d.Forget(result.Destination)
@@ -154,8 +154,11 @@ func TestTransferRetriesPreparedButUncommittedDestination(t *testing.T) {
 func TestTransferCancellationRestoresSource(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	opened, err := e.Start(ctx, q.Workspace, q.Profile)
+	opened, err := e.Create(ctx, q)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.Start(ctx, opened.Name, ""); err != nil {
 		t.Fatal(err)
 	}
 	run, cancel := context.WithCancel(ctx)

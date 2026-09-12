@@ -189,7 +189,7 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 			}
 		case "profile create":
 			cmd.ValidArgsFunction = cobra.NoFileCompletions
-		case "project create", "project init", "project config":
+		case "create", "project create", "project init", "project config":
 			cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 				if len(args) == 0 {
 					return nil, cobra.ShellCompDirectiveFilterDirs

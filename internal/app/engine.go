@@ -36,6 +36,7 @@ type Request struct {
 	ExpectedName string
 	Overrides    config.Layer
 	ReadOnly     bool
+	Create       bool
 	Continue     bool
 	Args         []string
 	Host         config.Host
@@ -99,6 +100,52 @@ func (e *Engine) inspect(ctx context.Context, r store.Record) (docker.Container,
 	return c, exists, err
 }
 
+// Create prepares a new environment without attaching a harness. Preparation
+// requires a running container, but successful standalone creation leaves it stopped.
+func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
+	spec, err := e.Resolve(q)
+	if err != nil {
+		return Result{}, err
+	}
+	result := Result{Name: spec.Identity.Name}
+	lock, err := e.Store.Lock(ctx, result.Name)
+	if err != nil {
+		return result, err
+	}
+	defer lock.Close()
+	if _, err = lock.Load(); err == nil {
+		return result, commanderror.New("session_exists", "a durable session already exists; creation never replaces it", result.Name, nil,
+			commanderror.Next("Open the existing session", "open", result.Name),
+			commanderror.Next("Apply current creation settings", "recreate", result.Name))
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return result, err
+	}
+	if err = e.requireNew(ctx, lock); err != nil {
+		return result, err
+	}
+	record, c, err := e.create(ctx, lock, spec, nil, false)
+	if err != nil {
+		return result, err
+	}
+	if err = e.Docker.Stop(ctx, c, e.owner(record)); err != nil {
+		return result, commanderror.New("create_stop_failed", "session was created, but its prepared container could not be stopped", result.Name, err,
+			commanderror.Next("Stop the created container", "stop", result.Name))
+	}
+	return result, nil
+}
+
+func creationRequired(workspace, profile string, cause error) error {
+	create := []string{"create", workspace}
+	open := []string{"open", workspace, "--create"}
+	if profile != "" {
+		create = append(create, "--profile", profile)
+		open = append(open, "--profile", profile)
+	}
+	return commanderror.New("session_missing", "no durable session was found; creation must be explicit", workspace, cause,
+		commanderror.Next("Create a stopped environment", create...),
+		commanderror.Next("Create and open the environment", open...))
+}
+
 // Open keeps the operation lock through stopped-only synchronization, startup,
 // and lease creation. The long foreground command runs after releasing it.
 func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error) {
@@ -131,9 +178,12 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 	}
 	defer lock.Close()
 	record, err := lock.Load()
-	fresh := os.IsNotExist(err)
+	fresh := errors.Is(err, os.ErrNotExist)
 	if err != nil && !fresh {
 		return result, err
+	}
+	if fresh && !q.Create {
+		return result, creationRequired(spec.Identity.Workspace, spec.Identity.Profile, err)
 	}
 	if !fresh {
 		drift := environment.CompareInputs(record.Inputs, spec.Inputs)

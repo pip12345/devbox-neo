@@ -13,15 +13,19 @@ import (
 	"devbox/internal/docker"
 )
 
-func TestTypedSessionAbsenceStillAllowsFreshStart(t *testing.T) {
-	e, _, q := fixture(t)
+func TestTypedSessionAbsenceDoesNotCreateOnStart(t *testing.T) {
+	e, d, q := fixture(t)
 	_, err := e.Locate(context.Background(), q.Workspace, q.Profile)
 	var missing *commanderror.Error
 	if !errors.Is(err, os.ErrNotExist) || !errors.As(err, &missing) || missing.Code != "session_missing" {
 		t.Fatal(err)
 	}
-	if _, err := e.Start(context.Background(), q.Workspace, q.Profile); err != nil {
-		t.Fatal("typed absence prevented creation", err)
+	_, err = e.Start(context.Background(), q.Workspace, q.Profile)
+	if !errors.Is(err, os.ErrNotExist) || !errors.As(err, &missing) || missing.Code != "session_missing" || len(missing.Next) != 2 {
+		t.Fatal(err)
+	}
+	if len(d.History()) != 0 {
+		t.Fatal("missing session reached Docker")
 	}
 }
 

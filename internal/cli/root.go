@@ -41,9 +41,20 @@ func New() *cobra.Command {
 		}
 		return &app.Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(), TTY: tty}, TerminalEnv: app.TerminalEnv(os.LookupEnv), UID: os.Getuid(), GID: os.Getgid()}, nil
 	}
-	var resume bool
+	var createFlags creationFlags
+	create := &cobra.Command{Use: "create <folder>", Short: "Create a new environment and leave it stopped without launching its harness", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		e, err := engine(cmd)
+		if err != nil {
+			return err
+		}
+		_, err = e.Create(cmd.Context(), createFlags.Request(cmd, args[0], profile))
+		return err
+	}}
+	createFlags.Bind(create)
+	root.AddCommand(create)
+	var resume, createIfMissing bool
 	var openFlags creationFlags
-	open := &cobra.Command{Use: "open <target> [-- harness-args...]", Short: "Open a configured target and launch its harness", Args: cobra.MinimumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	open := &cobra.Command{Use: "open <target> [-- harness-args...]", Short: "Open an existing environment and launch its harness; use --create to create if missing", Args: cobra.MinimumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 && cmd.ArgsLenAtDash() != 1 {
 			return fmt.Errorf("use -- before one-off harness arguments")
 		}
@@ -52,16 +63,18 @@ func New() *cobra.Command {
 			return err
 		}
 		q := openFlags.Request(cmd, args[0], profile)
+		q.Create = createIfMissing
 		q.Continue = resume
 		q.Args = args[1:]
 		_, err = e.Open(cmd.Context(), q)
 		return err
 	}}
 	openFlags.Bind(open)
+	open.Flags().BoolVar(&createIfMissing, "create", false, "Create the environment if no session exists")
 	open.Flags().BoolVarP(&resume, "continue", "c", false, "Continue the recorded harness session")
 	root.AddCommand(open)
 	root.AddCommand(&cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { cmd.Println(Version); return nil }})
-	root.AddCommand(&cobra.Command{Use: "start <target>", Short: "Start using recorded settings, or create a brand-new configured target", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	root.AddCommand(&cobra.Command{Use: "start <target>", Short: "Start an existing session using recorded settings", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
 			return err

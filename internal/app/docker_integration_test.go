@@ -118,9 +118,12 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 			}
 		}
 	})
+	if _, err := e.Create(ctx, q); err != nil {
+		t.Fatalf("create: %v\n%s", err, output.String())
+	}
 	result, err := e.Open(ctx, q)
 	if err != nil {
-		t.Fatalf("create/open: %v\n%s", err, output.String())
+		t.Fatalf("open: %v\n%s", err, output.String())
 	}
 	first := record(t, e, result.Name)
 	output.Reset()

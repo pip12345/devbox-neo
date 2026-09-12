@@ -42,7 +42,7 @@ func containerCommands(factory engineFactory, profile *string) []*cobra.Command 
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(views)
 		}
 		if len(views) == 0 {
-			cmd.Println("No managed containers. Configure a profile/project, then open its folder.")
+			cmd.Println("No managed containers. Configure a profile/project, then use create <folder> or open <folder> --create.")
 			return nil
 		}
 		return printContainerList(cmd.OutOrStdout(), views, wide, time.Now())

@@ -68,27 +68,10 @@ func (e *Engine) Locate(ctx context.Context, target, profile string) (store.Reco
 }
 func (e *Engine) Start(ctx context.Context, target, profile string) (Result, error) {
 	r, err := e.Locate(ctx, target, profile)
-	if errors.Is(err, os.ErrNotExist) {
-		s, err := e.Resolve(Request{Workspace: target, Profile: profile})
-		if err != nil {
-			return Result{}, err
-		}
-		l, err := e.Store.Lock(ctx, s.Identity.Name)
-		if err != nil {
-			return Result{}, err
-		}
-		defer l.Close()
-		if _, err = l.Load(); !os.IsNotExist(err) {
-			if err == nil {
-				return Result{}, fmt.Errorf("session was created concurrently.\nRetry the start command.")
-			}
-			return Result{}, err
-		}
-		if err = e.requireNew(ctx, l); err != nil {
-			return Result{}, err
-		}
-		_, _, err = e.create(ctx, l, s, nil, false)
-		return Result{Name: s.Identity.Name}, err
+	var missing *commanderror.Error
+	if errors.As(err, &missing) && missing.Code == "session_missing" &&
+		!(strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\")) {
+		return Result{}, creationRequired(target, profile, err)
 	}
 	if err != nil {
 		return Result{}, err

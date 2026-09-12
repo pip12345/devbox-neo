@@ -110,6 +110,8 @@ A valid changed spec produces drift diagnostics, not permission to recreate. Und
 
 Recorded recovery is a distinct transition. It verifies the stored image and bind inputs, reads the exact recorded definition source for env, checks its installation-keyed digest, and verifies the setup file before creating anything. A new override cannot replace a recorded built-in source. Literal env values are not persisted in the record.
 
+New-session creation is explicit. `Engine.Create` resolves desired inputs, holds the session operation lock, rejects any existing record or uncommitted state, and uses the shared creation pipeline. It stops the prepared container after commitment without running the every-open entrypoint or attaching a harness. If stopping fails, the committed session remains available and the error points to `stop`. `Open` permits a missing record only with `Request.Create`; `Start` only locates existing sessions and never resolves desired inputs to create a new one. Both still recover a missing container for retained session state under the same recorded recovery rules.
+
 Setup input changes are creation changes because setup is per-container. Entrypoint changes are runtime inputs. The creation record is committed only after startup, declared preparation, setup, and binary availability checks succeed.
 
 ## Locks and attached commands

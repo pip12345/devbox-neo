@@ -42,6 +42,10 @@ journals or session directories by hand.
 Do not modify /devbox: it is Devbox-owned runtime data. Do not add a project
 Dockerfile to make an ad-hoc tool installation persistent without user approval.
 Devbox does not enforce network egress restrictions or provide an offline mode.
+On the host, devbox-neo create <folder> prepares a new environment and leaves it
+stopped without launching a harness. Plain open/start require an existing session;
+open <folder> --create explicitly creates if missing and then opens. They still
+recover a missing container for retained session state without --create.
 On the host, devbox-neo status --all shows which existing containers need recreation
 or rebuilding from changed local inputs; it does not check upstream releases.
 Ordinary recreate builds changed image inputs automatically. Open prints creation

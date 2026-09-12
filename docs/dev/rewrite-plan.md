@@ -136,12 +136,12 @@ Valid values:
 The CLI uses the same model:
 
 ```text
-devbox open <target> --network default
-devbox open <target> --network host
-devbox open <target> --network <existing-network>
+devbox create <folder> --network default
+devbox create <folder> --network host
+devbox create <folder> --network <existing-network>
 ```
 
-`--network` overrides the resolved profile/project value for that open. It is a creation-time option; changing it requires container recreation. `host` is incompatible with published ports. Named networks must exist before any build or container mutation. Devbox never creates or deletes the selected network.
+`--network` overrides the resolved profile/project value for creation. It is also accepted by `open` and `recreate`. It is a creation-time option; changing it requires container recreation. `host` is incompatible with published ports. Named networks must exist before any build or container mutation. Devbox never creates or deletes the selected network.
 
 Replace the current `host_network` and `extra_networks` configuration fields with this scalar `network` field. As a scalar, a higher-priority layer replaces the lower-priority value instead of appending.
 
@@ -547,8 +547,8 @@ When a profile is needed because no project configuration applies, but profiles 
 ```text
 No default profile is configured.
 
-Open with an existing profile:
-  devbox open . --profile python
+Create if missing and open with an existing profile:
+  devbox open . --create --profile python
 
 Set a default:
   devbox profile set python
@@ -558,7 +558,7 @@ The error also lists available profiles.
 
 ### Success hints
 
-Successful create commands print a short next-step block.
+Successful profile/project create commands print a short next-step block.
 
 After profile creation:
 
@@ -579,7 +579,7 @@ Created /work/api/.devbox/config.json.
 Next:
   devbox project init /work/api
   devbox project config /work/api
-  devbox open /work/api
+  devbox open /work/api --create
 ```
 
 `init` is described as the guided path for harness selection and optional artifacts, not as hidden work performed by `create`.
@@ -591,7 +591,7 @@ Provide exact next commands for these common states:
 | State | Guidance |
 |---|---|
 | `profile list` is empty | `devbox profile create <name>` |
-| container list is empty, no sessions | configure a profile/project, then `devbox open <folder>` |
+| container list is empty, no sessions | configure a profile/project, then `devbox create <folder>` or `devbox open <folder> --create` |
 | container list is empty, sessions exist | `devbox session list`, then `devbox start <target>` |
 | selected profile is missing | exact `profile create` command plus available profiles |
 | selected harness is missing | owning `profile config`, `project config`, or `init` command |
@@ -643,7 +643,7 @@ Human rendering prints copyable shell commands. JSON rendering preserves argv ar
 
 ## Create, Init, and Harness Selection
 
-`create` establishes the configuration owner. `init` performs guided initialization.
+`profile create` / `project create` establish the configuration owner. Their `init` commands perform guided initialization. Root `create <folder>` instead creates the configured runtime environment.
 
 ### Profiles
 
@@ -993,6 +993,8 @@ Existing containers are usable snapshots. Valid creation-time configuration chan
 
 ### Default open behavior
 
+Plain `open` requires an existing durable session. `open --create` explicitly permits new-session creation if missing; for an existing session it behaves like plain `open`, never replacing it. Missing exact session names cannot be used to create a new session. Both forms keep recorded missing-container recovery.
+
 When an owned container exists, the root flow:
 
 1. resolves current desired configuration;
@@ -1041,7 +1043,7 @@ Immutable creation inputs remain pending:
 
 For an existing container, `start`, `shell`, and `exec` do not load desired global/profile/project configuration or current harness definitions. They use the recorded contract and existing managed files. Exact name/profile-slot targeting remains available if folder targeting cannot identify a unique recorded session without desired config.
 
-If no container exists but a session does, `start` uses the strict recorded recovery conditions. Only a brand-new target with no durable session is created from current resolved configuration. `shell` and `exec` require an existing container and never turn into creation commands.
+If no container exists but a session does, `start` uses the strict recorded recovery conditions. A target with no durable session fails with guidance to `create` or `open --create`; `start` never creates a new session. `shell` and `exec` require an existing container and never turn into creation commands.
 
 `status` reports live container facts even when desired configuration cannot be resolved. It reports either pending drift or an explicit desired-config diagnostic; invalid desired config does not imply container failure. `status --all [--profile NAME] [--json]` applies this comparison across existing installation-managed containers using batched inventory, with separate state and change columns. It excludes retained sessions without containers and keeps invalid records, ownership/instance mismatches, and pending transfers visibly unclassified. Both container and image drift recommend ordinary recreation. It detects changed local inputs, not newer upstream releases.
 
@@ -1097,7 +1099,8 @@ The lease subsystem belongs to the session store. Application workflows call it;
 
 ### Start and stop
 
-- `start <target>` means ensure running: start an existing container without loading desired config; recover a missing container only under the recorded recovery conditions; create from current config only when no durable session exists. Run recorded compatible preparation and leave it running without launching a harness or creating an attached-command lease.
+- `create <folder>` creates a new session from current resolved configuration under the external operation lock. Refuse an existing session even if its container is missing; reject corrupt records, pending transfers, and uncommitted state. Use normal image building, managed-config synchronization, startup, preparation, setup, and binary checks, then stop the committed container without running entrypoint or launching a harness. A final-stop failure retains the committed session and points to `stop`.
+- `start <target>` means ensure an existing session is running: start its container without loading desired config, or recover a missing container only under the recorded recovery conditions. Never create a new session. Run recorded compatible preparation and leave it running without launching a harness or creating an attached-command lease.
 - existing-container `start` does not compute desired drift or synchronize new managed config. Invalid desired config and unset host variables unrelated to starting the recorded container cannot block it.
 - `start` replaces the old `open --detach` behavior.
 - `stop` rejects active leases unless a force option explicitly permits disruption.
@@ -1128,15 +1131,18 @@ The `open` command has no recreate flags and never performs destructive reconcil
 
 ```mermaid
 flowchart TD
-    A[Resolve target] --> B[Acquire lock]
-    B --> C[Load session]
-    C --> D[Resolve EnvironmentSpec]
-    D --> E[Compute ChangePlan]
+    A[Resolve target and desired config] --> B[Acquire lock]
+    B --> C{Session exists?}
+    C -->|No| D{--create?}
+    D -->|No| X[Fail with creation guidance]
+    D -->|Yes| Y[Create and prepare new session]
+    C -->|Yes| E[Compute ChangePlan]
     E --> F{Container exists?}
-    F -->|No| G[Recover recorded or create new]
+    F -->|No| G[Recover recorded container]
     F -->|Yes| H[Use recorded contract]
     H --> I[Report pending drift]
     G --> J{Container running?}
+    Y --> K
     I --> J
     J -->|No| S[Sync managed config]
     J -->|Yes| T[Defer managed config writes]
@@ -1153,7 +1159,7 @@ Rules:
 - resolution happens before Docker mutation;
 - normal open validates participating desired config before mutation; valid drift warns, invalid config fails;
 - a missing container with an existing durable session follows the strict recorded recovery conditions; unavailable recovery inputs require explicit `recreate`, never automatic creation from current config;
-- a brand-new configured target with no durable session is created from current resolved configuration;
+- a brand-new configured target with no durable session requires explicit `create` or `open --create`; plain `open` and `start` do not create it;
 - a usable existing container opens from its recorded contract even when creation-time config drift exists;
 - drift produces a concise warning and `devbox recreate <target>` hint, never a blocking prompt or error;
 - the `open` command never performs destructive recreation;
@@ -1210,7 +1216,8 @@ The CLI is resource-first. Global, profile, and project configuration stays unde
 ### Runtime and session commands
 
 ```text
-devbox open <target> [-c] [-p NAME]
+devbox create <folder> [-p NAME]
+devbox open <target> [--create] [-c] [-p NAME]
 devbox list [--sort name|last-active] [--wide] [--json]
 devbox status <target> [--json]
 devbox status --all [--profile NAME] [--json]
@@ -1243,7 +1250,7 @@ devbox session prune --orphaned [--older-than <duration>] [--dry-run]
 
 The `open` command accepts open options such as `--network <default|host|existing-network>`. Because the target follows an explicit command, workspace names do not collide with top-level command names.
 
-The `open` command has no `--detach`, `--recreate-container`, `--recreate-image`, `--init`, or `--run`. `start` owns detached preparation, `recreate` owns replacement, one-time preparation belongs in `setup.sh`, every-open preparation belongs in `entrypoint.sh`, and ad hoc commands use `devbox exec`.
+The `open` command has no `--detach`, `--recreate-container`, `--recreate-image`, `--init`, or `--run`. `create` owns new stopped environments, `start` owns detached access to existing sessions, `recreate` owns replacement, one-time preparation belongs in `setup.sh`, every-open preparation belongs in `entrypoint.sh`, and ad hoc commands use `devbox exec`.
 
 Network command semantics:
 
@@ -1473,6 +1480,7 @@ Build the first complete runtime path before dashboards or exhaustive package im
 - `json-keys` set/update/delete behavior, undeclared-key preservation, invalid JSON conflicts, and declaration validation;
 - session record invariants and complete non-secret recovery settings/source references;
 - recorded recovery with matching inputs, missing image/bind/network/preparation inputs, unset or changed secret references, and unrecoverable literal secrets; failures do not fall back to current config or persist secrets;
+- explicit `create` leaves a prepared stopped container without harness launch; plain open/start reject missing sessions; `open --create` creates only when absent; existing-session recovery requires no create flag;
 - invalid participating config fails normal open while existing-container `start`, `shell`, and `exec` do not load it;
 - lease staleness and PID reuse defense;
 - target resolution;
@@ -1575,7 +1583,7 @@ The rewrite is complete when:
 - missing-container recovery uses concrete recorded settings and available verified inputs, never saved secrets or an implicit current-config fallback;
 - Docker destructive operations require lock ownership and installation labels;
 - a fresh home contains no seeded profiles/default selection and guides the first `open` to `profile create` or `project create`;
-- create commands point to init, profile copying writes `inherit_profile: false` without duplicate list inheritance, init owns harness selection and optional artifact seeding, and repeated init never overwrites existing files;
+- profile/project create commands point to init, profile copying writes `inherit_profile: false` without duplicate list inheritance, init owns harness selection and optional artifact seeding, and repeated init never overwrites existing files;
 - scoped config `--show` explains effective values, exclusions, and provenance; valid drift diagnostics are non-blocking, invalid participating config fails normal open, and existing-container start/shell/exec remain config-independent;
 - final image tags are session-scoped but image ownership is installation-scoped, so shared image IDs are valid and targeted no-cache rebuilds never create digest-only drift for another session;
 - Pi and OpenCode pass the same end-to-end create/open/reopen/drift/recreate path before dashboards are implemented;

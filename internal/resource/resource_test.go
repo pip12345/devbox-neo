@@ -73,7 +73,7 @@ func TestCreateAndInitAreSeparateAndIdempotent(t *testing.T) {
 	if len(result.Created) != 2 {
 		t.Fatal(result)
 	}
-	if got := strings.Join(result.Next[1].Command, " "); got != "devbox-neo open <folder> --profile basic" {
+	if got := strings.Join(result.Next[1].Command, " "); got != "devbox-neo open <folder> --create --profile basic" {
 		t.Fatalf("wrong profile open guidance: %s", got)
 	}
 	p := filepath.Join(o.Root, "pi/settings.json")
@@ -244,7 +244,7 @@ func TestProjectInitInheritanceUsesResolver(t *testing.T) {
 			if result.Harness != want {
 				t.Fatal(result)
 			}
-			if got := strings.Join(result.Next[0].Command, " "); got != "devbox-neo open "+project.Workspace {
+			if got := strings.Join(result.Next[0].Command, " "); got != "devbox-neo open "+project.Workspace+" --create" {
 				t.Fatalf("wrong project open guidance: %s", got)
 			}
 			_, layer, err := readLayer(project)
