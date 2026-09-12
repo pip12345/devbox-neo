@@ -207,15 +207,15 @@ func TestHumanErrorsUseShortHeaderAndLabeledActions(t *testing.T) {
 	cmd.SetOut(&out)
 	cmd.SetErr(&stderr)
 	failure := commanderror.New("session_missing", "No environment exists (profile: basic).", "/work/project", errors.New("private cause"),
-		commanderror.Next("Create and open", "open", "/work/project", "--create", "--profile", "basic"),
-		commanderror.Next("Or create only", "create", "/work/project", "--profile", "basic"))
+		commanderror.Next("Create", "create", "/work/project"),
+		commanderror.Next("Or create and open", "open", "/work/project", "--create"))
 	if code := RenderError(cmd, failure); code != 1 {
 		t.Fatal(code)
 	}
 	want := "Error: No environment exists (profile: basic).\n" +
 		"Target: /work/project\n\n" +
-		"Create and open:\n  devbox-neo --home '/home/custom home' open /work/project --create --profile basic\n\n" +
-		"Or create only:\n  devbox-neo --home '/home/custom home' create /work/project --profile basic\n"
+		"Create:\n  devbox-neo --home '/home/custom home' create /work/project\n\n" +
+		"Or create and open:\n  devbox-neo --home '/home/custom home' open /work/project --create\n"
 	if stderr.String() != want || out.Len() != 0 {
 		t.Fatalf("got %q; want %q", stderr.String(), want)
 	}

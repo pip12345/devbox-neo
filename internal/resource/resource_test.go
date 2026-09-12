@@ -73,8 +73,8 @@ func TestCreateAndInitAreSeparateAndIdempotent(t *testing.T) {
 	if len(result.Created) != 2 {
 		t.Fatal(result)
 	}
-	if got := strings.Join(result.Next[1].Command, " "); got != "devbox-neo open <folder> --create --profile basic" {
-		t.Fatalf("wrong profile open guidance: %s", got)
+	if len(result.Next) != 3 || strings.Join(result.Next[0].Command, " ") != "devbox-neo create <folder>" || strings.Join(result.Next[1].Command, " ") != "devbox-neo open <folder> --create" || result.Next[2].Reason != "Use this profile as default (optional)" {
+		t.Fatalf("wrong profile creation guidance: %v", result.Next)
 	}
 	p := filepath.Join(o.Root, "pi/settings.json")
 	put(t, p, "user-owned settings")
@@ -244,8 +244,8 @@ func TestProjectInitInheritanceUsesResolver(t *testing.T) {
 			if result.Harness != want {
 				t.Fatal(result)
 			}
-			if got := strings.Join(result.Next[0].Command, " "); got != "devbox-neo open "+project.Workspace+" --create" {
-				t.Fatalf("wrong project open guidance: %s", got)
+			if len(result.Next) != 2 || strings.Join(result.Next[0].Command, " ") != "devbox-neo create "+project.Workspace || strings.Join(result.Next[1].Command, " ") != "devbox-neo open "+project.Workspace+" --create" {
+				t.Fatalf("wrong project creation guidance: %v", result.Next)
 			}
 			_, layer, err := readLayer(project)
 			if err != nil || layer.Harness != nil {

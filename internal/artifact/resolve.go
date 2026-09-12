@@ -139,7 +139,7 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 	if len(r.Layers) == 0 {
 		return r, commanderror.New("configuration_missing", "No profile or project configuration selected.", workspace, nil,
 			commanderror.Next("Create a profile", "profile", "create", "<name>"),
-			commanderror.Next("Then select it as default", "profile", "set", "<name>"),
+			commanderror.Next("Use as default (optional)", "profile", "set", "<name>"),
 			commanderror.Next("Or configure this project", "project", "create", workspace))
 	}
 	r.Trace.Layers = append(r.Trace.Layers, Layer{Name: "built-in default"}, Layer{Name: "global", Path: filepath.Join(home, "config.json")})

@@ -187,10 +187,16 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 			return result, err
 		}
 	}
+	workspace := o.Workspace
 	if o.Kind == "profile" {
-		result.Next = []commanderror.Step{o.step("set", "Use this profile by default"), {Command: []string{"devbox-neo", "open", "<folder>", "--create", "--profile", o.Name}, Reason: "Create and open a workspace"}}
-	} else {
-		result.Next = []commanderror.Step{{Command: []string{"devbox-neo", "open", o.Workspace, "--create"}, Reason: "Create and open"}}
+		workspace = "<folder>"
+	}
+	result.Next = []commanderror.Step{
+		commanderror.Next("Create", "create", workspace),
+		commanderror.Next("Or create and open", "open", workspace, "--create"),
+	}
+	if o.Kind == "profile" {
+		result.Next = append(result.Next, o.step("set", "Use this profile as default (optional)"))
 	}
 	return result, nil
 }

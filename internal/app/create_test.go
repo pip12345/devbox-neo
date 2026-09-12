@@ -28,11 +28,11 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 			if !errors.Is(err, os.ErrNotExist) || !errors.As(err, &missing) || missing.Code != "session_missing" {
 				t.Fatal(err)
 			}
-			want := []string{"devbox-neo", "create", q.Workspace}
-			if q.Profile != "" {
-				want = append(want, "--profile", q.Profile)
+			want := []commanderror.Step{
+				commanderror.Next("Create", "create", q.Workspace),
+				commanderror.Next("Or create and open", "open", q.Workspace, "--create"),
 			}
-			if len(missing.Next) != 2 || !reflect.DeepEqual(missing.Next[1].Command, want) {
+			if !reflect.DeepEqual(missing.Next, want) {
 				t.Fatal(missing.Next)
 			}
 			entries, err := os.ReadDir(filepath.Join(e.Store.Home, "sessions"))

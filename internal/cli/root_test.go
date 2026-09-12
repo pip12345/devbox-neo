@@ -3,8 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -70,29 +68,35 @@ func TestCreateCommandOwnsCreationButNotLaunchFlags(t *testing.T) {
 
 func TestPlainOpenAndStartRejectMissingSessionWithScopedGuidance(t *testing.T) {
 	for _, action := range []string{"open", "start"} {
-		t.Run(action, func(t *testing.T) {
-			home, workspace := t.TempDir(), t.TempDir()
-			profileDir := filepath.Join(home, "profiles/test")
-			if err := os.MkdirAll(profileDir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(profileDir, "config.json"), []byte(`{"version":1,"harness":"pi"}`), 0600); err != nil {
-				t.Fatal(err)
-			}
-			cmd := New()
-			out := new(bytes.Buffer)
-			cmd.SetOut(out)
-			cmd.SetErr(out)
-			cmd.SetArgs([]string{"--home", home, action, workspace, "--profile", "test"})
-			if code := Execute(context.Background(), cmd); code != 1 {
-				t.Fatal(code)
-			}
-			for _, want := range []string{"Error: No environment exists (profile: test).", "devbox-neo --home " + home + " create " + workspace + " --profile test", "open " + workspace + " --create --profile test"} {
-				if !strings.Contains(out.String(), want) {
-					t.Fatal("missing guidance", want, out.String())
+		for _, selection := range []string{"default", "explicit"} {
+			t.Run(action+"/"+selection, func(t *testing.T) {
+				home, workspace := t.TempDir(), t.TempDir()
+				completionFile(t, home, "profiles/test/config.json", `{"version":1,"harness":"pi"}`)
+				completionFile(t, home, "config.json", `{"version":1,"default_profile":"test"}`)
+				cmd := New()
+				out := new(bytes.Buffer)
+				cmd.SetOut(out)
+				cmd.SetErr(out)
+				args := []string{"--home", home, action, workspace}
+				if selection == "explicit" {
+					args = append(args, "--profile", "test")
 				}
-			}
-		})
+				cmd.SetArgs(args)
+				if code := Execute(context.Background(), cmd); code != 1 {
+					t.Fatal(code)
+				}
+				message := "No environment exists."
+				if action == "open" || selection == "explicit" {
+					message = "No environment exists (profile: test)."
+				}
+				want := "Error: " + message + "\nTarget: " + workspace + "\n\n" +
+					"Create:\n  devbox-neo --home " + home + " create " + workspace + "\n\n" +
+					"Or create and open:\n  devbox-neo --home " + home + " open " + workspace + " --create\n"
+				if out.String() != want {
+					t.Fatalf("got %q; want %q", out.String(), want)
+				}
+			})
+		}
 	}
 }
 

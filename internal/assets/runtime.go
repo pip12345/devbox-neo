@@ -59,6 +59,8 @@ A later --tui-mode regular in harness_args or one-off harness arguments override
 Existing recorded environments require recreation to adopt changed harness defaults.
 Host CLI failures show short messages, target context, and labeled next commands.
 Suggestions do not run automatically; Then marks a sequence and Or an alternative.
+Generic creation hints show create first and open --create as a shortcut, without
+profile flags. They use normal configuration selection, not a replay of prior flags.
 Existing --json commands retain error codes, operation names, and structured failures.
 
 Attached shell, harness, and exec commands receive the invoking terminal's TERM,

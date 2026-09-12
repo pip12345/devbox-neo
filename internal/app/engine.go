@@ -135,19 +135,13 @@ func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
 }
 
 func creationRequired(workspace, profile string, cause error) error {
-	create := []string{"create", workspace}
-	open := []string{"open", workspace, "--create"}
-	if profile != "" {
-		create = append(create, "--profile", profile)
-		open = append(open, "--profile", profile)
-	}
 	message := "No environment exists."
 	if profile != "" {
 		message = fmt.Sprintf("No environment exists (profile: %s).", profile)
 	}
 	return commanderror.New("session_missing", message, workspace, cause,
-		commanderror.Next("Create and open", open...),
-		commanderror.Next("Or create only", create...))
+		commanderror.Next("Create", "create", workspace),
+		commanderror.Next("Or create and open", "open", workspace, "--create"))
 }
 
 // Open keeps the operation lock through stopped-only synchronization, startup,
