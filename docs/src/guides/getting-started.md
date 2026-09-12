@@ -53,7 +53,7 @@ bin/devbox-neo create /path/to/workspace --profile basic
 bin/devbox-neo open /path/to/workspace --profile basic
 ```
 
-`create` builds the image and runs preparation/setup, then leaves the container stopped without launching Pi. It refuses an existing session. `open` starts the existing environment and launches its harness. To create if missing and open in one command, use `open /path/to/workspace --profile basic --create`. Plain `open` and `start` never create a new session. If none exists, the error suggests `create` first, with `open --create` as a shortcut. These generic hints use normal configuration selection, without profile flags. The default `on_exit` policy stops the container after the last attached Devbox command exits.
+`create` builds the image and runs preparation/setup, then leaves the container stopped without launching Pi. It refuses an existing session. `open` starts the existing environment and launches its harness. Plain `open` and `start` never create a new session. If none exists, the error suggests `create` with the folder you entered. This generic hint uses normal configuration selection, without profile flags. The default `on_exit` policy stops the container after the last attached Devbox command exits.
 
 Find recently used containers with `bin/devbox-neo list --sort last-active`. The table shows state, profile, last recorded Devbox activity, and folder. Stopped and missing rows are subdued so running containers stand out; error and pending-transfer details remain readable. Add `--wide` for the harness, exact activity/creation times, and the last action, or `--json` for scripts.
 

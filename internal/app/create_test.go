@@ -30,7 +30,6 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 			}
 			want := []commanderror.Step{
 				commanderror.Next("Create", "create", q.Workspace),
-				commanderror.Next("Or create and open", "open", q.Workspace, "--create"),
 			}
 			if !reflect.DeepEqual(missing.Next, want) {
 				t.Fatal(missing.Next)

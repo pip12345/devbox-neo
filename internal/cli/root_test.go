@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -67,35 +69,56 @@ func TestCreateCommandOwnsCreationButNotLaunchFlags(t *testing.T) {
 }
 
 func TestPlainOpenAndStartRejectMissingSessionWithScopedGuidance(t *testing.T) {
+	base := t.TempDir()
+	current := filepath.Join(base, "current")
+	other := filepath.Join(base, "other folder")
+	for _, dir := range []string{current, other} {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chdir(current); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Error(err)
+		}
+	})
 	for _, action := range []string{"open", "start"} {
 		for _, selection := range []string{"default", "explicit"} {
-			t.Run(action+"/"+selection, func(t *testing.T) {
-				home, workspace := t.TempDir(), t.TempDir()
-				completionFile(t, home, "profiles/test/config.json", `{"version":1,"harness":"pi"}`)
-				completionFile(t, home, "config.json", `{"version":1,"default_profile":"test"}`)
-				cmd := New()
-				out := new(bytes.Buffer)
-				cmd.SetOut(out)
-				cmd.SetErr(out)
-				args := []string{"--home", home, action, workspace}
-				if selection == "explicit" {
-					args = append(args, "--profile", "test")
-				}
-				cmd.SetArgs(args)
-				if code := Execute(context.Background(), cmd); code != 1 {
-					t.Fatal(code)
-				}
-				message := "No environment exists."
-				if action == "open" || selection == "explicit" {
-					message = "No environment exists (profile: test)."
-				}
-				want := "Error: " + message + "\nTarget: " + workspace + "\n\n" +
-					"Create:\n  devbox-neo --home " + home + " create " + workspace + "\n\n" +
-					"Or create and open:\n  devbox-neo --home " + home + " open " + workspace + " --create\n"
-				if out.String() != want {
-					t.Fatalf("got %q; want %q", out.String(), want)
-				}
-			})
+			for _, workspace := range []string{".", "../other folder", other} {
+				t.Run(action+"/"+selection+"/"+workspace, func(t *testing.T) {
+					home := t.TempDir()
+					completionFile(t, home, "profiles/test/config.json", `{"version":1,"harness":"pi"}`)
+					completionFile(t, home, "config.json", `{"version":1,"default_profile":"test"}`)
+					cmd := New()
+					out := new(bytes.Buffer)
+					cmd.SetOut(out)
+					cmd.SetErr(out)
+					args := []string{"--home", home, action, workspace}
+					if selection == "explicit" {
+						args = append(args, "--profile", "test")
+					}
+					cmd.SetArgs(args)
+					if code := Execute(context.Background(), cmd); code != 1 {
+						t.Fatal(code)
+					}
+					message := "No environment exists."
+					if action == "open" || selection == "explicit" {
+						message = "No environment exists (profile: test)."
+					}
+					want := "Error: " + message + "\nTarget: " + workspace + "\n\n" +
+						"Create:\n  devbox-neo --home " + home + " create " + shellQuote(workspace) + "\n"
+					if out.String() != want {
+						t.Fatalf("got %q; want %q", out.String(), want)
+					}
+				})
+			}
 		}
 	}
 }

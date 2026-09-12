@@ -42,6 +42,41 @@ func get(t *testing.T, p string) []byte {
 	}
 	return b
 }
+func TestProjectHintsKeepEnteredFolder(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered, err := filepath.Rel(cwd, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := s.Project(entered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.Name != entered || o.Workspace != workspace || o.Root != filepath.Join(workspace, ".devbox") {
+		t.Fatal("hint spelling changed filesystem identity", o)
+	}
+	created, err := s.Create(ctx, o, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(created.Next[0].Command, " "); got != "devbox-neo project init "+entered {
+		t.Fatal(got)
+	}
+	initialized, err := s.Init(ctx, o, InitOptions{Harness: "pi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(initialized.Next) != 1 || strings.Join(initialized.Next[0].Command, " ") != "devbox-neo create "+entered {
+		t.Fatal(initialized.Next)
+	}
+}
+
 func TestCreateAndInitAreSeparateAndIdempotent(t *testing.T) {
 	s := fixture(t)
 	ctx := context.Background()
@@ -73,7 +108,7 @@ func TestCreateAndInitAreSeparateAndIdempotent(t *testing.T) {
 	if len(result.Created) != 2 {
 		t.Fatal(result)
 	}
-	if len(result.Next) != 3 || strings.Join(result.Next[0].Command, " ") != "devbox-neo create <folder>" || strings.Join(result.Next[1].Command, " ") != "devbox-neo open <folder> --create" || result.Next[2].Reason != "Use this profile as default (optional)" {
+	if len(result.Next) != 2 || strings.Join(result.Next[0].Command, " ") != "devbox-neo create <folder>" || result.Next[1].Reason != "Use this profile as default (optional)" {
 		t.Fatalf("wrong profile creation guidance: %v", result.Next)
 	}
 	p := filepath.Join(o.Root, "pi/settings.json")
@@ -244,7 +279,7 @@ func TestProjectInitInheritanceUsesResolver(t *testing.T) {
 			if result.Harness != want {
 				t.Fatal(result)
 			}
-			if len(result.Next) != 2 || strings.Join(result.Next[0].Command, " ") != "devbox-neo create "+project.Workspace || strings.Join(result.Next[1].Command, " ") != "devbox-neo open "+project.Workspace+" --create" {
+			if len(result.Next) != 1 || strings.Join(result.Next[0].Command, " ") != "devbox-neo create "+project.Workspace {
 				t.Fatalf("wrong project creation guidance: %v", result.Next)
 			}
 			_, layer, err := readLayer(project)

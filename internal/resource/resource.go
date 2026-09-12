@@ -19,6 +19,9 @@ import (
 )
 
 type Service struct{ Home string }
+
+// For projects, Name retains the entered folder for command hints; Root and
+// Workspace remain canonical paths for filesystem operations.
 type Owner struct{ Kind, Name, Root, Workspace string }
 type Result struct {
 	Path     string              `json:"path"`
@@ -58,7 +61,7 @@ func (s Service) Project(folder string) (Owner, error) {
 		return Owner{}, fmt.Errorf("project folder must be a directory")
 	}
 	root, err := fsutil.Path(workspace, ".devbox")
-	return Owner{Kind: "project", Name: workspace, Root: root, Workspace: workspace}, err
+	return Owner{Kind: "project", Name: folder, Root: root, Workspace: workspace}, err
 }
 func (s Service) lock(ctx context.Context, root string) (*os.File, error) {
 	dir, err := fsutil.Dir(s.Home, "state/locks/config", 0700)

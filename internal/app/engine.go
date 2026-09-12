@@ -140,8 +140,7 @@ func creationRequired(workspace, profile string, cause error) error {
 		message = fmt.Sprintf("No environment exists (profile: %s).", profile)
 	}
 	return commanderror.New("session_missing", message, workspace, cause,
-		commanderror.Next("Create", "create", workspace),
-		commanderror.Next("Or create and open", "open", workspace, "--create"))
+		commanderror.Next("Create", "create", workspace))
 }
 
 // Open keeps the operation lock through stopped-only synchronization, startup,
@@ -181,7 +180,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 		return result, err
 	}
 	if fresh && !q.Create {
-		return result, creationRequired(spec.Identity.Workspace, spec.Identity.Profile, err)
+		return result, creationRequired(q.Workspace, spec.Identity.Profile, err)
 	}
 	if !fresh {
 		drift := environment.CompareInputs(record.Inputs, spec.Inputs)

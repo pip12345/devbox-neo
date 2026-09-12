@@ -21,7 +21,7 @@ func TestTypedSessionAbsenceDoesNotCreateOnStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = e.Start(context.Background(), q.Workspace, q.Profile)
-	if !errors.Is(err, os.ErrNotExist) || !errors.As(err, &missing) || missing.Code != "session_missing" || len(missing.Next) != 2 {
+	if !errors.Is(err, os.ErrNotExist) || !errors.As(err, &missing) || missing.Code != "session_missing" || len(missing.Next) != 1 {
 		t.Fatal(err)
 	}
 	if len(d.History()) != 0 {
