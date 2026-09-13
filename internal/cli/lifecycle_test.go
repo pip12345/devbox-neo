@@ -44,7 +44,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 			return engine, nil
 		}
 		root.AddCommand(containerCommands(factory, &profile)...)
-		root.AddCommand(sessionCommands(factory, &profile))
+		root.AddCommand(sessionCommands(factory, &profile)...)
 		var out bytes.Buffer
 		root.SetOut(&out)
 		root.SetErr(&out)
@@ -52,25 +52,25 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		err := root.Execute()
 		return out.String(), err
 	}
-	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.Name, "--json"}, {"status", "--all"}, {"status", "--all", "--json"}, {"session", "show", result.Name, "--json"}, {"network", "env", result.Name, "--get", "DEVBOX_HOST"}, {"logs", result.Name}} {
+	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.Name, "--json"}, {"status", "--all"}, {"status", "--all", "--json"}, {"show", result.Name, "--json"}, {"network", "env", result.Name, "--get", "DEVBOX_HOST"}, {"logs", result.Name}} {
 		if out, err := run(args...); err != nil || out == "" {
 			t.Fatal(args, out, err)
 		}
 	}
-	for _, args := range [][]string{{"status"}, {"status", result.Name, "--all"}, {"status", result.Name, result.Name}, {"list", "--sort", "wrong"}, {"session", "list", "--sort", "wrong"}, {"session", "list", "--orphaned"}, {"session", "list", "--older-than", "24h"}} {
+	for _, args := range [][]string{{"status"}, {"status", result.Name, "--all"}, {"status", result.Name, result.Name}, {"list", "--sort", "wrong"}, {"list", "--orphaned"}, {"list", "--older-than", "24h"}, {"session", "list"}} {
 		if _, err := run(args...); err == nil {
 			t.Fatal("invalid list option accepted", args)
 		}
 	}
 	out, err := run("status", "--all", "--profile", "test", "--json")
-	var statusViews []app.View
-	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews) != 1 || statusViews[0].Name != result.Name || statusViews[0].Desired != "NoChange" {
+	var statusViews app.InventoryReport
+	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews.Sessions) != 1 || statusViews.Sessions[0].Name != result.Name || statusViews.Sessions[0].Desired != "NoChange" {
 		t.Fatal("bulk status JSON did not include drift", out, err)
 	}
-	if out, err := run("status", "--all", "--profile", "absent", "--json"); err != nil || strings.TrimSpace(out) != "[]" {
+	if out, err := run("status", "--all", "--profile", "absent", "--json"); err != nil || strings.TrimSpace(out) != `{"sessions":[],"unmatched_containers":[]}` {
 		t.Fatal("bulk status ignored profile filtering", out, err)
 	}
-	if out, err := run("status", "--all", "--profile", "absent"); err != nil || !strings.Contains(out, "No matching managed containers.") {
+	if out, err := run("status", "--all", "--profile", "absent"); err != nil || !strings.Contains(out, "No matching saved environments.") {
 		t.Fatal("incorrect empty bulk status", out, err)
 	}
 	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host","extra_env":["TOKEN=private-status-value"]}`), 0600); err != nil {
@@ -88,52 +88,50 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		t.Fatal("single status JSON lost reasons or leaked env", out, err)
 	}
 	out, err = run("status", "--all", "--json")
-	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews) != 1 || !reflect.DeepEqual(single.PendingInputChanges, statusViews[0].PendingInputChanges) {
+	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews.Sessions) != 1 || !reflect.DeepEqual(single.PendingInputChanges, statusViews.Sessions[0].PendingInputChanges) {
 		t.Fatal("bulk and single JSON disagree", out, err)
 	}
 	destination := t.TempDir()
-	if out, err := run("session", "clone", result.Name, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {
+	if out, err := run("clone", result.Name, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {
 		t.Fatal(out, err)
 	}
-	if out, err := run("session", "clone", result.Name, destination, "--json"); err != nil || !strings.Contains(out, `"mode":"clone"`) {
+	if out, err := run("clone", result.Name, destination, "--json"); err != nil || !strings.Contains(out, `"mode":"clone"`) {
 		t.Fatal(out, err)
 	}
 	for _, order := range []string{"name", "last-active"} {
-		out, err := run("session", "list", "--sort", order, "--json")
+		out, err := run("list", "--sort", order, "--json")
 		if err != nil {
 			t.Fatal(out, err)
 		}
-		var views []app.View
-		if err := json.Unmarshal([]byte(out), &views); err != nil || len(views) != 2 {
+		var report app.InventoryReport
+		if err := json.Unmarshal([]byte(out), &report); err != nil || len(report.Sessions) != 2 {
 			t.Fatal("session JSON lost entries", out, err)
 		}
+		views := report.Sessions
 		if order == "name" && views[0].Name > views[1].Name || order == "last-active" && views[0].LastActivity.Before(views[1].LastActivity) {
 			t.Fatal("session JSON ignored sorting", out)
 		}
-		table, err := run("session", "list", "--sort", order)
+		table, err := run("list", "--sort", order)
 		if err != nil || !strings.Contains(table, "LAST ACTIVE") || !strings.Contains(table, "CONTAINER") || strings.Index(table, views[0].Name) > strings.Index(table, views[1].Name) {
 			t.Fatal("session text and JSON disagree", table, err)
 		}
 	}
-	if _, err := run("session", "relocate", result.Name, "--from", "test"); err == nil {
+	if _, err := run("relocate", result.Name, "--from", "test"); err == nil {
 		t.Fatal("incomplete slot flags accepted")
 	}
-	if _, err = run("session", "delete", result.Name); err == nil {
-		t.Fatal("session deletion bypassed container")
+	if _, err = run("delete", result.Name); err == nil {
+		t.Fatal("non-interactive deletion bypassed confirmation")
 	}
-	if _, err = run("session", "delete", "--all"); err == nil {
-		t.Fatal("session delete exposed a bulk flag")
-	}
-	if out, err := run("delete", result.Name); err != nil || !strings.Contains(out, "retained") {
+	if out, err := run("delete", result.Name, "--container"); err != nil || !strings.Contains(out, "retained") {
 		t.Fatal(out, err)
 	}
-	if out, err := run("session", "list"); err != nil || !strings.Contains(out, result.Name) || !strings.Contains(out, "missing") {
+	if out, err := run("list"); err != nil || !strings.Contains(out, result.Name) || !strings.Contains(out, "missing") {
 		t.Fatal("session list hid a missing container", out, err)
 	}
-	if out, err := run("session", "prune", "--orphaned", "--dry-run"); err != nil || !strings.Contains(out, "Would delete") {
+	if out, err := run("delete", "--session", "--orphaned", "--dry-run"); err != nil || !strings.Contains(out, "Would delete") {
 		t.Fatal(out, err)
 	}
-	if _, err = run("session", "delete", result.Name); err != nil {
+	if _, err = run("delete", result.Name, "--session"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -145,7 +143,8 @@ func TestSessionListEmptyOutput(t *testing.T) {
 	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: &dockertest.Daemon{}}}
 	for _, asJSON := range []bool{false, true} {
 		profile := ""
-		cmd := sessionCommands(func(*cobra.Command) (*app.Engine, error) { return engine, nil }, &profile)
+		cmd := &cobra.Command{Use: "devbox-neo"}
+		cmd.AddCommand(sessionCommands(func(*cobra.Command) (*app.Engine, error) { return engine, nil }, &profile)...)
 		var out bytes.Buffer
 		cmd.SetOut(&out)
 		args := []string{"list"}
@@ -156,7 +155,7 @@ func TestSessionListEmptyOutput(t *testing.T) {
 		if err := cmd.Execute(); err != nil {
 			t.Fatal(err)
 		}
-		if asJSON && strings.TrimSpace(out.String()) != "[]" || !asJSON && !strings.Contains(out.String(), "No durable sessions.") {
+		if asJSON && strings.TrimSpace(out.String()) != `{"sessions":[],"unmatched_containers":[]}` || !asJSON && strings.TrimSpace(out.String()) != "No durable sessions. Configure a profile/project, then use create <folder>." {
 			t.Fatal("incorrect empty session output", out.String())
 		}
 	}

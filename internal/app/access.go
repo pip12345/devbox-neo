@@ -18,7 +18,7 @@ func (e *Engine) readSession(ctx context.Context, name string) (store.Record, er
 	r, err := e.Store.Read(ctx, name)
 	if os.IsNotExist(err) {
 		err = commanderror.New("session_missing", "Session not found.", name, err,
-			commanderror.Next("List sessions", "session", "list"))
+			commanderror.Next("List sessions", "list"))
 	}
 	return r, err
 }
@@ -58,11 +58,11 @@ func (e *Engine) Locate(ctx context.Context, target, profile string) (store.Reco
 	}
 	if len(matches) == 0 {
 		return store.Record{}, commanderror.New("session_missing", "No session found for this workspace.", id.Workspace, os.ErrNotExist,
-			commanderror.Next("List sessions", "session", "list"))
+			commanderror.Next("List sessions", "list"))
 	}
 	if len(matches) > 1 {
 		return store.Record{}, commanderror.New("ambiguous_target", "Multiple environments found. Select a profile or container name.", id.Workspace, nil,
-			commanderror.Next("List sessions", "session", "list"))
+			commanderror.Next("List sessions", "list"))
 	}
 	return matches[0], nil
 }
@@ -89,23 +89,17 @@ func (e *Engine) Start(ctx context.Context, target, profile string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	if !exists {
-		c, err = e.recover(ctx, l, &r, nil)
-		if err != nil {
-			return Result{}, err
-		}
-	}
-	if !c.State.Running {
-		if err = e.start(ctx, c, r); err != nil {
-			return Result{}, err
-		}
+	result := Result{Name: r.Identity.Name}
+	c, _, err = e.startAccess(ctx, l, c, exists, &r, nil, &result)
+	if err != nil {
+		return result, err
 	}
 	if err = e.installRuntime(ctx, r); err != nil {
 		return Result{}, err
 	}
 	r.Action = "start"
 	r.Activity = time.Now().UTC()
-	return Result{Name: r.Identity.Name}, l.Save(r)
+	return result, l.Save(r)
 }
 func (e *Engine) Stop(ctx context.Context, target, profile string, force bool) error {
 	r, err := e.Locate(ctx, target, profile)
@@ -132,7 +126,7 @@ func (e *Engine) Stop(ctx context.Context, target, profile string, force bool) e
 	}
 	if !exists {
 		return commanderror.New("container_missing", "Container not found.", r.Identity.Name, nil,
-			commanderror.Next("Inspect session", "session", "show", r.Identity.Name))
+			commanderror.Next("Inspect session", "show", r.Identity.Name))
 	}
 	if c.State.Running {
 		if err = e.Docker.Stop(ctx, c, e.owner(r)); err != nil {
@@ -174,12 +168,10 @@ func (e *Engine) Exec(ctx context.Context, target, profile string, argv []string
 			err = errors.Join(err, e.stopUnattached(l, r))
 		}
 	}()
-	if !c.State.Running {
-		if err = e.start(ctx, c, r); err != nil {
-			return err
-		}
-		c.State.Running = true
-		started = true
+	result := Result{Name: r.Identity.Name}
+	c, started, err = e.startAccess(ctx, l, c, exists, &r, nil, &result)
+	if err != nil {
+		return err
 	}
 	if err = e.installRuntime(ctx, r); err != nil {
 		return err

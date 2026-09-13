@@ -140,10 +140,13 @@ func completeFlag(source completionSource) func(*cobra.Command, []string, string
 
 func completeTarget(source completionSource, index int, multiple bool) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
-		for _, flag := range []string{"all", "stopped"} {
+		for _, flag := range []string{"all", "stopped", "orphaned"} {
 			if selected, _ := cmd.Flags().GetBool(flag); selected {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
+		}
+		if flag := cmd.Flags().Lookup("older-than"); flag != nil && flag.Changed {
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 		if len(args) < index || (!multiple && len(args) > index) {
 			return nil, cobra.ShellCompDirectiveNoFileComp
@@ -161,15 +164,15 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 	visit = func(cmd *cobra.Command) {
 		path := strings.TrimPrefix(cmd.CommandPath(), root.Name()+" ")
 		switch path {
-		case "open", "start", "recreate", "session show":
+		case "open", "start", "recreate", "show", "status":
 			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
-		case "shell", "exec", "stop", "status", "logs":
+		case "shell", "exec", "stop", "logs":
 			cmd.ValidArgsFunction = completeTarget(containers, 0, false)
 		case "delete":
-			cmd.ValidArgsFunction = completeTarget(containers, 0, true)
-		case "session delete", "session reset":
-			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, true)
-		case "session clone", "session relocate":
+			cmd.ValidArgsFunction = completeTarget(func(cmd *cobra.Command) []string {
+				return append(completeSessions(cmd), containers(cmd)...)
+			}, 0, true)
+		case "clone", "relocate":
 			cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
 				if len(args) == 1 {
 					return nil, cobra.ShellCompDirectiveFilterDirs

@@ -16,6 +16,6 @@
   "config": {"store": "config", "path": "."},
   "config_merge": [],
   "auth": [{"source": "auth.json", "target": "/home/devuser/.local/share/opencode/auth.json", "kind": "file", "create": true}],
-  "session": {"reset_preserve": ["project", "storage", "snapshot", "opencode.db*"], "relocate": true, "clone": true},
+  "session": {"relocate": true, "clone": true},
   "prepare": []
 }

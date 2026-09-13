@@ -23,7 +23,7 @@ Implemented and covered by unit/fake-backed tests:
 - Non-blocking creation drift, stopped-only config synchronization, running-container deferral, and explicit recreation with durable state preserved.
 - No-cache forced rebuilds; explicit recreation builds a missing image, whereas recorded recovery refuses it.
 - Per-container setup and every-open entrypoint scripts. Setup inputs belong to creation fingerprints because synchronization cannot claim a changed setup script already ran.
-- Config-independent existing-container start/shell/exec and recorded recovery for the currently supported inputs. Definition-sourced env values are not stored in session JSON. Terminal display variables are forwarded at creation/recovery and refreshed for attached commands without entering session records or fingerprints; unit/fake-backed coverage passes, while the added live-Docker forwarding check and manual Bash prompt rerun remain pending.
+- Config-independent running-container start/shell/exec and recorded recovery for the currently supported inputs. The startup-consolidation follow-up now resolves and synchronizes valid runtime config for stopped-container access. Definition-sourced env values are not stored in session JSON. Terminal display variables are forwarded at creation/recovery and refreshed for attached commands without entering session records or fingerprints; unit/fake-backed coverage passes, while the added live-Docker forwarding check and manual Bash prompt rerun remain pending.
 - Failure propagation, failed-commit cleanup, cancellation cleanup, concurrent-lease safety, and preserved foreground exit/signal status.
 - A custom fixture already exercises the same generic engine; this does not complete the full Phase 2 schema/acceptance gate.
 
@@ -31,7 +31,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 
 ## Phase 2 — candidate implemented, expanded Docker acceptance pending
 
-- Added the OpenCode definition, separate config/data stores, shared cache, managed auth, and continuation/reset declarations.
+- Added the OpenCode definition, separate config/data stores, shared cache, managed auth, and continuation/transfer declarations.
 - Built-in and user defaults share one recursive regular-file reader. Harness config trees now warn and skip symlinks and other non-regular entries instead of blocking open; source copying and seeding also report omissions. Root symlinks and read errors remain fatal. Unit/fake-backed coverage checks skips and warning propagation; real-Docker extension behavior remains unverified.
 - Registry enumeration reports invalid overrides separately and retains valid choices; selected loading remains isolated from unrelated invalid definitions.
 - Pi, OpenCode, and a third custom fixture pass the same fake-backed lifecycle, storage mapping, auth/cache preservation, recreation, and recovery tests.
@@ -51,11 +51,11 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - User-approved simplification: removed `Dockerfile.full`. Custom Debian-compatible bases always receive the Devbox runtime and harness layer.
 - One immutable image plan captures the selected Dockerfile, context files/permissions, ignore rules, host-ID build arguments, and runtime layer. Forced rebuilds disable cache for both stages; temporary intermediate tags are ownership-checked before cleanup.
 - Artifact-only projects participate through the shared resolver. Source copies preserve the active build context without mistaking excluded directories for harness configuration.
-- Container list/status/logs/delete, bulk recreation, and network inspect/env/connect/disconnect are wired into the CLI. Inventory batches Docker inspection; status reports broken desired config separately from live state. List tables include profile and relative activity, with name/activity sorting and `--wide` for harness, exact activity/creation times, and last action. Stopped/missing rows are dimmed after alignment while running rows and separate diagnostics stay undimmed; terminal capability/opt-out checks preserve plain output.
+- List/status/logs/delete, bulk recreation, and network inspect/env/connect/disconnect are wired into the CLI. Inventory batches Docker inspection; status reports broken desired config separately from live state. The later top-level environment consolidation makes list/status session-based and retains optional exact activity/creation times and last action. Stopped/missing rows are dimmed after alignment while running rows and separate diagnostics stay undimmed; terminal capability/opt-out checks preserve plain output.
 - Exact `open` targets keep their recorded slots, and explicit-profile access avoids unrelated corrupt session records.
 - Container deletion preserves durable state and image tags; complete selection locks and preflight precede bulk mutations. Fully labelled recordless owned containers can be deleted without adoption.
-- Session list/show/reset/prune/delete are wired. Reset requires stopped/absent containers and idle leases, preserves declared history by default, and never clears auth/shared caches or stable bind roots. Dry runs do not reap leases or change files.
-- Session deletion requires container absence, verifies image-tag association, and keeps external locks stable. Prune requires filters plus confirmation and rechecks age under lock.
+- Saved-environment list/show and deletion are wired. The startup/cleanup consolidation removes reset and folds prune's filters into delete. Dry runs do not reap leases or change files.
+- Saved-state deletion requires container absence, verifies image-tag association, and keeps external locks stable. Filtered delete requires explicit scope outside interactive mode and rechecks age under lock.
 - These additions pass unit/fake-backed checks; real-Docker acceptance for the new image/network/session cases remains outstanding.
 
 ## Configuration and environment — implemented
@@ -87,7 +87,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 
 - The user's expanded Linux Docker run failed in OpenCode 1.18.29: `EACCES` creating `/home/devuser/.local/state` after a successful image build. The generated image had not prepared `.local/share`, the parent of its data mount.
 - Generic mount-parent planning now separates image-owned ancestors from ancestors inside other managed mounts. The runtime layer creates/checks image parents as `devuser`; recorded create/start prepares nested parents in host store/auth/cache sources. No recursive chown, new mounts, or persistence mapping changes were added.
-- Unit tests cover parent ownership classification, literal path arguments, both image build modes, nested auth/cache parents, reset/start restoration without desired config, and rejection of missing roots/symlinks. The Docker gate probes sibling-directory creation for all three harnesses before and after reset/start; the custom fixture now uses nested state/auth targets.
+- Unit tests cover parent ownership classification, literal path arguments, both image build modes, nested auth/cache parents, restoration of missing nested parents before startup, and rejection of missing roots/symlinks. The Docker gate probes sibling-directory creation for all three harnesses before and after recreation/start; the custom fixture now uses nested state/auth targets.
 - The corrected Docker gate has not been rerun here. The reported failure is not marked resolved by a real-Docker pass.
 
 ## Layered-build base reference — regression fix awaiting Docker rerun
@@ -106,7 +106,7 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 
 ## Bulk status and early drift warning — implemented
 
-- `status --all [--profile NAME] [--json]` shows existing managed containers with separate live state and local-input drift. It shares inventory ownership/instance checks and single-target desired comparison, retains per-container failures, and excludes missing-container sessions. Ordinary listing remains free of desired resolution.
+- `status --all [--profile NAME] [--json]` shares inventory ownership/instance checks and single-target desired comparison. The later environment consolidation includes missing-container sessions and reports unmatched containers separately. Ordinary listing remains free of desired resolution.
 - Container/image drift recommends ordinary recreation; runtime changes do not imply rebuilding. `environment.Inputs` now supplies both fingerprints and detailed reasons shared by open and single/bulk status, including safe setting values, changed files/permissions, and env variable names without values. Upstream-version discovery and general doctor checks remain out of scope.
 - Session schema 2 requires a complete applied-input snapshot and validates it against committed fingerprints. Creation/recreation commits all inputs; runtime application advances its snapshot and hash together, including recovery. Transfers commit destination inputs. Older development records require a clean reset; no compatibility, migration, or guessed baselines were added.
 - Open reports creation drift before resolution warnings, recovery, synchronization, startup, and entrypoint/harness output, then continues immediately without an artificial delay.
@@ -120,6 +120,22 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 - Pi defaults to `--tui-mode fullscreen` through its built-in launch definition; profile/project harness arguments or one-off `--tui-mode regular` override it. Existing recorded environments require recreation to adopt the definition. Fullscreen is experimental upstream; live Pi acceptance remains unrun here.
 - Unit tests cover JSON/human routing, private causes, next-step scoping, cleanup diagnostics, exit codes, absence/corruption boundaries, transfer retry commands, and Pi launch/override ordering. Rewrite `make test`/`make check`, vet, integration-test compilation, and parent `make test` pass. Live Docker and fullscreen UI checks remain unrun here.
 - The executable remains `devbox-neo`. The obsolete rename task and deferred doctor scope were removed.
+
+## Top-level environments and explicit deletion — implemented
+
+- Moved saved-environment commands to the root and removed the `session` group. The later consolidation removes reset and folds prune into delete. List and status now describe saved environments, including missing containers. There are no command aliases or container-only list/status views.
+- List and bulk status warn separately about installation-owned containers with no session record. Corrupt records remain session diagnostics. JSON has `sessions` and `unmatched_containers` arrays; single status remains one object. List keeps activity sorting and optional wide details; status reuses existing drift checks without a doctor or upstream-version discovery.
+- Delete uses one complete operation-lock set across container removal and optional saved-data deletion. Interactive prompts default to no. The later cleanup consolidation replaces the initial include/yes flags with explicit `--container`/`--session` scopes; `--force` only permits interrupting attached container commands. Saved-state deletion still requires idle sessions. Explicit saved-state scope is preflighted before container removal and container absence is checked afterward. Dry runs never prompt or delete.
+- Completion, actionable next steps, help, runtime guidance, and guide/reference/architecture docs use the top-level commands. No saved-record or config schema migration is involved.
+- Rewrite `make check` (unit tests, race tests, build), parent `make test`, vet, and integration-test compilation pass. Fake-backed regression tests cover missing-container drift/config errors, unmatched versus corrupt records, profile selection, explicit/default deletion scope, full-set preflight, cancellation, prompt locking, image-tag reassociation, and container reappearance. CLI tests exercise the two-stage and combined confirmations through Linux pseudo-terminals, top-level completion, JSON diagnostics, and removal of the old command group. No live-Docker execution of the changed deletion flow was performed here.
+
+## Authoritative startup configuration and consolidated cleanup — implemented
+
+- Ordinary managed files now follow source bytes/modes even after local edits; obsolete managed files are removed. Unmanaged files/history remain untouched. Pi's declared-key JSON merge is unchanged; malformed live JSON remains a blocking conflict.
+- Shared `startAccess` preparation synchronizes before stopped-container open/start/shell/exec, including compatible current runtime config during ordinary recorded recovery. Running attachments do not sync. Invalid participating config blocks startup; creation inputs and incompatible harness layouts still require recreation. Transaction rollback and committed-transfer recovery retain their recorded contracts.
+- Removed reset and its `reset_preserve` harness field. Custom definitions must remove that field; existing environments require recreation to adopt changed built-ins. No automatic migration or schema fallback was added.
+- Delete has mutually exclusive, non-prompting `--container` and `--session` scopes. Unscoped interactive calls retain two choices; scripts/JSON/dry runs require scope. Removed `--yes`, `--include-session`, and prune. Delete owns intersecting all/stopped/orphaned/age filters, rechecked under lock before its own activity update. Force remains separate from saved-state idle safety.
+- Rewrite `make check` (unit tests, race tests, build), parent `make test`, vet, and integration-test compilation pass. Tests cover authoritative ordinary-file content/mode/removal, Pi-key preservation, each access command's stopped/running boundary, invalid startup config/shared JSON, runtime baseline commits, intersecting deletion filters, stale activity/orphan rechecks, explicit scope, and removed commands/flags. Live-Docker execution of this follow-up was not performed here.
 
 ## Validation
 
@@ -148,7 +164,7 @@ Continue the runtime/configuration work; do not claim interactive harness accept
 - Phase 2: expanded real-Docker built-in/custom mapping and auth acceptance, provider login/continuation checks, and schema freeze.
 - Phase 3: remaining source-snapshot/provenance hardening and real-Docker acceptance for expanded creation inputs.
 - Phase 4: remaining target/creation-option integration, runtime-copy performance hardening, and expanded real-Docker lifecycle/crash testing.
-- Phase 5: real-Docker transfer/kill-point acceptance and additional acceptance coverage for reset/prune/delete.
+- Phase 5: real-Docker transfer/kill-point acceptance and additional acceptance coverage for filtered deletion.
 - Phase 6: remaining guided artifact workflow audit, menu usability acceptance, and documentation coverage; shared error/next-step handling is implemented and a doctor command is not planned.
 - Phase 7: release hardening, performance/secret audits, and remaining acceptance tests.
 - Separate migration utility: not implemented.

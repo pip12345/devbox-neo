@@ -55,9 +55,9 @@ bin/devbox-neo open /path/to/workspace --profile basic
 
 `create` builds the image and runs preparation/setup, then leaves the container stopped without launching Pi. It refuses an existing session. `open` starts the existing environment and launches its harness. Container options such as `--network`, `--env`, and `--harness` belong to `create` or `recreate`, not `open`. Plain `open` and `start` never create a new session. If none exists, the error suggests `create` with the folder you entered. This generic hint uses normal configuration selection, without profile flags. The default `on_exit` policy stops the container after the last attached Devbox command exits.
 
-Find recently used containers with `bin/devbox-neo list --sort last-active`. The table shows state, profile, last recorded Devbox activity, and folder. Stopped and missing rows are subdued so running containers stand out; error and pending-transfer details remain readable. Add `--wide` for the harness, exact activity/creation times, and the last action, or `--json` for scripts.
+Find recently used saved environments with `bin/devbox-neo list --sort last-active`, including ones whose containers were deleted. The table shows name, harness, profile, activity, container state, and folder. Stopped and missing rows are subdued so running containers stand out; error and pending-transfer details remain readable. Add `--wide` for exact activity/creation times and the last action. Containers with no session record appear as warnings below the table. JSON has separate `sessions` and `unmatched_containers` arrays.
 
-Use `bin/devbox-neo session list --sort last-active` to find durable sessions, including ones whose containers were deleted. Its table shows name, harness, profile, last activity, container state, and folder. Listing does not clean up state; use `session prune --orphaned --dry-run` to preview cleanup, adding `--older-than 720h` when you only want sessions inactive for more than 30 days. Repeat with `--yes` instead of `--dry-run` to delete eligible state.
+Listing does not clean up state. Use `delete --session --orphaned --dry-run` to preview cleanup, adding `--older-than 720h` when you only want sessions inactive for more than 30 days. Remove `--dry-run` to delete the matches without prompting. These commands are top-level; there is no `session` command group.
 
 For a non-interactive launch check without provider credentials:
 
@@ -98,14 +98,14 @@ The runtime layer prepares writable parents for declared harness mounts. If a cu
 
 ## Apply changes explicitly
 
-Check which existing containers need changes:
+Check which saved environments need attention, including those with missing containers:
 
 ```sh
 bin/devbox-neo status --all
 bin/devbox-neo status --all --profile basic
 ```
 
-The table separates running/stopped state from pending changes. Reasons below each affected container name explain which settings or files changed. For one container, use `status <name>`. `Rebuild + recreate needed` means image inputs changed; `Recreate needed` means only container inputs changed. `Runtime changes` do not need a rebuild. `Cannot check` means the diagnostic needs attention, not that the container is up to date. This checks local inputs, not newer upstream package or base-image releases.
+The table separates running/stopped/missing container state from configuration health. A missing container is not automatically an error. Reasons below each affected environment explain which settings or files changed. For one environment, use `status <name>`. Containers without session records are reported as warnings. `Rebuild + recreate needed` means image inputs changed; `Recreate needed` means only container inputs changed. `Runtime changes` do not need a rebuild. `Cannot check` means the diagnostic needs attention, not that the container is up to date. This checks local inputs, not newer upstream package or base-image releases.
 
 Valid creation changes warn instead of replacing the existing container. On `open`, specific reasons such as `network: default -> host`, changed Dockerfile/build-context paths, or changed environment variable names appear first, before startup and entrypoint output. Env values and file contents are not shown. Opening continues immediately with the existing creation settings. Apply changes explicitly:
 
@@ -116,7 +116,9 @@ bin/devbox-neo recreate /path/to/workspace --profile basic --image
 
 Ordinary `recreate` replaces the container using current configuration. It reuses the recorded image when image inputs are unchanged and the image is available; otherwise it builds with caching enabled. This includes changes to Devbox's bundled tools and aliases after a binary update. `--image` forces a no-cache build even when inputs are unchanged. It does not promise to refresh upstream base images. Durable harness state is preserved; changes made only inside the old container are lost.
 
-Managed config is synchronized only while stopped. If an open reports deferred configuration, stop the container when safe and open it again.
+Managed config is synchronized before startup, whether you use `open`, `start`, `shell`, or `exec`. Creation/recreation synchronizes too. If the container is already running, access commands leave its managed files alone. To apply deferred changes, stop it when safe and start it through any access command.
+
+Profile/project-managed files are authoritative. Local edits to their container copies are overwritten at the next synchronization, even if the source did not change. Edit the profile/project for durable changes. Pi's shared JSON files still merge only Devbox-owned keys, preserving Pi's other settings. Unmanaged files and conversations remain untouched. There is no `reset` command.
 
 Harness config copies warn and skip symlinks and other non-regular entries. Opening continues, but skipped files are not supplied by that source. If an extension needs skipped `node_modules/.bin` links, install its dependencies inside the container; copying the source tree does not preserve those links.
 
@@ -128,7 +130,7 @@ bin/devbox-neo open /path/to/workspace --profile basic -- --tui-mode regular
 
 For a persistent override, set the profile/project `harness_args` to `["--tui-mode", "regular"]`. Recreate existing recorded Pi environments to adopt the new built-in default. A cached image with an older Pi that does not support `--tui-mode` needs an explicit `recreate --image` to reinstall Pi; ordinary recreation does not promise upstream updates.
 
-## Access without desired configuration
+## Shell and command access
 
 ```sh
 bin/devbox-neo start /path/to/workspace --profile basic
@@ -139,7 +141,9 @@ bin/devbox-neo stop /path/to/workspace --profile basic
 
 Failures now include a code, the failed operation, and safe next commands when available. Follow the suggested command, then retry; Devbox does not run repairs or force flags automatically. Commands already supporting `--json` also return structured failures on stdout with a nonzero exit code.
 
-For existing containers these commands use the recorded contract, not current profile/project config. `shell` and `exec` require an existing container. If session state remains but its container is missing, `open` and `start` still recover it when its recorded inputs remain available and unchanged; otherwise use explicit `recreate`. New environments must be created with `create`.
+Starting a stopped container resolves current profile/project configuration and synchronizes managed runtime files first. Invalid config or malformed live shared JSON blocks startup, including a shell; errors are not silently ignored. Attaching with `shell`/`exec`, or calling `start` on an already-running container, does not resolve or synchronize config. `stop` never synchronizes.
+
+`shell` and `exec` require an existing container. If saved state remains but its container is missing, `open` and `start` recover recorded creation settings when their inputs remain available, applying compatible current runtime config before startup. Otherwise use `recreate`. An incompatible harness/layout change also needs recreation. New environments must be created with `create`.
 
 Shells and harness launches receive your current terminal's `TERM`, `COLORTERM`, and related display settings. Reconnect with `shell` to pick up terminal changes; no recreation or Bash config edit is needed for forwarding. Devbox does not import your host prompt or dotfiles.
 
@@ -149,14 +153,28 @@ Prepare the destination folder and its profile/project configuration first. Tran
 
 ```sh
 bin/devbox-neo stop /path/to/workspace --profile basic
-bin/devbox-neo session clone /path/to/workspace /path/to/copy --dry-run
-bin/devbox-neo session clone /path/to/workspace /path/to/copy
-bin/devbox-neo session relocate /path/to/workspace --from basic --to .project
+bin/devbox-neo clone /path/to/workspace /path/to/copy --dry-run
+bin/devbox-neo clone /path/to/workspace /path/to/copy
+bin/devbox-neo relocate /path/to/workspace --from basic --to .project
 ```
 
 Use an exact container name when the source folder has multiple slots. `.project` requires an initialized project; named destination profiles must exist. Clone requires a stopped or absent source container and leaves the destination stopped. Relocate can stop a running source, then restore that running state at the destination after preparation succeeds.
 
-If a transfer is interrupted, inspect `session list` or `session show <exact-name>`, fix the reported problem, and retry the same transfer command. Do not delete pending state manually. Before commitment, restore changed destination inputs before retrying; after commitment, retry only finishes recovery/cleanup.
+If a transfer is interrupted, inspect `list` or `show <exact-name>`, fix the reported problem, and retry the same transfer command. Do not delete pending state manually. Before commitment, restore changed destination inputs before retrying; after commitment, retry only finishes recovery/cleanup.
+
+## Delete an environment
+
+Run `bin/devbox-neo delete <target>` in a terminal. It first asks to delete the container, then separately asks whether to delete saved session data and conversation history. Answer no to the second prompt to retain an environment that can be recovered later. If its container is already missing, only the saved-data prompt is needed.
+
+For scripts, choose the deletion scope explicitly:
+
+```sh
+bin/devbox-neo delete <target> --container # runtime only; keep saved state
+bin/devbox-neo delete <target> --session   # whole environment, including history
+bin/devbox-neo delete --session --orphaned --older-than 720h --dry-run
+```
+
+Explicit `--container` or `--session` scope skips prompts; they are mutually exclusive. A scope is required for scripts, JSON output, and dry runs. `--force` permits disrupting attached container commands but never expands scope; saved-data deletion still requires an idle session. Combine `--stopped`, `--orphaned`, and `--older-than` to narrow selection, or use `--all`. Age is last recorded Devbox activity and is rechecked under lock. Exact targets cannot be combined with selection filters. Workspace files, configuration, managed auth, and shared caches are not deleted. There is no separate `prune` command.
 
 ## Help inside the container
 

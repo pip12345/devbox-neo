@@ -51,7 +51,7 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 		{"create", "port", "Publish [HOST_IP:]HOST_PORT:CONTAINER_PORT (repeatable)"},
 		{"create", "docker-arg", "Pass a Docker option, e.g. --docker-arg=--memory=2g (repeatable)"},
 		{"stop", "force", "Stop even if commands are still running"},
-		{"delete", "force", "Delete even if commands are still running"},
+		{"delete", "force", "Allow container deletion despite attached commands; never implies deleting saved data"},
 		{"profile delete", "force", "Delete without prompting"},
 		{"global config", "show", "Show resolved settings and where they come from"},
 		{"profile config", "show", "Show resolved settings and where they come from"},
@@ -59,12 +59,11 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 		{"project config", "profile", "With --show, use this profile instead of the project's configuration"},
 		{"profile init", "harness", "Choose a harness by name"},
 		{"project init", "harness", "Choose a harness by name, or inherit to use the profile/global setting"},
-		{"session clone", "from", "Source profile name or .project"},
-		{"session clone", "to", "Destination profile name or .project in the same folder"},
-		{"session relocate", "from", "Source profile name or .project"},
-		{"session relocate", "to", "Destination profile name or .project in the same folder"},
-		{"session reset", "include-history", "Also delete saved history"},
-		{"session prune", "older-than", "Only sessions inactive longer than this duration, e.g. 24h"},
+		{"clone", "from", "Source profile name or .project"},
+		{"clone", "to", "Destination profile name or .project in the same folder"},
+		{"relocate", "from", "Source profile name or .project"},
+		{"relocate", "to", "Destination profile name or .project in the same folder"},
+		{"delete", "older-than", "Select environments inactive longer than this duration, e.g. 720h; rechecked while locked"},
 	} {
 		cmd, _, err := New().Find(strings.Fields(tt.command))
 		if err != nil {
@@ -88,12 +87,11 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 		{"shell", "Open a shell in an existing container"},
 		{"exec", "Run a command in an existing container"},
 		{"recreate", "Recreate the container with current settings, keeping session data"},
-		{"status", "Show container status and pending configuration changes"},
-		{"session show", "Show saved session settings and active commands"},
-		{"session reset", "Reset harness state, keeping saved history (containers must be stopped)"},
-		{"session clone", "Copy session state to another folder or profile"},
-		{"session relocate", "Move session state to another folder or profile"},
-		{"session prune", "Delete sessions matching --orphaned and/or --older-than"},
+		{"status", "Show environment health and pending configuration changes"},
+		{"show", "Show saved session settings and active commands"},
+
+		{"clone", "Copy session state to another folder or profile"},
+		{"relocate", "Move session state to another folder or profile"},
 	} {
 		t.Run(tt.command, func(t *testing.T) {
 			root := New()

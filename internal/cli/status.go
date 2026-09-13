@@ -2,13 +2,65 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"text/tabwriter"
 
 	"devbox/internal/app"
 	"devbox/internal/environment"
+	"github.com/spf13/cobra"
 )
+
+func statusCommand(factory engineFactory, profile *string) *cobra.Command {
+	var asJSON, all bool
+	cmd := &cobra.Command{Use: "status [target]", Short: "Show environment health and pending configuration changes", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if all && len(args) != 0 {
+			return fmt.Errorf("--all does not accept an exact target")
+		}
+		if !all && len(args) != 1 {
+			return fmt.Errorf("provide a target or --all")
+		}
+		e, err := factory(cmd)
+		if err != nil {
+			return err
+		}
+		if all {
+			report, err := e.StatusAll(cmd.Context(), *profile)
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(report)
+			}
+			if len(report.Sessions) == 0 {
+				cmd.Println("No matching saved environments.")
+			} else if err := printStatusList(cmd.OutOrStdout(), report.Sessions); err != nil {
+				return err
+			}
+			return printUnmatchedContainers(cmd.OutOrStdout(), report.UnmatchedContainers)
+		}
+		view, err := e.Status(cmd.Context(), args[0], *profile)
+		if err != nil {
+			return err
+		}
+		if asJSON {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(view)
+		}
+		printView(cmd, view)
+		cmd.Printf("Changes: %s\n", statusChange(view))
+		if view.ConfigError != "" {
+			cmd.Printf("Desired configuration error: %s\n", displayCell(view.ConfigError))
+		}
+		for _, change := range view.PendingInputChanges {
+			cmd.Printf("  - [%s] %s\n", change.Scope, change)
+		}
+		return nil
+	}}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Print environment status and inventory diagnostics as JSON")
+	cmd.Flags().BoolVar(&all, "all", false, "Check all saved environments, optionally limited by --profile NAME")
+	return cmd
+}
 
 func statusChange(view app.View) string {
 	if view.Error != "" || view.ConfigError != "" || view.Pending != nil {
@@ -31,7 +83,7 @@ func statusChange(view app.View) string {
 func printStatusList(out io.Writer, views []app.View) error {
 	var table bytes.Buffer
 	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tSTATE\tCHANGE")
+	fmt.Fprintln(w, "NAME\tCONTAINER\tCHANGE")
 	for _, view := range views {
 		fmt.Fprintf(w, "%s\t%s\t%s\n", displayCell(view.Name), containerState(view), statusChange(view))
 	}

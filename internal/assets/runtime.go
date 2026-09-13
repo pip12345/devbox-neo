@@ -34,7 +34,7 @@ survive stop/start but are lost on recreation. Workspace files and declared
 harness stores persist on the host. Devbox prepares parents for declared harness
 mounts, but unmounted directories remain container-local even when writable.
 Managed authentication and shared caches are
-separate from resettable session state. Session clone/relocate copy only declared
+separate from saved session state. Session clone/relocate copy only declared
 harness state, not workspace files or container-layer tools. Pending transfers
 reserve both endpoints; retry the same host CLI command instead of deleting
 journals or session directories by hand.
@@ -47,8 +47,24 @@ stopped without launching a harness. Open/start require an existing session and
 never create new sessions. They still recover a missing container for retained
 session state. Container-setting flags belong to create/recreate; open accepts
 launch settings, continuation, and harness arguments.
-On the host, devbox-neo status --all shows which existing containers need recreation
-or rebuilding from changed local inputs; it does not check upstream releases.
+On the host, devbox-neo list shows saved environments and their running/stopped/missing
+containers. Status --all checks their configuration and changed local inputs, including
+environments without containers; it does not check upstream releases. Both commands
+warn separately about managed containers without session records. Show, clone,
+and relocate are also top-level commands; there is no session command group.
+Managed profile/project files are authoritative: local edits to their live copies
+are overwritten at the next startup. Open/start/shell/exec synchronize before
+starting stopped containers, never merely when attaching to running ones.
+Invalid participating config blocks startup. Pi's shared JSON preserves keys not
+owned by Devbox; unmanaged files and conversations are not wiped. Creation/recreation
+also synchronizes. A changed harness layout requires recreation before its config
+can be applied. There is no reset command.
+Delete asks about the container first, then saved state/history. Explicit --container
+deletes runtime only; --session deletes the whole environment without prompts.
+These scope flags are mutually exclusive and required for scripts/dry runs.
+Delete owns --older-than, --orphaned, --stopped and --all selection; combined filters
+intersect. There is no prune command. --force only permits interrupting attached
+container commands; it never expands scope or bypasses saved-state idle checks.
 Ordinary recreate builds changed image inputs automatically. Open prints creation
 drift reasons first, before startup, then continues immediately. Status and open
 share detailed setting/file changes; env reasons show variable names, never values.

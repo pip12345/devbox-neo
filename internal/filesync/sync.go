@@ -1,4 +1,5 @@
-// Package filesync projects desired configuration without taking ownership of user edits.
+// Package filesync applies authoritative managed configuration while preserving
+// unmanaged files and undeclared keys in shared JSON files.
 // The caller holds the operation lock and proves the container stopped or absent.
 package filesync
 
@@ -255,24 +256,16 @@ func Sync(root, manifestPath, store string, desired map[string]artifact.File, me
 				}
 			}
 		} else if wanted {
-			if !exists || (managed && previous.Strategy == "file" && hash(live) == previous.Hash && liveMode == previous.Mode) {
-				if _, err = fsutil.Dir(root, filepath.Dir(p), 0700); err != nil {
-					return err
-				}
-				if err = fsutil.Write(dst, f.Data, mode); err != nil {
-					return err
-				}
-				entry.Hash = hash(f.Data)
-			} else {
-				conflict = true
+			if _, err = fsutil.Dir(root, filepath.Dir(p), 0700); err != nil {
+				return err
 			}
-		} else if exists {
-			if previous.Strategy == "file" && hash(live) == previous.Hash && liveMode == previous.Mode {
-				if err = os.Remove(dst); err != nil {
-					return err
-				}
-			} else {
-				conflict = true
+			if err = fsutil.Write(dst, f.Data, mode); err != nil {
+				return err
+			}
+			entry.Hash = hash(f.Data)
+		} else if exists && managed {
+			if err = os.Remove(dst); err != nil {
+				return err
 			}
 		}
 		if conflict {

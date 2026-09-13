@@ -22,6 +22,6 @@
     {"path": "models.json", "strategy": "json-keys", "owned_keys": ["providers"]}
   ],
   "auth": [{"source": "auth.json", "target": "/home/devuser/.pi/agent/auth.json", "kind": "file", "create": true}],
-  "session": {"reset_preserve": ["sessions"], "relocate": true, "clone": true},
+  "session": {"relocate": true, "clone": true},
   "prepare": []
 }

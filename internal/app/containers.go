@@ -49,14 +49,6 @@ func (e *Engine) inventory(ctx context.Context) ([]store.Entry, []docker.Contain
 	return entries, live, err
 }
 
-func (e *Engine) List(ctx context.Context, sessions bool) ([]View, error) {
-	entries, live, err := e.inventory(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return e.inventoryViews(entries, live, sessions), nil
-}
-
 func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, sessions bool) []View {
 	records := map[string]store.Entry{}
 	for _, entry := range entries {
@@ -105,41 +97,6 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 	return result
 }
 
-// StatusAll enriches the same inventory snapshot as List. Resolution failures
-// belong to individual rows; neither they nor missing records imply no drift.
-func (e *Engine) StatusAll(ctx context.Context, profile string) ([]View, error) {
-	entries, live, err := e.inventory(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if profile != "" {
-		selected := []docker.Container{}
-		for _, container := range live {
-			if container.Config.Labels[docker.Namespace+".slot"] == "profile:"+profile {
-				selected = append(selected, container)
-			}
-		}
-		live = selected
-	}
-	records := map[string]store.Record{}
-	for _, entry := range entries {
-		if entry.Err == nil && entry.Record.ID != "" {
-			records[entry.Name] = entry.Record
-		}
-	}
-	result := []View{}
-	for _, view := range e.inventoryViews(entries, live, false) {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		if r, ok := records[view.Name]; ok && view.Error == "" && view.Pending == nil {
-			e.desiredStatus(&view, r)
-		}
-		result = append(result, view)
-	}
-	return result, nil
-}
-
 func (e *Engine) Status(ctx context.Context, target, profile string) (View, error) {
 	r, err := e.Locate(ctx, target, profile)
 	if err != nil {
@@ -156,7 +113,13 @@ func (e *Engine) Status(ctx context.Context, target, profile string) (View, erro
 		view.ContainerID = c.ID
 		view.CreatedAt = c.Created
 	}
-	e.desiredStatus(&view, r)
+	view.Pending, err = e.Store.Pending(r.Identity.Name)
+	if err != nil {
+		return view, err
+	}
+	if view.Pending == nil {
+		e.desiredStatus(&view, r)
+	}
 	return view, nil
 }
 
@@ -180,7 +143,7 @@ func (e *Engine) Logs(ctx context.Context, target, profile string, follow bool, 
 	}
 	if !exists {
 		return commanderror.New("container_missing", "Container not found; its logs are unavailable.", r.Identity.Name, nil,
-			commanderror.Next("Inspect session", "session", "show", r.Identity.Name))
+			commanderror.Next("Inspect session", "show", r.Identity.Name))
 	}
 	return e.Docker.Logs(ctx, c, e.owner(r), follow, tail, e.Streams.Out, e.Streams.Err)
 }
@@ -243,6 +206,11 @@ func (e *Engine) DeleteContainers(ctx context.Context, selection Selection, forc
 		return nil, err
 	}
 	defer store.CloseAll(locks)
+	return e.deleteContainersLocked(ctx, selection, locks, force, false)
+}
+
+func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection, locks []*store.Locked, force, dryRun bool) ([]string, error) {
+	var err error
 	type removal struct {
 		record    store.Record
 		container docker.Container
@@ -288,6 +256,10 @@ func (e *Engine) DeleteContainers(ctx context.Context, selection Selection, forc
 	}
 	removed := []string{}
 	for _, item := range removals {
+		if dryRun {
+			removed = append(removed, item.lock.Name)
+			continue
+		}
 		if item.container.State.Running {
 			if err = e.Docker.Stop(ctx, item.container, item.owner); err != nil {
 				return removed, err

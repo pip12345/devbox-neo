@@ -51,9 +51,9 @@ func (j Transfer) RetryStep() commanderror.Step {
 			}
 			return id.Profile
 		}
-		return commanderror.Next("Resume transfer", "session", j.Mode, j.Source.Workspace, "--from", slot(j.Source), "--to", slot(j.Destination))
+		return commanderror.Next("Resume transfer", j.Mode, j.Source.Workspace, "--from", slot(j.Source), "--to", slot(j.Destination))
 	}
-	args := []string{"session", j.Mode, j.Source.Name, j.Destination.Workspace}
+	args := []string{j.Mode, j.Source.Name, j.Destination.Workspace}
 	if j.Mode == "clone" && j.Destination.Profile != j.Source.Profile {
 		args = append(args, "--profile", j.Destination.Profile)
 	}

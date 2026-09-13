@@ -27,7 +27,7 @@ func TestStatusTableSeparatesLiveStateFromChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	for _, want := range []string{"NAME", "STATE", "CHANGE", "No changes", "Runtime changes", "Recreate needed", "Rebuild + recreate needed", "corrupt record", `invalid config\nnext line`, "devbox-neo recreate container", "devbox-neo recreate image"} {
+	for _, want := range []string{"NAME", "CONTAINER", "CHANGE", "No changes", "Runtime changes", "Recreate needed", "Rebuild + recreate needed", "corrupt record", `invalid config\nnext line`, "devbox-neo recreate container", "devbox-neo recreate image"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q: %s", want, text)
 		}
@@ -46,7 +46,7 @@ func TestStatusRejectsAmbiguousSelectionBeforeInitialization(t *testing.T) {
 	for _, args := range [][]string{{"status"}, {"status", "target", "--all"}, {"status", "one", "two"}} {
 		root := &cobra.Command{Use: "devbox-neo", SilenceErrors: true, SilenceUsage: true}
 		profile := ""
-		root.AddCommand(containerCommands(func(*cobra.Command) (*app.Engine, error) {
+		root.AddCommand(sessionCommands(func(*cobra.Command) (*app.Engine, error) {
 			t.Fatal("invalid status selection initialized the home")
 			return nil, nil
 		}, &profile)...)

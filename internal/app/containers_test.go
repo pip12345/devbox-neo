@@ -34,7 +34,8 @@ func TestContainerViewsUseBatchedInventoryAndBrokenConfigDoesNotHideState(t *tes
 	foreign.Config.Labels[docker.Namespace+".installation"] = "foreign"
 	d.SetContainer(foreign)
 	before := len(d.History())
-	views, err := e.List(ctx, false)
+	report, err := e.List(ctx, "")
+	views := report.Sessions
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +238,8 @@ func TestExplicitProfileLocateIgnoresUnrelatedCorruptRecords(t *testing.T) {
 	if err != nil || r.Identity.Name != first.Name {
 		t.Fatal("unrelated corrupt record blocked explicit selection", err)
 	}
-	views, err := e.List(ctx, true)
+	report, err := e.List(ctx, "")
+	views := report.Sessions
 	if err != nil || len(views) != 2 {
 		t.Fatal(views, err)
 	}

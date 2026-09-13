@@ -81,9 +81,8 @@ func TestListDimsOnlyInactiveRowsWithoutChangingAlignment(t *testing.T) {
 		{Name: "missing", Workspace: "/work/c", Pending: &store.Reservation{Mode: "clone", Phase: "prepare", Source: "a", Destination: "b"}},
 	}
 	renderers := []func(io.Writer) error{
-		func(out io.Writer) error { return printContainerList(out, views, false, now) },
-		func(out io.Writer) error { return printContainerList(out, views, true, now) },
-		func(out io.Writer) error { return printSessionList(out, views, now) },
+		func(out io.Writer) error { return printSessionList(out, views, false, now) },
+		func(out io.Writer) error { return printSessionList(out, views, true, now) },
 	}
 	for _, render := range renderers {
 		styled := terminalOutput(t, 80, func(out *os.File) error { return render(out) })

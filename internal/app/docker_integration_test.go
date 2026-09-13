@@ -218,10 +218,10 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.ResetSessions(ctx, ResetOptions{Targets: []string{result.Name}, IncludeHistory: true}); err != nil {
+	if _, err = e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
 	if err = e.Exec(ctx, result.Name, "", argv, false); err != nil {
-		t.Fatalf("mount parents after reset/start: %v\n%s", err, output.String())
+		t.Fatalf("mount parents after recreate/start: %v\n%s", err, output.String())
 	}
 }

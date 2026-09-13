@@ -157,7 +157,7 @@ func TestInvalidDesiredHarnessJSONDoesNotTouchDocker(t *testing.T) {
 		t.Fatal("invalid harness config reached Docker before validation")
 	}
 }
-func TestInvalidConfigOnlyBlocksDesiredOpen(t *testing.T) {
+func TestInvalidConfigBlocksStartupButNotRunningAccess(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	result, err := createAndOpen(ctx, e, q)
@@ -173,9 +173,17 @@ func TestInvalidConfigOnlyBlocksDesiredOpen(t *testing.T) {
 	if len(d.History()) != before {
 		t.Fatal("invalid resolution touched Docker")
 	}
+	if _, err = e.Start(ctx, result.Name, ""); err == nil {
+		t.Fatal("stopped startup ignored invalid config")
+	}
+	if err = e.Exec(ctx, result.Name, "", []string{"true"}, false); err == nil {
+		t.Fatal("exec startup ignored invalid config")
+	}
+	write(t, path, `{"version":1,"harness":"pi"}`)
 	if _, err = e.Start(ctx, result.Name, ""); err != nil {
 		t.Fatal(err)
 	}
+	write(t, path, "{broken")
 	if err = e.Exec(ctx, result.Name, "", []string{"true"}, false); err != nil {
 		t.Fatal(err)
 	}
@@ -192,8 +200,8 @@ func TestRecordedRecoveryUsesOriginalDefinitionAndSettings(t *testing.T) {
 	}
 	first := record(t, e, result.Name)
 	d.Forget(result.Name)
-	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "invalid")
-	write(t, filepath.Join(e.Store.Home, "harnesses/pi/harness.json"), "also invalid")
+	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"opencode","network":"host"}`)
+	write(t, filepath.Join(e.Store.Home, "harnesses/pi/harness.json"), "invalid unselected override")
 	if _, err = e.Start(ctx, result.Name, ""); err != nil {
 		t.Fatal(err)
 	}

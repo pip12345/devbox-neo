@@ -213,7 +213,7 @@ Handle symlinks deliberately:
 - route recognized auth links through the auth mapping rather than duplicating credentials into session state;
 - block unresolved links or links escaping approved roots; do not recursively follow arbitrary targets.
 
-Copied user-modified config remains user-modified. Do not invent a managed manifest claiming Devbox last wrote it. Use the normal synchronizer's conflict rules and resolve blocking conflicts explicitly before declaring the session usable.
+Do not invent a managed manifest claiming Devbox last wrote imported files. The normal synchronizer treats source-managed ordinary paths as authoritative and preserves only undeclared keys in shared JSON. Report imported edits that would be replaced and retain the original backup; users must place durable managed edits in profile/project sources before cutover. Resolve malformed shared-JSON conflicts explicitly before declaring the session usable.
 
 Caches are optional and may be rebuilt. Report omitted incompatible caches; never treat session history or auth as disposable cache. Unrecognized old home data remains in the backup and is listed rather than silently discarded.
 
@@ -350,7 +350,7 @@ Start inventory/converter fixtures in parallel with rewrite development if usefu
 - missing images, failed builds, failed setup, failed record commits, and interrupted success bookkeeping remain resumable;
 - preserved source records/state and archived writable layers remain available after partial failure;
 - old proxy/user network resources are not deleted;
-- imported sessions work with normal list/show/open/recreate/reset and contain no migration-specific runtime mode.
+- imported sessions work with normal list/show/open/recreate/delete and contain no migration-specific runtime mode.
 
 ## Completion and Removal
 

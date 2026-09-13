@@ -75,7 +75,8 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	lock.Close()
-	views, err := e.List(ctx, true)
+	report, err := e.List(ctx, "")
+	views := report.Sessions
 	if err != nil {
 		t.Fatal(err)
 	}

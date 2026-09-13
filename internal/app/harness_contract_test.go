@@ -17,7 +17,7 @@ const thirdDefinition = `{
  "config":{"store":"state","path":"preferences"},
  "auth":[{"source":"tokens","target":"/home/devuser/.third-runtime/state/private/tokens","kind":"directory","create":true}],
  "config_merge":[{"path":"settings.json","strategy":"json-keys","owned_keys":["controlled"]}],
- "session":{"reset_preserve":["history"],"relocate":true,"clone":true},"prepare":[]
+ "session":{"relocate":true,"clone":true},"prepare":[]
 }`
 
 func seedThird(t *testing.T, home string) {

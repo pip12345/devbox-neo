@@ -44,9 +44,12 @@ func TestRuntimeDocsAndNetworkFactsAreStagedAndCleaned(t *testing.T) {
 			t.Fatal("runtime staging remained", source)
 		}
 	}
+	if _, err = e.Start(ctx, result.Name, ""); err != nil {
+		t.Fatal(err)
+	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
 	if _, err = e.Start(ctx, result.Name, ""); err != nil {
-		t.Fatal("runtime preparation reloaded desired config", err)
+		t.Fatal("running access reloaded desired config", err)
 	}
 	if err = e.ChangeNetwork(ctx, result.Name, "", "secondary", true); err != nil {
 		t.Fatal(err)

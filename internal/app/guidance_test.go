@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"devbox/internal/commanderror"
+	"devbox/internal/store"
 )
 
 func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
@@ -27,13 +28,18 @@ func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
 			t.Fatal("actions must be structured, not embedded in the message", actionable)
 		}
 	}
-	_, err = e.DeleteSessions(ctx, []string{result.Name}, "", false)
-	check(err, "container_present", "delete", result.Name)
+	lock, err := e.Store.Lock(ctx, result.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.planSessionDeletion(ctx, []*store.Locked{lock}, false)
+	lock.Close()
+	check(err, "container_present", "delete", result.Name, "--container")
 	err = e.ChangeNetwork(ctx, result.Name, "", "bridge", false)
 	check(err, "primary_network_protected", "recreate", result.Name)
 	d.Forget(result.Name)
 	err = e.Stop(ctx, result.Name, "", false)
-	check(err, "container_missing", "session", "show", result.Name)
+	check(err, "container_missing", "show", result.Name)
 	err = e.Exec(ctx, result.Name, "", []string{"true"}, false)
 	check(err, "container_missing", "start", result.Name)
 	d.Fail = func(args []string) error {

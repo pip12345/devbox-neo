@@ -37,9 +37,14 @@ func TestStatusAllLeavesPendingTransfersUnclassified(t *testing.T) {
 	}
 	write(t, filepath.Join(e.Store.Home, "state/transfers", source.Identity.Name+".json"), string(b))
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
-	views, err := e.StatusAll(context.Background(), "")
-	if err != nil || len(views) != 1 || views[0].Pending == nil || views[0].Desired != "" || views[0].ConfigError != "" {
-		t.Fatal("pending source was resolved or missing destination was listed", views, err)
+	report, err := e.StatusAll(context.Background(), "")
+	if err != nil || len(report.Sessions) != 2 {
+		t.Fatal("pending endpoints were not retained", report, err)
+	}
+	for _, view := range report.Sessions {
+		if view.Pending == nil || view.Desired != "" || view.ConfigError != "" {
+			t.Fatal("pending endpoint was resolved", view)
+		}
 	}
 }
 
@@ -84,9 +89,10 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 		}
 	}
 	before := len(d.History())
-	views, err := e.StatusAll(ctx, "")
-	if err != nil || len(views) != 8 {
-		t.Fatal("wrong container scope", views, err)
+	report, err := e.StatusAll(ctx, "")
+	views := report.Sessions
+	if err != nil || len(views) != 8 || len(report.UnmatchedContainers) != 1 || report.UnmatchedContainers[0].Name != names["recordless"] {
+		t.Fatal("wrong environment scope or missing unmatched warning", report, err)
 	}
 	calls := d.History()[before:]
 	if len(calls) != 2 || !reflect.DeepEqual(calls[0][:2], []string{"container", "ls"}) || !reflect.DeepEqual(calls[1][:2], []string{"container", "inspect"}) {
@@ -97,7 +103,11 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 		if i > 0 && views[i-1].Name >= view.Name {
 			t.Fatal("status is not sorted by name")
 		}
-		if !view.Exists || !view.Running {
+		if view.Name == names["missing"] {
+			if view.Exists || view.Running || view.Desired != environment.NoChange {
+				t.Fatal("missing container was treated as a config error", view)
+			}
+		} else if !view.Exists || !view.Running {
 			t.Fatal("desired state hid live state", view)
 		}
 		byName[view.Name] = view
@@ -111,7 +121,7 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 	if view := byName[names["invalid"]]; view.ConfigError == "" || view.Error != "" || view.Desired != "" {
 		t.Fatal("invalid desired configuration was not independent", view)
 	}
-	for _, profile := range []string{"corrupt", "recordless", "mismatch"} {
+	for _, profile := range []string{"corrupt", "mismatch"} {
 		if view := byName[names[profile]]; view.Error == "" || view.Desired != "" {
 			t.Fatal("unverifiable container reported a drift result", profile, view)
 		}
@@ -122,15 +132,19 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 			t.Fatal("status changed a session record", name)
 		}
 	}
-	for _, profile := range []string{"container", "corrupt", "recordless"} {
-		views, err = e.StatusAll(ctx, profile)
-		if err != nil || len(views) != 1 || views[0].Name != names[profile] {
-			t.Fatal("profile filter lost a labelled container", profile, views, err)
+	for _, profile := range []string{"container", "corrupt", "missing"} {
+		report, err = e.StatusAll(ctx, profile)
+		if err != nil || len(report.Sessions) != 1 || report.Sessions[0].Name != names[profile] {
+			t.Fatal("profile filter lost an environment", profile, report, err)
 		}
 	}
-	views, err = e.StatusAll(ctx, "absent")
-	if err != nil || views == nil || len(views) != 0 {
-		t.Fatal("empty selection must be an empty array", views, err)
+	report, err = e.StatusAll(ctx, "recordless")
+	if err != nil || len(report.Sessions) != 0 || len(report.UnmatchedContainers) != 1 {
+		t.Fatal("profile filter lost the unmatched container", report, err)
+	}
+	report, err = e.StatusAll(ctx, "absent")
+	if err != nil || report.Sessions == nil || len(report.Sessions) != 0 || report.UnmatchedContainers == nil || len(report.UnmatchedContainers) != 0 {
+		t.Fatal("empty selection must retain empty arrays", report, err)
 	}
 	d.Fail = func([]string) error { return errors.New("Docker unavailable") }
 	if _, err = e.StatusAll(ctx, ""); err == nil {

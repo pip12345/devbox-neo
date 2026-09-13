@@ -10,7 +10,7 @@ import (
 	"devbox/internal/store"
 )
 
-func TestContainerListDetailsAndSorting(t *testing.T) {
+func TestListDetailsAndSorting(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	views := []app.View{
 		{Name: "b", Exists: true, Profile: "basic", Harness: "pi", Workspace: "/work/api", LastActivity: now.Add(-2 * time.Hour), LastAction: "open", CreatedAt: now.Add(-24 * time.Hour)},
@@ -22,7 +22,7 @@ func TestContainerListDetailsAndSorting(t *testing.T) {
 		t.Fatal("activity sort must put newest first and unknown last", views)
 	}
 	var out bytes.Buffer
-	if err := printContainerList(&out, views, false, now); err != nil {
+	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"NAME", "PROFILE", "LAST ACTIVE", ".project", "2 hours ago", "just now", "stopped!*", "no durable record", "pending clone"} {
@@ -30,11 +30,11 @@ func TestContainerListDetailsAndSorting(t *testing.T) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
 	}
-	if strings.Contains(out.String(), "HARNESS") || strings.Contains(out.String(), "opencode") {
-		t.Fatal("default list includes harness details", out.String())
+	if !strings.Contains(out.String(), "HARNESS") || !strings.Contains(out.String(), "opencode") {
+		t.Fatal("default list lost harness details", out.String())
 	}
 	out.Reset()
-	if err := printContainerList(&out, views, true, now); err != nil {
+	if err := printSessionList(&out, views, true, now); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"HARNESS", "opencode", "LAST ACTION", "CREATED", "2026-09-01T10:00:00Z", "2026-08-31T12:00:00Z", "open"} {
@@ -62,7 +62,7 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	}
 	sortViews(views, "last-active")
 	var out bytes.Buffer
-	if err := printSessionList(&out, views, now); err != nil {
+	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(out.String(), "\n")
@@ -94,14 +94,14 @@ func TestListTimesAndUnsafeCells(t *testing.T) {
 	}
 	views := []app.View{{Name: "test", Harness: "pi\nforged", Workspace: "/work/\nforged\t\x1b[31m"}}
 	var out bytes.Buffer
-	if err := printContainerList(&out, views, false, now); err != nil {
+	if err := printSessionList(&out, views, true, now); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 2 {
 		t.Fatal("unsafe path changed table structure", out.String())
 	}
 	out.Reset()
-	if err := printSessionList(&out, views, now); err != nil {
+	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 2 {

@@ -75,7 +75,7 @@ func (e *Engine) diagnose(result *Result, diagnostic Diagnostic) {
 			fmt.Fprintf(e.Streams.Err, "  - %s\n", inputChange)
 		}
 		if diagnostic.Code == "creation_drift" {
-			fmt.Fprintln(e.Streams.Err, "\nOpening the existing container without applying these creation changes.")
+			fmt.Fprintln(e.Streams.Err, "\nUsing the existing container without applying these creation changes.")
 			if diagnostic.Change == environment.RebuildAndRecreate {
 				fmt.Fprintln(e.Streams.Err, "Rebuild image and recreate:")
 			} else {
@@ -180,10 +180,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 	if err != nil {
 		return result, err
 	}
-	drift := environment.CompareInputs(record.Inputs, spec.Inputs)
-	if drift.Change == environment.Recreate || drift.Change == environment.RebuildAndRecreate {
-		e.diagnose(&result, Diagnostic{Code: "creation_drift", Message: "this container differs from current configuration:", Command: []string{"devbox-neo", "recreate", record.Identity.Name}, Change: drift.Change, PendingInputChanges: drift.PendingCreationChanges()})
-	}
+	e.creationDrift(&result, record, spec)
 	e.resolutionWarnings(spec)
 	var c docker.Container
 	started := false
@@ -194,20 +191,14 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 	}()
 	var exists bool
 	c, exists, err = e.inspect(ctx, record)
-	if err == nil && !exists {
-		c, err = e.recover(ctx, lock, &record, &spec)
-		started = err == nil
+	if err != nil {
+		return result, err
 	}
-	if err == nil {
+	wasRunning := exists && c.State.Running
+	c, started, err = e.startAccess(ctx, lock, c, exists, &record, &spec, &result)
+	if err == nil && wasRunning {
 		compatible := record.Definition.Hash == spec.Harness.Hash
-		if compatible && !c.State.Running {
-			if err = lock.RequireIdle(); err == nil {
-				err = e.sync(lock, spec)
-			}
-			if err == nil {
-				record.ApplyRuntime(spec.Inputs.Runtime)
-			}
-		} else if compatible && record.Applied.Runtime != spec.Fingerprints.Runtime {
+		if compatible && record.Applied.Runtime != spec.Fingerprints.Runtime {
 			manifest, pathErr := lock.Path(filepath.Join("harnesses", record.Definition.Name, "managed-config.json"))
 			if pathErr != nil {
 				return result, pathErr
@@ -219,24 +210,13 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 			if current {
 				record.ApplyRuntime(spec.Inputs.Runtime)
 			} else {
-				e.diagnose(&result, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; stop, then open to apply", Command: []string{"devbox-neo", "stop", record.Identity.Name}})
+				e.diagnose(&result, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; it will apply at the next startup", Command: []string{"devbox-neo", "stop", record.Identity.Name}})
 			}
 		}
-		if compatible {
-			record.Launch.Args = append(append([]string(nil), spec.Harness.Definition.Launch.Args...), spec.Settings.HarnessArgs...)
-		}
-		record.Launch.OnExit = spec.Settings.OnExit
-		record.Launch.Shell = append([]string(nil), spec.Settings.Shell...)
+		applyLaunch(&record, spec)
 	}
 	if err != nil {
 		return result, err
-	}
-	if !c.State.Running {
-		if err = e.start(ctx, c, record); err != nil {
-			return result, err
-		}
-		c.State.Running = true
-		started = true
 	}
 	if err = e.installRuntime(ctx, record); err != nil {
 		return result, err
@@ -785,11 +765,10 @@ func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, 
 		}
 		r.Setup.Data = data
 	}
-	if desired != nil && r.Definition.Hash == desired.Harness.Hash {
-		if err = e.sync(l, *desired); err != nil {
+	if desired != nil {
+		if err = e.syncRecordedConfig(l, r, *desired); err != nil {
 			return docker.Container{}, err
 		}
-		r.ApplyRuntime(desired.Inputs.Runtime)
 	}
 	c, err := e.materialize(ctx, *r)
 	if err != nil {

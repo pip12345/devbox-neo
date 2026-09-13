@@ -11,7 +11,7 @@ import (
 	"devbox/internal/harness"
 )
 
-func TestNestedMountParentsUseBackingSourcesAndSurviveReset(t *testing.T) {
+func TestNestedMountParentsUseBackingSourcesAndRestoreMissingParents(t *testing.T) {
 	e, daemon, q := fixture(t)
 	ctx := context.Background()
 	seedThird(t, e.Store.Home)
@@ -56,13 +56,12 @@ func TestNestedMountParentsUseBackingSourcesAndSurviveReset(t *testing.T) {
 	if err = os.Chmod(marker, 0640); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.ResetSessions(ctx, ResetOptions{Targets: []string{opened.Name}, IncludeHistory: true}); err != nil {
+	if err = os.RemoveAll(filepath.Join(state, "private")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = os.Stat(filepath.Join(state, "private")); !os.IsNotExist(err) {
-		t.Fatal("reset fixture did not remove parent", err)
+		t.Fatal("fixture did not remove parent", err)
 	}
-	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken desired config")
 	// The daemon boundary must not see a start until host-backed ancestors exist.
 	daemon.Fail = func(args []string) error {
 		if args[0] == "start" {

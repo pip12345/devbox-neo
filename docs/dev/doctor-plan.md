@@ -1,8 +1,8 @@
-# Doctor — deferred implementation plan
+# Doctor — superseded proposal
 
 ## Status
 
-Planning only. Doctor is excluded from the current tools, session-list, and completion implementation scope. Implement it separately later. Container drift overview is available independently through `status --all`; a future doctor should reuse that comparison rather than duplicate it.
+Not planned. The selected workflow is the top-level environment `status --all` overview: saved sessions, missing-container state, configuration errors, drift reasons, and unmatched-container warnings. The proposal below is retained as historical design context, not an implementation task. Do not add a duplicate doctor command for these checks.
 
 ## Goal
 

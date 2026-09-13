@@ -50,9 +50,8 @@ type Auth struct {
 	Create bool   `json:"create"`
 }
 type Session struct {
-	Preserve []string `json:"reset_preserve"`
-	Relocate bool     `json:"relocate"`
-	Clone    bool     `json:"clone"`
+	Relocate bool `json:"relocate"`
+	Clone    bool `json:"clone"`
 }
 type Definition struct {
 	Version int               `json:"version"`
@@ -226,14 +225,6 @@ func (d Definition) Validate() error {
 	for k := range d.Env {
 		if !config.EnvName.MatchString(k) || strings.HasPrefix(k, "DEVBOX_") {
 			return fmt.Errorf("invalid or reserved env name")
-		}
-	}
-	for _, p := range d.Session.Preserve {
-		if _, err := filepath.Match(p, ""); err != nil {
-			return fmt.Errorf("invalid reset_preserve pattern")
-		}
-		if !relative(p) {
-			return fmt.Errorf("reset_preserve must remain relative")
 		}
 	}
 	return nil

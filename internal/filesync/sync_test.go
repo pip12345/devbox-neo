@@ -29,23 +29,26 @@ func TestOrdinaryFileOwnership(t *testing.T) {
 		t.Fatal("managed update failed")
 	}
 	os.WriteFile(path, []byte("user"), 0600)
-	if err := sync(); err == nil {
-		t.Fatal("user edit overwritten")
-	}
-	delete(desired, "a.txt")
-	if err := sync(); err == nil {
-		t.Fatal("modified deletion not reported")
+	if err := sync(); err != nil {
+		t.Fatal(err)
 	}
 	b, _ = os.ReadFile(path)
-	if string(b) != "user" {
-		t.Fatal("deleted modified file")
+	if string(b) != "second" {
+		t.Fatal("local edit overrode managed source")
 	}
-	os.WriteFile(path, []byte("second"), 0600)
+	os.WriteFile(path, []byte("user again"), 0600)
+	unmanaged := filepath.Join(root, "unmanaged.txt")
+	os.WriteFile(unmanaged, []byte("keep"), 0600)
+	delete(desired, "a.txt")
 	if err := sync(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatal("unchanged obsolete file not removed")
+		t.Fatal("obsolete managed file survived")
+	}
+	b, _ = os.ReadFile(unmanaged)
+	if string(b) != "keep" {
+		t.Fatal("unmanaged file changed")
 	}
 }
 func TestJSONOwnedKeys(t *testing.T) {
@@ -107,8 +110,12 @@ func TestExecutableConfigAndUserModeChanges(t *testing.T) {
 	if err = os.Chmod(path, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err = Sync(root, manifest, "home", desired, nil); err == nil {
-		t.Fatal("user permission change overwritten")
+	if err = Sync(root, manifest, "home", desired, nil); err != nil {
+		t.Fatal(err)
+	}
+	info, err = os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0700 {
+		t.Fatal("managed executable mode was not restored", err)
 	}
 }
 func TestSymlinkRejectedWithoutTouchingTarget(t *testing.T) {

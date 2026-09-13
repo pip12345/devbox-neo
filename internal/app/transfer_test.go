@@ -214,7 +214,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 		t.Fatal("source not restarted")
 	}
 	var pendingError *commanderror.Error
-	if _, err = e.Start(ctx, opened.Name, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "devbox-neo session relocate "+opened.Name+" "+opts.Destination {
+	if _, err = e.Start(ctx, opened.Name, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "devbox-neo relocate "+opened.Name+" "+opts.Destination {
 		t.Fatal("pending source not guarded", err)
 	}
 	j, err := e.Store.ReadTransfer(opened.Name)
@@ -226,6 +226,9 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	}
 	if _, err = e.DeleteContainers(ctx, Selection{Targets: []string{opened.Name}}, true); err == nil {
 		t.Fatal("forced deletion bypassed transfer guard")
+	}
+	if _, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{opened.Name}}, Force: true, Scope: DeleteSession}); err == nil {
+		t.Fatal("combined deletion bypassed transfer guard")
 	}
 	image, err := e.Docker.InspectImage(ctx, source.ImageTag)
 	if err != nil || image.ID != source.ImageID {

@@ -65,14 +65,14 @@ func exactTime(at time.Time) string {
 	return at.UTC().Format(time.RFC3339)
 }
 
-func printContainerList(out io.Writer, views []app.View, wide bool, now time.Time) error {
+func printSessionList(out io.Writer, views []app.View, wide bool, now time.Time) error {
 	// Align plain cells before styling whole rows: tabwriter counts ANSI escapes
 	// as visible text, which would otherwise shift columns on inactive rows.
 	var table bytes.Buffer
 	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
-	header := "NAME\tSTATE\tPROFILE\tLAST ACTIVE\tFOLDER"
+	header := "NAME\tHARNESS\tPROFILE\tLAST ACTIVE\tCONTAINER\tFOLDER"
 	if wide {
-		header += "\tHARNESS\tLAST ACTION\tCREATED"
+		header += "\tLAST ACTION\tCREATED"
 	}
 	fmt.Fprintln(w, header)
 	for _, view := range views {
@@ -82,9 +82,9 @@ func printContainerList(out io.Writer, views []app.View, wide bool, now time.Tim
 		if wide {
 			activity = exactTime(view.LastActivity)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s", displayCell(view.Name), state, displayCell(profile), activity, displayCell(view.Workspace))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s", displayCell(view.Name), displayCell(view.Harness), displayCell(profile), activity, state, displayCell(view.Workspace))
 		if wide {
-			fmt.Fprintf(w, "\t%s\t%s\t%s", displayCell(view.Harness), displayCell(view.LastAction), exactTime(view.CreatedAt))
+			fmt.Fprintf(w, "\t%s\t%s", displayCell(view.LastAction), exactTime(view.CreatedAt))
 		}
 		fmt.Fprintln(w)
 	}
@@ -94,17 +94,23 @@ func printContainerList(out io.Writer, views []app.View, wide bool, now time.Tim
 	return printListRows(out, views, table.String())
 }
 
-func printSessionList(out io.Writer, views []app.View, now time.Time) error {
-	var table bytes.Buffer
-	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tHARNESS\tPROFILE\tLAST ACTIVE\tCONTAINER\tFOLDER")
-	for _, view := range views {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", displayCell(view.Name), displayCell(view.Harness), displayCell(viewProfile(view)), activityAge(view.LastActivity, now), containerState(view), displayCell(view.Workspace))
+func printUnmatchedContainers(out io.Writer, views []app.View) error {
+	if len(views) == 0 {
+		return nil
 	}
-	if err := w.Flush(); err != nil {
+	if _, err := fmt.Fprintln(out, "\nWarning: managed containers with no session record:"); err != nil {
 		return err
 	}
-	return printListRows(out, views, table.String())
+	for _, view := range views {
+		state := "stopped"
+		if view.Running {
+			state = "running"
+		}
+		if _, err := fmt.Fprintf(out, "  %s (%s)\n", displayCell(view.Name), state); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func containerState(view app.View) string {
