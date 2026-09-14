@@ -33,6 +33,8 @@ type ExitError struct {
 	Operation string
 }
 
+func (e *ExitError) ExitCode() int { return e.Code }
+
 func (e *ExitError) Error() string {
 	return fmt.Sprintf("Docker %s failed (exit %d).", e.Operation, e.Code)
 }

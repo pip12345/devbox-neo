@@ -2,6 +2,15 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md). The migration utility remains a separate delivery described in [migration-plan.md](migration-plan.md).
 
+## Foreground SSH sharing — implemented, live-Docker acceptance pending
+
+- Added `ssh <target> <destination>` with a container-side master by default and invocation-only `--host-master`. The user authenticates in a foreground host terminal; generated in-container SSH config reuses the connection without fallback login. Host mode prints the agreed host/network-access warning before authentication. Normal SSH configuration, including ProxyJump, agent and X11 forwarding, is honored; no keys/config are copied and there is no identity/detach flag.
+- Shared startup and attached-command lease ownership cover both modes. A per-invocation flock supervisor terminates the actual master after controller loss, including during authentication; a lifetime lock makes cleanup wait before releasing the environment lease. Host masters also end on forced container stop/removal or unavailable Docker. Runtime sockets/config live in a private `/devbox/ssh` mount, are excluded from transfers, and are excluded from runtime asset permission changes. Existing environments need explicit recreation to acquire the mount.
+- Added unit/process tests for validation, duplicate/concurrent connections, unavailable-socket failure, actual master teardown, long home paths, startup/lease/on-exit behavior, host authentication failure, forced stop, and CLI warning/terminal behavior. Added an isolated real-Docker test for both modes through ProxyJump with generated fixture credentials and strict known-host verification. The Docker CLI is unavailable in the assistant container: the new Docker test has compiled, not run. The user subsequently demonstrated successful container-mode password authentication. MFA, graphical forwarding, and the corrected terminal/disconnect UX still need manual acceptance.
+- The user's host run exposed staircase SSH status output, Ctrl-C reported as Docker exit 130, and escaped multiline Cobra suggestions. SSH now uses raw-terminal-aware status output, restores terminal settings, and treats expected foreground interruption as a normal disconnect without hiding cleanup failures. Unknown group commands use structured suggestion steps. Added pseudo-terminal, cancellation/cleanup, and command-validation regressions; host rerun of these fixes remains pending.
+- Validation: rewrite `make check` (format, unit tests, race tests, build), parent `make test`, `go vet ./...`, and integration-tag compilation pass. The new live-Docker and manual SSH checks above remain unpassed here.
+- The user reported `make test` and `make test-integration` passing on the host for the preceding environment/startup/cleanup commit `21e86ac`. That is not a live-Docker acceptance claim for the new SSH implementation; earlier checkpoint notes below are historical.
+
 ## Phase 0 — complete
 
 - Independent Go module; Makefile targets for format, unit/race tests, build, and opt-in Docker integration.

@@ -90,7 +90,7 @@ This copies the profile's supported source artifacts once and sets `inherit_prof
 bin/devbox-neo profile init basic --artifact Dockerfile
 ```
 
-The standard runtime already includes vim, zip, unzip, jq, net-tools (`ifconfig`), and iputils-ping (`ping`), alongside Bash, git, curl, sudo, and procps. Interactive Bash has `ll='ls -alF'` and `vi='vim'`.
+The standard runtime already includes vim, zip, unzip, jq, net-tools (`ifconfig`), and iputils-ping (`ping`), alongside Bash, git, curl, sudo, procps, OpenSSH client tools, and util-linux (`flock`). Interactive Bash has `ll='ls -alF'` and `vi='vim'`.
 
 Edit the generated Dockerfile to add other tools to a Debian-compatible base. Its directory is the build context, so `COPY` can use sibling files. Use `.dockerignore` to exclude files that are not image inputs. Devbox always installs its runtime and harness afterward; there is no full override mode. Init never replaces an existing Dockerfile.
 
@@ -116,7 +116,7 @@ bin/devbox-neo recreate /path/to/workspace --profile basic --image
 
 Ordinary `recreate` replaces the container using current configuration. It reuses the recorded image when image inputs are unchanged and the image is available; otherwise it builds with caching enabled. This includes changes to Devbox's bundled tools and aliases after a binary update. `--image` forces a no-cache build even when inputs are unchanged. It does not promise to refresh upstream base images. Durable harness state is preserved; changes made only inside the old container are lost.
 
-Managed config is synchronized before startup, whether you use `open`, `start`, `shell`, or `exec`. Creation/recreation synchronizes too. If the container is already running, access commands leave its managed files alone. To apply deferred changes, stop it when safe and start it through any access command.
+Managed config is synchronized before startup, whether you use `open`, `start`, `shell`, `exec`, or `ssh`. Creation/recreation synchronizes too. If the container is already running, access commands leave its managed files alone. To apply deferred changes, stop it when safe and start it through any access command.
 
 Profile/project-managed files are authoritative. Local edits to their container copies are overwritten at the next synchronization, even if the source did not change. Edit the profile/project for durable changes. Pi's shared JSON files still merge only Devbox-owned keys, preserving Pi's other settings. Unmanaged files and conversations remain untouched. There is no `reset` command.
 
@@ -146,6 +146,10 @@ Starting a stopped container resolves current profile/project configuration and 
 `shell` and `exec` require an existing container. If saved state remains but its container is missing, `open` and `start` recover recorded creation settings when their inputs remain available, applying compatible current runtime config before startup. Otherwise use `recreate`. An incompatible harness/layout change also needs recreation. New environments must be created with `create`.
 
 Shells and harness launches receive your current terminal's `TERM`, `COLORTERM`, and related display settings. Reconnect with `shell` to pick up terminal changes; no recreation or Bash config edit is needed for forwarding. Devbox does not import your host prompt or dotfiles.
+
+## Share SSH access
+
+Run `bin/devbox-neo ssh . user@server` in a host terminal. Authenticate there, then let the agent use the printed `ssh -F /devbox/ssh/config ...` command. Keep that terminal open; Ctrl-C closes the connection. SSH runs inside the container by default. Use `--host-master` explicitly to reuse host SSH configuration and credentials, with a warning about host/network access. No keys are copied. See [SSH sharing](ssh.md) for configuration, jump hosts, and lifetime rules.
 
 ## Copy or move a session
 

@@ -140,6 +140,7 @@ func New() *cobra.Command {
 	recreate.Flags().BoolVar(&image, "image", false, "Rebuild the image without using the build cache")
 	recreate.Flags().BoolVar(&recreateAll, "all", false, "Recreate all Devbox containers, add --profile NAME to recreate all belonging to one profile")
 	root.AddCommand(recreate)
+	root.AddCommand(sshCommand(engine, &profile))
 	root.AddCommand(containerCommands(engine, &profile)...)
 	root.AddCommand(sessionCommands(engine, &profile)...)
 	root.AddCommand(resourceCommands(func(cmd *cobra.Command) (*resource.Service, error) {

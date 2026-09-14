@@ -28,7 +28,7 @@ warnings. Skipped extension dependency links are not supplied by that source;
 install dependencies in the container if the extension needs them.
 
 The runtime includes vim, zip, unzip, jq, net-tools, and iputils-ping alongside
-Bash, git, curl, sudo, and procps. Interactive Bash provides ll='ls -alF' and
+Bash, git, curl, sudo, procps, OpenSSH client tools, and util-linux (flock). Interactive Bash provides ll='ls -alF' and
 vi='vim'. Install other development tools in the container when needed. Container-layer changes
 survive stop/start but are lost on recreation. Workspace files and declared
 harness stores persist on the host. Devbox prepares parents for declared harness
@@ -38,6 +38,22 @@ separate from saved session state. Session clone/relocate copy only declared
 harness state, not workspace files or container-layer tools. Pending transfers
 reserve both endpoints; retry the same host CLI command instead of deleting
 journals or session directories by hand.
+
+Use /devbox/ssh/config for user-supplied SSH connections. Read the config and its
+included /devbox/ssh/c/*/config files for available aliases, then use ordinary
+ssh or scp with -F /devbox/ssh/config. Never handle interactive SSH authentication,
+search for host credentials, or bypass an unavailable shared connection with a
+fresh login. Ask the user to run devbox-neo ssh <environment> <destination> in a
+host terminal; use this environment's exact name from /devbox/network/inspect.json.
+The user authenticates and keeps that terminal open; Ctrl-C ends the connection.
+After cleanup the host command restores the terminal and prints Disconnected.
+Actual authentication, connection, or cleanup failures still report errors.
+The master runs inside the container by default. --host-master is an explicit
+user choice that shares a host connection, including host-side forwarding.
+Normal SSH configuration controls keys, ProxyJump, agent and X11 forwarding;
+Devbox does not copy credentials or force forwarding off. Consult
+/devbox/docs/guides/ssh.md for the workflow. Connection access does not authorize
+unrelated remote changes or use of host/network services.
 
 Do not modify /devbox: it is Devbox-owned runtime data. Do not add a project
 Dockerfile to make an ad-hoc tool installation persistent without user approval.
@@ -53,7 +69,7 @@ environments without containers; it does not check upstream releases. Both comma
 warn separately about managed containers without session records. Show, clone,
 and relocate are also top-level commands; there is no session command group.
 Managed profile/project files are authoritative: local edits to their live copies
-are overwritten at the next startup. Open/start/shell/exec synchronize before
+are overwritten at the next startup. Open/start/shell/exec/ssh synchronize before
 starting stopped containers, never merely when attaching to running ones.
 Invalid participating config blocks startup. Pi's shared JSON preserves keys not
 owned by Devbox; unmanaged files and conversations are not wiped. Creation/recreation

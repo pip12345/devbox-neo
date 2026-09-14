@@ -17,6 +17,6 @@ func (r Runtime) InstallRuntime(ctx context.Context, c Container, o Owner, sourc
 	if _, err := r.capture(ctx, "cp", source+string(filepath.Separator)+".", c.ID+":/devbox"); err != nil {
 		return err
 	}
-	_, err := r.capture(ctx, "exec", "--user", "root", c.ID, "sh", "-c", `chown -R root:root /devbox && chmod -R u=rwX,go=rX /devbox`)
+	_, err := r.capture(ctx, "exec", "--user", "root", c.ID, "sh", "-c", `find /devbox -path /devbox/ssh -prune -o -exec chown -h root:root {} + && find /devbox -path /devbox/ssh -prune -o -exec chmod u=rwX,go=rX {} +`)
 	return err
 }

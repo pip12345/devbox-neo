@@ -19,6 +19,7 @@ import (
 	"devbox/internal/filesync"
 	"devbox/internal/fsutil"
 	"devbox/internal/harness"
+	"devbox/internal/sshshare"
 	"devbox/internal/store"
 )
 
@@ -272,7 +273,11 @@ func (e *Engine) sync(l *store.Locked, s environment.Spec) error {
 	return filesync.Sync(root, manifest, d.Config.Store, s.Files, d.Merge)
 }
 func (e *Engine) mountPlan(l *store.Locked, s environment.Spec) ([]docker.Mount, error) {
-	mounts := []docker.Mount{{Source: s.Identity.Workspace, Target: "/workspace", ReadOnly: s.ReadOnly}}
+	sshRoot, err := l.Dir(sshshare.RelativeRoot)
+	if err != nil {
+		return nil, err
+	}
+	mounts := []docker.Mount{{Source: s.Identity.Workspace, Target: "/workspace", ReadOnly: s.ReadOnly}, {Source: sshRoot, Target: sshshare.Mount}}
 	d := s.Harness.Definition
 	for _, storeDef := range d.Stores {
 		var source string
@@ -600,7 +605,15 @@ func (e *Engine) stopUnattached(l *store.Locked, r store.Record) error {
 	return e.Docker.Stop(ctx, c, e.owner(r))
 }
 
-func (e *Engine) attach(ctx context.Context, l *store.Locked, c docker.Container, r store.Record, action string, argv []string) (err error) {
+func (e *Engine) attach(ctx context.Context, l *store.Locked, c docker.Container, r store.Record, action string, argv []string) error {
+	return e.attachRun(l, r, action, func() error {
+		return e.Docker.Exec(ctx, c, e.owner(r), argv, e.TerminalEnv, e.Streams)
+	})
+}
+
+// attachRun owns the lease for both container commands and foreground SSH
+// controllers. A host-side master must protect the environment just as an exec does.
+func (e *Engine) attachRun(l *store.Locked, r store.Record, action string, run func() error) (err error) {
 	lease, err := l.Lease(action, r.Launch.OnExit)
 	if err != nil {
 		return err
@@ -632,7 +645,7 @@ func (e *Engine) attach(ctx context.Context, l *store.Locked, c docker.Container
 	if err = l.Close(); err != nil {
 		return err
 	}
-	return e.Docker.Exec(ctx, c, e.owner(r), argv, e.TerminalEnv, e.Streams)
+	return run()
 }
 func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, error) {
 	s, err := e.Resolve(q)

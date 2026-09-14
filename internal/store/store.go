@@ -17,6 +17,7 @@ import (
 	"devbox/internal/environment"
 	"devbox/internal/fsutil"
 	"devbox/internal/harness"
+	"devbox/internal/sshshare"
 )
 
 type Store struct {
@@ -143,9 +144,17 @@ func (r Record) Validate(name string) error {
 		protected = append(protected, target)
 	}
 	extra := []docker.Mount{}
+	sshMounted := false
 	for _, m := range r.Creation.Mounts {
 		if err := docker.ValidateStoredMount(m); err != nil {
 			return err
+		}
+		if m.Target == sshshare.Mount {
+			if sshMounted || m.Kind == "volume" || m.File || m.ReadOnly {
+				return fmt.Errorf("invalid recorded SSH mount")
+			}
+			sshMounted = true
+			continue
 		}
 		seen, known := targets[m.Target]
 		if !known {

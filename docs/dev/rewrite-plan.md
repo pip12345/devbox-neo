@@ -157,13 +157,36 @@ Replace the current `host_network` and `extra_networks` configuration fields wit
 
 This separation prevents runtime network commands from silently changing durable configuration.
 
+### SSH sharing
+
+`devbox ssh <target> <destination> [--host-master]` is a foreground, user-authenticated SSH connection shared with one environment. The user answers normal SSH prompts in the host terminal; the agent reuses the authenticated control socket. Container master is the default. Explicit, invocation-only `--host-master` uses host SSH configuration/credentials and displays this warning before authentication:
+
+```text
+WARNING: Running in host SSH master mode
+
+The container can act as your authenticated SSH user on the remote
+server. It can also create tunnels into your computer and networks
+your computer can reach, potentially exposing private services
+and data outside the container.
+```
+
+The flag is the opt-in; no extra confirmation is added. Host mode never adopts an unrelated personal master. Neither mode copies keys/config or forces agent/X11 forwarding off. Normal SSH configuration supplies keys, ports, and ProxyJump where the master runs. No identity flag, raw SSH argv passthrough, detached mode, remembered mode, credential provisioning, automatic reconnect, or separate disconnect command is included.
+
+SSH uses the shared `startAccess` startup preparation and `attachRun` lease lifecycle. It requires an existing session, may recover its missing container under the recorded rules, synchronizes before stopped-container startup, and does not reload desired config for running access. Its lease protects stop/recreation/deletion/transfer; cleanup revokes SSH before applying the last attached command's `on_exit`. Forced container stop/removal or lost Docker contact also ends a host master.
+
+New/recreated environments mount `sessions/<name>/runtime/ssh` at `/devbox/ssh`. SSH refuses a record without this mount and recommends explicit recreation. This runtime directory is not copied by clone/relocate and is not a credential store. Each invocation gets a unique connection directory with a socket, owner lock, supervisor lifetime lock, and client Include file. The kernel releases the controller's owner lock on exit; a foreground supervisor/watchdog terminates the actual SSH master, even if the Docker CLI disconnects during authentication. No long-lived daemon or general host-control service is introduced.
+
+`/devbox/ssh/config` includes authenticated connection entries and fail-closed client defaults. Simple destination aliases retain their names; username/IP forms that cannot be SSH aliases get a generated `ssh-<hash>` alias printed in the connected status. Multiple destinations can coexist, but a duplicate active destination is refused. Socket readiness precedes publication; missing sockets never trigger new authentication or a direct-connection fallback. Ctrl-C closes the master and active sessions. Normalize expected foreground interruption before joining cleanup errors; restore host terminal settings and print `Disconnected.` on successful cleanup. Status output must use the terminal's current newline processing while Docker owns the TTY. Authentication failures, deadlines, and cleanup failures remain errors. Inert runtime directories may remain until retry/deletion, never automatically reconnecting.
+
+The runtime explicitly includes OpenSSH client tools and util-linux (`flock`). Runtime asset installation excludes `/devbox/ssh` from recursive ownership and permission changes. Keep both injected skills and guide/reference/architecture docs aligned with connection discovery, host-side authentication, and the instruction not to bypass a failed shared connection.
+
 ### Lifecycle
 
 Keep current configurable behavior:
 
 - `on_exit: running` leaves the container running;
 - `on_exit: stop` stops it after the last attached Devbox command exits;
-- `open`, `shell`, and `exec` create attached-command leases;
+- `open`, `shell`, `exec`, and `ssh` create attached-command leases;
 - stale leases are detected and reaped;
 - stop/recreate/delete/transfer enforce the appropriate active-session rules;
 - cancellation still runs bounded cleanup and preserves the foreground command exit status.
@@ -378,6 +401,7 @@ If these conditions hold, create from the recorded image and settings, preserve 
     <container-slot>/
       session.json
       active/
+      runtime/ssh/
       harnesses/
         <harness>/
           stores/<store-name>/
@@ -842,9 +866,9 @@ Copy regular files and traverse directories in harness config trees. Warn with e
 Managed harness config is written only while the matching container is stopped or absent and no attached-command lease is active. Hold the session operation lock across this check, synchronization, and startup. This prevents Devbox from merging files while a harness or background process in the container is writing them; atomic file replacement alone does not provide that protection.
 
 - Creation, explicit recreation, and transfer destination creation synchronize before materialization.
-- `app.startAccess` owns the ordinary startup boundary for open/start/shell/exec. It uses Open's captured spec or resolves one spec for the recorded slot when startup is needed, checks idle leases/backing roots, synchronizes compatible config, and starts or recovers the container.
+- `app.startAccess` owns the ordinary startup boundary for open/start/shell/exec/ssh. It uses Open's captured spec or resolves one spec for the recorded slot when startup is needed, checks idle leases/backing roots, synchronizes compatible config, and starts or recovers the container.
 - Invalid participating config or malformed live shared JSON blocks startup; there is no ignored-sync fallback.
-- Already-running access does not synchronize or stop the container implicitly. Open can report deferred config; running start/shell/exec do not resolve desired input.
+- Already-running access does not synchronize or stop the container implicitly. Open can report deferred config; running start/shell/exec/ssh do not resolve desired input.
 - Inspection, stopping, deletion, and network commands never synchronize managed harness files.
 - Changed harness definitions may describe incompatible mounts/ownership and require recreation; ordinary access retains the recorded layout. Transaction rollback and committed-transfer recovery finish recorded work without loading new desired config.
 - Runtime launch settings and their applied snapshot advance with successful preparation. Deferral never claims pending files were applied.
@@ -926,7 +950,7 @@ Use one layered `ImageBuildPlan`:
 - changing a user override of Pi/OpenCode therefore becomes pending image drift for each affected session, but does not block opening its existing container;
 - embedded runtime docs/assets have separate runtime hashes when they can be synchronized without rebuilding.
 
-The mandatory runtime includes Bash, CA certificates, curl, git, sudo, procps, vim, zip, unzip, jq, net-tools, and iputils-ping, plus system-wide interactive Bash aliases `ll='ls -alF'` and `vi='vim'`. These image inputs apply to default and custom-base images; ordinary recreation rebuilds when they change.
+The mandatory runtime includes Bash, CA certificates, curl, git, sudo, procps, vim, zip, unzip, jq, net-tools, iputils-ping, OpenSSH client tools, and util-linux (`flock`), plus system-wide interactive Bash aliases `ll='ls -alF'` and `vi='vim'`. These image inputs apply to default and custom-base images; ordinary recreation rebuilds when they change.
 
 Image planning and image execution are separate. Tests assert generated plans without invoking Docker.
 
@@ -1071,7 +1095,7 @@ With the proxy removed, the owned Docker aggregate contains only the main contai
 
 ### Attached commands
 
-`open`, `shell`, and `exec`:
+`open`, `shell`, `exec`, and `ssh`:
 
 1. acquire the session operation lock;
 2. reject incompatible pending transfers;
@@ -1206,6 +1230,7 @@ devbox delete [target...]
 devbox delete --all|--stopped
 devbox shell <target>
 devbox exec <target> -- <argv...>
+devbox ssh <target> <destination> [--host-master]
 devbox logs <target>
 devbox recreate <target> [--image]
 devbox recreate --all [--image]

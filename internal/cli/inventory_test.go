@@ -150,8 +150,15 @@ func TestTopLevelCommandsHaveNoSessionCompatibilityGroup(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"session", "reset", "prune"} {
-		if _, _, err := root.Find([]string{name}); err == nil {
-			t.Fatal("obsolete command retained", name)
+		// Group validation now owns unknown-command errors; Find can return the
+		// root for validation without making the removed name a real command.
+		cmd := New()
+		var output bytes.Buffer
+		cmd.SetOut(&output)
+		cmd.SetErr(&output)
+		cmd.SetArgs([]string{name})
+		if Execute(context.Background(), cmd) == 0 || !strings.Contains(output.String(), "unknown command") {
+			t.Fatal("obsolete command accepted", name, output.String())
 		}
 	}
 }

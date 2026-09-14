@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"devbox/internal/commanderror"
-	"devbox/internal/docker"
 	"github.com/spf13/cobra"
 )
 
@@ -72,9 +71,9 @@ func RenderError(cmd *cobra.Command, err error) int {
 		fmt.Fprintln(cmd.ErrOrStderr(), "Could not write the error report.")
 	}
 	// Keep the foreground process's status even when cleanup also failed.
-	var exit *docker.ExitError
+	var exit interface{ ExitCode() int }
 	if errors.As(err, &exit) {
-		return exit.Code
+		return exit.ExitCode()
 	}
 	return 1
 }
@@ -116,6 +115,34 @@ func bindCommandErrors(root *cobra.Command) {
 	})
 	var visit func(*cobra.Command)
 	visit = func(cmd *cobra.Command) {
+		if cmd.Args == nil && !cmd.Runnable() && cmd.HasSubCommands() {
+			// Own group validation before Cobra flattens an unknown command and
+			// its suggestions into one multiline string. User text stays quoted;
+			// known command suggestions use the normal structured step renderer.
+			cmd.Args = cobra.ArbitraryArgs
+			cmd.RunE = func(cmd *cobra.Command, args []string) error {
+				if len(args) == 0 {
+					return cmd.Help()
+				}
+				var steps []commanderror.Step
+				if !cmd.DisableSuggestions {
+					if cmd.SuggestionsMinimumDistance <= 0 {
+						cmd.SuggestionsMinimumDistance = 2
+					}
+					for _, suggestion := range cmd.SuggestionsFor(args[0]) {
+						argv := append(strings.Fields(cmd.CommandPath()), suggestion)
+						steps = append(steps, commanderror.Step{Command: argv, Reason: "Did you mean"})
+						if len(steps) == 3 {
+							break
+						}
+					}
+				}
+				if len(steps) == 0 {
+					steps = append(steps, help(cmd))
+				}
+				return commanderror.New("unknown_command", fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath()), "", nil, steps...)
+			}
+		}
 		if validate := cmd.Args; validate != nil {
 			cmd.Args = func(cmd *cobra.Command, args []string) error {
 				if err := validate(cmd, args); err != nil {
