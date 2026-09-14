@@ -1,62 +1,95 @@
-# State — current development checkpoint
+# State and sessions
 
-The default development home is `~/.devbox-neo`. Its important paths are:
+A **session** is the saved identity and harness state of an environment. Its Docker container is replaceable. The default Devbox home is `~/.devbox-neo`; `--home` or `DEVBOX_HOME` can select another home.
 
-| Path | Owner/purpose |
+## Home layout
+
+Paths below are relative to the selected home.
+
+| Path | Purpose |
 |---|---|
-| `config.json` | Sparse global defaults; no implicit profile/harness |
-| `profiles/<name>/` | Profile config and artifacts |
-| `harnesses/<name>/` | User definition and optional defaults |
-| `auth/<harness>/` | Managed persistent authentication |
-| `cache/harnesses/<harness>/<store>/` | Shared declared harness caches |
-| `sessions/<container>/session.json` | Durable identity, creation, launch, source verification, applied input snapshot, and activity |
-| `sessions/<container>/active/` | Attached-command leases, including foreground SSH controllers |
-| `sessions/<container>/runtime/ssh/` | Private bind source for `/devbox/ssh`; transient connection sockets, owner locks, and generated client config, not credentials |
-| `sessions/<container>/harnesses/<harness>/stores/<store>/` | Environment-scoped harness state |
-| `sessions/<container>/harnesses/<harness>/managed-config.json` | Last applied file/key ownership and conflicts |
-| `state/transfers/<source-container>.json` | Pending clone/relocate journal; reserves both endpoints |
-| `state/installation-id` | Stable installation identity |
-| `state/locks/installation.lock` | First-run initialization lock |
-| `state/locks/config/*.lock` | Configuration-owner mutation locks |
-| `state/locks/sessions/*.operation.lock` | Environment mutation lock |
-| `state/locks/sessions/*.record.lock` | Short record read/write lock |
-| `.build-*` | Temporary generated image context |
+| `config.json` | Global defaults |
+| `profiles/<name>/` | Profile configuration and artifacts |
+| `harnesses/<name>/` | User harness definition and optional defaults |
+| `auth/<harness>/` | Persistent managed authentication |
+| `cache/harnesses/<harness>/<store>/` | Shared harness caches |
+| `sessions/<container>/session.json` | Session identity, recorded creation/launch settings, applied inputs, and activity |
+| `sessions/<container>/active/` | Attached-command records |
+| `sessions/<container>/harnesses/<harness>/stores/<store>/` | Per-environment harness state |
+| `sessions/<container>/harnesses/<harness>/managed-config.json` | Managed file/key ownership manifest |
+| `sessions/<container>/runtime/ssh/` | Transient shared SSH sockets and generated client config |
+| `state/installation-id` | Installation identity used for Docker ownership |
+| `state/transfers/<source-container>.json` | Pending transfer journal reserving both endpoints |
+| `state/locks/installation.lock` | Home initialization lock |
+| `state/locks/config/*.lock` | Configuration-owner locks |
+| `state/locks/sessions/*.operation.lock` | Environment-operation locks |
+| `state/locks/sessions/*.record.lock` | Short session-record locks |
 
-Profile/project creation stages a private `.devbox-create-*` directory beside its destination, then publishes it with a Linux no-replace rename. An interrupted staging directory is not a configured owner and is never adopted. Configuration locks remain outside the edited directories.
+Temporary work uses `.build-*` and `.runtime-*` under the home, `.devbox-create-*` beside configuration destinations, and private creation-env files in the OS temporary directory. These are not saved configuration.
 
-Docker creation uses a private `0600` env file in the OS temporary directory, removed when the create command returns. Its contents and temporary path are not persisted in session records. `env_sources` in the record holds only file/field/index references and keyed expression/value fingerprints. Invocation-only configured env is recorded as unrecoverable input, never copied into the record. Automatic terminal passthrough is separate: it adds no env-source references or fingerprints and is captured afresh from the invoking terminal during creation/recovery and attachment. Named external volumes must still exist for recovery.
+## What survives
 
-Session records use schema version `2` and require `inputs.image`, `inputs.container`, and `inputs.runtime`. This snapshot contains public settings, source paths, file hashes/modes, and keyed env hashes—not file contents or env/auth values. Raw `--env` values are redacted in the diagnostic snapshot. The three fingerprints are derived from these inputs and validated against them. Image/container baselines advance only when creation/recreation commits; the runtime baseline advances with its applied fingerprint after successful synchronization. Status and pending-change warnings never advance either baseline.
-
-Version-1 records and incomplete snapshots are rejected. Existing development containers and durable session records require a clean reset using the previous build before switching; save any needed session data separately. There is no compatibility reader, migration, automatic deletion, or guessed historical baseline. Global/profile/project config versions remain unchanged.
-
-Session operation/record locks remain outside removable session directories. SSH lifetime locks belong to the transient runtime directory instead; supervisors retain their open inodes across deletion. Records are atomically replaced with restrictive permissions; corrupt state is not treated as absence. Environment listings use the record's `last_activity` and `last_action`; `created_at` in list output comes from Docker's current container, not the durable session's creation timestamp. No additional activity state is introduced.
-
-Container names are `devbox-<folder>-<12-hex-hash>.profile-<name>` or `devbox-<folder>-<12-hex-hash>.project`. The hash is derived from the full canonical workspace path and slot. The folder is the canonical path's basename, lowercased and limited to 32 characters from `a-z0-9_.-`. Invalid character runs become `-`; edge punctuation is trimmed. Empty results use `workspace`. Session directory names match container names. Earlier names without the folder or with `devbox-rewrite-` require a clean session reset; there is no automatic migration or deletion.
-
-Containers carry installation, ownership-version, session, workspace, and slot labels under `devbox-rewrite.*`. Images carry installation ownership only. Final image tags are `devbox-rewrite/session:<session-id>`. Names are lookup keys, never proof of ownership.
-
-Built-in mappings (targets are inside the container):
-
-| Harness | Environment stores | Shared cache stores | Auth target |
+| Data | Stop/start | Recreate | Clone/relocate |
 |---|---|---|---|
-| Pi | `home` → `/home/devuser/.pi/agent` | `npm-global` → `/home/devuser/.local`; `npm-cache` → `/home/devuser/.npm` | `/home/devuser/.pi/agent/auth.json` |
-| OpenCode | `config` → `/home/devuser/.config/opencode`; `data` → `/home/devuser/.local/share/opencode` | `cache` → `/home/devuser/.cache/opencode` | `/home/devuser/.local/share/opencode/auth.json` |
+| Workspace files | Retained on host | Retained on host | Not copied; prepare destination separately |
+| Declared environment stores | Retained | Retained | Copied |
+| Managed-config manifest | Retained | Retained and synchronized | Copied and synchronized for destination |
+| Managed auth | Retained separately | Retained separately | Not copied; destination uses managed auth |
+| Shared caches | Retained separately | Retained separately | Not copied; destination uses shared caches |
+| Container-local files/tools | Retained | Lost | Not copied |
+| Live SSH connections | End when controller/container stops | Not retained | Not copied |
 
-Parents of declared harness store/auth mounts are prepared in the filesystem that owns them: image-only ancestors as `devuser` during the runtime build, nested ancestors in their host backing source before create/start. Existing contents and ownership are not recursively changed. Unmounted paths, including OpenCode's `/home/devuser/.local/state`, remain container-local; writable parents do not imply persistence.
+`delete --container` retains saved session data and image tags. `delete --session` also removes saved data/history and the verified session image tag. Neither deletes workspace files, configuration, auth, or shared caches. See [deletion](commands.md#deletion).
 
-SSH sharing publishes `/devbox/ssh/config` and per-invocation `c/<destination-hash>-<random>/config` files only after authentication. Each connection has its own `socket`, `owner.lock`, and `master.lock` (supervisor lifetime). The foreground controller holds that lock; a supervisor terminates the master when the kernel releases it. Disconnection removes the per-connection config. Inert directories may remain until that destination is retried or saved state is deleted; they never reconnect automatically. SSH runtime data is excluded from clone/relocate and contains no provisioned credentials. Existing recorded environments without this mount need explicit recreation to use SSH sharing.
+## Built-in storage mappings
 
-Runtime documentation and inspected network facts live inside the container under `/devbox`, not in durable session records. A private `.runtime-*` staging directory beneath the selected home exists only during copying and is removed afterward.
+Targets are inside the container. Auth sources are `<home>/auth/<harness>/auth.json`.
 
-Managed configuration synchronizes before ordinary startup, including open/start/shell/exec/ssh and creation/recreation. Ordinary managed files overwrite their live copies; undeclared shared JSON keys, unmanaged files, and history remain. Running access, inspection, stopping, and deletion do not synchronize harness files. There is no broad harness-state reset command. The obsolete harness-definition `reset_preserve` field is rejected; remove it from custom definitions and recreate environments to adopt changed definitions.
+| Harness | Kind / store | Target |
+|---|---|---|
+| Pi | Environment: `home` | `/home/devuser/.pi/agent` |
+| Pi | Cache: `npm-global` | `/home/devuser/.local` |
+| Pi | Cache: `npm-cache` | `/home/devuser/.npm` |
+| Pi | Auth file | `/home/devuser/.pi/agent/auth.json` |
+| OpenCode | Environment: `config` | `/home/devuser/.config/opencode` |
+| OpenCode | Environment: `data` | `/home/devuser/.local/share/opencode` |
+| OpenCode | Cache: `cache` | `/home/devuser/.cache/opencode` |
+| OpenCode | Auth file | `/home/devuser/.local/share/opencode/auth.json` |
 
-`list`, `status`, `clone`, `relocate`, and `delete` are top-level environment commands. Single-target `status` includes the saved session and active commands alongside container state and pending changes; configuration errors do not hide saved details. List/status inventory includes retained sessions without containers and warns separately about unmatched installation-owned containers; corrupt records remain diagnostic session rows. `list --json` and `status --all --json` have `sessions` and `unmatched_containers` arrays.
+Paths outside declared mounts remain container-local. For example, OpenCode's `/home/devuser/.local/state` is not a declared persistent store.
 
-Container deletion retains session records/stores and image tags unless saved-data deletion is explicitly selected. Interactive `delete` without scope asks about containers first and saved state afterward. Mutually exclusive `--container` and `--session` scopes respectively select runtime-only and whole-environment deletion without prompts. Explicit scope is required for scripts, JSON output, and dry runs. `--force` only relaxes attached-command protection for container removal; saved-data deletion still requires idle sessions. The complete lock set remains held across both phases. Container absence and image-tag ownership/association are verified before saved data and its tag are removed. External operation/record locks are not deleted. Filtered deletion uses intersecting `--older-than`, `--orphaned`, `--stopped`, and `--all` selectors rather than a prune command. Age and container absence are revalidated under lock before deletion updates its own activity timestamp.
+## Container paths
 
-`create` creates a new session and leaves its prepared container stopped; an existing session is never overwritten. `open` and `start` require retained session state and never create new sessions. Recreation preserves the session ID and stores. Missing-container recovery uses the exact recorded image, mount layout, source definition, and setup input; it does not choose newer configuration. Both `open` and `start` retain this recovery behavior. Already-running start/shell/exec/ssh do not resolve desired configuration. Starting a stopped container does: valid participating config is required and compatible runtime config is synchronized without changing recorded creation settings.
+| Path | Purpose |
+|---|---|
+| `/workspace` | Host project bind mount |
+| `/devbox/AGENTS.md` | Agent-facing container guidance |
+| `/devbox/docs/index.md` | Embedded human docs |
+| `/devbox/network/env` | Shell-safe inspected network facts |
+| `/devbox/network/inspect.json` | Inspected network facts as JSON |
+| `/devbox/ssh/config` | Available shared SSH connections |
 
-Clone creates a new session ID; relocate preserves it. Transfers copy declared environment stores and their managed-config manifests, excluding auth overlays, shared caches, leases, SSH runtime data, and container-layer data. Opaque symlinks are copied without traversal; special files are rejected. The external journal contains public endpoint identities, IDs, mode, phase, intended running state, and input fingerprints, not env/auth values or another creation record. Completion removes it; no permanent lineage is kept.
+Documentation and network files are Devbox-managed runtime data. SSH runtime data is a separate private writable mount, not a credential store.
 
-The source installation's data is not imported automatically. The separate migration tool remains pending. See [commands](commands.md).
+## Names and ownership
+
+Container and session-directory names use:
+
+- `devbox-<folder>-<12-hex-hash>.profile-<name>`
+- `devbox-<folder>-<12-hex-hash>.project`
+
+The hash covers the canonical workspace path and slot. The readable folder portion is lowercase, sanitized, and limited to 32 characters. Symlink aliases resolve to the same workspace identity.
+
+Names locate resources; labels prove ownership. Containers carry installation, ownership-version, session, workspace, and slot labels under `devbox-rewrite.*`. Images carry installation ownership; final tags are `devbox-rewrite/session:<session-id>`.
+
+## Record and recovery contract
+
+Session schema `2` requires complete `inputs.image`, `inputs.container`, and `inputs.runtime` snapshots. Records contain public settings, paths, file hashes/modes, and keyed env hashes—not file contents or env/auth values. `env_sources` identifies exact recoverable source entries.
+
+`open` and `start` restore a missing container using its recorded image, mount layout, verified definition/setup inputs, and recoverable environment sources. They do not replace recorded creation settings with current configuration. Missing inputs require explicit recreation. Existing named external volumes must still exist.
+
+Recreation preserves the session ID. Clone allocates a new ID; relocate preserves it. Transfers retain a journal until completion and leave no permanent lineage record.
+
+`last_activity` and `last_action` describe recorded Devbox operations, not filesystem activity. List output's container creation time comes from Docker. Corrupt records remain diagnostics rather than being treated as missing state.
+
+For locking, recovery verification, and transfer commit details, see [state architecture](../architecture/state.md).

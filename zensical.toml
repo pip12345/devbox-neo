@@ -7,15 +7,26 @@ nav = [
   {"Home" = "index.md"},
   {"Guides" = [
     {"Getting started" = "guides/getting-started.md"},
+    {"Everyday use" = "guides/everyday-use.md"},
+    {"Profiles and project settings" = "guides/configuration.md"},
+    {"Customize your environment" = "guides/customization.md"},
+    {"Networking" = "guides/networking.md"},
     {"SSH sharing" = "guides/ssh.md"},
+    {"Manage environments" = "guides/managing-environments.md"},
   ]},
   {"Reference" = [
     {"Commands" = "reference/commands.md"},
     {"Configuration" = "reference/configuration.md"},
+    {"Harness definitions" = "reference/harnesses.md"},
     {"State and sessions" = "reference/state-and-sessions.md"},
+    {"Output and errors" = "reference/output.md"},
   ]},
   {"Architecture" = [
-    {"Runtime" = "architecture/runtime.md"},
+    {"Overview" = "architecture/runtime.md"},
+    {"Lifecycle and applied state" = "architecture/lifecycle.md"},
+    {"Configuration and images" = "architecture/configuration.md"},
+    {"State, locking, and transfers" = "architecture/state.md"},
+    {"SSH sharing" = "architecture/ssh.md"},
   ]},
 ]
 

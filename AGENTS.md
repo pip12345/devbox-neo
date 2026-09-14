@@ -23,3 +23,30 @@ This is a separate Git repository and Go module. `docs/dev/rewrite-plan.md` is t
 - Runtime guidance is embedded from `docs/` and `internal/assets/`; built-in Pi/OpenCode `skills/devbox/SKILL.md` defaults link to `/devbox`. Init must leave this skill inherited, not copy it into profile/project config; explicit user overrides remain supported. Keep these inputs and network-fact paths aligned when container behavior changes.
 - Keep tests and guide/reference/architecture docs aligned. Record unpassed acceptance gates honestly in `docs/dev/progress.md`.
 - Migration logic belongs only in dedicated `migrations.go` files inside the removable migration package.
+
+## Documentation writing
+
+Organize docs around the reader's next action, not the implementation's inventory of features. User docs are not an implementation changelog.
+
+### Keep the tiers distinct
+
+- **Guides** (`docs/src/guides/`): teach practical workflows, starting with simple usage and building toward advanced features. Introduce the main concepts as they become useful. Keep schemas, locking, fingerprints, transaction mechanics, and exhaustive edge cases out of the walkthrough.
+- **Reference** (`docs/src/reference/`): provide concise lookup material—command syntax, flags, fields, defaults, validation, paths, and exact behavior. Prefer focused tables and short rules over repeated explanatory paragraphs.
+- **Architecture** (`docs/src/architecture/`): explain component ownership, data flow, lifecycle, invariants, synchronization, locking, recovery, and design tradeoffs in detail. Use diagrams where they clarify structure or ordering.
+
+### Write guides for someone learning the tool
+
+- Teach one concept or action at a time. Explain what a command does, where to run it, and what happens next. Separate distinct actions into their own examples; do not put `shell` and `exec` in one block as if they were a sequence. Explain that `shell` opens an interactive terminal inside the container and how to return to the host.
+- Explain notation before relying on it: `<folder>` is a placeholder for a project path, and `.` means the current folder. Do not assume a reader already knows shell conventions.
+- Lead with the interactive CLI wherever a menu exists. Show `profile init basic` or `project init .`, then explain which menu choice to select. Keep explicit `--harness`/`--artifact` recipes in reference or advanced automation material, not basic setup.
+- Use the simplest command that serves the current step. Show `list`, not `list --sort last-active`, when teaching listing. Introduce options only when the workflow needs them; useful shorthand such as `--continue` / `-c` can be shown together when teaching that feature.
+- Use **harness** consistently for the coding tool Devbox launches, such as Pi or OpenCode, and for its configuration, launch options, and saved state. Define it plainly on first introduction. Do not substitute “agent” to sound approachable; reserve that word for the actual agent acting through the harness or established terms such as SSH agent forwarding.
+- Include the practical steps needed to finish a task. For shell setup, show what to put in `~/.bashrc` and how to reload it, rather than merely saying to keep a binary on PATH. Use neutral checkout placeholders such as `/path/to/devbox`, not a contributor's personal path or the repository's nested development layout.
+- Give a guide one **Next** destination, not several competing next steps. Other reference links can appear beside the topic they explain.
+
+### Remove noise without hiding real constraints
+
+- Describe the supported behavior positively. Do not explain obsolete features or nonexistent modes that the reader has never encountered, such as “There is no Dockerfile.full mode.”
+- Keep rewrite status, delivery checkpoints, migration history, and acceptance-gate progress in `docs/dev/`, not user-facing introductions or walkthroughs. State real prerequisites and current safety constraints where they affect the task, without wrapping them in development-status chatter.
+- Keep shared facts consistent across tiers, but do not repeat the same implementation detail everywhere. Link to the appropriate depth instead. New features should receive space proportional to comparable existing features.
+- Verify examples and menu behavior against the CLI. Keep navigation, links, terminology, and embedded docs aligned. When feedback exposes a writing problem, check adjacent examples for the same pattern rather than fixing only the quoted sentence.

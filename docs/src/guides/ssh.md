@@ -1,17 +1,27 @@
-# Share an SSH connection with your agent
+# Share SSH access
 
-Run this on the host, in a terminal you can leave open:
+SSH sharing lets you handle login in a host terminal while your agent reuses the authenticated connection. Devbox does not copy your credentials.
+
+Start with an [existing environment](getting-started.md). You'll need a host terminal you can leave open for the connection's lifetime.
+
+## 1. Connect and authenticate
+
+Run on the host:
 
 ```sh
 devbox-neo ssh . user@server
 ```
 
-Devbox starts an SSH master inside the existing environment. Answer password, passphrase, MFA, and host-key prompts in your host terminal. After authentication, the terminal prints the exact command the agent can use. The agent reuses your connection without handling the login.
+Answer any password, passphrase, MFA, or host-key prompts yourself. SSH runs inside the container by default, using its network and SSH configuration.
 
-For example, when the destination is the SSH config alias `staging`:
+After authentication, Devbox prints the exact command the agent can use. Give that command to your agent; destinations such as `user@server` receive a generated alias.
+
+## 2. Use the connection
+
+For an SSH alias named `staging`, the workflow looks like this:
 
 ```sh
-# Host terminal
+# On the host
 devbox-neo ssh . staging
 
 # Inside the container, after authentication
@@ -19,19 +29,33 @@ ssh -F /devbox/ssh/config staging 'hostname'
 scp -F /devbox/ssh/config ./report.txt staging:/tmp/
 ```
 
-Simple SSH aliases retain their names. Destinations containing a username or IPv6 address get a generated `ssh-<hash>` alias; use the command printed by Devbox. Separate destinations can be connected in separate host terminals. A duplicate active destination is refused.
+Keep the host terminal open. You can share other destinations from separate terminals.
 
-Press Ctrl-C in the host terminal to end that connection and its active SSH sessions. After cleanup, Devbox restores your terminal, prints `Disconnected.`, and exits successfully. Authentication, connection, and cleanup failures still report errors. The command holds an attached-command lease, so ordinary stop/recreate/delete/transfer protections apply. The last attached command's `on_exit` policy still decides whether the container stops. Connection loss is an error, not an automatic reconnect. If access is unavailable, rerun the host command; the generated client config never falls back to interactive authentication or a direct connection.
+## 3. Disconnect
 
-Use `--profile NAME` or an exact environment name when the folder has multiple environments. Devbox starts a stopped environment through its normal startup/config synchronization path. It does not create a new environment. Existing environments without the socket mount require one explicit `recreate` before SSH sharing can be used.
+Press Ctrl-C in the host terminal. Devbox closes the connection and its active SSH sessions, then prints `Disconnected.` after cleanup.
 
-## SSH configuration and jump hosts
+If the connection drops, run the host command again. The generated client command fails when the shared connection is unavailable; it does not start a fresh login.
 
-Container mode reads the container user's normal SSH configuration, typically `/home/devuser/.ssh/config`. Configure ports, keys, and jump hosts there using OpenSSH syntax:
+## Use your host's SSH setup
+
+If your keys, aliases, agent, or jump-host configuration are already set up on the host, opt into host mode:
+
+```sh
+devbox-neo ssh . staging --host-master
+```
+
+SSH now runs on the host, with its normal configuration. The flag applies only to this connection.
+
+**Host mode grants broader access:** the container can act as your authenticated remote user and create tunnels into your computer and networks it can reach. Devbox warns before authentication. Use it only when you're comfortable granting that access to this environment.
+
+## Configure a jump host
+
+Use normal OpenSSH configuration wherever SSH runs: in the container for default mode, or on the host for `--host-master`.
 
 ```sshconfig
 Host staging
-    HostName 192.168.1.50
+    HostName staging.example.com
     User developer
     ProxyJump bastion
 
@@ -40,31 +64,8 @@ Host bastion
     User developer
 ```
 
-You answer authentication prompts for both hops in the host terminal. `ProxyJump` does not require SSH agent forwarding. Agent and X11 forwarding follow your normal SSH configuration; Devbox does not force them off. Container-side X11 forwarding requires a display available to the container, and agent forwarding requires an agent available there. To request forwarding for a reused session, pass `-A` or `-X`/`-Y` to the in-container SSH command; the master's SSH configuration must also permit that forwarding. The generated client config does not copy forwarding preferences from the master's config.
+Run `devbox-neo ssh . staging` with the appropriate mode and answer both hops' prompts in your terminal. `ProxyJump` does not require agent forwarding.
 
-Devbox does not copy host keys/config, provision keys, or expose your host SSH agent automatically. There is no `-i`/`--identity` flag. A separately configured container key can authenticate independently of the master; disconnecting does not revoke that credential. Undeclared container-local SSH configuration and keys do not survive recreation or transfer.
+Container-local SSH files are lost on recreation unless you arrange to persist them. Host mode is useful when you want to use an existing host setup rather than maintain a second one.
 
-Docker's default bridge normally allows outbound SSH to LAN and public servers without published container ports. Firewalls, VPN routes, and DNS must still allow the connection. Use a LAN IP if a local hostname does not resolve. Container mode uses the container's network namespace; Docker `network: host` removes that network separation.
-
-## Use host configuration and credentials
-
-Opt in per connection when you want the host's SSH aliases, keys, agent, or display:
-
-```sh
-devbox-neo ssh . staging --host-master
-```
-
-The dedicated master now runs on the host. Its socket is shared only with the selected environment; Devbox never adopts an unrelated personal master. This warning appears before authentication:
-
-```text
-WARNING: Running in host SSH master mode
-
-The container can act as your authenticated SSH user on the remote
-server. It can also create tunnels into your computer and networks
-your computer can reach, potentially exposing private services
-and data outside the container.
-```
-
-The connected status remains labelled `HOST MASTER`. No extra confirmation is required. Devbox does not edit host SSH configuration; OpenSSH's ordinary authentication and known-host behavior still applies. The flag is not remembered, and failed container authentication never switches modes automatically.
-
-SSH sharing has no detached mode, saved credential store, reconnect daemon, or separate disconnect command. Clone/relocate do not copy SSH connections. Access to a connection is not permission for unrelated remote changes.
+For destination rules, forwarding, and connection lifetime, see the [SSH reference](../reference/commands.md#ssh-sharing).
