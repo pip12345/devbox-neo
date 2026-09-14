@@ -1,0 +1,28 @@
+[project]
+site_name = "Devbox"
+docs_dir = "docs/src"
+site_dir = "docs-html"
+use_directory_urls = false
+nav = [
+  {"Home" = "index.md"},
+  {"Guides" = [
+    {"Getting started" = "guides/getting-started.md"},
+    {"SSH sharing" = "guides/ssh.md"},
+  ]},
+  {"Reference" = [
+    {"Commands" = "reference/commands.md"},
+    {"Configuration" = "reference/configuration.md"},
+    {"State and sessions" = "reference/state-and-sessions.md"},
+  ]},
+  {"Architecture" = [
+    {"Runtime" = "architecture/runtime.md"},
+  ]},
+]
+
+[project.theme.palette]
+scheme = "slate"
+
+[project.markdown_extensions]
+"pymdownx.superfences".custom_fences = [
+  {name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format"},
+]

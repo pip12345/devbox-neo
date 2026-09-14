@@ -59,4 +59,4 @@ Container deletion retains session records/stores and image tags unless saved-da
 
 Clone creates a new session ID; relocate preserves it. Transfers copy declared environment stores and their managed-config manifests, excluding auth overlays, shared caches, leases, SSH runtime data, and container-layer data. Opaque symlinks are copied without traversal; special files are rejected. The external journal contains public endpoint identities, IDs, mode, phase, intended running state, and input fingerprints, not env/auth values or another creation record. Completion removes it; no permanent lineage is kept.
 
-The source installation's data is not imported automatically. The separate migration tool remains pending. See [commands](commands.md) and [progress](../../dev/progress.md).
+The source installation's data is not imported automatically. The separate migration tool remains pending. See [commands](commands.md).

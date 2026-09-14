@@ -1,6 +1,6 @@
 # Trying the development rewrite
 
-This is a Linux-only development build. The full rewrite is not complete; see [implementation progress](../../dev/progress.md). Use a non-root account with access to Docker.
+This is a Linux-only development build. The full rewrite is not complete. Use a non-root account with access to Docker.
 
 ## Build
 

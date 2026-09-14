@@ -24,3 +24,12 @@ Managed profile/project files are reapplied before any stopped-container `open`,
 The development home defaults to `~/.devbox-neo`. `--home` overrides `DEVBOX_HOME`, which overrides that default. Selecting the old `~/.devbox` (or anything inside it) is rejected, including symlink aliases. Docker names and ownership labels also stay separate from the existing installation.
 
 `make test-integration` requires a working local Docker daemon and uses isolated temporary homes and rewrite-only Docker resources. It must never target the existing installation.
+
+## Browser documentation
+
+```sh
+make docs-build  # generate docs-html/index.html
+make docs-serve  # preview at http://localhost:3000; Ctrl-C stops it
+```
+
+Requires Docker with a local daemon. Both commands run a pinned prebuilt Zensical image as your user; no local docs tools or package managers are needed. Only `docs/src/` is published. Preview reloads when docs change. Output (`docs-html/`) and cache (`.cache/`) are Git-ignored. Zensical's default browser assets may require internet. Normal CLI builds are unchanged.

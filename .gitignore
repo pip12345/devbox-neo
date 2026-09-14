@@ -1,3 +1,5 @@
 /.tools/
 /bin/
 /coverage.out
+/docs-html/
+/.cache/

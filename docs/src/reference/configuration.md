@@ -1,6 +1,6 @@
 # Configuration — current development checkpoint
 
-The complete intended schema is in [the rewrite plan](../../dev/rewrite-plan.md#configuration). This page describes what the initial runtime can use now, not a completed release.
+This page describes what the initial runtime can use now, not a completed release.
 
 ## Home
 

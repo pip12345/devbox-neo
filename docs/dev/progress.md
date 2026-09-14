@@ -77,6 +77,8 @@ The user reported the original Pi real-Docker lifecycle test passing on their Li
 
 ## Runtime documentation and network files — implemented
 
+- Optional browser docs use direct Zensical Docker Make targets. The actual Docker build/serve smoke check remains unrun here; Docker is unavailable.
+
 - Embedded human docs, linked development notes, and `/devbox/AGENTS.md` are copied into verified running containers with root ownership and read-only access for the container user.
 - `/devbox/network/env` and `/devbox/network/inspect.json` use fresh Docker facts, not persisted session authority. Preparation/access and managed network changes refresh them.
 - Pi/OpenCode defaults include the generic `devbox` skill pointing to the runtime docs. Init leaves it inherited rather than copying it into profile/project config; explicit user overrides still take precedence. Init remains non-overwriting.
