@@ -126,7 +126,7 @@ func (e *Engine) Stop(ctx context.Context, target, profile string, force bool) e
 	}
 	if !exists {
 		return commanderror.New("container_missing", "Container not found.", r.Identity.Name, nil,
-			commanderror.Next("Inspect session", "show", r.Identity.Name))
+			commanderror.Next("Inspect session", "status", r.Identity.Name))
 	}
 	if c.State.Running {
 		if err = e.Docker.Stop(ctx, c, e.owner(r)); err != nil {

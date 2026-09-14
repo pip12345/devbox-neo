@@ -89,8 +89,8 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 	if !seen {
 		t.Fatal("cleanup journal vanished from inventory")
 	}
-	details, err := e.SessionShow(ctx, opened.Name, "")
-	if err != nil || details.Pending == nil {
+	details, err := e.Status(ctx, opened.Name, "")
+	if err != nil || details.Pending == nil || details.Record != nil || details.Desired != "" {
 		t.Fatal("pending cleanup not inspectable", err)
 	}
 	var pendingError *commanderror.Error

@@ -53,20 +53,6 @@ func TestSessionDeletionPreservesExternalLocksAuthCacheAndWorkspace(t *testing.T
 	lock.Close()
 }
 
-func TestSessionShowDoesNotResolveDesiredConfig(t *testing.T) {
-	e, _, q := fixture(t)
-	ctx := context.Background()
-	result, err := e.Create(ctx, q)
-	if err != nil {
-		t.Fatal(err)
-	}
-	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
-	details, err := e.SessionShow(ctx, result.Name, "")
-	if err != nil || details.Record.ID == "" || !details.Container.Exists {
-		t.Fatal(details, err)
-	}
-}
-
 func TestSessionDeletionDoesNotFollowStoreSymlinks(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()

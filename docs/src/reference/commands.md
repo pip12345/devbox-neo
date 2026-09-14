@@ -11,7 +11,7 @@ A session is the saved environment; its container is disposable runtime. Environ
 | `create <folder>` | Create a new environment, run preparation/setup, and leave it stopped without launching its harness; refuse an existing session |
 | `open <folder-or-name> [-- harness-args...]` | Resolve desired configuration and open an existing session; valid creation drift warns first without replacing; never create a new session |
 | `list [--sort name\|last-active] [--wide] [--json]` | Saved environments with harness, profile, activity, container state, and folder; default sort is name |
-| `status <target> [--json]` | Live state plus desired drift or a separate configuration error |
+| `status <target> [--json]` | Session ID, harness, image, active-command count, and live state plus desired drift or a separate configuration error |
 | `status --all [--profile NAME] [--json]` | All saved environments, including missing containers, with separate container state and configuration health |
 | `start <target>` | Synchronize runtime config and start an existing session; recover a missing container when recorded inputs remain available; never create a new session |
 | `shell <target>` | Open the environment's shell; synchronize runtime config first if the container must start |
@@ -30,6 +30,8 @@ A session is the saved environment; its container is disposable runtime. Environ
 `status --all` shows `NAME`, `CONTAINER`, and `CHANGE`. Changes are `No changes`, `Runtime changes`, `Recreate needed`, or `Rebuild + recreate needed`; unresolved configuration, invalid records, ownership/instance mismatches, and pending transfers show `Cannot check` with separate diagnostics. A missing container is a separate fact, not automatically an error. Both recreation cases suggest ordinary `recreate`, which automatically builds changed image inputs. Checks compare current local inputs with recorded fingerprints, not container age or newer upstream releases. `--all` cannot be combined with an exact target. Bulk JSON has `sessions` and `unmatched_containers` arrays; a single target remains one status object. Session rows contain `desired_change`, `pending_input_changes`, `config_error`, `error`, and `pending_transfer` as applicable. Per-row diagnostics do not fail the command; unavailable inventory/Docker does. Ordinary `list` does not resolve desired inputs.
 
 Both `list` and `status --all` warn below their tables about installation-managed containers with no session record. These appear only in `unmatched_containers` in JSON, not as invented session rows. Corrupt records remain session rows with errors. Profile filtering uses recorded session identity, or live slot labels when records are unavailable. Unknown-profile broken records without containers remain visible in unfiltered inventory. Warnings never adopt or delete resources.
+
+`status <target>` includes saved session details even when current configuration is invalid or the container is missing. Its JSON adds `record` (the saved contract) and `active` (live command leases) alongside the status fields; bulk JSON omits these details. An exact pending-transfer endpoint remains inspectable without a session record, in which case `record` is omitted and `active` is empty. Pending transfers skip desired-configuration checks. There is no separate `show` command.
 
 `status <target>` prints detailed reasons; `status --all` groups them below affected rows. Each pending input change has an `image`, `container`, or `runtime` scope. JSON `pending_input_changes` entries contain `scope`, `code`, and `field`, with `key`, `path`, `before`, and `after` where applicable. Codes are `value_changed`, `input_changed`, `entry_added`, `entry_removed`, `order_changed`, `file_added`, `file_removed`, `file_content_changed`, `file_kind_changed`, and `file_mode_changed`. Simple public settings show old/new values; env reasons identify variable names without values or hashes. File contents are never printed. Image reasons distinguish the Dockerfile, ignore rules, included build-context paths, harness definition, generated Devbox image layer, and build arguments. Source-path changes alone do not cause image rebuilding when effective inputs are identical.
 
@@ -84,7 +86,6 @@ Network changes do not edit configuration or fingerprints. They survive stop/sta
 
 | Command | Behavior |
 |---|---|
-| `show <target> [--json]` | Recorded contract and live leases without desired resolution |
 | `clone <source> <destination-folder> [--profile NAME] [--dry-run] [--json]` | New session ID; stopped/absent source, stopped destination |
 | `relocate <source> <destination-folder> [--dry-run] [--json]` | Preserve ID and running/stopped intent; remove source after destination commitment |
 | `clone\|relocate <folder> --from SLOT --to SLOT [--dry-run] [--json]` | Exact same-folder slots; each slot is a profile name or `.project` |

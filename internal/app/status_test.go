@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +16,64 @@ import (
 	"devbox/internal/environment"
 	"devbox/internal/store"
 )
+
+func TestStatusRetainsDetailsWithInvalidConfig(t *testing.T) {
+	for _, missing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("missing=%t", missing), func(t *testing.T) {
+			e, d, q := fixture(t)
+			ctx := context.Background()
+			result, err := e.Create(ctx, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			saved := record(t, e, result.Name)
+			if missing {
+				d.Forget(result.Name)
+			}
+			write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
+			details, err := e.Status(ctx, result.Name, "")
+			if err != nil || details.Record == nil {
+				t.Fatal(details, err)
+			}
+			if !reflect.DeepEqual(*details.Record, saved) || details.Exists == missing || details.ConfigError == "" || details.Desired != "" || details.Active == nil {
+				t.Fatal("config error hid saved details or container state", details)
+			}
+		})
+	}
+}
+
+func TestStatusReportsLiveLeasesWithoutReaping(t *testing.T) {
+	e, _, q := fixture(t)
+	ctx := context.Background()
+	result, err := e.Create(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock, err := e.Store.Lock(ctx, result.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, liveErr := lock.Lease("exec", "running")
+	stale, staleErr := lock.Lease("shell", "running")
+	lock.Close()
+	if liveErr != nil || staleErr != nil {
+		t.Fatal(liveErr, staleErr)
+	}
+	stale.Process.Boot = "previous-boot"
+	b, err := json.Marshal(stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(e.Store.Home, "sessions", result.Name, "active", stale.ID+".json")
+	write(t, path, string(b))
+	details, err := e.Status(ctx, result.Name, "")
+	if err != nil || len(details.Active) != 1 || details.Active[0].ID != live.ID || details.Desired != environment.NoChange {
+		t.Fatal("status lost live commands or configuration check", details, err)
+	}
+	if string(getFile(t, path)) != string(b) {
+		t.Fatal("status mutated stale lease")
+	}
+}
 
 func TestStatusAllLeavesPendingTransfersUnclassified(t *testing.T) {
 	e, _, q := fixture(t)
@@ -44,6 +103,13 @@ func TestStatusAllLeavesPendingTransfersUnclassified(t *testing.T) {
 	for _, view := range report.Sessions {
 		if view.Pending == nil || view.Desired != "" || view.ConfigError != "" {
 			t.Fatal("pending endpoint was resolved", view)
+		}
+		details, err := e.Status(context.Background(), view.Name, "")
+		if err != nil || details.Pending == nil || details.Desired != "" || details.ConfigError != "" {
+			t.Fatal("single status resolved a pending endpoint", details, err)
+		}
+		if (details.Record != nil) != (view.Name == source.Identity.Name) {
+			t.Fatal("incorrect record for pending endpoint", details)
 		}
 	}
 }

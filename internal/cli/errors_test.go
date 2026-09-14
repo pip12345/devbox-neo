@@ -187,9 +187,9 @@ func TestErrorNextStepsScopeOnlyDevboxCommands(t *testing.T) {
 	if err := cmd.Flags().Set("home", home); err != nil {
 		t.Fatal(err)
 	}
-	next := []commanderror.Step{commanderror.Next("Inspect", "show", "container"), {Command: []string{"docker", "info"}}}
+	next := []commanderror.Step{commanderror.Next("Inspect", "status", "container"), {Command: []string{"docker", "info"}}}
 	scoped := scopedSteps(cmd, next, home)
-	if !reflect.DeepEqual(scoped[1].Command, next[1].Command) || !reflect.DeepEqual(next[0].Command, []string{"devbox-neo", "show", "container"}) {
+	if !reflect.DeepEqual(scoped[1].Command, next[1].Command) || !reflect.DeepEqual(next[0].Command, []string{"devbox-neo", "status", "container"}) {
 		t.Fatal("external command or source steps mutated")
 	}
 	if text := stepsText(scoped); !strings.Contains(text, shellQuote(home)) {
@@ -245,7 +245,7 @@ func TestHumanErrorsKeepDetailsWithoutExposingCauses(t *testing.T) {
 }
 
 func TestActionLabelsEscapeTerminalControls(t *testing.T) {
-	steps := []commanderror.Step{commanderror.Next("Inspect\n\x1b[31m", "show", "a'b")}
+	steps := []commanderror.Step{commanderror.Next("Inspect\n\x1b[31m", "status", "a'b")}
 	text := stepsText(steps)
 	if strings.Contains(text, "\x1b") || !strings.Contains(text, shellQuote("a'b")) || strings.Count(text, "\n") != 2 {
 		t.Fatalf("unsafe label or unquoted command: %q", text)

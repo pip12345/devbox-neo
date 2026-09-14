@@ -39,7 +39,7 @@ func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
 	check(err, "primary_network_protected", "recreate", result.Name)
 	d.Forget(result.Name)
 	err = e.Stop(ctx, result.Name, "", false)
-	check(err, "container_missing", "show", result.Name)
+	check(err, "container_missing", "status", result.Name)
 	err = e.Exec(ctx, result.Name, "", []string{"true"}, false)
 	check(err, "container_missing", "start", result.Name)
 	d.Fail = func(args []string) error {

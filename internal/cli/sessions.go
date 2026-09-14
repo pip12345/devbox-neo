@@ -38,25 +38,7 @@ func sessionCommands(factory engineFactory, profile *string) []*cobra.Command {
 	list.Flags().BoolVar(&listJSON, "json", false, "Print saved environments and unmatched containers as JSON")
 	list.Flags().BoolVar(&wide, "wide", false, "Also show exact activity/creation timestamps and the last action")
 	list.Flags().StringVar(&sortBy, "sort", "name", "Sort by name or last-active (newest first)")
-	var showJSON bool
-	show := &cobra.Command{Use: "show <target>", Short: "Show saved session settings and active commands", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		e, err := factory(cmd)
-		if err != nil {
-			return err
-		}
-		details, err := e.SessionShow(cmd.Context(), args[0], *profile)
-		if err != nil {
-			return err
-		}
-		if showJSON {
-			return json.NewEncoder(cmd.OutOrStdout()).Encode(details)
-		}
-		printView(cmd, details.Container)
-		cmd.Printf("Session: %s\nHarness: %s\nImage: %s\nActive commands: %d\n", details.Record.ID, details.Record.Definition.Name, details.Record.ImageID, len(details.Active))
-		return nil
-	}}
-	show.Flags().BoolVar(&showJSON, "json", false, "Print session settings and container status as JSON")
-	commands := []*cobra.Command{list, statusCommand(factory, profile), show, deleteCommand(factory, profile)}
+	commands := []*cobra.Command{list, statusCommand(factory, profile), deleteCommand(factory, profile)}
 	for _, mode := range []string{"clone", "relocate"} {
 		commands = append(commands, transferCommand(factory, profile, mode))
 	}

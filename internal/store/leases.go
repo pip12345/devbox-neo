@@ -157,7 +157,7 @@ func (l *Locked) RequireIdle() error {
 			noun = "command"
 		}
 		return commanderror.New("session_busy", fmt.Sprintf("Environment is in use by %d %s.", len(active), noun), l.Name, nil,
-			commanderror.Next("Inspect active commands", "show", l.Name))
+			commanderror.Next("Inspect active commands", "status", l.Name))
 	}
 	return nil
 }

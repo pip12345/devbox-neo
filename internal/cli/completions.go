@@ -164,7 +164,7 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 	visit = func(cmd *cobra.Command) {
 		path := strings.TrimPrefix(cmd.CommandPath(), root.Name()+" ")
 		switch path {
-		case "open", "start", "recreate", "show", "status", "ssh":
+		case "open", "start", "recreate", "status", "ssh":
 			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
 		case "shell", "exec", "stop", "logs":
 			cmd.ValidArgsFunction = completeTarget(containers, 0, false)

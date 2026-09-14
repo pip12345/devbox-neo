@@ -197,7 +197,7 @@ There is no idle-timeout feature in the initial rewrite.
 
 Keep the complete feature set:
 
-- list and show;
+- list and detailed status;
 - activity timestamps and last action;
 - filtered cleanup with explicit container-only or whole-environment deletion scope;
 - relocate;
@@ -422,12 +422,12 @@ External lock paths remain outside removable session directories so deletion can
 
 A session is durable Devbox state and recreation identity. A container is disposable Docker runtime linked to the session through deterministic naming and ownership/session-ID labels. Container/session names use `devbox-<folder>-<12-hex-hash>.profile-<name>` or `devbox-<folder>-<12-hex-hash>.project`, hashing the full canonical workspace path and slot. The canonical folder basename is lowercased, sanitized to `a-z0-9_.-` with invalid runs replaced by `-`, and limited to 32 characters. Edge punctuation is trimmed; an empty result becomes `workspace`. The prefix is independent of the Docker ownership namespace.
 
-The saved session is the top-level environment model. `list`, `status`, `show`, `relocate`, `clone`, and `delete` are root commands; there is no `session` group or separate container-only list/status.
+The saved session is the top-level environment model. `list`, `status`, `relocate`, `clone`, and `delete` are root commands; there is no `session` group or separate container-only list/status.
 
 - `list` inventories saved environments, including missing containers, corrupt records, and pending transfer endpoints, without resolving desired configuration.
 - `status <target>` and `status --all` show container state separately from configuration errors and pending runtime/recreate/rebuild changes. Missing containers do not imply configuration failure.
 - Both list and bulk status warn separately about installation-managed containers without session records; JSON has separate `sessions` and `unmatched_containers` arrays, not invented session rows.
-- `show <target>` exposes the recorded contract, leases, and linked-container state without desired resolution.
+- `status <target>` also exposes the recorded contract and live leases; desired-configuration errors do not hide these details. Single-target JSON adds `record` and `active` to the status fields, while bulk rows remain compact. Exact pending-transfer endpoints remain inspectable without records, omit `record`, and skip desired resolution. There is no separate `show` command.
 - `start`, `stop`, `shell`, `exec`, `logs`, and `recreate` retain their runtime contracts.
 - `delete` coordinates container deletion and optional saved-state deletion under one lock set. Without scope, the CLI asks about the container first, then saved data. Mutually exclusive `--container` and `--session` select runtime-only or whole-environment deletion without prompts. Explicit scope is required for scripts, JSON output, and dry runs. `--force` only relaxes container attached-command protection. Saved-state deletion still requires container absence and idle leases.
 
@@ -1235,7 +1235,6 @@ devbox logs <target>
 devbox recreate <target> [--image]
 devbox recreate --all [--image]
 devbox network inspect|env|connect|disconnect
-devbox show <target> [--json]
 devbox relocate|clone ...
 ```
 
@@ -1438,7 +1437,7 @@ Build the first complete runtime path before dashboards or exhaustive package im
 
 ### Phase 5: Durable session management
 
-- implement top-level saved-environment list/show and explicit-scope filtered deletion;
+- implement top-level saved-environment list/status and explicit-scope filtered deletion;
 - implement the common clone/relocate engine, same-workspace slot transfer, and pending transfer journal;
 - enforce stopped-container clone rules and stop-before-copy relocation with intended-state restoration;
 - implement retry and bounded rollback without permanent lineage;

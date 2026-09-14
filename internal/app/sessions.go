@@ -12,56 +12,62 @@ import (
 	"devbox/internal/store"
 )
 
-type SessionDetails struct {
-	Record    store.Record       `json:"record"`
-	Container View               `json:"container"`
-	Active    []store.Lease      `json:"active"`
-	Pending   *store.Reservation `json:"pending_transfer,omitempty"`
+type StatusDetails struct {
+	View
+	Record *store.Record `json:"record,omitempty"`
+	Active []store.Lease `json:"active"`
 }
 
-func (e *Engine) SessionShow(ctx context.Context, target, profile string) (SessionDetails, error) {
+func (e *Engine) Status(ctx context.Context, target, profile string) (StatusDetails, error) {
 	r, err := e.Locate(ctx, target, profile)
 	if errors.Is(err, os.ErrNotExist) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
 		pending, pendingErr := e.Store.Pending(target)
 		if pendingErr != nil {
-			return SessionDetails{}, pendingErr
+			return StatusDetails{}, pendingErr
 		}
 		if pending != nil {
-			return SessionDetails{Container: View{Name: target, Pending: pending}, Pending: pending, Active: []store.Lease{}}, nil
+			return StatusDetails{View: View{Name: target, Pending: pending}, Active: []store.Lease{}}, nil
 		}
 	}
 	if err != nil {
-		return SessionDetails{}, err
+		return StatusDetails{}, err
 	}
 	lock, err := e.Store.Lock(ctx, r.Identity.Name)
 	if err != nil {
-		return SessionDetails{}, err
+		return StatusDetails{}, err
 	}
 	defer lock.Close()
 	r, err = lock.ReadRecord(ctx)
 	if err != nil {
-		return SessionDetails{}, err
+		return StatusDetails{}, err
 	}
 	pending, err := e.Store.Pending(r.Identity.Name)
 	if err != nil {
-		return SessionDetails{}, err
+		return StatusDetails{}, err
 	}
 	leases, err := lock.LiveLeases()
 	if err != nil {
-		return SessionDetails{}, err
+		return StatusDetails{}, err
+	}
+	if leases == nil {
+		leases = []store.Lease{}
 	}
 	c, exists, err := e.inspect(ctx, r)
 	if err != nil {
-		return SessionDetails{}, err
+		return StatusDetails{}, err
 	}
 	view := recordView(r)
 	view.Exists = exists
 	view.Running = exists && c.State.Running
 	if exists {
 		view.ContainerID = c.ID
+		view.CreatedAt = c.Created
 	}
 	view.Pending = pending
-	return SessionDetails{Record: r, Container: view, Active: leases, Pending: pending}, nil
+	if pending == nil {
+		e.desiredStatus(&view, r)
+	}
+	return StatusDetails{View: view, Record: &r, Active: leases}, nil
 }
 
 type sessionRemoval struct {

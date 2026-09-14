@@ -105,7 +105,7 @@ bin/devbox-neo status --all
 bin/devbox-neo status --all --profile basic
 ```
 
-The table separates running/stopped/missing container state from configuration health. A missing container is not automatically an error. Reasons below each affected environment explain which settings or files changed. For one environment, use `status <name>`. Containers without session records are reported as warnings. `Rebuild + recreate needed` means image inputs changed; `Recreate needed` means only container inputs changed. `Runtime changes` do not need a rebuild. `Cannot check` means the diagnostic needs attention, not that the container is up to date. This checks local inputs, not newer upstream package or base-image releases.
+The table separates running/stopped/missing container state from configuration health. A missing container is not automatically an error. Reasons below each affected environment explain which settings or files changed. For one environment, use `status <name>` to see its session ID, harness, image, active-command count, container state, and pending changes together. Saved details remain visible if current configuration is invalid; add `--json` for the full saved contract and active-command records. Containers without session records are reported as warnings. `Rebuild + recreate needed` means image inputs changed; `Recreate needed` means only container inputs changed. `Runtime changes` do not need a rebuild. `Cannot check` means the diagnostic needs attention, not that the container is up to date. This checks local inputs, not newer upstream package or base-image releases.
 
 Valid creation changes warn instead of replacing the existing container. On `open`, specific reasons such as `network: default -> host`, changed Dockerfile/build-context paths, or changed environment variable names appear first, before startup and entrypoint output. Env values and file contents are not shown. Opening continues immediately with the existing creation settings. Apply changes explicitly:
 
@@ -164,7 +164,7 @@ bin/devbox-neo relocate /path/to/workspace --from basic --to .project
 
 Use an exact container name when the source folder has multiple slots. `.project` requires an initialized project; named destination profiles must exist. Clone requires a stopped or absent source container and leaves the destination stopped. Relocate can stop a running source, then restore that running state at the destination after preparation succeeds.
 
-If a transfer is interrupted, inspect `list` or `show <exact-name>`, fix the reported problem, and retry the same transfer command. Do not delete pending state manually. Before commitment, restore changed destination inputs before retrying; after commitment, retry only finishes recovery/cleanup.
+If a transfer is interrupted, inspect `list` or `status <exact-name>`, fix the reported problem, and retry the same transfer command. Do not delete pending state manually. Before commitment, restore changed destination inputs before retrying; after commitment, retry only finishes recovery/cleanup.
 
 ## Delete an environment
 

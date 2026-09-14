@@ -52,7 +52,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		err := root.Execute()
 		return out.String(), err
 	}
-	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.Name, "--json"}, {"status", "--all"}, {"status", "--all", "--json"}, {"show", result.Name, "--json"}, {"network", "env", result.Name, "--get", "DEVBOX_HOST"}, {"logs", result.Name}} {
+	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.Name, "--json"}, {"status", "--all"}, {"status", "--all", "--json"}, {"status", result.Name}, {"network", "env", result.Name, "--get", "DEVBOX_HOST"}, {"logs", result.Name}} {
 		if out, err := run(args...); err != nil || out == "" {
 			t.Fatal(args, out, err)
 		}
@@ -83,13 +83,35 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		}
 	}
 	out, err = run("status", result.Name, "--json")
-	var single app.View
+	var single app.StatusDetails
 	if err != nil || json.Unmarshal([]byte(out), &single) != nil || len(single.PendingInputChanges) != 2 || strings.Contains(out, "private-status-value") || !strings.Contains(out, `"pending_input_changes":`) || strings.Contains(out, `"reasons":`) {
 		t.Fatal("single status JSON lost reasons or leaked env", out, err)
 	}
 	out, err = run("status", "--all", "--json")
 	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews.Sessions) != 1 || !reflect.DeepEqual(single.PendingInputChanges, statusViews.Sessions[0].PendingInputChanges) {
 		t.Fatal("bulk and single JSON disagree", out, err)
+	}
+	if single.Record == nil || single.Record.ID != single.SessionID || single.Record.ImageID == "" || single.Active == nil {
+		t.Fatal("single status JSON lost session details", single)
+	}
+	if strings.Contains(out, `"record":`) || strings.Contains(out, `"active":`) {
+		t.Fatal("bulk status gained single-target details", out)
+	}
+	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte("broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, err = run("status", result.Name)
+	for _, want := range []string{"Session: " + single.SessionID, "Harness: pi", "Image: " + single.Record.ImageID, "Active commands: 0", "Changes: Cannot check", "Desired configuration error:"} {
+		if err != nil || !strings.Contains(out, want) {
+			t.Fatalf("status lost %q with invalid config: %s (%v)", want, out, err)
+		}
+	}
+	out, err = run("status", result.Name, "--json")
+	if err != nil || json.Unmarshal([]byte(out), &single) != nil || single.Record == nil || single.ConfigError == "" {
+		t.Fatal("JSON config error hid saved details", out, err)
+	}
+	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host","extra_env":["TOKEN=private-status-value"]}`), 0600); err != nil {
+		t.Fatal(err)
 	}
 	destination := t.TempDir()
 	if out, err := run("clone", result.Name, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {

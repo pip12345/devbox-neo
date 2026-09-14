@@ -168,7 +168,6 @@ func TestInspectionStopAndDeletionDoNotSynchronize(t *testing.T) {
 	checks := []func() error{
 		func() error { _, err := e.List(ctx, ""); return err },
 		func() error { _, err := e.Status(ctx, created.Name, ""); return err },
-		func() error { _, err := e.SessionShow(ctx, created.Name, ""); return err },
 		func() error { return e.Logs(ctx, created.Name, "", false, "10") },
 		func() error { return e.ChangeNetwork(ctx, created.Name, "", "secondary", true) },
 		func() error { return e.Stop(ctx, created.Name, "", false) },

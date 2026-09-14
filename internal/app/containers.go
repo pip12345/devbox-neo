@@ -97,32 +97,6 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 	return result
 }
 
-func (e *Engine) Status(ctx context.Context, target, profile string) (View, error) {
-	r, err := e.Locate(ctx, target, profile)
-	if err != nil {
-		return View{}, err
-	}
-	view := recordView(r)
-	c, exists, err := e.inspect(ctx, r)
-	if err != nil {
-		return view, err
-	}
-	view.Exists = exists
-	view.Running = exists && c.State.Running
-	if exists {
-		view.ContainerID = c.ID
-		view.CreatedAt = c.Created
-	}
-	view.Pending, err = e.Store.Pending(r.Identity.Name)
-	if err != nil {
-		return view, err
-	}
-	if view.Pending == nil {
-		e.desiredStatus(&view, r)
-	}
-	return view, nil
-}
-
 func (e *Engine) desiredStatus(view *View, r store.Record) {
 	desired, err := e.Resolve(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, ExpectedName: r.Identity.Name})
 	if err != nil {
@@ -143,7 +117,7 @@ func (e *Engine) Logs(ctx context.Context, target, profile string, follow bool, 
 	}
 	if !exists {
 		return commanderror.New("container_missing", "Container not found; its logs are unavailable.", r.Identity.Name, nil,
-			commanderror.Next("Inspect session", "show", r.Identity.Name))
+			commanderror.Next("Inspect session", "status", r.Identity.Name))
 	}
 	return e.Docker.Logs(ctx, c, e.owner(r), follow, tail, e.Streams.Out, e.Streams.Err)
 }

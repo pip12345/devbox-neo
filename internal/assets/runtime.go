@@ -66,8 +66,10 @@ launch settings, continuation, and harness arguments.
 On the host, devbox-neo list shows saved environments and their running/stopped/missing
 containers. Status --all checks their configuration and changed local inputs, including
 environments without containers; it does not check upstream releases. Both commands
-warn separately about managed containers without session records. Show, clone,
-and relocate are also top-level commands; there is no session command group.
+warn separately about managed containers without session records. Status <target>
+combines saved session details, active commands, container state, and pending changes;
+invalid current config does not hide saved details. Clone and relocate are also
+top-level commands; there is no separate show command or session command group.
 Managed profile/project files are authoritative: local edits to their live copies
 are overwritten at the next startup. Open/start/shell/exec/ssh synchronize before
 starting stopped containers, never merely when attaching to running ones.

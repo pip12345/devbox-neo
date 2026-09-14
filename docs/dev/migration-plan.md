@@ -350,7 +350,7 @@ Start inventory/converter fixtures in parallel with rewrite development if usefu
 - missing images, failed builds, failed setup, failed record commits, and interrupted success bookkeeping remain resumable;
 - preserved source records/state and archived writable layers remain available after partial failure;
 - old proxy/user network resources are not deleted;
-- imported sessions work with normal list/show/open/recreate/delete and contain no migration-specific runtime mode.
+- imported sessions work with normal list/status/open/recreate/delete and contain no migration-specific runtime mode.
 
 ## Completion and Removal
 
