@@ -116,7 +116,13 @@ type Request struct {
 	Host         config.Host `json:"-"`
 }
 
-func Resolve(q Request) (Spec, error) {
+func Resolve(q Request) (Spec, error) { return resolve(q, nil) }
+
+// Preview validates proposed project configuration without publishing it.
+// Its specification is for comparison only; execution resolves final paths.
+func Preview(q Request, project *config.Layer) (Spec, error) { return resolve(q, project) }
+
+func resolve(q Request, project *config.Layer) (Spec, error) {
 	var spec Spec
 	workspace, err := Identify(q.Workspace, "", true)
 	if err != nil {
@@ -128,7 +134,7 @@ func Resolve(q Request) (Spec, error) {
 	} else {
 		q.Host = maps.Clone(q.Host)
 	}
-	r, err := artifact.ResolveWithHost(q.Home, q.Workspace, q.Profile, q.Overrides, q.Host)
+	r, err := artifact.Preview(q.Home, q.Workspace, q.Profile, q.Overrides, project, q.Host)
 	if err != nil {
 		return spec, err
 	}

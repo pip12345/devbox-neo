@@ -25,6 +25,12 @@ The development home defaults to `~/.devbox-neo`. `--home` overrides `DEVBOX_HOM
 
 `make test-integration` requires a working local Docker daemon and uses isolated temporary homes and rewrite-only Docker resources. It must never target the existing installation.
 
+## Migration utility
+
+`make build-migrate` builds the separate `bin/devbox-migrate` utility. `--dry-run` is read-only; `--stage` copies approved host-backed data into `~/.devbox-neo.migration` with a saved `report.txt`. A separate `--merge` reviews destination conflicts, project edits, container-config capture, and behavior changes before creating ordinary Neo environments. `--resume` continues approved work without resetting committed sessions.
+
+**This is a development candidate; real-Docker and conversation/auth acceptance remain unpassed.** Read the [migration contract and safety limits](docs/dev/migration-plan.md#current-implementation) before using it. Tests use temporary homes and fake Docker, not personal installations.
+
 ## Browser documentation
 
 ```sh

@@ -46,14 +46,13 @@ func ResolveWithHost(home, workspace, explicit string, override config.Layer, ho
 // PreviewProject uses the normal participation rules for a proposed project
 // edit, before writing it. Initialization must not implement its own inheritance.
 func PreviewProject(home, workspace string, project config.Layer, host config.Host) (Resolved, error) {
-	if project.Raw != nil {
-		expanded, err := config.ResolveLayer(project.Raw, filepath.Join(workspace, ".devbox/config.json"), true, host)
-		if err != nil {
-			return Resolved{}, err
-		}
-		project = expanded
-	}
-	return resolve(home, workspace, "", config.Layer{}, &project, host)
+	return Preview(home, workspace, "", config.Layer{}, &project, host)
+}
+
+// Preview resolves a proposed project edit through the same participation
+// rules, without publishing it. Explicit profiles still exclude project data.
+func Preview(home, workspace, explicit string, override config.Layer, project *config.Layer, host config.Host) (Resolved, error) {
+	return resolve(home, workspace, explicit, override, project, host)
 }
 
 func resolve(home, workspace, explicit string, override config.Layer, proposed *config.Layer, host config.Host) (r Resolved, err error) {
@@ -88,6 +87,9 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 		var err error
 		if proposed != nil {
 			l = *proposed
+			if l.Raw != nil {
+				l, err = config.ResolveLayer(l.Raw, projectPath, true, host)
+			}
 		} else {
 			l, err = config.ReadLayer(projectPath, true, host)
 		}

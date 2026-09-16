@@ -357,7 +357,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if q.Mode == "relocate" {
 		created = source.Created
 	}
-	destination, _, err := e.createAs(ctx, destLock, spec, nil, false, journal.DestinationID, created)
+	destination, _, err := e.CreatePrepared(ctx, destLock, spec, CreationIdentity{ID: journal.DestinationID, Created: created})
 	if err != nil {
 		return result, err
 	}

@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "default_profile": "work",
+  "default_harness": "pi",
+  "global_env": ["TEST_TOKEN=fixture-private-value", "PASSTHROUGH"],
+  "proxy_enabled": true,
+  "ignore_project_overrides": false,
+  "harnesses": {"pi": {"auth_file": ""}, "opencode": {"auth_file": ""}, "claude": {"auth_file": "", "onboarding_file": ""}, "codex": {"auth_file": ""}, "copilot": {"auth_file": ""}}
+}

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "harness": "pi",
+  "on_exit": "stop",
+  "default_shell": ["bash"],
+  "harness_args": ["--model", "${env:MODEL}"],
+  "host_network": false,
+  "extra_mounts": [],
+  "extra_env": ["TOKEN=fixture-layer-private"],
+  "extra_ports": [],
+  "extra_networks": [],
+  "docker_args": [],
+  "proxy": {"enabled": true, "allow": {"domains": ["example.test"]}},
+  "vscode": {"extensions": ["example.extension"]}
+}

@@ -2,24 +2,63 @@
 
 ## Status and Goal
 
-This plan defines a separate, removable migration utility for moving the current Go Devbox home into the rewrite described in [rewrite-plan.md](rewrite-plan.md). It is a plan, not an implemented command.
+This plan defines the separate, removable utility for importing the current Go Devbox home's data into the rewrite described in [rewrite-plan.md](rewrite-plan.md). **Inventory, staging, explicit merge, and resumable normal-engine creation are implemented as a development candidate. Real-Docker, provider continuation/auth, and power-loss acceptance remain unpassed.** See [Current implementation](#current-implementation) for the executable contract. The flow examples below illustrate the interaction rather than prescribing exact screen text.
 
-Preserve user-owned configuration, authentication, session identity, and portable harness state. Keep the original home at `~/.devbox.old`. Build fresh rewrite containers instead of adopting old containers or teaching the rewrite to read old files.
+The user-facing promise is:
 
-The main rewrite retains strict current-format loaders. The sole old-format reader is the explicitly invoked migration utility.
+> Bring your profiles, configuration, credentials, and saved conversations into Neo. Rebuild the environments around them. Keep the originals available.
+
+The migration has two explicitly authorized phases: **prepare an import**, then **merge it into Neo**. By default, copy and convert `~/.devbox` into `~/.devbox-neo.migration`, then merge approved items into `~/.devbox-neo`. The destination may already contain valuable environments. Never rename or replace the source home, overwrite an existing Neo session, or treat staging approval as merge approval.
+
+Build fresh containers instead of adopting old containers. The normal rewrite retains strict current-format loaders; only the explicitly invoked migration utility reads old formats. A saved `report.txt` explains imported, changed, skipped, failed, and pending items, including old aliases and lineage that have no runtime equivalent.
+
+## Current Implementation
+
+Build the standalone tool with `make build-migrate`; normal `make build` still builds only Neo. The merge implementation follows the separately delivered staging checkpoint. Nothing runs automatically on Neo startup.
+
+```text
+bin/devbox-migrate --dry-run
+bin/devbox-migrate --stage
+bin/devbox-migrate --merge
+bin/devbox-migrate --resume
+bin/devbox-migrate --merge --review-pending
+```
+
+- `--dry-run` performs filesystem inventory only: no Docker commands, filesystem changes, initialization, locks, or saved report.
+- `--stage` presents numbered inventory, selection, exclusion, rescan, and confirmation choices. It copies converted host-backed data into `<destination>.migration/staged-home/`, writes `journal.json` and `report.txt`, and never writes the destination or project files. Project proposals are stored under `staged-home/projects/<workspace-hash>/`; staging does not back up or replace live project files.
+- Non-interactive staging requires `--confirm-stage`. Use repeatable `--skip <inventory-key>` for explicit exclusions and `--approve-external-auth auth:pi` / `auth:opencode` for external credential copying. Unsupported items are errors unless explicitly skipped. Skipping an owner also skips dependents, including global config if its default profile was excluded. The interactive supported-items choice shows the complete exclusion list before confirmation.
+- `--caches` includes mapped optional caches; otherwise they are excluded. Scripts use these selection flags only with `--stage`; resume retains the recorded scope.
+- Source schemas are pinned to global version 2, layer/session version 1, metadata version 4, and ownership version 1 with creation settings. Unsupported source versions are not repaired.
+- Both Pi and OpenCode host-backed stores are inventoried, including complete database companion files. Pi generated `/devbox/harness-config` links are materialized from verified host staging; safe internal links retain their relative meaning. Unsafe/unmapped links and special files block affected items. During merge review, the capture menu or `--capture-config` reads OpenCode's separate config home from its verified stopped container into private work state. Unavailable config requires an explicit `--omit-container-config <session-key>` decision or skipping the session. Captures are checked again before use.
+- Source identity, timestamps, aliases, lineage, and the distinction between a project slot and its inherited source profile appear in the report. Staging creates no Neo records. Merge preserves identity and available activity through normal creation, which commits a complete current-format record. When source activity is absent, the import approval time is recorded as creation activity rather than inventing historical activity.
+- Staging requires read-only Docker ownership/idle checks. All source-installation containers must be stopped because shared auth/cache writers may belong to skipped or unrecorded sessions. Source session operation/record locks coordinate copying; source data is not converted or repaired in place. Keep the old CLI and other source writers idle during copying.
+- File content, executable modes, presence, directory membership, and links are checked against the source snapshot. Interrupted staging can resume only with unchanged inventory; changed inputs require review rather than overwriting staged edits. Unrelated work directories are refused, including by resume. To start a fresh snapshot after source changes, stop the importer, retain the existing work directory at a separate non-conflicting path, and run `--stage` again; the utility never discards or resets a prior run automatically. A merely prepared run cannot advance into merge through resume.
+- `--merge` reviews the current destination, profile conflicts, credential reuse/replacement, exact project edits, and per-session behavior changes. It validates proposed configuration in private previews through the normal resolver, then verifies the same fingerprints at final paths before creating containers. Existing destinations must have a valid Neo installation identity; unidentified directories are refused rather than initialized over.
+- Scripts require `--confirm-merge` plus explicit `--accept-change <review-key>` decisions. Owner choices use `--rename-profile old=new`, `--reuse-profile <profile-key>`, `--approve-project <project-key>`, `--global keep|import`, and `--replace-auth <auth-key>`. `--skip` accepts the same exact inventory keys as staging. Global settings and existing credentials are retained by default.
+- Merge records publication intent, backs up approved replacements, and uses no-replace directory publication for additions. Prepared session directories are bound to their Linux device/inode before publication. Retry recognizes valid committed records and never recopies their state. Newly built environments are left stopped; old containers are never adopted or renamed.
+- `--resume` continues the already approved phase. After shared-file publication finishes, `--merge --review-pending` can explicitly reapprove changed current configuration for unfinished environments, such as a corrected setup script. It cannot change import scope, repeat shared publication, or reset completed sessions. Project trees then follow the normal desired-input fingerprints, while staged portable data and source-home inputs stay immutable.
+- Raw `docker_args` containing `--env=...` block session import: move those values to `extra_env` before staging or importing. The ordinary engine currently serializes raw Docker arguments; the importer will not pass credential-bearing env arguments into its creation record. No automatic precedence-changing conversion is attempted.
+- Destination user harness definitions must retain the tested builtin binary/env/store/auth/config/merge mapping. Different installation or launch settings require review. Unmapped archive links, hard links, special files, and malformed shared JSON block affected imports rather than silently dropping data.
+- Reports distinguish prepared state, incomplete merges, imported sessions, pending sessions, exclusions, retained originals, backup paths, and exact next commands. Keep the original home and work directory; there is no automatic cleanup or full-home rollback.
+
+The safety tests use sanitized fixtures, temporary homes, and fake Docker inspection. Real Docker, provider auth/continuation, and power-loss acceptance have not run. No test or smoke command may target the user's actual installations or resources.
 
 ## Scope
 
 ### Include
 
-- a read-only inventory and dry run;
-- current supported Go-release global/profile config conversion;
-- optional, explicitly approved conversion of project config outside the home;
+- read-only inventory and dry run, including saved sessions whose containers are missing;
+- supported current Go-release global/profile config conversion;
+- selection of profiles and sessions with their required dependencies;
+- item-level errors, manual review/rescan, and explicit skipping;
+- staged conversion without destination, project, or Docker mutation;
+- explicit, reviewed merge into either a fresh or an existing Neo home;
+- separately approved conversion of exact project config files outside the home;
 - managed auth and approved external auth-source copying;
-- portable session state, stable IDs, workspace/slot identity, and activity;
-- compatible cache copying;
-- staged conversion, original-home backup, resumable cutover, and per-session recreation;
-- a report of imported, changed, excluded, and blocked items.
+- portable Pi/OpenCode state, stable session IDs, workspace/slot identity, and available activity;
+- optional compatible caches, excluded by default;
+- resumable per-session creation through the normal engine;
+- a persistent human-readable report throughout staging and merge.
 
 ### Exclude
 
@@ -27,16 +66,20 @@ The main rewrite retains strict current-format loaders. The sole old-format read
 - legacy fallback readers, old labels accepted by the new runtime, or old schema variants in new models;
 - a general migration framework or support for every historical Devbox version;
 - automatic recovery of corrupt metadata or unfinished relocation;
-- automatic conversion of unsupported harnesses into new built-ins;
+- Claude, Codex, Copilot, or other harness migration, even if a custom definition exists;
+- automatic harness switching or conversion of one harness's conversations into another's;
+- automatic overwrite/deep merge of existing Neo profiles or session histories;
+- restoring aliases or permanent transfer lineage as Neo runtime features;
 - copying workspace contents or promising to preserve arbitrary container-layer installations;
-- automatic deletion of backups, old images, proxy resources, or user networks;
-- a background daemon or online migration while either CLI is in use.
+- automatic deletion or archival renaming of old homes, containers, images, proxy resources, or user networks;
+- dual project-config directories or compatibility modes for running both versions;
+- a background daemon or copying mutable source state while writers remain active.
 
-Support the source schemas written by the current Go implementation first. Pin their supported versions in migrator fixtures before implementation. Older versions must be brought to that supported source version using the old release; do not transitively embed its entire migration history.
+Support the source schemas written by the current Go implementation first. Pin supported versions in migrator fixtures before implementation. Older versions must be brought to the supported source version using the old release; do not embed its entire migration history.
 
 ## Evidence and Constraints
 
-The current implementation separates facts that the rewrite combines:
+The source implementation separates facts that the rewrite combines. These paths are relative to the parent, old-Go repository:
 
 - `internal/session/record.go`: session ID, alias, activity, history, and pending relocation;
 - `internal/service/metadata.go`: workspace, profile, harness, image, and concrete creation settings;
@@ -46,14 +89,18 @@ The current implementation separates facts that the rewrite combines:
 - `internal/service/session_transfer.go`: portable state copying and exclusions;
 - `docs/src/reference/state-and-sessions.md`: old home layout.
 
+The rewrite's current destination contracts live in `internal/config/config.go`, `internal/environment/spec.go`, `internal/store/store.go`, and the Pi/OpenCode definitions under `internal/harness/builtin/`. `internal/app/engine.go` exposes `CreatePrepared` with a current `environment.Spec`, an already-held session operation lock, and `CreationIdentity`. Both transfers and the importer use this normal creation path. The importer owns its external journal and prepared-directory recovery; the runtime never reads migration state.
+
 Important consequences:
 
-1. Renaming the home does not convert Docker bind mounts or ownership labels.
-2. An old session directory is not already a valid new `SessionRecord`.
-3. Old metadata can contain secret-bearing values. Never copy it wholesale into new records or print it in reports.
-4. Existing generated symlinks cannot safely be copied without checking their intended target.
-5. Profile precedence, networking, and supported harnesses change in the rewrite. Successful parsing does not prove equivalent behavior.
-6. Project `.devbox/` configuration is outside the home and needs separate consent and backup.
+1. Copying directories does not convert Docker bind mounts, ownership labels, or saved records.
+2. A Devbox session record and its harness conversations are different data; preserve both.
+3. Old metadata can contain secrets. Never copy it wholesale into new records or print it in reports.
+4. Generated symlinks must be mapped deliberately, not copied as links back into the old home.
+5. Profile precedence, networking, name validation, and supported harnesses change. Parsing does not prove equivalent behavior.
+6. Both versions use `<workspace>/.devbox/`. Separate homes do not isolate project configuration, workspace files, extra bind mounts, or shared Docker volumes.
+7. Containers created against staging paths would retain those paths. Create containers only after final destination decisions and publication.
+8. The destination installation ID must be retained when merging into an existing Neo installation. A fresh destination gets its own new ID, never the source installation's ID.
 
 ## Isolation and Removal Boundary
 
@@ -71,289 +118,494 @@ rewrite/
     migration-plan.md
 ```
 
-`main.go` owns argument parsing and rendering only. Old structs, decoding, conversion, old-resource verification, and the migration state machine live in dedicated `migrations.go` files inside `internal/migration/`. Split those files within this package only if needed for readability; do not distribute compatibility across normal packages.
-
-Dependency rule:
+`main.go` owns argument parsing and rendering only. Old structs, decoding, conversion, old-resource verification, and the migration state machine live in dedicated `migrations.go` files inside `internal/migration/`. Split those files within this package only if needed; do not distribute compatibility across normal packages.
 
 ```mermaid
 flowchart TD
     CMD[devbox-migrate] --> MIG[Migration package]
     MIG --> OLD[Private old schemas]
-    MIG --> NEW[Normal new validators and engine]
-    CLI[devbox] --> NEW
+    MIG --> NEW[Normal validators and engine]
+    CLI[devbox-neo] --> NEW
 ```
 
 - The migration package may depend on new config, harness, store, and application APIs.
 - No normal runtime package imports the migration package or reads its journal.
-- No migration flags, optional old fields, or legacy modes enter `EnvironmentSpec`, `SessionRecord`, or config loaders.
+- No migration flags, optional old fields, or legacy modes enter desired specifications, session records, or config loaders.
 - Normal creation may accept ordinary in-memory identity and prepared-state inputs also useful to clone/relocate. It must not accept an old record or an `isMigration` switch.
-- Build the utility through a separate target. The normal binary must build and pass its tests with the migration package and command removed.
+- Build the utility through a separate target. The normal binary must build and pass its tests with the migration command/package removed.
 
-Later removal means deleting this command/package, its fixtures, build/release wiring, and migration-only docs. It must not require rewriting core logic.
+Removal means deleting this command/package, fixtures, build/release wiring, and migration-only docs, without rewriting core logic.
 
 ## Command Contract
 
-Proposed minimum interface:
+Proposed interface:
 
 ```text
 devbox-migrate --dry-run
-devbox-migrate --apply
-devbox-migrate --apply --convert-project-configs
-devbox-migrate --home /path/to/devbox --dry-run
+devbox-migrate --stage
+devbox-migrate --merge
+devbox-migrate --resume
+devbox-migrate --source /path/to/old --destination /path/to/neo --dry-run
 ```
 
-- `--dry-run` makes no filesystem or Docker changes, including no source initialization or schema repair.
-- `--apply` performs the approved inventory and cutover. It rechecks facts rather than trusting a previous dry run.
-- `--convert-project-configs` authorizes conversion only for the exact project paths listed for confirmation. It is not permission to scan and edit unrelated repositories.
-- A repeated `--apply` resumes the existing journal after validating the same source, destination, installation identities, and approved scope. It never starts a second import over a partial one.
-- Existing backup/work paths not belonging to that recorded run are blockers, not overwrite targets.
-- Non-interactive use requires explicit consent for reported semantic changes, exclusions, project edits, and Docker name changes. Freeze the small set of selection/confirmation flags with the CLI tests; do not add a generic transformation scripting interface.
+Default source is `~/.devbox`, destination is `~/.devbox-neo`, and work directory is the destination's sibling with suffix `.migration`. Use separate `--source` and `--destination`, not an ambiguous `--home`. Do not let an inherited `DEVBOX_HOME` silently select either endpoint. With no operation, show help and make no changes.
 
-Dry-run output groups facts into:
+- The four operation flags are mutually exclusive.
+- `--dry-run` inventories and previews without filesystem or Docker changes, including no initialization, schema repair, locks created on disk, or saved report. It prints the report to the terminal only.
+- `--stage` selects scope, obtains copying/exclusion consent, and prepares verified converted data and `report.txt`. It does not authorize destination changes, project edits, image builds, or container creation.
+- `--merge` loads a completed staged run, inventories the current destination, resolves conflicts, and requires approval of the exact merge plan before mutation. It is explicit even when the destination does not exist.
+- `--resume` continues an interrupted, previously authorized phase after checking the journal and actual state. It never advances a merely staged run into merge without merge approval. Changed approved inputs require renewed review.
+- A recognized existing work directory points the user to review/resume its run. An unrelated, corrupt, or identity-mismatched directory is a blocker, never an overwrite target.
+- Non-interactive use must supply explicit scope and approvals for consequential changes, exclusions, and project edits. Unresolved decisions fail rather than prompt or silently accept defaults. Freeze the small set of approval flags with CLI tests; no generic transformation scripting interface or blanket unsafe approval.
 
-- ready to copy or convert;
-- behavior changes requiring acceptance;
-- items proposed to remain only in backup;
-- blockers requiring correction before apply.
+Names, paths, field names, and counts are enough for diagnostics. Do not print credentials, expanded env secrets, full old metadata, or secret-bearing Docker arguments.
 
-Names, paths, field names, and counts are enough. Do not print credentials, expanded env values, full old metadata, or secret-bearing Docker arguments.
+## Interactive UX
 
-## Filesystem Layout During Migration
+Use a short numbered flow with actionable issues and a final approval per phase. No file-by-file confirmation spam, surprise container stops, automatic harness launch, or cleanup prompt at the end. The user must always know what is prepared, what will change, what was excluded, and how to continue after failure.
 
-For the default home:
+Examples below are illustrative output, not actual inventory.
+
+### 1. Inspect and choose scope
+
+`devbox-migrate --stage` starts with:
 
 ```text
-~/.devbox/                     # old home until cutover, new home afterward
-~/.devbox.old/                 # original home after cutover
-~/.devbox.migration/
-  lock
-  journal.json
-  report.json
-  new-home/                    # staged new-format home before cutover
-  sessions/                    # prepared state for sessions not yet recreated
-  project-backups/             # original project config bytes and path mapping
-  project-staging/             # converted project config before replacement
+Migrate Devbox -> Neo
+
+Source       ~/.devbox
+Staging      ~/.devbox-neo.migration
+Destination  ~/.devbox-neo  [already exists]
+
+This step prepares an import.
+It will not modify your existing Neo installation or project files.
+Your original Devbox data will remain in place.
+
+Scanning...
 ```
 
-Custom `--home` uses sibling paths with the same suffixes. The source, backup, and staging paths must be distinct, non-overlapping where required, and on a filesystem supporting the intended same-filesystem renames. Reject unsafe path shapes before mutation.
+Group inventory by meaningful profile/workspace/harness names and show last activity when selecting sessions, not just opaque IDs or Docker names:
 
-The work directory is `0700`; journal/report and secret-bearing backups are `0600`. Preserve executable modes on copied scripts and apply the new runtime's ownership/permission rules to new managed paths. Do not make source credentials more broadly readable while copying.
+```text
+Profiles
+  Ready   work          pi          5 sessions
+  Ready   personal      opencode    2 sessions
+  Error   experiments   codex       3 sessions
 
-Do not hard-link new mutable files to the backup. New harness writes must not alter the old copy. Budget disk space for duplicate portable state, optional caches, and new images before cutover.
+Projects needing review
+  Error   ~/projects/api    selects claude
+  Review  ~/projects/web    project config requires conversion
 
-## Data Conversion Rules
+1. Review issues
+2. Choose what to import
+3. Prepare all supported items
+4. Cancel
+```
+
+Selecting a session includes its required profile and auth dependencies. Unsupported or corrupt unrelated items do not prevent preparing healthy items. "Prepare all supported items" still requires reviewing and accepting the exact exclusion list; it does not silently skip data.
+
+An unsupported-harness issue names the owner and dependent sessions:
+
+```text
+Profile: experiments
+Harness: codex
+
+Only Pi and OpenCode migration is supported.
+This blocks the profile and its 3 dependent sessions.
+Changing the harness setting does not convert its existing history.
+
+1. Skip this profile and its dependent sessions
+2. Rescan after manual fixes
+3. Back
+```
+
+Apply the same error/review/skip flow to discovered projects selecting unsupported harnesses. A source session's recorded unsupported state remains unsupported even after its config is edited to select Pi or OpenCode.
+
+### 2. Establish a safe copy and confirm staging
+
+Inspection may run while source environments are active; state copying may not. List relevant running containers or active commands with exact old-CLI stop guidance, then offer **Recheck**, **Back**, or **Cancel**. Do not stop them on the user's behalf.
+
+Show the final selected scope, dependent exclusions, portable-data size, cache choice, and external-auth copies before asking `Prepare? [y/N]`. Caches are excluded by default. State clearly that this phase changes neither the destination nor project files.
+
+Progress reports durable steps: converted configuration, copied auth, copied session state, verified data, and saved report. On completion:
+
+```text
+Import prepared. Nothing has been merged.
+
+Next:
+  devbox-migrate --merge
+
+Report:
+  ~/.devbox-neo.migration/report.txt
+```
+
+### 3. Review the merge
+
+`devbox-migrate --merge` rechecks the actual destination and presents additions separately from decisions:
+
+```text
+Merge into existing Neo installation
+
+Existing Neo sessions will not be overwritten.
+
+Ready
+  1 new profile
+  5 new session slots
+
+Needs decisions
+  Profile "work" already exists
+  2 session slots already exist
+  Pi authentication already exists
+  1 project config needs editing
+
+1. Resolve conflicts
+2. Review behavior changes
+3. Review full plan
+4. Cancel
+```
+
+Conflict screens:
+
+- **Profile exists:** compare configurations; rename the imported profile; reuse the existing profile after review; skip the imported profile and dependent sessions; back. Reuse triggers resolution against the existing profile. Renaming shows resulting slot/name changes and rechecks collisions.
+- **Session slot exists:** explain that its conversations will not be replaced; offer skip or back. Do not offer directory/history merging or automatic replacement.
+- **Auth exists:** show paths and dependent environments, never contents. Keep existing auth by default and flag which imports will use it. Replacement requires separate approval and a backup, including review of effects on existing sessions.
+- **Project edit:** show a safely redacted conversion diff and backup location; offer approve, skip dependent sessions, or back. Warn that the old CLI may need the original file restored afterward.
+- **Behavior change:** describe the concrete effect and affected items. Critical changes, especially loss of proxy protection, need explicit acceptance; unresolved decisions block apply.
+
+### 4. Approve and execute
+
+After decisions, show one final summary:
+
+```text
+Apply merge
+
+Add             2 profiles · 5 sessions
+Reuse           existing Pi authentication
+Edit            1 project config
+Skip            5 source sessions
+Replace         no existing Neo sessions
+
+Important
+  Proxy protection will not carry over.
+  Fresh containers will be built.
+  Setup hooks will run and may affect shared workspace files.
+
+Keep both CLIs idle while the merge runs.
+
+1. Apply this plan
+2. Review details
+3. Cancel
+```
+
+Offer apply only when required approvals and blockers are resolved. During execution show per-step and per-session results, including final stopped state. Failures name the cause and next action without dumping secret-bearing subprocess output into the report.
+
+```text
+Merge incomplete
+
+Completed sessions remain intact.
+Pending imports and original data are retained.
+
+Fix the reported build issue, then:
+  devbox-migrate --resume
+
+Report:
+  ~/.devbox-neo.migration/report.txt
+```
+
+Resume never recopies over completed sessions, even if the user has since used them. Any pending operation whose approved inputs changed returns to review.
+
+### 5. Finish
+
+```text
+Migration completed with exclusions
+
+Imported  5 sessions
+Skipped   5 sessions
+Failed    0
+
+Original installation retained:
+  ~/.devbox
+
+Report:
+  ~/.devbox-neo.migration/report.txt
+
+Continue a conversation:
+  devbox-neo open <exact-new-target> --continue
+```
+
+Print actual exact targets and preserve an old-name/alias-to-new-target table in the report. Do not launch a harness or offer automatic deletion of original resources.
+
+## Filesystem Layout and Saved Report
+
+```text
+~/.devbox/                         # original source data retained in place
+~/.devbox-neo/                     # existing or explicitly created destination
+~/.devbox-neo.migration/
+  lock
+  journal.json                     # authoritative resume bookkeeping
+  report.txt                       # human-readable progress and outcomes
+  staged-home/                     # converted config, auth, portable stores
+  project-staging/                 # proposed project conversions; not live edits
+  project-backups/                 # original bytes and exact path mapping
+  destination-backups/             # any separately approved config/auth replacement
+```
+
+The staged home is prepared input, not a runnable installation. It has no fabricated complete session records or provisional installation identity to transplant into an existing home. Uncommitted portable state remains owned by the migrator until normal creation can publish a valid session.
+
+Canonicalize endpoints and reject unsafe overlap, symlink aliases, a destination inside the old home, or unrelated preexisting work paths. Publication must use no-replace operations for additions, with same-filesystem private staging at the final owner where required. Do not rename an entire staged home over an existing destination.
+
+The work directory is `0700`; journal/report and secret-bearing backups are `0600`. Preserve executable script modes and apply normal managed-path permission rules. Never hard-link mutable source, staging, and destination data together. Do not retain mutable links into the old home. Budget for retained source, staging, destination copies, optional caches, and new images; report estimates rather than promising exact build size.
+
+### `report.txt` contract
+
+Create the report when staging begins and atomically refresh it at durable milestones, failures, and completion. Keep the journal authoritative and regenerate the report from recorded facts on resume after an abrupt interruption. A report may show the last completed milestone after a crash; it must not invent success for an unrecorded step. Dry-run alone writes no report file.
+
+Include:
+
+- run ID, supported source versions, source/destination paths, timestamps, and current phase/status;
+- selected and imported profiles/sessions, with verification outcomes;
+- old container names, aliases, session IDs, and lineage, plus new targets where imported;
+- config conversions, approved behavior changes, and destination conflict decisions;
+- exact project edits, approved destination replacements, and backup locations;
+- copied/reused auth paths and compatible/omitted caches, without contents;
+- unsupported, skipped, failed, and pending items, reasons, and dependent exclusions;
+- retained old resources, container-only unavailable data, and shared resources outside backup coverage;
+- exact resume, recovery, and next-use commands, including custom paths when needed.
+
+Use clear statuses: **prepared**, **merge incomplete**, **completed**, or **completed with exclusions**. Never count skipped/failed sessions as imported. Unexpected omissions are failures, not success with exclusions. The report and backups remain after completion; there is no automatic cleanup.
+
+No credentials, expanded env secrets, old raw metadata, full env arrays, or unredacted secret-bearing errors belong in the report or journal. Review diffs must redact sensitive values rather than reproducing them.
+
+## Conversion and Merge Rules
 
 ### Global configuration and profiles
 
-- Convert old `global.json` into new `config.json`, preserving supported defaults and global env entries.
-- Preserve sparse layer values; do not materialize global defaults into every profile.
-- Remove proxy fields and report their removal. Do not recreate an equivalent network-security claim.
+- Convert source `global.json` into new `config.json`, preserving supported defaults and global env entries in staging.
+- Preserve sparse layer values and expressions; do not materialize global defaults into every profile.
+- Copy whole approved profile artifact trees, including Dockerfile build inputs, executable hooks, and harness configuration. Copying only the named Dockerfile can lose `COPY`/`ADD` inputs.
+- Remove proxy fields and require acceptance of the lost protection. Do not recreate an equivalent network-security claim.
 - Convert `host_network` to `network: host` when true and normal default networking otherwise, respecting sparse inheritance.
-- Non-empty `extra_networks` has no equivalent durable list in the rewrite. Do not silently select one as the primary network or drop the list. Require an explicit configuration decision before importing affected environments.
-- Preserve supported Dockerfiles, hooks, harness config, and the build-context files those Dockerfiles require. Do not assume that copying only the named Dockerfile preserves `COPY`/`ADD` inputs.
-- `Dockerfile.full` has no rewrite equivalent. Block affected imports until the user supplies a supported layered `Dockerfile` or explicitly excludes the affected configuration. Never silently rename it or discard its runtime responsibilities; the original remains in the backup.
-- Validate raw Docker args against the new runtime's invariant restrictions.
-- Report explicit-profile behavior changes: old profile slots could inherit project artifacts; new explicit profiles exclude them. Do not add a per-session legacy-precedence mode.
-- A direct import of existing project configuration preserves ordinary profile inheritance. `inherit_profile: false` is added by the new `project create --from-profile` workflow, not indiscriminately to migrated projects.
-- Converted config may preserve existing literal values, including user-owned auth/env configuration where supported. New session records still follow the rewrite's no-secret persistence rules.
+- Non-empty `extra_networks` has no equivalent durable list. Require a manual configuration decision; do not silently select one primary network or drop the list.
+- `Dockerfile.full` blocks affected imports until the user supplies a supported layered Dockerfile or skips the affected owner/dependencies. Never silently rename it or discard its runtime responsibilities.
+- Validate raw Docker args against normal runtime restrictions. Compare recorded creation-time settings with current converted config; explicitly review mounts, ports, env, read-only mode, launch settings, and invocation-only differences rather than silently losing them.
+- Report explicit-profile changes: old profile slots could inherit project artifacts; new explicit profiles exclude them. Do not add per-session legacy precedence.
+- Apply stricter Neo name validation. Invalid imported profile names require an explicit rename mapping or skipping, never an invented name. Update selected references consistently and report resulting slot changes.
+- Direct project conversion preserves ordinary inheritance; do not indiscriminately add `inherit_profile: false`.
+- User-owned converted config may retain supported literal env/auth configuration. New records still follow Neo's no-secret persistence rules; unresolved env provenance or unsafe recovery inputs require review, not copying old secret values into records.
 
-Unsupported fields, malformed participating configs, missing selected profiles, and ambiguous mappings block affected imports. An explicit exclusion must cover dependent sessions/default selections as well; do not publish a home that points at intentionally omitted configuration.
+Unsupported fields, malformed participating configs, missing profiles/workspaces, ambiguous mappings, and unsupported harnesses block affected imports. An exclusion includes dependent sessions and default references; do not publish dangling configuration. Keep healthy unrelated items selectable.
 
-### Project configuration
+### Existing destination
 
-Discover candidate project paths from validated session metadata, not a recursive scan of the user's filesystem.
+The first version performs reviewed additive import, not an automatic deep merge or overwrite:
 
-Without project-conversion consent, leave repository files untouched. If the target resolver cannot use them, explain the required changes and block those sessions until the user edits them or approves conversion.
+| Existing item | Rule |
+|---|---|
+| Global settings | Keep by default; compare imported differences and explain effects on imported sessions. Any change requires separate review of effects on existing environments and backup. |
+| Same profile name | Compare; explicitly reuse, rename the import, or skip with dependencies. No automatic profile overwrite or recursive merging. |
+| Same workspace/slot | Block the imported session; allow skip. Never replace an existing session or merge conversation directories. |
+| Existing session ID/image association | Block a conflicting import even if its slot differs. Never overwrite an existing session-owned image tag. |
+| Existing auth destination | Keep by default, explicitly report reuse. Replacement needs separate approval, affected-session review, and backup. |
+| Existing harness definition | Resolve against the effective destination definition. A changed layout without a proven Pi/OpenCode mapping blocks affected imports; never overwrite the definition or silently use builtin assumptions. |
+| Existing cache | Treat as optional; retain the destination cache instead of recursively merging over live mutable contents. Report omitted source cache data. |
 
-With consent:
+Validate every selected session against the actual proposed merged configuration, including destination defaults, auth choices, effective harness definitions, project decisions, and profile mappings. Staging validation alone is insufficient. No import silently changes existing Neo environments; shared-setting changes need explicit approval of their impact.
 
-1. Record the exact project config path, original digest, and proposed converted content.
-2. Save its original bytes in the migration work directory, not a potentially committed repository backup file.
-3. Recheck that the file still matches the approved source before replacement.
-4. Replace only the approved config atomically; leave Dockerfiles, hooks, workspace files, and unrelated changes alone.
-5. Journal each replacement so retry does not overwrite a later user edit.
+Recheck destination facts under the normal configuration/session locks before publication. Additions use no-replace publication. Approved replacements require matching reviewed digests and backups; later edits return to review. Retain the existing destination installation ID. A nonempty malformed or unidentified destination is a blocker, not permission to initialize over it.
 
-Multiple project edits are not one atomic filesystem transaction. The journal must identify applied and unapplied files. Never describe the home backup alone as a backup of project configuration.
+### Project configuration and shared resources
+
+Discover candidate projects from validated source session metadata, not a recursive scan of the filesystem. Report known shared workspaces, bind mounts, named volumes, and external auth sources. Source-home retention is not a backup of these resources.
+
+Staging may prepare proposed project conversions but never edits repository files. Without exact-path conversion consent at merge, leave them alone; block/skip sessions whose target resolver cannot use them.
+
+For each approved edit:
+
+1. Record the exact path, original digest, and reviewed converted content.
+2. Back up original bytes outside the repository in the work directory.
+3. Recheck the digest before mutation.
+4. Atomically replace only the approved config, leaving Dockerfiles, hooks, unrelated edits, and workspace contents alone.
+5. Journal the result so retry cannot overwrite a later user edit.
+
+Multiple project edits are not one atomic transaction. Keep track of applied/unapplied files and do not claim a consistent merge while required edits remain incomplete. Both CLIs use the same project `.devbox/`; restoring original config may be necessary before returning to the old CLI. Do not add dual project directories or compatibility readers to avoid this tradeoff.
 
 ### Session identity and records
 
 Combine validated old `session.json` and `metadata.json` facts in memory:
 
-- preserve the valid session ID;
-- preserve canonical workspace/slot identity and activity timestamps;
-- resolve the effective new harness and configuration;
-- copy portable state to its declared new store destinations;
-- obtain applied image IDs, fingerprints, setup completion, and creation settings only from successful normal new-runtime creation.
+- preserve valid session IDs, source creation timestamps, and available activity;
+- preserve canonical workspace/slot identity except for explicitly approved profile mappings;
+- include saved sessions whose containers are missing when sufficient metadata/state remains;
+- resolve the final effective harness/configuration and map portable state to its declared stores;
+- obtain applied image IDs, fingerprints, setup completion, and creation settings only from successful normal engine creation.
 
-Do not fabricate applied fingerprints, treat an old image ID as a new installation-owned image, or write an incomplete new record and expect normal startup to finish conversion. Pending imports stay in the migration work directory and journal, not as special session variants visible to the normal runtime.
+Missing/corrupt facts requiring reconstruction are item-level blockers, not an invitation to guess historical identity, activity, or settings. Define supported source cases in fixtures, including absent old activity, against the new record's validation requirements before claiming support.
 
-Aliases and permanent clone/relocate lineage are not imported into the new schema. Preserve the old records in backup and report those omissions. Pending relocation must be completed or repaired with the old CLI before migration; the migrator does not become another relocation recovery engine.
+Do not fabricate applied fingerprints, reuse source-owned images as destination-owned images, or publish an incomplete record and expect startup to finish migration. Pending imports belong to staging and the journal, not special runtime session variants.
 
-### Harness state, auth, and caches
+Aliases and permanent clone/relocate lineage are report-only. Preserve the original records in `~/.devbox`; do not introduce alias compatibility in Neo. Pending relocation must be completed or repaired with the old CLI, or the affected import skipped. The migrator is not another relocation recovery engine.
 
-Initial built-in mapping targets are Pi and OpenCode. Prove exact destinations against their finalized new definitions before freezing conversion:
+### Pi/OpenCode state, auth, and caches
 
-- old Pi session state maps to its new environment-scoped agent-home store;
-- old OpenCode state maps to its new declared state store; its separate config home must also be inventoried, not assumed to be part of that state directory;
-- managed auth maps to the new managed host auth layout, not into portable session history;
-- compatible Pi npm caches map by declared cache name and destination, not arbitrary directory similarity.
+Only Pi and OpenCode are supported in this utility. Prove exact mappings against destination definitions:
 
-For other harnesses, a valid user definition alone is not sufficient evidence of a safe old-to-new state mapping. Require both a validated definition and an explicit, tested mapping to its stores. Otherwise block import or require an explicit decision to leave that data only in `.devbox.old`. Do not silently switch the harness.
+- Pi state maps to `sessions/<new-name>/harnesses/pi/stores/home/`.
+- OpenCode state maps to `sessions/<new-name>/harnesses/opencode/stores/data/`; separately inventory its config home for the `config` store.
+- Managed auth maps to Neo's `auth/<harness>/` layout, not portable conversation history.
+- Compatible Pi npm caches map by declared cache name/target, not directory resemblance.
 
-Auth sources outside the old home are not backed up by the home rename. Report them and request consent before copying them into new managed auth. Never move or modify the external original. Unsupported sources block the dependent import rather than producing an empty placeholder credential file.
+Profiles and discovered projects using Claude, Codex, Copilot, or another unsupported harness receive errors requiring manual review/fixing or explicit skip. Dependent sessions are blocked. A custom harness definition does not expand this migration scope, and changing the selected harness does not convert old history. Inspect all retained harness state within a session, not merely its currently selected harness; unsupported historical trees must be reported and explicitly left in the source, never silently discarded.
 
-Copy portable harness state while every relevant container is stopped. Preserve conversation databases and their companion files together; do not extract a guessed subset of history files. Exclude old Devbox leases, locks, proxy CA material, and generated bookkeeping.
+External auth is not backed up merely by retaining the source home. Request consent before copying it; never move or modify the external original. Unsupported auth mappings block dependent imports rather than producing empty placeholders. Existing destination auth follows the conflict policy above.
 
-If mapped live harness config exists only inside an old container, include that exact config location in the inventory and extract it from the verified stopped container into prepared staging. This is a known harness mapping, not a copy of the entire writable layer. If the container is gone, report unavailable container-only config rather than pretending host defaults reproduce user changes.
+Copy portable state only while relevant containers and other writers are stopped. Preserve full conversation databases and companion files together; do not extract a guessed history subset. Exclude old leases, locks, proxy CA material, generated bookkeeping, and transient runtime connections.
+
+Known mapped config that exists only inside an old container may be extracted from that verified stopped container into staging. This is not wholesale writable-layer capture. If the container is gone, report unavailable config rather than pretending source defaults recreate user changes.
 
 Handle symlinks deliberately:
 
-- preserve links only when their meaning remains valid within the copied tree;
-- materialize recognized Devbox-generated config links from verified source content when needed;
-- route recognized auth links through the auth mapping rather than duplicating credentials into session state;
-- block unresolved links or links escaping approved roots; do not recursively follow arbitrary targets.
+- preserve links only when their meaning stays valid within copied data;
+- materialize recognized generated config links from verified source content;
+- route recognized auth links through auth mapping, not copies inside history;
+- block unresolved/escaping links instead of recursively following arbitrary targets.
 
-Do not invent a managed manifest claiming Devbox last wrote imported files. The normal synchronizer treats source-managed ordinary paths as authoritative and preserves only undeclared keys in shared JSON. Report imported edits that would be replaced and retain the original backup; users must place durable managed edits in profile/project sources before cutover. Resolve malformed shared-JSON conflicts explicitly before declaring the session usable.
+Do not invent a managed manifest claiming Neo last wrote imported files. Normal synchronization treats source-managed ordinary files as authoritative and preserves only undeclared shared-JSON keys. Report live edits that would be replaced; require durable source-config fixes or explicit acceptance before import. Retain source data for recovery. Resolve malformed shared-JSON conflicts before declaring a session usable.
 
-Caches are optional and may be rebuilt. Report omitted incompatible caches; never treat session history or auth as disposable cache. Unrecognized old home data remains in the backup and is listed rather than silently discarded.
+Caches are optional and rebuildable. Conversation history and auth are not caches. List unrecognized data that remains only in the source; do not imply it migrated.
 
-## Offline Cutover
+## Execution and Offline Boundaries
 
 ```mermaid
 flowchart TD
-    A[Inventory and approve] --> B[Check old runtime stopped]
-    B --> C[Stage and validate]
-    C --> D[Back up and switch home]
-    D --> E[Convert approved projects]
-    E --> F[Archive old container names]
-    F --> G[Create new sessions]
-    G --> H[Verify and report]
+    A[Inventory and select] --> B[Stop source writers]
+    B --> C[Stage and verify]
+    C --> D[Report prepared]
+    D --> E[Explicit merge review]
+    E --> F[Recheck and approve]
+    F --> G[Publish approved files]
+    G --> H[Create fresh sessions]
+    H --> I[Verify and report]
 ```
 
-### 1. Inventory and approve
+### Stage
 
-Read supported old schemas without invoking old startup migration helpers. Inspect Docker and verify installation/session ownership before including resources. Reject unrelated deterministic-name collisions, unsupported source versions, corrupt identity, unresolved transfers, and incomplete source mappings.
+Read supported schemas without invoking source startup/migration helpers. Inspect Docker and verify ownership before including container-only data. Inventory can report per-item errors and continue, but unverified resources cannot be copied or mutated.
 
-List all required project edits, external auth copies, configuration behavior changes, backup-only exclusions, and old-container name changes. Apply only the accepted scope.
+Before copying, require relevant source main/proxy containers stopped, idle attached commands, and no pending transfers. Tell the user how to stop them using the old CLI. Acquire the migration lock and relevant source operation/record locks in deterministic order; recheck while locked. Source user data remains unchanged; coordination locks are not schema repair or data conversion.
 
-### 2. Establish the offline boundary
+Convert and copy into private staging, preserving source originals. Verify durable copies, permissions, schemas, mappings, dependencies, and proposed project conversions. Record source digests and the snapshot boundary. Do not build images, create containers, edit projects, or initialize/change Neo during staging.
 
-Require all old managed main/proxy containers involved in the home to be stopped and no live attached commands or active transfers. Tell the user to stop them with the old CLI before applying; do not unexpectedly terminate work inside the migration command.
+Staging and merge are separate invocations. If source inputs change between them, disclose the stale snapshot and require review/restaging of affected pending items before merging; do not silently import stale history or recopy approved data. There is no ongoing source-to-Neo synchronization.
 
-Acquire the migration lock and relevant old operation/record locks in deterministic order. Recheck state while locked.
+### Merge
 
-Those locks coordinate existing operations; they cannot prevent a newly launched old CLI from creating new lock paths after the home is renamed. The explicit maintenance rule is therefore essential: neither CLI nor direct Docker writers may run until cutover completes or the user performs rollback. The new runtime does not gain a migration-journal reader just to enforce this temporary rule.
+Reload staged facts and inspect the actual destination. Resolve conflicts and validate the complete proposed final configuration. Require the maintenance window before mutation: both CLIs and relevant direct Docker/filesystem writers remain idle during merge. Existing destination containers that could write participating auth/cache/project resources must be stopped as well; report them rather than stopping unexpectedly.
 
-### 3. Stage and validate
+Acquire the migration and relevant source/destination configuration/session locks in deterministic order, recheck source and destination facts, and verify the same accepted scope. Locks coordinate cooperating operations but are not a global maintenance mode. Neither runtime gains a journal reader or automatic migration lock behavior.
 
-Create a fresh staged home with a new installation ID. Copy/convert approved config, auth, compatible caches, and prepared session data without changing source files. Prepared session data remains outside the new home's published session inventory until normal creation succeeds.
+Use the existing destination installation identity, or initialize a fresh destination through the normal store only after explicit approval. Journal publication intentions and outcomes. Publish approved config/auth additions and profile trees at final paths; retain destination originals for approved replacements. Apply approved project conversions with digest checks and backups. Never rename the source home or publish the entire staged tree over the destination.
 
-Validate new schemas, paths, mappings, and permissions; verify copied durable data against the source. Run new resolution against staged inputs while planning final home paths. Temporary staging paths must not become persisted mounts, source paths, or fingerprints.
+Old Docker names differ from current Neo names, so no routine archival rename is needed. Check exact name, ID, image-tag, and ownership collisions anyway; refuse conflicting resources. Do not rename, relabel, adopt, remove, or start old containers. Leave proxy resources and user networks alone.
 
-No source-home rename occurs until staged data and required project conversions pass validation. Recheck source/config digests before committing the cutover.
+For each selected session:
 
-### 4. Switch home and approved project config
+1. Resolve final configuration using final paths and the retained/new destination installation identity.
+2. Prepare copied portable state through a normal typed destination-creation operation, retaining recoverable staged input for failed attempts.
+3. Supply the preserved session ID and supported timestamps without old-record or migration-mode arguments.
+4. Build a fresh destination-owned image/container and run normal synchronization and setup checks.
+5. Commit a complete valid session record only after creation succeeds.
+6. Verify ownership, identity, expected stores, and final stopped state; record completion before proceeding.
 
-Write the next journal intent, rename the original home to `.devbox.old`, then rename the staged new home to `.devbox`. Record completion after each action.
+Never persist staging paths in mounts, source references, or applied fingerprints. Do not launch a harness or create attached-command leases during import. Setup hooks execute user code and can change shared workspace or external state; approval must disclose this. Backups cannot undo arbitrary hook effects.
 
-These are two renames, not a globally atomic swap. Retry inspects the actual paths and recorded identities to distinguish an action that did not run from one that completed before the journal write.
+The migrator must not duplicate Docker creation logic. The internal transfer creation path is the foundation for a small normal prepared-state API, not justification for migration branches in the engine.
 
-Apply approved project-config replacements using their separate backups and digest checks. Keep both CLIs offline while any approved replacement is incomplete.
+### Verify and finish
 
-### 5. Resolve old Docker names without adoption
+Verify imported IDs/slots, expected stores, valid records, destination ownership, final stopped state, and absence of unsafe old-home links or migration-specific runtime markers. Completion must also account for required project edits and destination decisions, not just successful container builds.
 
-Use fresh containers with the new installation ID. Do not relabel old containers or make the normal engine accept old ownership.
+A structural copy check is not proof that every harness conversation can resume. Real Pi/OpenCode continuation and auth acceptance tests are required before shipping support; reports distinguish structural verification from user/runtime checks actually performed.
 
-Recommended collision policy: archive each verified stopped old main container by renaming it to an approved, collision-free `.old` name. Record original and archived names plus immutable Docker IDs. This preserves its writable layer for manual recovery without claiming it migrated. Refuse an occupied archive name; never overwrite or delete another container.
+Keep source home/resources, reports, and backups. Imported sessions are ordinary Neo sessions usable by `list`, `status`, `open`, `recreate`, and `delete`. Print exact next `devbox-neo open <target> --continue` commands. Cleanup is a later explicit user action.
 
-Only exact verified containers are eligible. Old proxy sidecars, networks, and images remain stopped/unused; no automatic cleanup is required for successful migration. Never create or delete user networks.
+## Failure, Resume, and Returning to the Old CLI
 
-Archived containers must not be started against the new home. Their recorded bind source strings may now resolve to new data. Their retained writable layers are a manual recovery aid, not a ready-to-run rollback environment.
+Use one journal and one bounded migration state machine, not a generic transaction callback framework. Record run ID, supported source versions, canonical paths, source/destination installation identities, approved item/dependency mappings, source/destination digests, replacements/backups, phase, and per-session outcomes. Never record auth contents, resolved secrets, or raw old metadata.
 
-### 6. Create new sessions through the normal engine
-
-For each approved session:
-
-1. Resolve converted configuration using the new rules and final paths.
-2. Supply its preserved identity and prepared portable state through the normal typed destination-creation path used for durable session creation/transfer.
-3. Build the new image and create the container with new ownership labels.
-4. Apply normal stopped-only managed config synchronization and required creation/setup checks.
-5. Commit the valid new session record only after normal creation succeeds.
-6. Leave the new container stopped and record the completed migration item.
-
-Do not launch a harness or create attached-command leases during import. Setup hooks are executable user code and may have external effects; identify their execution in the apply confirmation. A filesystem backup does not undo arbitrary hook side effects.
-
-The migration package does not construct a parallel Docker creation implementation. If the normal engine cannot yet create a session from prepared portable state and a supplied valid identity without legacy flags, that is an implementation prerequisite shared with session transfer, not justification for migration branches in core code.
-
-### 7. Verify completion
-
-Verify each imported ID, workspace/slot, harness store, new container ownership, valid record, and expected final stopped state. Verify that new runtime state contains neither migration markers nor obsolete formats and that copied auth/config does not retain unsafe old-home links.
-
-Report exact imported sessions, backup-only items, behavior changes, archived Docker names, and next `devbox open <target>` commands. Leave `.devbox.old` and the migration report/project backups intact. Old-resource cleanup is a later explicit user action, not part of migration success.
-
-## Failure and Retry Rules
-
-Use one migration journal and one bounded state machine, not a generic transaction callback framework.
-
-The journal records the run ID, supported source version, canonical paths, old/new installation IDs, accepted item identifiers, source digests, completed home/project/name transitions, and per-session outcomes. It must not contain auth contents, resolved secrets, full env arrays, or raw unredacted errors.
-
-| Failure point | Required behavior |
+| Failure or interruption | Required behavior |
 |---|---|
-| Inventory or staging | Old home/project files/containers remain unchanged; report blockers |
-| After old-home rename, before new-home install | Resume from known paths and identities; do not create another backup or initialize an empty home |
-| During project conversion | Resume only unchanged approved files; preserve and report any later user edit |
-| During container archival | Inspect the recorded Docker ID and names; accept an already completed rename, reject identity mismatch |
-| During session creation | Keep prepared source state, let normal creation clean its own incomplete resources, and retry only that item |
-| After successful creation, before journal update | Verify the normal session record and ownership to recognize completion; do not create a duplicate session |
-| After some sessions succeed | Preserve successful new sessions and all old backups; resume remaining items without resetting successful state |
+| Inventory | No mutation; classify blockers and allow explicit skips. |
+| Staging | Source/project/destination data and Docker resources unchanged; retain recognized work for resume. |
+| Source changes after staging | Return affected pending items to review/restaging; never silently import stale state. |
+| Destination changes before merge | Recompute affected conflicts and require renewed approval. |
+| After file publication, before journal update | Inspect recorded paths/digests/identities to recognize completed work without overwriting later edits. |
+| During project or approved destination replacement | Preserve originals; retry only while reviewed/written digests match; otherwise stop for review. |
+| During session creation | Preserve staged state, use normal creation cleanup for incomplete owned resources, and retry only that item. |
+| After record commit, before completion bookkeeping | Verify the normal record and resource identity; recognize completion rather than creating a duplicate. |
+| After some sessions succeed | Never recopy, recreate, reset, or roll back those sessions on resume, including after subsequent Neo use. |
+| Report write interrupted | Retain authoritative journal; regenerate the readable report on resume and report write failures honestly. |
 
-Never silently roll back the entire home after new sessions may have written data. Do not promise automatic rollback of Docker operations or setup scripts.
+Pause with a clear **merge incomplete** report and exact `--resume` command. Do not suggest using environments whose required project/config transitions remain incomplete. Completed environments may be used after a safely ended invocation when they have no incomplete shared dependencies; subsequent resume must protect their new state.
 
-Document a manual rollback procedure: stop both installations, preserve the new home separately, restore only project files still matching the migration-written versions, reverse verified archived container names, restore the original home pathname, and only then use the old CLI. Keep newer state available for recovery; do not overwrite it with the backup.
+Never roll back or replace the entire Neo home: it may have preexisting environments and newly written conversations. Do not promise automatic rollback of Docker operations, shared-volume writes, or setup hooks.
+
+Returning to the old CLI does not require moving home directories or reversing container renames. Stop conflicting Neo activity, preserve new data, and restore only approved project files that still match migration-written versions, with review of later edits. Source home and old containers remain where they were. Shared workspace changes, external auth changes, and hook side effects are outside the retained-home guarantee. Do not overwrite the destination with the old source or delete imported data as part of recovery.
 
 ## Implementation Sequence
 
-1. **Source fixtures and inventory:** pin supported source schemas, create sanitized fixtures, implement read-only classification and redacted reporting.
-2. **Pure conversion:** convert config and session facts; prove mapping against the finalized Pi/OpenCode definitions and new validators.
-3. **Copy and backup:** implement containment checks, permissions, symlink/auth handling, project backups, and source verification.
-4. **Cutover state machine:** implement journaling, home renames, approved project edits, and verified old-name archival with fault injection.
-5. **Normal-engine integration:** recreate sessions from prepared state, preserve identity, and record resumable outcomes without core migration branches.
-6. **Acceptance and removal test:** test real source fixtures through normal rewrite operations, demonstrate backup retention, and verify that deleting migration code leaves the normal binary buildable and functional.
+1. **Inventory and UX:** pin supported source schemas in sanitized fixtures; implement read-only discovery, dependency errors/skips, numbered review, and redacted reporting.
+2. **Pure conversion and conflict planning:** prove Pi/OpenCode mappings, config/profile conversions, existing-destination decisions, and final-resolution validation.
+3. **Staging and backups:** implement safe copying, symlink/auth handling, source verification, restrictive permissions, staged project diffs, and persistent `report.txt`.
+4. **Explicit merge state machine:** implement locks, approvals, no-replace additions, backed-up replacements, digest rechecks, journaling, and fault injection. No home swap or old-container archival.
+5. **Normal-engine integration:** create sessions from prepared state and identity at final paths, preserve supported activity, and resume without recopying completed imports.
+6. **Acceptance and removal:** prove real supported conversations/auth work, existing Neo data and source originals survive, and removal of migration code leaves the normal runtime buildable and functional.
 
-Start inventory/converter fixtures in parallel with rewrite development if useful. Do not freeze destination layouts or claim end-to-end migration support before the normal runtime, both harness mappings, and prepared-state creation path are proven. Complete migration acceptance before directing existing users to cut over with this tool.
+Do not claim end-to-end support before both harness mappings and the prepared-state creation path pass acceptance. This document does not authorize implementation or execution against a user's installation.
 
-## Tests
+## Tests and Safety Boundary
 
-### Pure and filesystem tests
+**Never test against the user's real `~/.devbox`, `~/.devbox-neo`, migration directory, or Docker resources.** Unit/filesystem tests use temporary homes, sanitized fixtures, and fake runtimes. Docker acceptance uses explicitly isolated temporary installations and test-owned resources; it is a separate opt-in gate, not an excuse to inspect, stop, import, or delete personal environments. Run the normal `make test` target after implementation changes and record unpassed acceptance gates honestly.
+
+### Pure, filesystem, and CLI tests
 
 - supported-version decoding; unsupported/corrupt source rejection without repair;
-- global/layer conversion with sparse values, proxy removal, explicit network decisions, and changed profile precedence;
-- project consent, external auth consent, and no edits outside approved paths;
-- stable session IDs/activity and deliberate omission of aliases/lineage;
-- Pi/OpenCode state/auth/cache mapping and unsupported-harness blockers;
+- saved sessions without containers; missing workspace/metadata and unsupported historical state diagnostics;
+- Pi/OpenCode-only enforcement for profiles, projects, and dependent sessions; manual rescan and explicit skip;
+- global/layer conversion preserving sparse values/expressions, proxy warnings, network decisions, profile precedence, and stricter names;
+- creation-time differences and missing/secret env provenance never silently lost or persisted unsafely;
+- selection dependency closure and no defaults referencing excluded owners;
+- staging makes no destination/project/Docker changes; dry-run writes nothing, including no report;
+- explicit merge approval even for a fresh destination; no automatic stage-to-merge transition on resume;
+- existing globals/profiles/auth/definitions/caches/session slots/IDs and image associations obey conflict rules;
+- renamed/reused profiles revalidated against actual merged inputs, with existing-session effects disclosed;
+- project/external-auth consent, redacted diffs, and backups outside repositories;
 - regular files, executable modes, restrictive credentials, generated links, valid internal links, escaping links, and special-file rejection;
-- preservation of modified harness config without false managed ownership;
-- no secrets in journal, diagnostics, manifests, or new session records;
-- disk/copy/write/rename failures and interruption before/after every committed transition;
-- preexisting `.old` or unrelated work directories never overwritten;
-- repeated apply recognizes completed work without duplicate sessions or overwritten edits;
-- source backups are not mutated through hard links, copied symlinks, or new-runtime writes;
-- dry run performs no source, destination, project, or Docker mutation.
+- preserved live harness config without fabricated managed ownership;
+- complete Pi/OpenCode store/database/auth/cache mapping; caches excluded by default;
+- IDs/timestamps/activity and report-only aliases/lineage;
+- no secret values in journal, report, diagnostics, or new records;
+- disk/copy/write/publication failures and interruption before/after each durable transition;
+- unrelated work directories never overwritten; unsafe endpoint overlap rejected;
+- changed source/destination/project inputs trigger review instead of stale overwrite;
+- repeated resume recognizes completed work and preserves later destination edits/conversations;
+- report accuracy for prepared, incomplete, complete, and excluded outcomes, with exact commands;
+- source and existing destination data not mutated through links or new-runtime writes.
 
-### Docker integration tests
+### Isolated Docker acceptance
 
-- refuse live containers/leases and ownership mismatches;
-- archive verified old names without relabeling/adoption/deletion;
-- migration uses a new installation ID and fresh normal-engine-created containers;
-- Pi/OpenCode conversations and auth remain usable after first normal open;
-- state is not copied while a source container can write it;
-- missing images, failed builds, failed setup, failed record commits, and interrupted success bookkeeping remain resumable;
-- preserved source records/state and archived writable layers remain available after partial failure;
-- old proxy/user network resources are not deleted;
-- imported sessions work with normal list/status/open/recreate/delete and contain no migration-specific runtime mode.
+- refuse active writers/leases, pending transfers, ownership mismatches, and resource collisions;
+- source containers/names/images/proxy/user networks remain untouched;
+- existing destination installation ID retained; fresh destination receives an independent ID;
+- destination containers use final paths and current ownership, not staging/source mounts;
+- real Pi/OpenCode conversations and auth remain usable on first normal continuation;
+- known container-only config is extracted only from verified stopped source containers;
+- missing images, failed builds/setup/record commits, and interrupted success bookkeeping are resumable;
+- completed imported and preexisting Neo sessions remain unchanged on retry;
+- original records/state and old writable layers remain available after partial failure;
+- imports work through normal list/status/open/recreate/delete with no migration runtime mode.
 
 ## Completion and Removal
 
-Migration is complete when every accepted item is either imported and verified or explicitly retained only in backup, the home/project cutover is consistent, and the report explains all behavior changes. An unexpected omission or failed session is not reported as success.
+Migration is complete when selected imports are verified, all required shared config/project transitions are consistent, and every exclusion was explicitly accepted and reported. Failed or unexpectedly omitted sessions are not success. A prepared import is not a completed migration.
 
-After users have validated their new sessions, backup/resource deletion remains their explicit choice. Removing the migrator later removes old-format support completely without invalidating any imported session. Future normal schema evolution is a separate design question; this utility is only the old-Go-to-rewrite cutover tool.
+Keep the original `~/.devbox`, existing Neo data, work report, and backups until the user chooses otherwise. Removing the utility later removes old-format support completely without invalidating imported sessions. Future ordinary schema evolution is separate; this utility is only the supported old-Go-to-Neo import path.

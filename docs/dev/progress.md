@@ -2,6 +2,17 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md). The migration utility remains a separate delivery described in [migration-plan.md](migration-plan.md).
 
+## Migration — explicit merge candidate, live acceptance pending
+
+- Delivered the standalone inventory/staging checkpoint, then added explicit `--merge` review and execution. `make build-migrate` builds the separate utility; the normal runtime does not import the migration package or read its journal.
+- Inventory pins old-Go schemas and maps Pi/OpenCode host-backed state/config/auth, preserves report-only aliases/lineage, and supports explicit dependency-aware skips. Staging never modifies the destination or project files. Merge can capture OpenCode config from a verified stopped source container; special/escaping archive entries fail closed, and unavailable config requires explicit omission or skip.
+- Merge previews use the normal resolver with proposed project config and private profile trees. Existing profile conflicts require rename/reuse/skip; global settings and auth are retained by default. Approved replacements retain backups, and additions use no-replace publication. Session slots, IDs, image associations, source snapshots, destination facts, and input fingerprints are checked before use.
+- `app.CreatePrepared` accepts a normal specification, an already-held operation lock, and typed identity/activity inputs. Transfers and migration share that materialization path. The migration journal owns publication intent and Linux device/inode bindings for prepared directories. A committed normal record is authoritative: retry never recopies its history or recreates it from old inputs.
+- `--merge --review-pending` can reapprove changed final configuration for unfinished environments after shared publication completes, without changing scope or resetting completed sessions. Reports identify imported/pending/skipped items, accepted changes, backups, and exact next commands.
+- Import blocks raw Docker `--env=...` arguments because the current ordinary engine serializes raw arguments. Users must place those values in `extra_env`; fixing ordinary raw-argument persistence is separate work. Custom harness definitions must retain the tested binary/env/store/auth/config mapping.
+- Tests use temporary homes and fake Docker, including interrupted publication, post-record-commit retry, project backups, source/destination conflict checks, raw-value redaction, prepared-directory identity mismatch, archive traversal rejection, and pending-input reapproval. No personal installation or Docker resources are test targets.
+- Real-Docker migration, provider auth/conversation continuation, process-kill/power-loss acceptance, and manual terminal UX remain unpassed. Fake-backed tests do not establish readiness for a real cutover.
+
 ## Foreground SSH sharing — implemented, live-Docker acceptance pending
 
 - Added `ssh <target> <destination>` with a container-side master by default and invocation-only `--host-master`. The user authenticates in a foreground host terminal; generated in-container SSH config reuses the connection without fallback login. Host mode prints the agreed host/network-access warning before authentication. Normal SSH configuration, including ProxyJump, agent and X11 forwarding, is honored; no keys/config are copied and there is no identity/detach flag.

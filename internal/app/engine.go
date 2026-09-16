@@ -4,6 +4,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -420,12 +421,45 @@ func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force
 	return build("runtime.Dockerfile", docker.Namespace+"/session:"+id, s.Build.FinalDockerfile(baseRef), s.Build.Arguments)
 }
 func (e *Engine) create(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool) (store.Record, docker.Container, error) {
-	return e.createAs(ctx, l, s, previous, force, "", time.Time{})
+	return e.createAs(ctx, l, s, previous, force, CreationIdentity{})
 }
 
-// Transfer supplies a journaled identity before any destination resources exist.
-// The ordinary create/recreate path still allocates or preserves its own identity.
-func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool, id string, created time.Time) (record store.Record, c docker.Container, err error) {
+// CreationIdentity supplies durable identity/activity for a new destination.
+// Zero activity means this creation is its first recorded activity.
+type CreationIdentity struct {
+	ID       string
+	Created  time.Time
+	Activity time.Time
+	Action   string
+}
+
+// CreatePrepared materializes current-format state prepared under the supplied
+// operation lock. The caller owns publication and recovery of the prepared
+// directory; this method never adopts an existing record or container.
+func (e *Engine) CreatePrepared(ctx context.Context, l *store.Locked, s environment.Spec, identity CreationIdentity) (store.Record, docker.Container, error) {
+	if !l.Held() || l.Name != s.Identity.Name || identity.Created.IsZero() || len(identity.ID) != 32 {
+		return store.Record{}, docker.Container{}, fmt.Errorf("invalid prepared destination identity or lock")
+	}
+	if _, err := hex.DecodeString(identity.ID); err != nil || strings.ToLower(identity.ID) != identity.ID {
+		return store.Record{}, docker.Container{}, fmt.Errorf("invalid prepared session ID")
+	}
+	if _, err := l.ReadRecord(ctx); err == nil {
+		return store.Record{}, docker.Container{}, fmt.Errorf("prepared destination already has a session record")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return store.Record{}, docker.Container{}, err
+	}
+	if _, exists, err := e.Docker.Inspect(ctx, l.Name); err != nil {
+		return store.Record{}, docker.Container{}, err
+	} else if exists {
+		return store.Record{}, docker.Container{}, fmt.Errorf("prepared destination already has a Docker container")
+	}
+	return e.createAs(ctx, l, s, nil, false, identity)
+}
+
+// Transfer and prepared creation supply identity before creating resources.
+// Ordinary create/recreate still allocate or preserve their own identity.
+func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool, seed CreationIdentity) (record store.Record, c docker.Container, err error) {
+	id, created := seed.ID, seed.Created
 	if err = l.RequireIdle(); err != nil {
 		return record, c, err
 	}
@@ -503,6 +537,13 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 	if previous != nil {
 		record.Activity = previous.Activity
 		record.Action = "recreate"
+	} else {
+		if !seed.Activity.IsZero() {
+			record.Activity = seed.Activity
+		}
+		if seed.Action != "" {
+			record.Action = seed.Action
+		}
 	}
 	c, err = e.materialize(ctx, record)
 	if err != nil {
