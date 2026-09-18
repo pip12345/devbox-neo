@@ -27,7 +27,14 @@ The development home defaults to `~/.devbox-neo`. `--home` overrides `DEVBOX_HOM
 
 ## Migration utility
 
-`make build-migrate` builds the separate `bin/devbox-migrate` utility. `--dry-run` is read-only; `--stage` copies approved host-backed data into `~/.devbox-neo.migration` with a saved `report.txt`. A separate `--merge` reviews destination conflicts, project edits, container-config capture, and behavior changes before creating ordinary Neo environments. `--resume` continues approved work without resetting committed sessions.
+`make build-migrate` builds the separate `bin/devbox-migrate` utility. Run `bin/devbox-migrate` in a terminal to choose:
+
+- `[1]` **Copy old Devbox data into staging** — prepare a separate copy without changing either installation's data.
+- `[2]` **Review and import staged data into Neo** — resolve conflicts and approve changes before importing data and building new containers.
+- `[3]` **Continue an interrupted migration** — resume previously approved work without resetting completed imports.
+- `[0]` **Exit**.
+
+The menu explains unavailable actions based on the saved migration state. Copying into staging never automatically authorizes importing into Neo. Explicit `--stage`, `--merge`, and `--resume` entry points remain available; `--dry-run` is read-only and `--help` lists scripting flags. Without terminal input, the bare command prints help instead of prompting. Discovery reads metadata, not conversation/config-payload/cache trees. `[Inventoried]` means no metadata errors were found—not a validated import. After approval, staging fully scans and verifies only selected data, with progress output; sizes and deep-tree errors are reported then. Caches are not scanned unless selected. Errors identify failed schema checks and paths while withholding config values.
 
 **This is a development candidate; real-Docker and conversation/auth acceptance remain unpassed.** Read the [migration contract and safety limits](docs/dev/migration-plan.md#current-implementation) before using it. Tests use temporary homes and fake Docker, not personal installations.
 

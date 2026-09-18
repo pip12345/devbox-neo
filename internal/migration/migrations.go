@@ -133,6 +133,7 @@ type Item struct {
 	Issues        []string `json:"issues,omitempty"`
 	Notices       []string `json:"notices,omitempty"`
 	Bytes         int64    `json:"bytes"`
+	Scanned       bool     `json:"scanned,omitempty"`
 }
 
 // File records copy paths, modes, and verification hashes. Generated config
@@ -148,6 +149,8 @@ type File struct {
 	Link     string      `json:"link,omitempty"`
 }
 type Inventory struct {
+	scans        []scanRequest
+	progress     *preparationProgress
 	Paths        Paths               `json:"paths"`
 	Installation string              `json:"source_installation"`
 	Items        []Item              `json:"items"`
@@ -311,10 +314,10 @@ func encode(value any) []byte { b, _ := json.MarshalIndent(value, "", "  "); ret
 func convertLayer(b []byte) (config.Layer, []string, error) {
 	var old oldLayer
 	if err := config.Decode(b, &old); err != nil {
-		return config.Layer{}, nil, fmt.Errorf("invalid source layer schema (values withheld)")
+		return config.Layer{}, nil, fmt.Errorf("invalid config.json: %s", schemaDiagnostic(err))
 	}
-	if old.Version != 1 {
-		return config.Layer{}, nil, fmt.Errorf("unsupported source layer version; expected 1")
+	if problem := versionDiagnostic(b, "version", old.Version, 1); problem != "" {
+		return config.Layer{}, nil, fmt.Errorf("config.json: %s", problem)
 	}
 	if len(old.Networks) > 0 {
 		return config.Layer{}, nil, fmt.Errorf("extra_networks requires manual review: Neo has one primary network")
@@ -345,11 +348,11 @@ func convertLayer(b []byte) (config.Layer, []string, error) {
 }
 func (v *Inventory) generated(key, source, rel string, b []byte, mode os.FileMode) {
 	v.Files = append(v.Files, File{Item: key, Source: source, Relative: rel, Hash: digest(b), Mode: mode, Size: int64(len(b)), Data: b})
-	v.item(key).Bytes += int64(len(b))
 }
 
-// InventorySource is filesystem-read-only. It deliberately does not open either
-// runtime store or create locks, and Docker facts are collected separately.
+// InventorySource discovers owners and validates their metadata without walking
+// payload trees or reading credentials/history/caches. Selected payloads acquire
+// their immutable snapshot only after approval, under the source writer locks.
 func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 	checked, err := NewPaths(p.Source, p.Destination)
 	if err != nil {
@@ -375,11 +378,11 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 		return nil, fmt.Errorf("cannot read source global configuration: %w", err)
 	}
 	var g oldGlobal
-	if config.Decode(b, &g) != nil {
-		return nil, fmt.Errorf("invalid source global schema (values withheld)")
+	if err := config.Decode(b, &g); err != nil {
+		return nil, fmt.Errorf("invalid global.json: %s", schemaDiagnostic(err))
 	}
-	if g.Version != 2 {
-		return nil, fmt.Errorf("unsupported source global version; expected 2")
+	if problem := versionDiagnostic(b, "version", g.Version, 2); problem != "" {
+		return nil, fmt.Errorf("global.json: %s", problem)
 	}
 	ng := config.Global{Version: 1, DefaultProfile: g.DefaultProfile, DefaultHarness: g.DefaultHarness, GlobalEnv: g.GlobalEnv, IgnoreProject: g.IgnoreProject}
 	if g.DefaultHarness != "" && !supported(g.DefaultHarness) {
@@ -429,12 +432,41 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 		mb, merr := v.read(ctx, filepath.Join(root, "metadata.json"))
 		var r oldRecord
 		var m oldMetadata
-		if rerr != nil || merr != nil || config.Decode(rb, &r) != nil || config.Decode(mb, &m) != nil {
-			v.issue(key, "Missing or invalid session.json/metadata.json; repair with the old CLI or skip.")
+		for _, source := range []struct {
+			name    string
+			data    []byte
+			readErr error
+			value   any
+		}{
+			{"session.json", rb, rerr, &r},
+			{"metadata.json", mb, merr, &m},
+		} {
+			if source.readErr != nil {
+				v.issue(key, "Cannot read "+source.name+": "+filesystemDiagnostic(source.readErr)+".")
+			} else if err := config.Decode(source.data, source.value); err != nil {
+				v.issue(key, "Invalid "+source.name+": "+schemaDiagnostic(err)+".")
+			}
+		}
+		if len(v.item(key).Issues) > 0 {
 			continue
 		}
-		if r.Version != 1 || m.Version != 4 || m.Ownership != 1 || m.Creation == nil {
-			v.issue(key, "Unsupported session/metadata/ownership version; expected 1/4/1 with creation settings.")
+		for _, check := range []struct {
+			file, field      string
+			data             []byte
+			actual, expected int
+		}{
+			{"session.json", "version", rb, r.Version, 1},
+			{"metadata.json", "metadata_version", mb, m.Version, 4},
+			{"metadata.json", "ownership_version", mb, m.Ownership, 1},
+		} {
+			if problem := versionDiagnostic(check.data, check.field, check.actual, check.expected); problem != "" {
+				v.issue(key, check.file+": "+problem+".")
+			}
+		}
+		if m.Creation == nil {
+			v.issue(key, "metadata.json: creation_settings is "+fieldPresence(mb, "creation_settings")+"; expected a recorded settings object.")
+		}
+		if len(v.item(key).Issues) > 0 {
 			continue
 		}
 		if m.Creation.Profile != m.Profile || m.Creation.Harness != m.Harness {
@@ -493,10 +525,8 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 			}
 		}
 		v.depend(key, "auth:"+m.Harness)
-		canonical, e := filepath.EvalSymlinks(m.Folder)
-		info, statErr := os.Stat(m.Folder)
-		if e != nil || statErr != nil || !info.IsDir() || canonical != m.Folder {
-			v.issue(key, "Workspace missing or not canonical; repair/relocate with the old CLI or skip.")
+		if problem := workspaceDiagnostic(m.Folder); problem != "" {
+			v.issue(key, problem+" Review the recorded path; repair/relocate with the old CLI or explicitly skip.")
 		}
 		projectRoot := filepath.Join(m.Folder, ".devbox")
 		if st, e := os.Lstat(projectRoot); e == nil {
@@ -595,8 +625,12 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 			v.notice(key, "No source credentials exist; authentication may be needed after import.")
 			continue
 		}
-		if e := v.file(ctx, key, source, filepath.Join("auth", h, "auth.json")); e != nil {
+		if _, e := fsutil.Path(filepath.Dir(source), filepath.Base(source)); e != nil {
 			v.issue(key, "Cannot safely inventory authentication source.")
+		} else if info, e := os.Lstat(source); e != nil || !info.Mode().IsRegular() {
+			v.issue(key, "Authentication source must be an accessible regular file.")
+		} else {
+			v.scans = append(v.scans, scanRequest{item: key, source: source, relative: filepath.Join("auth", h, "auth.json")})
 		}
 	}
 	for _, h := range []string{"pi", "opencode"} {
@@ -611,9 +645,7 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 				v.issue(key, "No tested mapping for this optional cache.")
 				continue
 			}
-			if e := v.tree(ctx, key, filepath.Join(root, entry.Name()), filepath.Join("cache/harnesses", h, entry.Name()), nil); e != nil {
-				v.issue(key, "Cannot safely copy cache: "+e.Error())
-			}
+			v.scans = append(v.scans, scanRequest{item: key, source: filepath.Join(root, entry.Name()), relative: filepath.Join("cache/harnesses", h, entry.Name()), tree: true})
 		}
 	}
 	entries, err := readEntries(p.Source)
@@ -654,8 +686,8 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	// Directory membership is part of the snapshot: hashing existing files alone
-	// would miss a newly created conversation between inventory and copying.
+	// Owner membership is reviewed up front. Selected payload-directory membership
+	// is captured later, with its file hashes, before any data is copied.
 	for _, root := range []string{p.Source, filepath.Join(p.Source, "profiles"), filepath.Join(p.Source, "sessions")} {
 		if err := v.directory(root); err != nil {
 			return nil, err
@@ -711,9 +743,7 @@ func (v *Inventory) inventoryLayer(ctx context.Context, key, root, rel, defaultH
 	}
 	v.generated(key, filepath.Join(root, "config.json"), filepath.Join(rel, "config.json"), encode(l), 0600)
 	skip := map[string]bool{"config.json": true, "Dockerfile.full": true}
-	if err := v.tree(ctx, key, root, rel, skip); err != nil {
-		v.issue(key, "Cannot safely copy artifact tree: "+err.Error())
-	}
+	v.scans = append(v.scans, scanRequest{item: key, source: root, relative: rel, tree: true, skip: skip})
 }
 func (v *Inventory) inventorySessionState(ctx context.Context, key, root, target, active string) {
 	entries, err := readEntries(root)
@@ -728,7 +758,25 @@ func (v *Inventory) inventorySessionState(ctx context.Context, key, root, target
 			continue
 		}
 		if !supported(name) {
-			v.issue(key, "Unmapped session data requires review: "+strconv.QuoteToASCII(name))
+			kind := "file"
+			if entry.IsDir() {
+				kind = "directory"
+			} else if entry.Type()&os.ModeSymlink != 0 {
+				kind = "symlink"
+			} else if entry.Type() != 0 {
+				kind = "special file"
+			}
+			v.issue(key, fmt.Sprintf("Unmapped session entry %s (%s); only pi/ and opencode/ harness roots and known bookkeeping are supported. No data from this entry was mapped.", strconv.QuoteToASCII(name), kind))
+			continue
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			path := filepath.Join(root, name)
+			link, err := os.Readlink(path)
+			if err != nil {
+				v.issue(key, "Cannot read harness-root symlink "+strconv.QuoteToASCII(path)+": "+filesystemDiagnostic(err)+".")
+			} else {
+				v.issue(key, fmt.Sprintf("Harness state root %s -> %s is a symlink; symlink-backed harness roots are not supported.", strconv.QuoteToASCII(path), strconv.QuoteToASCII(link)))
+			}
 			continue
 		}
 		storeName := "home"
@@ -736,9 +784,7 @@ func (v *Inventory) inventorySessionState(ctx context.Context, key, root, target
 			storeName = "data"
 		}
 		rel := filepath.Join("sessions", target, "harnesses", name, "stores", storeName)
-		if err := v.tree(ctx, key, filepath.Join(root, name), rel, map[string]bool{"auth.json": true}); err != nil {
-			v.issue(key, "Cannot safely copy harness state: "+err.Error())
-		}
+		v.scans = append(v.scans, scanRequest{item: key, source: filepath.Join(root, name), relative: rel, tree: true, skip: map[string]bool{"auth.json": true}})
 		v.depend(key, "auth:"+name)
 	}
 	if _, err := os.Stat(filepath.Join(root, active)); err != nil {
@@ -768,7 +814,8 @@ func (v *Inventory) file(ctx context.Context, key, source, relative string) erro
 	}
 	defer f.Close()
 	h := sha256.New()
-	n, err := io.Copy(h, contextReader{ctx, f})
+	v.progress.file(source)
+	n, err := io.Copy(h, v.progress.reader(ctx, f))
 	if err != nil {
 		return err
 	}
@@ -827,15 +874,16 @@ func (v *Inventory) tree(ctx context.Context, key, root, rel string, skip map[st
 					local = "."
 				}
 				if !filepath.IsLocal(local) {
-					return fmt.Errorf("unsafe generated config link: %s", path)
+					return fmt.Errorf("generated config link %s -> %s escapes its config root; no host mapping attempted", strconv.QuoteToASCII(path), strconv.QuoteToASCII(link))
 				}
-				mapped, err := fsutil.Path(filepath.Join(v.item(key).Path, ".staged-harness", filepath.Base(root)), local)
-				if err != nil {
-					return err
+				stagedRoot := filepath.Join(v.item(key).Path, ".staged-harness", filepath.Base(root))
+				mapped := filepath.Join(stagedRoot, local)
+				if _, err := fsutil.Path(stagedRoot, local); err != nil {
+					return fmt.Errorf("generated config link %s -> %s; mapped host path %s rejected: %s", strconv.QuoteToASCII(path), strconv.QuoteToASCII(link), strconv.QuoteToASCII(mapped), filesystemDiagnostic(err))
 				}
 				info, err := os.Stat(mapped)
 				if err != nil {
-					return fmt.Errorf("generated config link source unavailable: %s", path)
+					return fmt.Errorf("generated config link %s -> %s; mapped host path %s unavailable: %s", strconv.QuoteToASCII(path), strconv.QuoteToASCII(link), strconv.QuoteToASCII(mapped), filesystemDiagnostic(err))
 				}
 				if info.IsDir() {
 					return v.tree(ctx, key, mapped, target, nil)
@@ -1132,8 +1180,11 @@ func Report(w io.Writer, v *Inventory, j *Journal) error {
 			fmt.Fprintf(&b, "Error: %s\n", display(j.Failure))
 		}
 	}
+	if j == nil || (j.Merge == nil && j.Phase != "prepared") {
+		fmt.Fprintln(&b, "Metadata only: [Inventoried] means no metadata errors found, not a validated import. Payload sizes, deep-tree checks and hashing are deferred until staging selection. Docker checks and final configuration review are still required.")
+	}
 	for _, i := range v.Items {
-		state := "Ready"
+		state := "Inventoried"
 		if len(i.Issues) > 0 {
 			state = "Error"
 		}
@@ -1184,7 +1235,11 @@ func Report(w io.Writer, v *Inventory, j *Journal) error {
 		for _, notice := range i.Notices {
 			fmt.Fprintf(&b, "  Review: %s\n", display(notice))
 		}
-		fmt.Fprintf(&b, "  Portable bytes: %d\n", i.Bytes)
+		if i.Scanned {
+			fmt.Fprintf(&b, "  Portable bytes: %d\n", i.Bytes)
+		} else {
+			fmt.Fprintln(&b, "  Portable data: not scanned; only selected data is scanned during staging.")
+		}
 	}
 	fmt.Fprintln(&b, "\nRetained originals and limitations:")
 	for _, notice := range v.Notices {
@@ -1264,7 +1319,7 @@ func Load(p Paths) (*Journal, error) {
 	}
 	return &j, nil
 }
-func Stage(ctx context.Context, v *Inventory, s Selection, runtime SourceRuntime) (*Journal, error) {
+func Stage(ctx context.Context, v *Inventory, s Selection, runtime SourceRuntime, out io.Writer) (*Journal, error) {
 	excluded, err := v.Select(s)
 	if err != nil {
 		return nil, err
@@ -1298,7 +1353,10 @@ func Stage(ctx context.Context, v *Inventory, s Selection, runtime SourceRuntime
 	if digest(encode(fresh)) != digest(encode(v)) {
 		return nil, fmt.Errorf("source inventory changed; rescan before staging")
 	}
-	v = fresh
+	v, err = snapshotSelected(ctx, fresh, excluded, newPreparationProgress(out))
+	if err != nil {
+		return nil, err
+	}
 	if err = os.Mkdir(v.Paths.Work, 0700); err != nil {
 		return nil, err
 	}
@@ -1317,7 +1375,7 @@ func Stage(ctx context.Context, v *Inventory, s Selection, runtime SourceRuntime
 	}
 	return j, stageFiles(ctx, j, v, runtime)
 }
-func ResumeStage(ctx context.Context, p Paths, runtime SourceRuntime) (result *Journal, err error) {
+func ResumeStage(ctx context.Context, p Paths, runtime SourceRuntime, out io.Writer) (result *Journal, err error) {
 	original, err := Load(p)
 	if err != nil {
 		return nil, err
@@ -1357,9 +1415,6 @@ func ResumeStage(ctx context.Context, p Paths, runtime SourceRuntime) (result *J
 	if err != nil {
 		return j, err
 	}
-	if digest(encode(v)) != digest(encode(&j.Inventory)) {
-		return j, fmt.Errorf("source inventory changed; review/restage before continuing")
-	}
 	excluded, err := v.Select(j.Selection)
 	if err != nil {
 		return j, err
@@ -1380,6 +1435,16 @@ func ResumeStage(ctx context.Context, p Paths, runtime SourceRuntime) (result *J
 	}
 	if err = checkRuntime(ctx, runtime, v, j.Excluded); err != nil {
 		return j, err
+	}
+	if err = verifySource(ctx, v); err != nil {
+		return j, err
+	}
+	v, err = snapshotSelected(ctx, v, excluded, newPreparationProgress(out))
+	if err != nil {
+		return j, err
+	}
+	if digest(encode(v)) != digest(encode(&j.Inventory)) {
+		return j, fmt.Errorf("source snapshot changed; review/restage before continuing")
 	}
 	copying = true
 	return j, stageFiles(ctx, j, v, runtime)
@@ -1434,8 +1499,9 @@ func verifySource(ctx context.Context, v *Inventory) error {
 		if err != nil {
 			return fmt.Errorf("source unavailable: %s", path)
 		}
+		v.progress.file(path)
 		h := sha256.New()
-		_, err = io.Copy(h, contextReader{ctx, f})
+		_, err = io.Copy(h, v.progress.reader(ctx, f))
 		f.Close()
 		if err != nil {
 			return err
@@ -1460,6 +1526,7 @@ func stageFiles(ctx context.Context, j *Journal, v *Inventory, runtime SourceRun
 	if err != nil {
 		return err
 	}
+	v.progress.begin("Copying selected data")
 	for _, file := range v.Files {
 		if j.Excluded[file.Item] != "" {
 			continue
@@ -1479,6 +1546,7 @@ func stageFiles(ctx context.Context, j *Journal, v *Inventory, runtime SourceRun
 			}
 			continue
 		}
+		v.progress.file(file.Relative)
 		if _, err = fsutil.Dir(filepath.Dir(target), ".", 0700); err != nil {
 			return err
 		}
@@ -1491,7 +1559,7 @@ func stageFiles(ctx context.Context, j *Journal, v *Inventory, runtime SourceRun
 			}
 		} else if !os.IsNotExist(e) {
 			return e
-		} else if err = copyFile(ctx, target, file); err != nil {
+		} else if err = copyFile(ctx, target, file, v.progress); err != nil {
 			return err
 		}
 		j.Completed[file.Relative] = file.Hash
@@ -1501,6 +1569,8 @@ func stageFiles(ctx context.Context, j *Journal, v *Inventory, runtime SourceRun
 			}
 		}
 	}
+	v.progress.finish()
+	v.progress.begin("Verifying selected source snapshot")
 	j.Current = "verifying the source snapshot"
 	j.CurrentItem = ""
 	if err = checkLeases(ctx, v); err != nil {
@@ -1512,6 +1582,7 @@ func stageFiles(ctx context.Context, j *Journal, v *Inventory, runtime SourceRun
 	if err = verifySource(ctx, v); err != nil {
 		return err
 	}
+	v.progress.finish()
 	if err = syncStagedDirectories(ctx, root); err != nil {
 		return err
 	}
@@ -1579,7 +1650,7 @@ func matches(ctx context.Context, path string, file File) (bool, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)) == file.Hash, nil
 }
-func copyFile(ctx context.Context, target string, file File) error {
+func copyFile(ctx context.Context, target string, file File, progress *preparationProgress) error {
 	if file.Mode&os.ModeSymlink != 0 {
 		if err := os.Symlink(file.Link, target); err != nil {
 			return err
@@ -1620,7 +1691,7 @@ func copyFile(ctx context.Context, target string, file File) error {
 	defer os.Remove(name)
 	defer out.Close()
 	h := sha256.New()
-	if _, err = io.Copy(io.MultiWriter(out, h), contextReader{ctx, in}); err != nil {
+	if _, err = io.Copy(io.MultiWriter(out, h), progress.reader(ctx, in)); err != nil {
 		return err
 	}
 	if hex.EncodeToString(h.Sum(nil)) != file.Hash {

@@ -45,8 +45,12 @@ func homes(t *testing.T) (string, string) {
 }
 func execute(t *testing.T, interactive bool, input string, args ...string) (string, error, *sourceFake) {
 	t.Helper()
+	return executeWithMerger(t, migration.Merger{}, interactive, input, args...)
+}
+func executeWithMerger(t *testing.T, merger migration.Merger, interactive bool, input string, args ...string) (string, error, *sourceFake) {
+	t.Helper()
 	fake := &sourceFake{}
-	cmd := newCommand(fake, migration.Merger{}, interactive)
+	cmd := newCommand(fake, merger, interactive)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
@@ -137,7 +141,7 @@ func TestUnsupportedProfilesNeedScriptSkipButMenuReviewsExclusions(t *testing.T)
 	notExist(t, filepath.Join(destination+".migration", "staged-home/profiles/codex"))
 }
 func TestInteractiveCancelAndEOFDoNotStage(t *testing.T) {
-	for _, input := range []string{"5\n", "", "3\nn\n5\n", "2\n0\n5\n", "4\n5\n"} {
+	for _, input := range []string{"0\n", "q\n", "", "3\nn\n0\n", "2\n0\n0\n", "4\n0\n"} {
 		t.Run(fmt.Sprintf("%q", input), func(t *testing.T) {
 			_, destination := homes(t)
 			_, _, fake := execute(t, true, input, "--stage")

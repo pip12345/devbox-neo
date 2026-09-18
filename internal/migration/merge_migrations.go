@@ -1726,7 +1726,7 @@ func copySession(ctx context.Context, j *Journal, job ImportSession, target stri
 		}
 		file.Source = filepath.Join(j.Inventory.Paths.Work, "staged-home", file.Relative)
 		file.Data = nil
-		if err = copyFile(ctx, to, file); err != nil {
+		if err = copyFile(ctx, to, file, nil); err != nil {
 			return err
 		}
 	}

@@ -25,8 +25,13 @@ func mergeMenu(cmd *cobra.Command, m migration.Merger, j *migration.Journal, c m
 			return err
 		}
 		fmt.Fprintf(ui.out, "\nMerge review: %d publications, %d session imports. Existing sessions will not be overwritten.\n", len(plan.Publications), len(plan.Sessions))
-		fmt.Fprintln(ui.out, "1. Review full plan\n2. Resolve owner conflicts / choose exclusions\n3. Capture stopped-container OpenCode config\n4. Accept displayed behavior changes\n5. Apply reviewed merge\n6. Cancel")
-		choice, err := ui.line("> ")
+		choice, err := ui.choose("What would you like to do?", []string{
+			"Review full plan",
+			"Resolve owner conflicts / choose exclusions",
+			"Capture stopped-container OpenCode config",
+			"Accept displayed behavior changes",
+			"Apply reviewed merge",
+		}, "Cancel")
 		if err != nil {
 			return err
 		}
@@ -122,11 +127,9 @@ func mergeMenu(cmd *cobra.Command, m migration.Merger, j *migration.Journal, c m
 				j, err = m.Apply(cmd.Context(), j.Inventory.Paths, plan)
 			}
 			return printMigrationResult(cmd, j, err)
-		case "6":
+		case "0":
 			fmt.Fprintln(ui.out, "Cancelled; no merge was applied.")
 			return nil
-		default:
-			fmt.Fprintln(ui.out, "Choose 1-6.")
 		}
 	}
 }
@@ -140,23 +143,19 @@ func mergeDecisions(ui menu, j *migration.Journal, c *migration.MergeChoices) er
 	for {
 		fmt.Fprintln(ui.out, "\nChoose an owner. Skipping it also skips dependent imports.")
 		for n, item := range items {
-			fmt.Fprintf(ui.out, "%d. %s\n", n+1, safe(item.Key))
+			ui.option(n+1, safe(item.Key))
 		}
-		fmt.Fprintln(ui.out, "0. Back")
-		answer, err := ui.line("> ")
+		answer, err := ui.readChoice(len(items), "Back")
 		if err != nil {
 			return err
 		}
 		if answer == "0" {
 			return nil
 		}
-		n, err := strconv.Atoi(answer)
-		if err != nil || n < 1 || n > len(items) {
-			continue
-		}
+		n, _ := strconv.Atoi(answer)
 		item := items[n-1]
 		if has(c.Skip, item.Key) {
-			answer, err = ui.line("1. Include again\n2. Back\n> ")
+			answer, err = ui.choose("What would you like to do?", []string{"Include again"}, "Back")
 			if err != nil {
 				return err
 			}
@@ -167,8 +166,12 @@ func mergeDecisions(ui menu, j *migration.Journal, c *migration.MergeChoices) er
 		}
 		switch item.Kind {
 		case "profile":
-			fmt.Fprintln(ui.out, "1. Rename imported profile\n2. Reuse existing profile after review\n3. Skip owner and dependents\n4. Compare configuration fields\n5. Back")
-			answer, err = ui.line("> ")
+			answer, err = ui.choose("What would you like to do?", []string{
+				"Rename imported profile",
+				"Reuse existing profile after review",
+				"Skip owner and dependents",
+				"Compare configuration fields",
+			}, "Back")
 			if err != nil {
 				return err
 			}
@@ -206,7 +209,10 @@ func mergeDecisions(ui menu, j *migration.Journal, c *migration.MergeChoices) er
 					fmt.Fprintln(ui.out, line)
 				}
 			}
-			answer, err = ui.line("1. Approve exact project config edit (back up original)\n2. Skip owner and dependents\n3. Back\n> ")
+			answer, err = ui.choose("What would you like to do?", []string{
+				"Approve exact project config edit (back up original)",
+				"Skip owner and dependents",
+			}, "Back")
 			if err != nil {
 				return err
 			}
@@ -216,7 +222,11 @@ func mergeDecisions(ui menu, j *migration.Journal, c *migration.MergeChoices) er
 				c.Skip = append(c.Skip, item.Key)
 			}
 		case "auth":
-			answer, err = ui.line("1. Keep existing auth\n2. Replace with staged auth (affects existing sessions; back up original)\n3. Skip owner and dependents\n4. Back\n> ")
+			answer, err = ui.choose("What would you like to do?", []string{
+				"Keep existing auth",
+				"Replace with staged auth (affects existing sessions; back up original)",
+				"Skip owner and dependents",
+			}, "Back")
 			if err != nil {
 				return err
 			}
@@ -236,7 +246,10 @@ func mergeDecisions(ui menu, j *migration.Journal, c *migration.MergeChoices) er
 					fmt.Fprintln(ui.out, line)
 				}
 			}
-			answer, err = ui.line("1. Keep existing Neo global settings\n2. Import staged settings (affects existing environments)\n3. Back\n> ")
+			answer, err = ui.choose("What would you like to do?", []string{
+				"Keep existing Neo global settings",
+				"Import staged settings (affects existing environments)",
+			}, "Back")
 			if err != nil {
 				return err
 			}
@@ -246,7 +259,10 @@ func mergeDecisions(ui menu, j *migration.Journal, c *migration.MergeChoices) er
 				c.Global = "import"
 			}
 		case "session":
-			answer, err = ui.line("1. Skip this session\n2. Explicitly omit its container-only OpenCode config\n3. Back\n> ")
+			answer, err = ui.choose("What would you like to do?", []string{
+				"Skip this session",
+				"Explicitly omit its container-only OpenCode config",
+			}, "Back")
 			if err != nil {
 				return err
 			}

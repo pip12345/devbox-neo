@@ -109,7 +109,7 @@ func inventory(t *testing.T, p Paths) *Inventory {
 }
 func mustStage(t *testing.T, v *Inventory) *Journal {
 	t.Helper()
-	j, err := Stage(context.Background(), v, Selection{}, &fakeSource{})
+	j, err := Stage(context.Background(), v, Selection{}, &fakeSource{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestUnsupportedOwnersRequireExplicitSkipAndPropagate(t *testing.T) {
 	if excluded["session:"+name] == "" {
 		t.Fatal("dependency not excluded")
 	}
-	j, err := Stage(context.Background(), v, Selection{Skip: []string{"profile:unsupported", project}}, &fakeSource{})
+	j, err := Stage(context.Background(), v, Selection{Skip: []string{"profile:unsupported", project}}, &fakeSource{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +345,7 @@ func TestExternalAuthRequiresApprovalAndNeverMovesOriginal(t *testing.T) {
 	if _, err := v.Select(Selection{}); err == nil {
 		t.Fatal("external auth copied without consent")
 	}
-	if _, err := Stage(context.Background(), v, Selection{ExternalAuth: []string{"auth:pi"}}, &fakeSource{}); err != nil {
+	if _, err := Stage(context.Background(), v, Selection{ExternalAuth: []string{"auth:pi"}}, &fakeSource{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	put(t, filepath.Join(p.Work, "staged-home/auth/pi/auth.json"), "changed")
@@ -386,10 +386,7 @@ func TestEscapingLinksAndSpecialFilesBlockAffectedOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := inventory(t, p)
-	if len(v.item("session:"+name).Issues) == 0 {
-		t.Fatal("escaping link accepted")
-	}
-	if _, err := Stage(context.Background(), v, Selection{}, &fakeSource{}); err == nil {
+	if _, err := Stage(context.Background(), v, Selection{}, &fakeSource{}, nil); err == nil {
 		t.Fatal("staged unsafe tree")
 	}
 	absent(t, p.Work)
@@ -403,7 +400,7 @@ func TestInterruptedStagingResumesAndRecognizesPublishedFiles(t *testing.T) {
 			return failure
 		}
 		return nil
-	}})
+	}}, nil)
 	if !errors.Is(err, failure) || j == nil || j.Phase != "staging" {
 		t.Fatalf("not resumable: %+v %v", j, err)
 	}
@@ -412,14 +409,14 @@ func TestInterruptedStagingResumesAndRecognizesPublishedFiles(t *testing.T) {
 	if err := saveJournal(j); err != nil {
 		t.Fatal(err)
 	}
-	j, err = ResumeStage(context.Background(), p, &fakeSource{})
+	j, err = ResumeStage(context.Background(), p, &fakeSource{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if j.Phase != "prepared" {
 		t.Fatal(j.Phase)
 	}
-	if _, err = ResumeStage(context.Background(), p, &fakeSource{}); err == nil || !strings.Contains(err.Error(), "does not authorize merge") {
+	if _, err = ResumeStage(context.Background(), p, &fakeSource{}, nil); err == nil || !strings.Contains(err.Error(), "does not authorize merge") {
 		t.Fatal("resume escalated scope")
 	}
 }
@@ -433,7 +430,7 @@ func TestResumeNeverOverwritesEditedStagingOrChangedSource(t *testing.T) {
 					return errors.New("stop")
 				}
 				return nil
-			}})
+			}}, nil)
 			if err == nil {
 				t.Fatal("expected interruption")
 			}
@@ -442,7 +439,7 @@ func TestResumeNeverOverwritesEditedStagingOrChangedSource(t *testing.T) {
 				path = filepath.Join(p.Source, "profiles/work/inputs/build.txt")
 			}
 			put(t, path, "later edit")
-			if _, err := ResumeStage(context.Background(), p, &fakeSource{}); err == nil {
+			if _, err := ResumeStage(context.Background(), p, &fakeSource{}, nil); err == nil {
 				t.Fatal("silently overwrote changed input")
 			}
 			if read(t, path) != "later edit" {
@@ -451,22 +448,26 @@ func TestResumeNeverOverwritesEditedStagingOrChangedSource(t *testing.T) {
 		})
 	}
 }
-func TestSourceAdditionsAndRunningWriterRefuseBeforeWorkCreation(t *testing.T) {
+func TestPayloadSnapshotStartsAfterDiscoveryAndWriterChecks(t *testing.T) {
 	p, name := fixture(t)
 	v := inventory(t, p)
 	put(t, filepath.Join(p.Source, "sessions", name, "pi/sessions/new.jsonl"), "new")
-	if _, err := Stage(context.Background(), v, Selection{}, &fakeSource{}); err == nil {
-		t.Fatal("missed new conversation")
+	j := mustStage(t, v)
+	path := filepath.Join(p.Work, "staged-home/sessions", j.Inventory.item("session:"+name).Target, "harnesses/pi/stores/home/sessions/new.jsonl")
+	if read(t, path) != "new" {
+		t.Fatal("snapshot missed data created before approval")
 	}
-	absent(t, p.Work)
-	v = inventory(t, p)
-	if _, err := Stage(context.Background(), v, Selection{}, &fakeSource{check: func(int) error { return errors.New("running") }}); err == nil {
+}
+func TestRunningWriterRefusesBeforeWorkCreation(t *testing.T) {
+	p, name := fixture(t)
+	v := inventory(t, p)
+	if _, err := Stage(context.Background(), v, Selection{}, &fakeSource{check: func(int) error { return errors.New("running") }}, nil); err == nil {
 		t.Fatal("copied live state")
 	}
 	absent(t, p.Work)
 	put(t, filepath.Join(p.Source, "sessions", name, ".active/test.json"), fmt.Sprintf(`{"pid":%d,"started_at":"2025-01-01T00:00:00Z"}`, os.Getpid()))
 	v = inventory(t, p)
-	if _, err := Stage(context.Background(), v, Selection{}, &fakeSource{}); err == nil {
+	if _, err := Stage(context.Background(), v, Selection{}, &fakeSource{}, nil); err == nil {
 		t.Fatal("copied active lease")
 	}
 	absent(t, p.Work)
@@ -474,7 +475,7 @@ func TestSourceAdditionsAndRunningWriterRefuseBeforeWorkCreation(t *testing.T) {
 func TestExistingWorkAndPathAliasesAreNeverOverwritten(t *testing.T) {
 	p, _ := fixture(t)
 	put(t, filepath.Join(p.Work, "keep"), "unrelated")
-	if _, err := Stage(context.Background(), inventory(t, p), Selection{}, &fakeSource{}); err == nil {
+	if _, err := Stage(context.Background(), inventory(t, p), Selection{}, &fakeSource{}, nil); err == nil {
 		t.Fatal("overwrote unrelated work")
 	}
 	if read(t, filepath.Join(p.Work, "keep")) != "unrelated" {
@@ -524,7 +525,7 @@ func TestResumeRejectsUnknownWorkWithoutCreatingALock(t *testing.T) {
 	p, _ := fixture(t)
 	put(t, filepath.Join(p.Work, "journal.json"), `{"version":999}`)
 	before := treeSnapshot(t, p.Work)
-	if _, err := ResumeStage(context.Background(), p, &fakeSource{}); err == nil {
+	if _, err := ResumeStage(context.Background(), p, &fakeSource{}, nil); err == nil {
 		t.Fatal("accepted unknown work")
 	}
 	if fmt.Sprint(before) != fmt.Sprint(treeSnapshot(t, p.Work)) {
@@ -582,18 +583,20 @@ func TestFIFOsAndLinksToExcludedAuthAreBlocked(t *testing.T) {
 	if err := unix.Mkfifo(filepath.Join(root, "pipe"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if len(inventory(t, p).item("session:"+name).Issues) == 0 {
+	if _, err := Stage(context.Background(), inventory(t, p), Selection{}, &fakeSource{}, nil); err == nil {
 		t.Fatal("FIFO accepted")
 	}
+	absent(t, p.Work)
 	if err := os.Remove(filepath.Join(root, "pipe")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("auth.json", filepath.Join(root, "auth-alias")); err != nil {
 		t.Fatal(err)
 	}
-	if len(inventory(t, p).item("session:"+name).Issues) == 0 {
+	if _, err := Stage(context.Background(), inventory(t, p), Selection{}, &fakeSource{}, nil); err == nil {
 		t.Fatal("excluded auth link accepted")
 	}
+	absent(t, p.Work)
 }
 func TestReportNeverLeaksAnUnknownRuntimeError(t *testing.T) {
 	p, _ := fixture(t)
@@ -604,7 +607,7 @@ func TestReportNeverLeaksAnUnknownRuntimeError(t *testing.T) {
 			return cause
 		}
 		return nil
-	}})
+	}}, nil)
 	if !errors.Is(err, cause) {
 		t.Fatal("lost cause", err)
 	}
@@ -632,7 +635,7 @@ func TestCachesAreOptionalAndUnknownSkipIsAnError(t *testing.T) {
 	if _, err := v.Select(Selection{Skip: []string{"typo"}}); err == nil {
 		t.Fatal("unknown skip ignored")
 	}
-	_, err = Stage(context.Background(), v, Selection{Caches: true}, &fakeSource{})
+	_, err = Stage(context.Background(), v, Selection{Caches: true}, &fakeSource{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

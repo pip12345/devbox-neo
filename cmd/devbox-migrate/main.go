@@ -51,7 +51,7 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 	f := cmd.Flags()
 	f.StringVar(&source, "source", "", "Old home (default ~/.devbox; DEVBOX_HOME is ignored)")
 	f.StringVar(&destination, "destination", "", "Neo home (default ~/.devbox-neo; staging uses its .migration sibling)")
-	f.BoolVar(&dry, "dry-run", false, "Read-only filesystem inventory; creates no report or locks")
+	f.BoolVar(&dry, "dry-run", false, "Read-only metadata inventory; no payload scan, report file, or locks")
 	f.BoolVar(&stage, "stage", false, "Prepare converted host-backed data and report; does not merge")
 	f.BoolVar(&merge, "merge", false, "Review and explicitly merge a prepared import")
 	f.BoolVar(&resume, "resume", false, "Resume an already approved staging or merge operation")
@@ -77,24 +77,11 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 				count++
 			}
 		}
-		if count == 0 {
+		if count == 0 && !interactive {
 			return cmd.Help()
 		}
-		if count != 1 {
+		if count > 1 {
 			return fmt.Errorf("select exactly one of --dry-run, --stage, --merge, or --resume")
-		}
-		mergeFlags := confirmMerge || capture || pending || choices.Global != "" || len(renames) > 0 || len(choices.Reuse) > 0 || len(choices.Projects) > 0 || len(choices.ReplaceAuth) > 0 || len(choices.Accept) > 0 || len(choices.OmitConfig) > 0
-		if mergeFlags && !merge {
-			return fmt.Errorf("merge decision flags require --merge")
-		}
-		if merge && (confirm || caches || len(external) > 0) {
-			return fmt.Errorf("staging flags cannot change merge scope")
-		}
-		if pending && (capture || choices.Global != "" || len(renames) > 0 || len(choices.Reuse) > 0 || len(choices.Projects) > 0 || len(choices.ReplaceAuth) > 0 || len(choices.OmitConfig) > 0 || len(skip) > 0) {
-			return fmt.Errorf("pending review cannot change selected owners or repeat publication")
-		}
-		if (dry || resume) && (confirm || caches || len(skip) > 0 || len(external) > 0) {
-			return fmt.Errorf("selection and approval flags belong to --stage; --resume retains the recorded scope")
 		}
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -126,6 +113,29 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 		if p.Destination == oldDefault || strings.HasPrefix(p.Destination, oldDefault+string(filepath.Separator)) {
 			return fmt.Errorf("Neo's destination cannot be the conventional ~/.devbox or its descendants")
 		}
+		if count == 0 {
+			// Share buffered input with the selected menu so read-ahead cannot
+			// consume answers intended for its review and confirmation prompts.
+			cmd.SetIn(bufio.NewReader(cmd.InOrStdin()))
+			action, err := migrationMenu(cmd, p)
+			if err != nil || action == "" {
+				return err
+			}
+			stage, merge, resume = action == "stage", action == "merge", action == "resume"
+		}
+		mergeFlags := confirmMerge || capture || pending || choices.Global != "" || len(renames) > 0 || len(choices.Reuse) > 0 || len(choices.Projects) > 0 || len(choices.ReplaceAuth) > 0 || len(choices.Accept) > 0 || len(choices.OmitConfig) > 0
+		if mergeFlags && !merge {
+			return fmt.Errorf("merge decision flags require --merge")
+		}
+		if merge && (confirm || caches || len(external) > 0) {
+			return fmt.Errorf("staging flags cannot change merge scope")
+		}
+		if pending && (capture || choices.Global != "" || len(renames) > 0 || len(choices.Reuse) > 0 || len(choices.Projects) > 0 || len(choices.ReplaceAuth) > 0 || len(choices.OmitConfig) > 0 || len(skip) > 0) {
+			return fmt.Errorf("pending review cannot change selected owners or repeat publication")
+		}
+		if (dry || resume) && (confirm || caches || len(skip) > 0 || len(external) > 0) {
+			return fmt.Errorf("selection and approval flags belong to --stage; --resume retains the recorded scope")
+		}
 		merger.Progress = cmd.OutOrStdout()
 		if resume {
 			j, err := migration.Load(p)
@@ -135,7 +145,7 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 			if j.Merge != nil {
 				j, err = merger.Resume(cmd.Context(), p)
 			} else {
-				j, err = migration.ResumeStage(cmd.Context(), p, runtime)
+				j, err = migration.ResumeStage(cmd.Context(), p, runtime, cmd.OutOrStdout())
 			}
 			return printMigrationResult(cmd, j, err)
 		}
@@ -193,7 +203,7 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 			}
 			return printMigrationResult(cmd, j, err)
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "Scanning %s (filesystem only; no data changes)...\n", safe(p.Source))
+		fmt.Fprintf(cmd.ErrOrStderr(), "Discovering metadata in %s (no payload scan or data changes)...\n", safe(p.Source))
 		v, err := migration.InventorySource(cmd.Context(), p)
 		if err != nil {
 			return err
@@ -219,7 +229,7 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 				return fmt.Errorf("non-interactive staging requires --confirm-stage and explicit --skip/--approve-external-auth decisions where needed")
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "Checking stopped source writers, then copying and verifying host-backed data...")
-			j, err := migration.Stage(cmd.Context(), v, selection, runtime)
+			j, err := migration.Stage(cmd.Context(), v, selection, runtime, cmd.OutOrStdout())
 			if j != nil {
 				err = errors.Join(err, migration.Report(cmd.OutOrStdout(), &j.Inventory, j))
 			}
@@ -252,6 +262,43 @@ func (m menu) line(prompt string) (string, error) {
 	}
 	return strings.TrimSpace(line), nil
 }
+
+// Match the normal rewrite CLI's line-oriented menu presentation without
+// coupling the removable migrator to its command handlers.
+func menuPrefix(number int) string {
+	return fmt.Sprintf("   %-4s ", fmt.Sprintf("[%d]", number))
+}
+
+func (m menu) option(number int, label string) {
+	fmt.Fprintf(m.out, "%s%s\n", menuPrefix(number), label)
+}
+
+func (m menu) readChoice(count int, back string) (string, error) {
+	fmt.Fprintf(m.out, "\n%s%s\n", menuPrefix(0), back)
+	for {
+		answer, err := m.line("\n   Choose a number > ")
+		if err != nil {
+			return "", err
+		}
+		if answer == "0" || answer == "q" {
+			return "0", nil
+		}
+		n, err := strconv.Atoi(answer)
+		if err == nil && n >= 1 && n <= count {
+			return strconv.Itoa(n), nil
+		}
+		fmt.Fprintf(m.out, "Choose 1–%d, or 0 to %s.\n", count, strings.ToLower(back))
+	}
+}
+
+func (m menu) choose(title string, choices []string, back string) (string, error) {
+	fmt.Fprintln(m.out, "\n"+title)
+	for i, choice := range choices {
+		m.option(i+1, choice)
+	}
+	return m.readChoice(len(choices), back)
+}
+
 func stageMenu(cmd *cobra.Command, runtime migration.SourceRuntime, v *migration.Inventory, s migration.Selection) error {
 	m := menu{bufio.NewReader(cmd.InOrStdin()), cmd.OutOrStdout()}
 	fmt.Fprintf(m.out, "Migrate Devbox -> Neo\n\nSource       %s\nStaging      %s\nDestination  %s\n\n", safe(v.Paths.Source), safe(v.Paths.Work), safe(v.Paths.Destination))
@@ -264,8 +311,12 @@ func stageMenu(cmd *cobra.Command, runtime migration.SourceRuntime, v *migration
 		if err := cmd.Context().Err(); err != nil {
 			return err
 		}
-		fmt.Fprintln(m.out, "\n1. Review inventory and issues\n2. Choose what to stage\n3. Prepare supported items (review exclusions first)\n4. Rescan after manual fixes\n5. Cancel")
-		choice, err := m.line("> ")
+		choice, err := m.choose("What would you like to do?", []string{
+			"Review inventory and issues",
+			"Choose what to stage",
+			"Prepare supported items (review exclusions first)",
+			"Rescan after manual fixes",
+		}, "Cancel")
 		if err != nil {
 			return err
 		}
@@ -307,14 +358,12 @@ func stageMenu(cmd *cobra.Command, runtime migration.SourceRuntime, v *migration
 			}
 			excluded, err := v.Select(proposed)
 			fmt.Fprintln(m.out, "\nStaging scope:")
-			var total int64
 			selected := 0
 			for _, item := range v.Items {
 				if reason := excluded[item.Key]; reason != "" {
 					fmt.Fprintf(m.out, "  Skip %s (%s)\n", safe(item.Key), safe(reason))
 				} else {
 					fmt.Fprintf(m.out, "  Copy %s\n", safe(item.Key))
-					total += item.Bytes
 					selected++
 				}
 			}
@@ -322,7 +371,8 @@ func stageMenu(cmd *cobra.Command, runtime migration.SourceRuntime, v *migration
 				fmt.Fprintln(m.out, "Review required:", safe(err.Error()))
 				continue
 			}
-			fmt.Fprintf(m.out, "\nSelected items: %d; portable bytes: %d\nCaches selected: %t\n", selected, total, proposed.Caches)
+			fmt.Fprintf(m.out, "\nSelected items: %d\nCaches selected: %t\n", selected, proposed.Caches)
+			fmt.Fprintln(m.out, "Data sizes and deep-tree checks are deferred until approval. Only selected data will be scanned and copied.")
 			fmt.Fprintln(m.out, "Project conversions are staged proposals, not live edits. Review container-only config capture and destination conflicts with --merge.")
 			answer, err := m.line("Prepare this scope, including the listed exclusions? [y/N] ")
 			if err != nil {
@@ -333,7 +383,7 @@ func stageMenu(cmd *cobra.Command, runtime migration.SourceRuntime, v *migration
 			}
 			for {
 				fmt.Fprintln(m.out, "Checking stopped source writers, then copying and verifying host-backed data...")
-				j, stageErr := migration.Stage(cmd.Context(), v, proposed, runtime)
+				j, stageErr := migration.Stage(cmd.Context(), v, proposed, runtime, m.out)
 				if j != nil {
 					return errors.Join(stageErr, migration.Report(m.out, &j.Inventory, j))
 				}
@@ -341,14 +391,14 @@ func stageMenu(cmd *cobra.Command, runtime migration.SourceRuntime, v *migration
 					return nil
 				}
 				fmt.Fprintln(m.out, "Cannot stage:", safe(stageErr.Error()))
-				answer, err = m.line("1. Recheck\n2. Back\n3. Cancel\n> ")
+				answer, err = m.choose("What would you like to do?", []string{"Recheck", "Cancel migration"}, "Back")
 				if err != nil {
 					return err
 				}
 				if answer == "1" {
 					continue
 				}
-				if answer == "3" {
+				if answer == "2" {
 					fmt.Fprintln(m.out, "Cancelled.")
 					return nil
 				}
@@ -371,11 +421,9 @@ func stageMenu(cmd *cobra.Command, runtime migration.SourceRuntime, v *migration
 			}
 			s.Skip = kept
 			fmt.Fprintln(m.out, "Inventory refreshed; no destination or project changes.")
-		case "5":
+		case "0":
 			fmt.Fprintln(m.out, "Cancelled.")
 			return nil
-		default:
-			fmt.Fprintln(m.out, "Choose 1-5.")
 		}
 	}
 }
@@ -395,23 +443,19 @@ func choose(m menu, v *migration.Inventory, s *migration.Selection) error {
 			if has(s.Skip, item.Key) {
 				state = "skip"
 			}
-			fmt.Fprintf(m.out, "%d. [%s] %s (%s)\n", n+1, state, safe(item.Key), safe(item.Harness))
+			m.option(n+1, fmt.Sprintf("[%s] %s (%s)", state, safe(item.Key), safe(item.Harness)))
 		}
-		fmt.Fprintf(m.out, "c. Toggle caches (currently %t)\n0. Back\n", s.Caches)
-		answer, err := m.line("> ")
+		m.option(len(v.Items)+1, fmt.Sprintf("Toggle caches (currently %t)", s.Caches))
+		answer, err := m.readChoice(len(v.Items)+1, "Back")
 		if err != nil {
 			return err
 		}
 		if answer == "0" {
 			return nil
 		}
-		if answer == "c" {
+		n, _ := strconv.Atoi(answer)
+		if n == len(v.Items)+1 {
 			s.Caches = !s.Caches
-			continue
-		}
-		n, err := strconv.Atoi(answer)
-		if err != nil || n < 1 || n > len(v.Items) {
-			fmt.Fprintln(m.out, "Choose a listed number.")
 			continue
 		}
 		key := v.Items[n-1].Key
