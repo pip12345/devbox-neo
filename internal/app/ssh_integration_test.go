@@ -54,7 +54,7 @@ func TestDockerSSHMastersThroughProxyJump(t *testing.T) {
 	seedThird(t, state.Home)
 	definition := strings.Replace(thirdDefinition, `"shell":""`, `"shell":"sudo apt-get update && sudo apt-get install -y openssh-server && sudo mkdir -p /run/sshd && sudo usermod -p x devuser"`, 1)
 	write(t, filepath.Join(state.Home, "harnesses/third/harness.json"), definition)
-	write(t, filepath.Join(state.Home, "profiles/test/config.json"), `{"version":1,"harness":"third","on_exit":"running"}`)
+	write(t, filepath.Join(state.Home, "profiles/test/config.json"), `{"version":1,"harness":"third"}`)
 	output := new(sshTestOutput)
 	e := &Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{Out: output, Err: output}, UID: os.Getuid(), GID: os.Getgid()}
 	result, err := e.Create(ctx, Request{Workspace: t.TempDir(), Profile: "test"})

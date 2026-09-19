@@ -18,7 +18,7 @@ func TestConfigEnvironmentRecoveryNeverStoresOrAdoptsValues(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("DEVBOX_TEST_TOKEN", "sentinel-secret")
 	file := filepath.Join(e.Store.Home, "profiles/test/config.json")
-	write(t, file, `{"version":1,"harness":"pi","extra_env":["TOKEN=${env:DEVBOX_TEST_TOKEN}","OTHER=literal"]}`)
+	write(t, file, `{"version":1,"harness":"pi","env":["TOKEN=${env:DEVBOX_TEST_TOKEN}","OTHER=literal"]}`)
 	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestPublicSubstitutionsAndCreationOptionsUseOneSnapshot(t *testing.T) {
 	ctx := context.Background()
 	source := t.TempDir()
 	file := filepath.Join(e.Store.Home, "profiles/test/config.json")
-	write(t, file, `{"version":1,"harness":"${env:AGENT}","network":"${env:NET}","extra_env":["KEY=${env:SECRET}"],"extra_mounts":["${env:DATA}:/data:ro"],"extra_ports":["127.0.0.1:8080:80"],"docker_args":["--memory=256m"],"vscode":{"extensions":["example.extension"]}}`)
+	write(t, file, `{"version":1,"harness":"${env:AGENT}","network":"${env:NET}","env":["KEY=${env:SECRET}"],"mounts":["${env:DATA}:/data:ro"],"ports":["127.0.0.1:8080:80"],"docker_args":["--memory=256m"],"vscode":{"extensions":["example.extension"]}}`)
 	q.Host = config.Host{"AGENT": "pi", "NET": "default", "SECRET": "snapshot-value", "DATA": source}
 	spec, err := e.Resolve(q)
 	if err != nil {
@@ -86,11 +86,11 @@ func TestPublicSubstitutionsAndCreationOptionsUseOneSnapshot(t *testing.T) {
 }
 func TestInvalidCreationOptionsFailBeforeDocker(t *testing.T) {
 	for _, body := range []string{
-		`{"harness":"pi","extra_ports":["99999:80"]}`,
-		`{"harness":"pi","network":"host","extra_ports":["80:80"]}`,
+		`{"harness":"pi","ports":["99999:80"]}`,
+		`{"harness":"pi","network":"host","ports":["80:80"]}`,
 		`{"harness":"pi","docker_args":["--name=foreign"]}`,
 		`{"harness":"pi","docker_args":["--memory","4g"]}`,
-		`{"harness":"pi","extra_env":["DEVBOX_HOST=bad"]}`,
+		`{"harness":"pi","env":["DEVBOX_HOST=bad"]}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			e, d, q := fixture(t)

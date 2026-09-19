@@ -68,9 +68,9 @@ func TestConfigMenusEditAndResetEachScope(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			key, selection, want := "on_exit", "2", `"running"`
+			key, selection, want := "network", "host", `"host"`
 			if scope == "global" {
-				key, selection, want = "ignore_project_overrides", "1", "true"
+				key, selection, want = "ignore_project", "1", "true"
 			} else if scope == "project" {
 				key, selection, want = "inherit_profile", "2", "false"
 			}
@@ -99,7 +99,7 @@ func TestConfigMenuPreservesExpressionsAndDoesNotPrintEnvValues(t *testing.T) {
 	owner, _ := s.Profile("basic")
 	s.Create(context.Background(), owner, "")
 	path := filepath.Join(owner.Root, "config.json")
-	original := `{"version":1,"extra_env":["TOKEN=private-value","NEXT=${env:UNSET_MENU_REFERENCE}"],"harness":"pi"}`
+	original := `{"version":1,"env":["TOKEN=private-value","NEXT=${env:UNSET_MENU_REFERENCE}"],"harness":"pi"}`
 	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -110,19 +110,19 @@ func TestConfigMenuPreservesExpressionsAndDoesNotPrintEnvValues(t *testing.T) {
 	}
 	fields, _ := s.ConfigSource(owner)
 	var env []string
-	if err := json.Unmarshal(fields["extra_env"], &env); err != nil {
+	if err := json.Unmarshal(fields["env"], &env); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(env, ",") != "TOKEN=private-value,NEXT=${env:UNSET_MENU_REFERENCE}" {
 		t.Fatal("unrelated edit replaced source env with display values")
 	}
-	input = fieldNumber(t, "profile", "extra_env") + "\n1\nNEW=another-private-value\n0\n0\n"
+	input = fieldNumber(t, "profile", "env") + "\n1\nNEW=another-private-value\n0\n0\n"
 	out, err = runMenu(t, s, owner, input)
 	if err != nil || strings.Contains(out, "private-value") {
 		t.Fatal("env input leaked through list or save feedback", out, err)
 	}
 	fields, _ = s.ConfigSource(owner)
-	if !strings.Contains(string(fields["extra_env"]), "NEW=another-private-value") {
+	if !strings.Contains(string(fields["env"]), "NEW=another-private-value") {
 		t.Fatal("env input was not saved literally")
 	}
 }
@@ -135,6 +135,9 @@ func TestMenuEditsOnlyLocalListContribution(t *testing.T) {
 	s.SetDefault(context.Background(), "base")
 	project, _ := s.Project(t.TempDir())
 	s.Create(context.Background(), project, "")
+	if err := s.SetConfigField(context.Background(), project, "harness", nil, json.RawMessage(`"pi"`), false); err != nil {
+		t.Fatal(err)
+	}
 	n := fieldNumber(t, "project", "harness_args")
 	out, err := runMenu(t, s, project, n+"\n1\n--local\n0\n0\n")
 	if err != nil {
@@ -188,6 +191,9 @@ func TestMenuRePromptsAndListEditing(t *testing.T) {
 	s := menuService(t)
 	owner, _ := s.Profile("basic")
 	s.Create(context.Background(), owner, "")
+	if err := s.SetConfigField(context.Background(), owner, "harness", nil, json.RawMessage(`"pi"`), false); err != nil {
+		t.Fatal(err)
+	}
 	field := resource.ConfigField{Key: "harness_args", Kind: "list"}
 	if err := s.SetConfigField(m.ctx, owner, field.Key, nil, json.RawMessage(`["first","second"]`), false); err != nil {
 		t.Fatal(err)

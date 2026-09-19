@@ -37,10 +37,7 @@ type TransferResult struct {
 }
 
 func transferSlot(workspace, slot string) (environment.Identity, error) {
-	if slot != ".project" && !config.Name.MatchString(slot) {
-		return environment.Identity{}, fmt.Errorf("slot must be a profile name or .project")
-	}
-	return environment.Identify(workspace, slot, slot == ".project")
+	return environment.IdentifySlot(workspace, slot)
 }
 func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string, error) {
 	if q.From != "" {
@@ -50,7 +47,7 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string,
 	if strings.HasPrefix(q.Source, environment.ContainerPrefix) && !strings.ContainsAny(q.Source, "/\\") {
 		return q.Source, nil
 	}
-	r, err := e.Locate(ctx, q.Source, "")
+	r, err := e.Locate(ctx, q.Source, q.Profile)
 	if err == nil {
 		return r.Identity.Name, nil
 	}
@@ -84,14 +81,14 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string,
 	return "", err
 }
 func (e *Engine) transferDestination(q TransferOptions, source environment.Identity) (environment.Identity, error) {
+	workspace := q.Destination
+	if workspace == "" {
+		workspace = source.Workspace
+	}
 	if q.To != "" {
-		return transferSlot(q.Source, q.To)
+		return transferSlot(workspace, q.To)
 	}
-	profile := source.Profile
-	if q.Profile != "" {
-		profile = q.Profile
-	}
-	id, err := environment.Identify(q.Destination, profile, profile == "")
+	id, err := environment.Identify(workspace, source.Profile, source.Project)
 	if err != nil {
 		return id, err
 	}
@@ -158,15 +155,11 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if q.Mode != "clone" && q.Mode != "relocate" {
 		return result, fmt.Errorf("select clone or relocate")
 	}
-	slots := q.From != "" || q.To != ""
-	if slots && (q.From == "" || q.To == "" || q.Destination != "" || q.Profile != "") {
-		return result, fmt.Errorf("slot transfer requires --from and --to without destination folder or --profile")
+	if q.Destination == "" && q.To == "" {
+		return result, fmt.Errorf("provide a destination folder or --to slot")
 	}
-	if !slots && q.Destination == "" {
-		return result, fmt.Errorf("provide a destination folder")
-	}
-	if q.Mode == "relocate" && q.Profile != "" {
-		return result, fmt.Errorf("use --from/--to to change relocation slots")
+	if q.From != "" && q.Profile != "" {
+		return result, fmt.Errorf("select the source with --from or --profile, not both")
 	}
 	sourceName, err := e.transferSource(ctx, q)
 	if err != nil {
@@ -186,9 +179,15 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		}
 		sourceIdentity = source.Identity
 	}
+	if (q.Profile != "" && sourceIdentity.Profile != q.Profile) || (e.IgnoreProject && sourceIdentity.Project) {
+		return result, fmt.Errorf("selection does not match the source session")
+	}
 	destinationIdentity, err := e.transferDestination(q, sourceIdentity)
 	if err != nil {
 		return result, err
+	}
+	if q.Mode == "relocate" && sourceIdentity.Workspace != destinationIdentity.Workspace && sourceIdentity.Slot != destinationIdentity.Slot {
+		return result, fmt.Errorf("cross-folder relocation must retain the source combination; change slots in the same folder first")
 	}
 	if sourceName == destinationIdentity.Name {
 		return result, fmt.Errorf("source and destination are the same session")
@@ -280,7 +279,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, readErr
 		}
 	}
-	if destinationIdentity.Slot == "project" {
+	if destinationIdentity.Project {
 		p, pathErr := fsutil.Path(destinationIdentity.Workspace, ".devbox/config.json")
 		if pathErr != nil {
 			return result, pathErr
@@ -289,7 +288,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, fmt.Errorf("project destination must be initialized: %w", pathErr)
 		}
 	}
-	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, Profile: destinationIdentity.Profile, ExpectedName: destinationIdentity.Name})
+	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, Profile: destinationIdentity.Profile, Recorded: &destinationIdentity})
 	if err != nil {
 		return result, err
 	}
@@ -311,7 +310,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 				return result, idErr
 			}
 		}
-		journal = &store.Transfer{Version: 1, ID: nonce, Mode: q.Mode, Phase: "prepare", Source: source.Identity, Destination: destinationIdentity, SourceID: source.ID, DestinationID: id, Running: q.Mode == "relocate" && exists && c.State.Running, Started: time.Now().UTC(), Desired: spec.Fingerprints}
+		journal = &store.Transfer{Version: 1, ID: nonce, Mode: q.Mode, Phase: "prepare", Source: source.Identity, Destination: destinationIdentity, SourceID: source.ID, DestinationID: id, Running: q.Mode == "relocate" && (source.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.ManualStart, Started: time.Now().UTC(), Desired: spec.Fingerprints}
 	}
 	result = transferResult(*journal, q.DryRun)
 	if q.DryRun {
@@ -357,7 +356,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if q.Mode == "relocate" {
 		created = source.Created
 	}
-	destination, _, err := e.CreatePrepared(ctx, destLock, spec, CreationIdentity{ID: journal.DestinationID, Created: created})
+	destination, _, err := e.CreatePrepared(ctx, destLock, spec, CreationIdentity{ID: journal.DestinationID, Created: created, ManualStart: journal.ManualStart})
 	if err != nil {
 		return result, err
 	}

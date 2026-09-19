@@ -14,7 +14,7 @@ import (
 )
 
 func TestEmptyListShowsOnlyAddAndBack(t *testing.T) {
-	field := resource.ConfigField{Key: "extra_mounts", Kind: "list"}
+	field := resource.ConfigField{Key: "mounts", Kind: "list"}
 	var out bytes.Buffer
 	m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("0\n")), out: &out}
 	s := menuService(t)
@@ -23,14 +23,14 @@ func TestEmptyListShowsOnlyAddAndBack(t *testing.T) {
 	if err := editList(m, s, owner, field); err != nil {
 		t.Fatal(err)
 	}
-	want := "\nNo extra mounts configured here.\n\nWhat would you like to do?\n   [1]  Add mount\n\n   [0]  Back\n\n   Choose a number > "
+	want := "\nNo mounts configured here.\n\nWhat would you like to do?\n   [1]  Add mount\n\n   [0]  Back\n\n   Choose a number > "
 	if out.String() != want {
 		t.Fatalf("empty list should be a simple add/back menu:\n%s", out.String())
 	}
 }
 
 func TestListOperationsSaveWithoutApprovalSteps(t *testing.T) {
-	field := resource.ConfigField{Key: "extra_mounts", Kind: "list"}
+	field := resource.ConfigField{Key: "mounts", Kind: "list"}
 	s := menuService(t)
 	owner, _ := s.Profile("basic")
 	s.Create(context.Background(), owner, "")
@@ -44,7 +44,7 @@ func TestListOperationsSaveWithoutApprovalSteps(t *testing.T) {
 	if err != nil || len(entries) != 1 || entries[0] != "/data:/data:ro" {
 		t.Fatal("back lost the completed add", entries, err)
 	}
-	for _, text := range []string{"Edit mount", "Remove mount", "Saved Extra mounts", "Reset to inherited"} {
+	for _, text := range []string{"Edit mount", "Remove mount", "Saved Mounts", "Reset to inherited"} {
 		if !strings.Contains(out.String(), text) {
 			t.Fatalf("missing %q after adding a mount:\n%s", text, out.String())
 		}
@@ -60,7 +60,7 @@ func TestMountEditorSavesOperationsAndCancelsOnlyIncompleteInput(t *testing.T) {
 	s := menuService(t)
 	owner, _ := s.Profile("basic")
 	s.Create(context.Background(), owner, "")
-	n := fieldNumber(t, "profile", "extra_mounts")
+	n := fieldNumber(t, "profile", "mounts")
 	out, err := runMenu(t, s, owner, n+"\n1\n/data:/data:ro\n0\n0\n")
 	if err != nil {
 		t.Fatal(out, err)
@@ -69,7 +69,7 @@ func TestMountEditorSavesOperationsAndCancelsOnlyIncompleteInput(t *testing.T) {
 		t.Fatal("list editor still uses the redundant submenu", out)
 	}
 	values, _ := s.ConfigSource(owner)
-	entries, err := configEntries(values["extra_mounts"], resource.ConfigField{Kind: "list"})
+	entries, err := configEntries(values["mounts"], resource.ConfigField{Kind: "list"})
 	if err != nil || len(entries) != 1 || entries[0] != "/data:/data:ro" {
 		t.Fatal("mount was not saved", entries, err)
 	}
@@ -79,7 +79,7 @@ func TestMountEditorSavesOperationsAndCancelsOnlyIncompleteInput(t *testing.T) {
 		t.Fatal(out, err)
 	}
 	values, _ = s.ConfigSource(owner)
-	if _, exists := values["extra_mounts"]; exists {
+	if _, exists := values["mounts"]; exists {
 		t.Fatal("reset did not remove the source key")
 	}
 	before, _ := os.ReadFile(filepath.Join(owner.Root, "config.json"))
@@ -97,7 +97,7 @@ func TestMountEditorSavesOperationsAndCancelsOnlyIncompleteInput(t *testing.T) {
 		t.Fatal(out, err)
 	}
 	values, _ = s.ConfigSource(owner)
-	entries, err = configEntries(values["extra_mounts"], resource.ConfigField{Kind: "list"})
+	entries, err = configEntries(values["mounts"], resource.ConfigField{Kind: "list"})
 	if err != nil || len(entries) != 1 || entries[0] != "/data:/data:ro" {
 		t.Fatal("EOF lost a completed operation or saved unfinished input", entries, err)
 	}
@@ -135,7 +135,7 @@ func TestSettingsOverviewUsesReadableValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"Harness pi profile", "Shell command bash default", "Extra mounts None default", "VS Code extensions None default"} {
+	for _, text := range []string{"Harness pi profile", "Shell command bash default", "Mounts None default", "VS Code extensions None default"} {
 		if !strings.Contains(strings.Join(strings.Fields(out), " "), text) {
 			t.Fatalf("missing readable summary %q:\n%s", text, out)
 		}

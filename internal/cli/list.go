@@ -134,6 +134,9 @@ func viewProfile(view app.View) string {
 	if view.Profile == "" && view.SessionID != "" {
 		return ".project"
 	}
+	if view.Project {
+		return view.Profile + ".project"
+	}
 	return view.Profile
 }
 

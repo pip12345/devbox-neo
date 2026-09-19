@@ -33,6 +33,7 @@ type Identity struct {
 	Slot      string `json:"slot"`
 	Name      string `json:"name"`
 	Profile   string `json:"profile,omitempty"`
+	Project   bool   `json:"project"`
 }
 
 func Identify(workspace, profile string, project bool) (Identity, error) {
@@ -51,13 +52,11 @@ func Identify(workspace, profile string, project bool) (Identity, error) {
 	if !info.IsDir() {
 		return Identity{}, fmt.Errorf("workspace must be a directory")
 	}
-	slot := "project"
-	selected := ""
-	if !project && profile != "" {
-		slot = "profile:" + profile
-		selected = profile
+	slot := Slot(profile, project)
+	if _, _, err := ParseSlot(slot); err != nil {
+		return Identity{}, err
 	}
-	return Identity{Workspace: canonical, Slot: slot, Profile: selected, Name: ContainerName(canonical, slot)}, nil
+	return Identity{Workspace: canonical, Slot: slot, Profile: profile, Project: project, Name: ContainerName(canonical, slot)}, nil
 }
 
 var unsafeFolderCharacters = regexp.MustCompile(`[^a-z0-9_.-]+`)
@@ -97,23 +96,22 @@ type Spec struct {
 	Entrypoint   Hook
 	Fingerprints Fingerprints
 	Inputs       Inputs
-	ReadOnly     bool
 	EnvSources   []config.EnvSource
 	ExtraMounts  []docker.Mount
 	Metadata     string
 	Host         config.Host `json:"-"`
 }
 type Request struct {
-	Salt         string
-	Home         string
-	Workspace    string
-	Profile      string
-	ExpectedName string
-	Overrides    config.Layer
-	ReadOnly     bool
-	UID          int
-	GID          int
-	Host         config.Host `json:"-"`
+	Salt          string
+	Home          string
+	Workspace     string
+	Profile       string
+	Overrides     config.Layer
+	IgnoreProject bool
+	Recorded      *Identity
+	UID           int
+	GID           int
+	Host          config.Host `json:"-"`
 }
 
 func Resolve(q Request) (Spec, error) { return resolve(q, nil) }
@@ -134,22 +132,20 @@ func resolve(q Request, project *config.Layer) (Spec, error) {
 	} else {
 		q.Host = maps.Clone(q.Host)
 	}
-	r, err := artifact.Preview(q.Home, q.Workspace, q.Profile, q.Overrides, project, q.Host)
+	selection := artifact.Selection{Profile: q.Profile, IgnoreProject: q.IgnoreProject}
+	if q.Recorded != nil {
+		selection.Recorded = &artifact.Participation{Profile: q.Recorded.Profile, Project: q.Recorded.Project}
+	}
+	r, err := artifact.PreviewSelection(q.Home, q.Workspace, selection, q.Overrides, project, q.Host)
 	if err != nil {
 		return spec, err
 	}
-	identity, err := Identify(q.Workspace, r.Profile, r.Project && q.Profile == "")
+	identity, err := Identify(q.Workspace, r.Profile, r.Project)
 	if err != nil {
 		return spec, err
 	}
-	if q.ExpectedName != "" {
-		identity, err = Identify(q.Workspace, q.Profile, q.Profile == "")
-		if err != nil {
-			return spec, err
-		}
-		if identity.Name != q.ExpectedName {
-			return spec, fmt.Errorf("requested slot does not match its recorded identity")
-		}
+	if q.Recorded != nil && identity != *q.Recorded {
+		return spec, fmt.Errorf("requested combination does not match its recorded identity")
 	}
 	if err = r.Settings.Validate(); err != nil {
 		var actionable *commanderror.Error
@@ -194,7 +190,7 @@ func resolve(q Request, project *config.Layer) (Spec, error) {
 	if q.UID <= 0 || q.GID <= 0 {
 		return spec, fmt.Errorf("run the development CLI as a non-root user with a non-root primary group")
 	}
-	spec = Spec{Identity: identity, Settings: r.Settings, Harness: h, Trace: r.Trace, Files: files, Warnings: warnings, ReadOnly: q.ReadOnly, Host: q.Host}
+	spec = Spec{Identity: identity, Settings: r.Settings, Harness: h, Trace: r.Trace, Files: files, Warnings: warnings, Host: q.Host}
 	protected := []string{"/workspace", "/devbox"}
 	for _, store := range h.Definition.Stores {
 		protected = append(protected, store.Target)
@@ -205,7 +201,7 @@ func resolve(q Request, project *config.Layer) (Spec, error) {
 	for _, value := range r.Settings.Mounts {
 		mount, err := docker.ParseMount(value, q.Workspace, q.Host["HOME"])
 		if err != nil {
-			return spec, fmt.Errorf("extra_mounts: %w", err)
+			return spec, fmt.Errorf("mounts: %w", err)
 		}
 		spec.ExtraMounts = append(spec.ExtraMounts, mount)
 	}
@@ -220,7 +216,7 @@ func resolve(q Request, project *config.Layer) (Spec, error) {
 	}
 	for _, port := range r.Settings.Ports {
 		if err = docker.ValidatePort(port); err != nil {
-			return spec, fmt.Errorf("extra_ports: %w", err)
+			return spec, fmt.Errorf("ports: %w", err)
 		}
 	}
 	if r.Settings.Network == "host" {

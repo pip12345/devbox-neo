@@ -10,7 +10,7 @@ import (
 
 func TestExpansionUsesDecodedStringsAndDoesNotRecurse(t *testing.T) {
 	host := Host{"VALUE": "quotes \" slash \\ and newline\n", "NEXT": "${env:MISSING}", "EMPTY": ""}
-	b, refs, err := Expand([]byte(`{"harness_args":["prefix ${env:VALUE}","${env:NEXT}","${env:EMPTY}"],"${env:KEY}":"literal"}`), "config.json", host)
+	b, refs, err := Expand([]byte(`{"harness":"pi","harness_args":["prefix ${env:VALUE}","${env:NEXT}","${env:EMPTY}"],"${env:KEY}":"literal"}`), "config.json", host)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestExpansionUsesDecodedStringsAndDoesNotRecurse(t *testing.T) {
 }
 func TestSourceReferencesVerifyExpressionAndValue(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
-	original := `{"version":1,"extra_env":["TOKEN=${env:TOKEN}"],"harness":"pi"}`
+	original := `{"version":1,"env":["TOKEN=${env:TOKEN}"],"harness":"pi"}`
 	os.WriteFile(p, []byte(original), 0600)
 	l, err := ReadLayer(p, false, Host{"TOKEN": "sentinel-secret"})
 	if err != nil {

@@ -125,7 +125,7 @@ func TestDeleteForceNeverImpliesSavedDataDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	lock, _ := e.Store.Lock(ctx, created.Name)
-	lease, err := lock.Lease("exec", "running")
+	lease, err := lock.Lease("exec")
 	if err != nil {
 		t.Fatal(err)
 	}

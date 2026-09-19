@@ -40,7 +40,7 @@ func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lease, err := lock.Lease("test", "running")
+	lease, err := lock.Lease("test")
 	if err != nil {
 		t.Fatal(err)
 	}

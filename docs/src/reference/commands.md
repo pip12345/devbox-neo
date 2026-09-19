@@ -7,22 +7,25 @@ Executable: `devbox-neo`. Use `<command> --help` for command-specific help.
 | Option | Meaning |
 |---|---|
 | `--home PATH` | Select the Devbox home; overrides `DEVBOX_HOME`, then `~/.devbox-neo` |
-| `--profile NAME`, `-p NAME` | Select a named profile environment; excludes project configuration |
+| `--profile NAME`, `-p NAME` | Select the base profile; retain participating project configuration |
+| `--ignore-project` | Exclude project configuration and artifacts; on bulk commands, exclude project-participating sessions |
 
-A `<target>` is a workspace folder or an exact environment name from `list`. Exact names retain their recorded slot even when defaults change. Folder-based `open` uses normal configuration selection; other lookup commands require an unambiguous saved environment unless a profile is supplied.
+`<folder|session>` accepts a workspace folder or an exact saved session name from `list`. Every folder-targeted command selects the current profile/project combination and fails if that session does not exist; it never substitutes another profile. Exact names retain their recorded combination even when defaults change, and conflicting explicit selection flags fail. The session and its replaceable container share a name; there is no separate container selector.
+
+Configuration commands instead take `<folder>` for project files or `<profile>` for profile files. They do not require an existing session.
 
 ## Environment lifecycle
 
 | Command | Effect |
 |---|---|
 | `create <folder>` | Build and prepare a new environment; leave it stopped; refuse an existing session |
-| `open <target> [-- harness-args...]` | Launch the recorded harness in an existing environment |
-| `start <target>` | Start without launching the harness |
-| `stop <target> [--force]` | Stop; `--force` permits interrupting attached commands |
-| `shell <target>` | Open the configured shell in `/workspace` |
-| `exec <target> -- <argv...>` | Run exact arguments, without implicit shell interpretation |
-| `logs <target> [-f] [--tail N\|all]` | Read Docker logs; default tail `100`; `-f`/`--follow` streams |
-| `recreate <target> [--image]` | Replace the container using current configuration; preserve session identity and stores |
+| `open <folder\|session> [-- harness-args...]` | Launch the recorded harness in an existing environment |
+| `start <folder\|session>` | Keep running until explicit `stop`, including automatic restart when Docker starts after reboot |
+| `stop <folder\|session> [--force]` | Stop and clear manual keep-running intent; `--force` permits interrupting attached commands |
+| `shell <folder\|session>` | Open the configured shell in `/workspace` |
+| `exec <folder\|session> -- <argv...>` | Run exact arguments, without implicit shell interpretation |
+| `logs <folder\|session> [-f] [--tail N\|all]` | Read Docker logs; default tail `100`; `-f`/`--follow` streams |
+| `recreate <folder\|session> [--image]` | Replace the container using current configuration; preserve session identity and stores |
 | `recreate --all [--image]` | Preflight and recreate all selected containers; optional profile filter |
 
 `open` and `start` can restore a missing container from retained session state when recorded inputs remain available. `shell`, `exec`, and `ssh` require the container to exist. None of these commands creates a new session.
@@ -33,28 +36,26 @@ Before a stopped container starts, access commands resolve participating configu
 
 ### Creation and launch options
 
+Configure container settings through `profile config <profile>` or `project config <folder>` before creation/recreation. Selection flags identify the session; `recreate --image` controls rebuilding.
+
 | Option | Commands | Meaning |
 |---|---|---|
-| `--harness NAME` | create, recreate | Harness to install |
-| `--env KEY=VALUE`, `-e` | create, recreate | Environment assignment; repeatable |
-| `--volume SOURCE:TARGET[:OPTIONS]`, `-v` | create, recreate | Additional mount; repeatable |
-| `--port [HOST_IP:]HOST_PORT:CONTAINER_PORT` | create, recreate | Published port; repeatable |
-| `--network NAME` | create, recreate | `default`, `host`, or an existing network |
-| `--read-only` | create, recreate | Mount the workspace read-only |
-| `--docker-arg=--option=value` | create, recreate | Validated Docker option; repeatable |
-| `--on-exit stop\|running` | create, recreate, open | Policy after the last attached command exits |
-| `--harness-arg ARG` | create, recreate, open | Appended harness argument; repeatable |
+| `--harness-arg ARG` | open | One-off harness argument; repeatable |
 | `--continue`, `-c` | open | Append the harness's continuation arguments |
 | `-- <args...>` | open | One-off harness arguments, appended last |
 
-Mount, environment, port, and raw Docker validation rules are in [configuration](configuration.md#creation-options).
+Continuation arguments precede one-off arguments. Launch arguments are not saved as overrides.
+
+Without manual `start`, the last attached `open`, `shell`, `exec`, or `ssh` command stops the container. Manual `start`, including while attachments are active, keeps it running until `stop`. Neither new attachments nor their exit order change that choice. Docker restarts manually started containers after reboot; automatic sessions and explicitly stopped sessions stay stopped. Harness processes and terminal attachments are not resumed.
+
+Mount, environment, port, and raw Docker validation rules are in [configuration](configuration.md#container-settings).
 
 ## Inspection
 
 | Command | Output |
 |---|---|
 | `list [--sort name\|last-active] [--wide] [--json]` | Saved environments, including those without containers; default sort `name` |
-| `status <target> [--json]` | Saved details, live commands, container state, and pending configuration changes |
+| `status <folder\|session> [--json]` | Saved details, live commands, container state, and pending configuration changes |
 | `status --all [--json]` | Container state and configuration health for all saved environments |
 
 `--profile` filters list and bulk status. `status --all` cannot be combined with a target. Checks compare local inputs, not upstream releases. Invalid desired configuration does not hide saved session details. Unmatched managed containers are reported separately.
@@ -77,7 +78,7 @@ These commands edit configuration, not containers.
 | `profile set --clear` | Clear the default profile |
 | `profile delete <name> [--force] [--json]` | Delete profile files only; `--force` skips confirmation |
 | `global config` | Edit global settings |
-| `profile config <name>` | Edit profile settings |
+| `profile config <profile>` | Edit profile settings |
 | `project config <folder>` | Edit project settings |
 
 `create` selects no harness or default profile. `init` preserves existing files; artifacts are `harness-config`, `setup.sh`, `entrypoint.sh`, and `Dockerfile`. Interactive init offers missing choices. Non-interactive init needs an existing harness selection or `--harness`; `--json` never prompts. Profile deletion retains global defaults and existing environments.
@@ -87,7 +88,7 @@ Config commands accept `--show [--json]` for effective values without a menu. `p
 ## SSH sharing
 
 ```sh
-devbox-neo ssh <target> <destination> [--host-master]
+devbox-neo ssh <folder|session> <destination> [--host-master]
 ```
 
 | Item | Contract |
@@ -104,16 +105,16 @@ devbox-neo ssh <target> <destination> [--host-master]
 
 Normal OpenSSH configuration where the master runs supplies keys, ports, ProxyJump, agent forwarding, and X11 forwarding. Devbox does not copy host configuration or credentials. For a reused session, client `-A` or `-X`/`-Y` requests forwarding; the master must also permit it and have an agent/display available. Generated client config does not copy forwarding preferences.
 
-SSH sharing participates in active-command protection and `on_exit`. Its socket mount must be present in the recorded container layout; otherwise recreate the environment. Connections are excluded from transfers. See the [SSH guide](../guides/ssh.md) for the workflow and host-mode security implications.
+SSH sharing participates in active-command protection and automatic shutdown unless the session was manually started. Its socket mount must be present in the recorded container layout; otherwise recreate the environment. Connections are excluded from transfers. See the [SSH guide](../guides/ssh.md) for the workflow and host-mode security implications.
 
 ## Networks
 
 | Command | Effect |
 |---|---|
-| `network inspect <target>` | Inspected networks, addresses, and gateways as JSON |
-| `network env <target> [--get NAME]` | Shell-safe exports, or one raw variable value |
-| `network connect <network> <target>` | Attach an existing secondary network; already attached is a no-op |
-| `network disconnect <network> <target>` | Detach a secondary network; primary network cannot be removed |
+| `network inspect <folder\|session>` | Inspected networks, addresses, and gateways as JSON |
+| `network env <folder\|session> [--get NAME]` | Shell-safe exports, or one raw variable value |
+| `network connect <network> <folder\|session>` | Attach an existing secondary network; already attached is a no-op |
+| `network disconnect <network> <folder\|session>` | Detach a secondary network; primary network cannot be removed |
 
 Attachments do not edit configuration and survive stop/start, not recreation. Host-network containers reject secondary attachments. Devbox does not create or delete user networks.
 
@@ -123,11 +124,11 @@ Network exports include `DEVBOX_HOST`, `DEVBOX_NETWORK`, `DEVBOX_PRIMARY_NETWORK
 
 | Command | Effect |
 |---|---|
-| `clone <source> <destination-folder> [--profile NAME]` | Copy saved harness state with a new session ID; source must be stopped/absent; destination stays stopped |
-| `relocate <source> <destination-folder>` | Move saved state, preserve ID and running/stopped intent, then remove source |
-| `clone\|relocate <folder> --from SLOT --to SLOT` | Transfer between same-folder slots: profile names or `.project` |
+| `clone <folder\|session> <destination-folder> [--to SLOT]` | Copy saved harness state with a new session ID; source must be stopped/absent; destination stays stopped |
+| `relocate <folder\|session> <destination-folder>` | Move saved state, preserve ID and running/stopped intent, then remove source |
+| `clone\|relocate <folder> --from SLOT --to SLOT` | Transfer between same-folder slots: `.profile-NAME`, `.profile-NAME.project`, or `.project` |
 
-Both commands accept `--dry-run` and `--json`. Use an exact source name if a folder is ambiguous. Cross-folder transfers retain the source slot; clone's `--profile` selects the destination profile, not the source. Same-folder transfers require both `--from` and `--to`, without a destination folder or `--profile`. Relocate changes slots only through `--from`/`--to`. Destination profiles must exist; project destinations must be initialized.
+Both commands accept `--dry-run` and `--json`. Folder sources use the common selection rules; `--profile` selects the source profile. `--from SLOT` explicitly selects the source combination and cannot be combined with `--profile`. Without a destination folder, `--to SLOT` is required. Cross-folder transfers retain the source combination unless clone supplies `--to SLOT`; cross-folder relocation retains the source combination. Destination profiles must exist; project destinations must be initialized. Same-folder examples use suffix selectors such as `--from .profile-basic --to .profile-basic.project`.
 
 Transfers require idle endpoints, an unused destination, and harness portability declarations. Destination configuration controls creation. Only declared environment stores and managed-config manifests are copied—not workspace files, container-layer tools, auth, shared caches, active commands, or SSH connections.
 

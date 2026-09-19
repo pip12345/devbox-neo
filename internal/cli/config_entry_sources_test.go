@@ -16,13 +16,13 @@ func TestProfileOverviewShowsGlobalEntriesButEditorDoesNot(t *testing.T) {
 	s.Create(context.Background(), owner, "")
 	for path, contents := range map[string]string{
 		filepath.Join(s.Home, "config.json"):     `{"version":1,"global_env":["GLOBAL=global-private-value"]}`,
-		filepath.Join(owner.Root, "config.json"): `{"version":1,"extra_env":["PROFILE=profile-private-value"]}`,
+		filepath.Join(owner.Root, "config.json"): `{"version":1,"env":["PROFILE=profile-private-value"]}`,
 	} {
 		if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	out, err := runMenu(t, s, owner, fieldNumber(t, "profile", "extra_env")+"\n0\n0\n")
+	out, err := runMenu(t, s, owner, fieldNumber(t, "profile", "env")+"\n0\n0\n")
 	if err != nil {
 		t.Fatal(out, err)
 	}
@@ -32,7 +32,7 @@ func TestProfileOverviewShowsGlobalEntriesButEditorDoesNot(t *testing.T) {
 			t.Fatal("overview lost an entry's origin", expected, out)
 		}
 	}
-	start := strings.Index(out, "Environment variables (extra_env)")
+	start := strings.Index(out, "Environment variables (env)")
 	if start < 0 {
 		t.Fatal("missing editor", out)
 	}
@@ -67,18 +67,18 @@ func TestShellDisplayIsACommandWithoutChangingStoredArgv(t *testing.T) {
 	owner, _ := s.Profile("basic")
 	s.Create(context.Background(), owner, "")
 	data, _ := json.Marshal(args)
-	if err := s.SetConfigField(context.Background(), owner, "default_shell", nil, data, false); err != nil {
+	if err := s.SetConfigField(context.Background(), owner, "shell", nil, data, false); err != nil {
 		t.Fatal(err)
 	}
 	out, err := runMenu(t, s, owner, "0\n")
-	if err != nil || !strings.Contains(menuSettingRow(t, out, "default_shell"), "bash -lc 'echo hello' profile") {
+	if err != nil || !strings.Contains(menuSettingRow(t, out, "shell"), "bash -lc 'echo hello' profile") {
 		t.Fatal(out, err)
 	}
 	view, err := s.ShowProfile(owner.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, _ := json.Marshal(view.Values["default_shell"])
+	value, _ := json.Marshal(view.Values["shell"])
 	if string(value) != string(data) {
 		t.Fatal("display changed JSON shell argv")
 	}

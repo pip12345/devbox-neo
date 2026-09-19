@@ -68,7 +68,7 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 				}
 				value, _ = json.Marshal(effective)
 			}
-			rows[i] = configDisplayRow{label: configLabel(field.Key), value: menuConfigValue(value, field), origin: origin, command: field.Key == "default_shell"}
+			rows[i] = configDisplayRow{label: configLabel(field.Key), value: menuConfigValue(value, field), origin: origin, command: field.Key == "shell"}
 			if resolveErr != nil {
 				_, items := configDisplayParts(rows[i].value)
 				for range items {
@@ -144,15 +144,15 @@ func configMenuTitle(owner resource.Owner) string {
 
 func configLabel(key string) string {
 	switch key {
-	case "default_shell":
+	case "shell":
 		return "Shell command"
 	case "harness_args":
 		return "Harness arguments"
 	case "docker_args":
 		return "Docker options"
-	case "extra_env", "global_env":
+	case "env", "global_env":
 		return "Environment variables"
-	case "extra_ports":
+	case "ports":
 		return "Port forwards"
 	case "vscode":
 		return "VS Code extensions"
@@ -221,8 +221,6 @@ func readConfigValue(m menu, s *resource.Service, field resource.ConfigField) (j
 	case "string":
 		choices := []string{}
 		switch field.Key {
-		case "on_exit":
-			choices = []string{"stop", "running"}
 		case "harness", "default_harness":
 			registry, err := harness.Enumerate(s.Home)
 			if err != nil {
@@ -269,11 +267,11 @@ func readConfigValue(m menu, s *resource.Service, field resource.ConfigField) (j
 
 func listItemName(key string) string {
 	switch key {
-	case "extra_mounts":
+	case "mounts":
 		return "mount"
-	case "extra_ports":
+	case "ports":
 		return "port forward"
-	case "extra_env", "global_env":
+	case "env", "global_env":
 		return "environment variable"
 	case "vscode":
 		return "extension"

@@ -9,7 +9,7 @@ import (
 
 func profileDelete(factory resourceFactory) *cobra.Command {
 	var force, asJSON bool
-	cmd := &cobra.Command{Use: "delete <name>", Short: "Delete profile configuration without deleting containers or session state", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "delete <profile>", Short: "Delete profile configuration without deleting containers or session state", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if !force {
 			if !interactive(cmd) || asJSON {
 				return fmt.Errorf("profile deletion requires --force outside an interactive terminal")

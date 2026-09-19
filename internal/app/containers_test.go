@@ -75,7 +75,7 @@ func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lease, err := lock.Lease("test", "running")
+	lease, err := lock.Lease("test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestExactRootTargetKeepsItsSlotWhenDefaultsChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(e.Store.Home, "config.json"), `{"version":1,"default_profile":"test","ignore_project_overrides":true}`)
+	write(t, filepath.Join(e.Store.Home, "config.json"), `{"version":1,"default_profile":"test","ignore_project":true}`)
 	q.Workspace = first.Name
 	again, err := e.Open(ctx, q)
 	if err != nil || again.Name != first.Name {

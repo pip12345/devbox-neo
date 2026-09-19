@@ -5,6 +5,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -190,8 +191,8 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	if reopened.SetupContainer != first.SetupContainer {
 		t.Fatal("reopen recreated container")
 	}
-	// Read-only workspace is a real creation input but does not require another image.
-	q.ReadOnly = true
+	// A configured mount is a creation input but does not require another image.
+	write(t, filepath.Join(profile.Root, "config.json"), fmt.Sprintf(`{"version":1,"harness":%q,"mounts":[%q]}`, harnessName, workspace+":/extra-workspace"))
 	result, err = e.Open(ctx, q)
 	if err != nil {
 		t.Fatal(err)

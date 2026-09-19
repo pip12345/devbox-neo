@@ -37,7 +37,7 @@ func TestTerminalEnvAllowlist(t *testing.T) {
 func TestTerminalEnvCreationAttachmentAndRecovery(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","extra_env":["TERM=configured"]}`)
+	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","env":["TERM=configured"]}`)
 	e.TerminalEnv = []string{"TERM=xterm-256color", "COLORTERM=truecolor", "NO_COLOR="}
 	spec, err := e.Resolve(q)
 	if err != nil {

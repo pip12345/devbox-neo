@@ -19,6 +19,9 @@ func (e *Engine) start(ctx context.Context, c docker.Container, r store.Record) 
 	if err := prepareMountParents(r); err != nil {
 		return err
 	}
+	if err := e.syncRestart(ctx, c, r); err != nil {
+		return err
+	}
 	return e.Docker.Start(ctx, c, e.owner(r))
 }
 

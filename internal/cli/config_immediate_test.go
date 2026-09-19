@@ -52,6 +52,9 @@ func TestImmediateListConflictReloadsWithoutOverwritingOrRetrying(t *testing.T) 
 	s := menuService(t)
 	owner, _ := s.Profile("basic")
 	s.Create(context.Background(), owner, "")
+	if err := s.SetConfigField(context.Background(), owner, "harness", nil, json.RawMessage(`"pi"`), false); err != nil {
+		t.Fatal(err)
+	}
 	key := "harness_args"
 	n := fieldNumber(t, "profile", key)
 	cmd := &cobra.Command{}
@@ -86,8 +89,8 @@ func TestImmediateListValidationPreservesTheLastSavedValue(t *testing.T) {
 	for _, tt := range []struct {
 		key, initial, input string
 	}{
-		{"extra_ports", `["8080:80"]`, "1\n99999:80\n0\n0\n"},
-		{"default_shell", `["bash"]`, "3\n1\n0\n0\n"},
+		{"ports", `["8080:80"]`, "1\n99999:80\n0\n0\n"},
+		{"shell", `["bash"]`, "3\n1\n0\n0\n"},
 	} {
 		t.Run(tt.key, func(t *testing.T) {
 			s := menuService(t)

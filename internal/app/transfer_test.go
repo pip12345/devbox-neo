@@ -161,7 +161,7 @@ func TestTransferSlotsAndDryRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi"}`)
-	opts := TransferOptions{Mode: "clone", Source: q.Workspace, From: "test", To: ".project", DryRun: true}
+	opts := TransferOptions{Mode: "clone", Source: q.Workspace, From: ".profile-test", To: ".project", DryRun: true}
 	before := count(d, "create")
 	result, err := e.Transfer(ctx, opts)
 	if err != nil {
@@ -235,7 +235,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 		t.Fatal("source image tag not restored", err)
 	}
 	configPath := filepath.Join(e.Store.Home, "profiles/test/config.json")
-	write(t, configPath, `{"version":1,"harness":"pi","extra_env":["TOKEN=not-for-journals"]}`)
+	write(t, configPath, `{"version":1,"harness":"pi","env":["TOKEN=not-for-journals"]}`)
 	if _, err = e.Transfer(ctx, opts); err == nil || !strings.Contains(err.Error(), "inputs changed") || strings.Contains(err.Error(), "not-for-journals") {
 		t.Fatal("changed destination was accepted or leaked", err)
 	}
@@ -313,7 +313,7 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lease, err := lock.Lease("exec", "running")
+	lease, err := lock.Lease("exec")
 	if err != nil {
 		t.Fatal(err)
 	}

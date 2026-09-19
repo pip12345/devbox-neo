@@ -136,17 +136,23 @@ func validateMerge(j *Journal) error {
 			return fmt.Errorf("invalid imported session owner")
 		}
 		profile := item.Profile
+		if profile == "" {
+			profile = item.SourceProfile
+		}
 		if p.Choices.Rename[profile] != "" {
 			profile = p.Choices.Rename[profile]
 		}
-		slot := "project"
-		if profile != "" {
-			if !config.Name.MatchString(profile) {
-				return fmt.Errorf("invalid imported profile")
-			}
-			slot = "profile:" + profile
+		if profile != "" && !config.Name.MatchString(profile) {
+			return fmt.Errorf("invalid imported profile")
 		}
-		expected := environment.Identity{Workspace: item.Workspace, Profile: profile, Slot: slot, Name: environment.ContainerName(item.Workspace, slot)}
+		if err := job.Identity.ValidateSlot(); err != nil {
+			return err
+		}
+		if item.Profile == "" && !job.Identity.Project {
+			return fmt.Errorf("imported project lost its participation")
+		}
+		slot := environment.Slot(profile, job.Identity.Project)
+		expected := environment.Identity{Workspace: item.Workspace, Profile: profile, Project: job.Identity.Project, Slot: slot, Name: environment.ContainerName(item.Workspace, slot)}
 		if job.Identity != expected || job.ID != item.SessionID || !idPattern.MatchString(job.ID) || job.Created.IsZero() || !hashString(job.Desired.Image) || !hashString(job.Desired.Container) || !hashString(job.Desired.Runtime) || names[expected.Name] || ids[job.ID] {
 			return fmt.Errorf("invalid imported session identity")
 		}

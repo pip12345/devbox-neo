@@ -42,8 +42,8 @@ func TestMenuSourcesFollowEffectiveLayersRatherThanLocalKeyPresence(t *testing.T
 		}
 	}
 	put(filepath.Join(s.Home, "config.json"), `{"version":1,"default_profile":"base","default_harness":"pi","global_env":["GLOBAL=value"]}`)
-	put(filepath.Join(profile.Root, "config.json"), `{"version":1,"on_exit":"running","harness_args":["--base"],"extra_env":["PROFILE=value"],"extra_mounts":["/base:/base"],"vscode":{"extensions":["base.ext"]}}`)
-	put(filepath.Join(project.Root, "config.json"), `{"version":1,"network":"host","harness_args":[],"extra_env":["PROJECT=value"],"extra_mounts":["/project:/project"],"vscode":{"extensions":["project.ext"]}}`)
+	put(filepath.Join(profile.Root, "config.json"), `{"harness":"pi","version":1,"harness_args":["--base"],"env":["PROFILE=value"],"mounts":["/base:/base"],"vscode":{"extensions":["base.ext"]}}`)
+	put(filepath.Join(project.Root, "config.json"), `{"version":1,"network":"host","harness_args":null,"env":["PROJECT=value"],"mounts":["/project:/project"],"vscode":{"extensions":["project.ext"]}}`)
 	check := func(want map[string]string) string {
 		t.Helper()
 		out, err := runMenu(t, s, project, "0\n")
@@ -61,22 +61,22 @@ func TestMenuSourcesFollowEffectiveLayersRatherThanLocalKeyPresence(t *testing.T
 		return out
 	}
 	out := check(map[string]string{
-		"harness": "pi inherited - global", "on_exit": "running inherited - profile", "network": "host project",
-		"default_shell": "bash default", "harness_args": "Harness arguments", "extra_mounts": "Extra mounts",
-		"extra_env": "Environment variables", "vscode": "VS Code extensions", "inherit_profile": "Yes default",
+		"harness": "pi inherited - profile", "network": "host project",
+		"shell": "bash default", "harness_args": "Harness arguments", "mounts": "Mounts",
+		"env": "Environment variables", "vscode": "VS Code extensions", "inherit_profile": "Yes default",
 	})
 	for _, item := range []string{"• --base inherited - profile", "• /base:/base inherited - profile", "• /project:/project project", "• GLOBAL=<redacted> inherited - global", "• PROFILE=<redacted> inherited - profile", "• PROJECT=<redacted> project", "• base.ext inherited - profile", "• project.ext project"} {
 		if !strings.Contains(strings.Join(strings.Fields(out), " "), item) {
 			t.Fatalf("missing entry provenance %q:\n%s", item, out)
 		}
 	}
-	put(filepath.Join(s.Home, "config.json"), `{"version":1,"default_profile":"base","default_harness":"pi","ignore_project_overrides":true}`)
-	check(map[string]string{"network": "default default", "extra_mounts": "Extra mounts", "vscode": "VS Code extensions", "extra_env": "Environment variables"})
+	put(filepath.Join(s.Home, "config.json"), `{"version":1,"default_profile":"base","default_harness":"pi","ignore_project":true}`)
+	check(map[string]string{"network": "default default", "mounts": "Mounts", "vscode": "VS Code extensions", "env": "Environment variables"})
 	put(filepath.Join(s.Home, "config.json"), `{"version":1,"default_profile":"base","default_harness":"pi"}`)
-	put(filepath.Join(project.Root, "config.json"), `{"version":1,"inherit_profile":false,"extra_mounts":["/project:/project"]}`)
-	check(map[string]string{"on_exit": "stop default", "extra_mounts": "Extra mounts", "inherit_profile": "No project"})
+	put(filepath.Join(project.Root, "config.json"), `{"version":1,"inherit_profile":false,"mounts":["/project:/project"]}`)
+	check(map[string]string{"harness": "pi inherited - global", "mounts": "Mounts", "inherit_profile": "No project"})
 	put(filepath.Join(project.Root, "config.json"), `{"version":1,"inherit_profile":null}`)
-	check(map[string]string{"on_exit": "running inherited - profile", "inherit_profile": "Yes default"})
+	check(map[string]string{"harness": "pi inherited - profile", "inherit_profile": "Yes default"})
 }
 
 func TestMenuSourcesDoNotGuessWhenResolutionFails(t *testing.T) {
@@ -90,7 +90,7 @@ func TestMenuSourcesDoNotGuessWhenResolutionFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(menuSettingRow(t, out, "harness"), "pi profile") || !strings.HasSuffix(menuSettingRow(t, out, "on_exit"), "Unavailable unknown") {
+	if !strings.HasSuffix(menuSettingRow(t, out, "harness"), "pi profile") || !strings.HasSuffix(menuSettingRow(t, out, "shell"), "Unavailable unknown") {
 		t.Fatal("unresolved values were assigned invented sources", out)
 	}
 }
@@ -102,7 +102,7 @@ func TestMenuGlobalAndEmptyHarnessSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := runMenu(t, s, global, "0\n")
-	if err != nil || !strings.HasSuffix(menuSettingRow(t, out, "default_harness"), "pi global") || !strings.HasSuffix(menuSettingRow(t, out, "ignore_project_overrides"), "No default") {
+	if err != nil || !strings.HasSuffix(menuSettingRow(t, out, "default_harness"), "pi global") || !strings.HasSuffix(menuSettingRow(t, out, "ignore_project"), "No default") {
 		t.Fatal(out, err)
 	}
 	profile, _ := s.Profile("base")

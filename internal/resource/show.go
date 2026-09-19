@@ -71,7 +71,7 @@ func (s Service) ShowProject(folder, profile string) (ConfigView, error) {
 	if err != nil {
 		return ConfigView{}, err
 	}
-	resolved, err := artifact.ResolveWithHost(s.Home, identity.Workspace, profile, config.Layer{}, config.Snapshot())
+	resolved, err := artifact.PreviewSelection(s.Home, identity.Workspace, artifact.Selection{Profile: profile, IgnoreProject: s.IgnoreProject}, config.Layer{}, nil, config.Snapshot())
 	if err != nil {
 		return ConfigView{}, err
 	}
@@ -82,7 +82,7 @@ func (s Service) configView(scope, path string, r artifact.Resolved) (ConfigView
 	if err != nil {
 		return ConfigView{}, err
 	}
-	values["extra_env"] = config.RedactEnv(r.Settings.Env)
+	values["env"] = config.RedactEnv(r.Settings.Env)
 	result := ConfigView{Scope: scope, Path: path, Values: values, Trace: r.Trace, References: map[string]map[string][]string{filepath.Join(s.Home, "config.json"): r.Global.References}}
 	for _, layer := range r.Layers {
 		if len(layer.Config.References) > 0 {

@@ -15,7 +15,7 @@ type engineFactory func(*cobra.Command) (*app.Engine, error)
 func containerCommands(factory engineFactory, profile *string) []*cobra.Command {
 	var follow bool
 	var tail string
-	logs := &cobra.Command{Use: "logs <target>", Short: "Read the container's Docker logs", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	logs := &cobra.Command{Use: "logs <folder|session>", Short: "Read the container's Docker logs", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if tail != "all" {
 			n, err := strconv.Atoi(tail)
 			if err != nil || n < 0 {
@@ -45,7 +45,7 @@ func printView(cmd *cobra.Command, view app.View) {
 
 func networkCommands(factory engineFactory, profile *string) *cobra.Command {
 	group := &cobra.Command{Use: "network", Short: "Show container networking or connect and disconnect additional networks"}
-	inspect := &cobra.Command{Use: "inspect <target>", Short: "Show the container's networks, IP addresses, and gateways as JSON", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	inspect := &cobra.Command{Use: "inspect <folder|session>", Short: "Show the container's networks, IP addresses, and gateways as JSON", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := factory(cmd)
 		if err != nil {
 			return err
@@ -57,7 +57,7 @@ func networkCommands(factory engineFactory, profile *string) *cobra.Command {
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(facts)
 	}}
 	var key string
-	env := &cobra.Command{Use: "env <target>", Short: "Print network variables as shell export commands", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	env := &cobra.Command{Use: "env <folder|session>", Short: "Print network variables as shell export commands", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := factory(cmd)
 		if err != nil {
 			return err
@@ -89,7 +89,7 @@ func networkCommands(factory engineFactory, profile *string) *cobra.Command {
 	group.AddCommand(inspect, env)
 	for _, action := range []string{"connect", "disconnect"} {
 		action := action
-		group.AddCommand(&cobra.Command{Use: action + " <network> <target>", Short: action + " an existing Docker network without changing saved configuration", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		group.AddCommand(&cobra.Command{Use: action + " <network> <folder|session>", Short: action + " an existing Docker network without changing saved configuration", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := factory(cmd)
 			if err != nil {
 				return err

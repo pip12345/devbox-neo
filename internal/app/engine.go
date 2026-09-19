@@ -25,22 +25,23 @@ import (
 )
 
 type Engine struct {
-	Store       *store.Store
-	Docker      docker.Runtime
-	Streams     docker.Streams
-	TerminalEnv []string
-	UID         int
-	GID         int
+	Store         *store.Store
+	Docker        docker.Runtime
+	Streams       docker.Streams
+	TerminalEnv   []string
+	IgnoreProject bool
+	UID           int
+	GID           int
 }
 type Request struct {
-	Workspace    string
-	Profile      string
-	ExpectedName string
-	Overrides    config.Layer
-	ReadOnly     bool
-	Continue     bool
-	Args         []string
-	Host         config.Host
+	Workspace     string
+	Profile       string
+	Overrides     config.Layer
+	IgnoreProject bool
+	Recorded      *environment.Identity
+	Continue      bool
+	Args          []string
+	Host          config.Host
 }
 type Diagnostic struct {
 	Code                string
@@ -55,7 +56,7 @@ type Result struct {
 }
 
 func (e *Engine) resolveSpec(q Request) (environment.Spec, error) {
-	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, ExpectedName: q.ExpectedName, Overrides: q.Overrides, ReadOnly: q.ReadOnly, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
+	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, Overrides: q.Overrides, IgnoreProject: q.IgnoreProject || e.IgnoreProject, Recorded: q.Recorded, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
 }
 func (e *Engine) Resolve(q Request) (environment.Spec, error) {
 	spec, err := e.resolveSpec(q)
@@ -147,6 +148,8 @@ func creationRequired(workspace, profile string, cause error) error {
 // Open keeps the operation lock through stopped-only synchronization, startup,
 // and lease creation. The long foreground command runs after releasing it.
 func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error) {
+	invocationArgs := append([]string(nil), q.Overrides.HarnessArgs...)
+	q.Overrides = config.Layer{}
 	if strings.HasPrefix(q.Workspace, environment.ContainerPrefix) && !strings.ContainsAny(q.Workspace, "/\\") {
 		r, loadErr := e.readSession(ctx, q.Workspace)
 		if loadErr != nil {
@@ -157,7 +160,10 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 		}
 		q.Workspace = r.Identity.Workspace
 		q.Profile = r.Identity.Profile
-		q.ExpectedName = r.Identity.Name
+		if (e.IgnoreProject || q.IgnoreProject) && r.Identity.Project {
+			return result, fmt.Errorf("project selection does not match the recorded target")
+		}
+		q.Recorded = &r.Identity
 	}
 	// Defer resolution warnings so creation drift is visible before any other
 	// open output, especially before entrypoint or harness output can scroll it away.
@@ -235,6 +241,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 	if q.Continue {
 		argv = append(argv, record.Launch.Continue...)
 	}
+	argv = append(argv, invocationArgs...)
 	argv = append(argv, q.Args...)
 	err = e.attach(ctx, lock, c, record, "open", argv)
 	return result, err
@@ -278,7 +285,7 @@ func (e *Engine) mountPlan(l *store.Locked, s environment.Spec) ([]docker.Mount,
 	if err != nil {
 		return nil, err
 	}
-	mounts := []docker.Mount{{Source: s.Identity.Workspace, Target: "/workspace", ReadOnly: s.ReadOnly}, {Source: sshRoot, Target: sshshare.Mount}}
+	mounts := []docker.Mount{{Source: s.Identity.Workspace, Target: "/workspace"}, {Source: sshRoot, Target: sshshare.Mount}}
 	d := s.Harness.Definition
 	for _, storeDef := range d.Stores {
 		var source string
@@ -427,10 +434,11 @@ func (e *Engine) create(ctx context.Context, l *store.Locked, s environment.Spec
 // CreationIdentity supplies durable identity/activity for a new destination.
 // Zero activity means this creation is its first recorded activity.
 type CreationIdentity struct {
-	ID       string
-	Created  time.Time
-	Activity time.Time
-	Action   string
+	ID          string
+	Created     time.Time
+	Activity    time.Time
+	Action      string
+	ManualStart bool
 }
 
 // CreatePrepared materializes current-format state prepared under the supplied
@@ -533,8 +541,10 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		}
 		removed = true
 	}
-	record = store.Record{Version: store.RecordVersion, ID: id, Identity: s.Identity, Created: created, Activity: time.Now().UTC(), Action: "create", Applied: s.FingerprintsFor(image.ID), Inputs: s.Inputs, ImageTag: docker.Namespace + "/session:" + id, ImageID: image.ID, Creation: docker.CreatePlan{Name: s.Identity.Name, Image: image.ID, Network: s.Settings.Network, Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports, RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata}, EnvSources: s.EnvSources, Definition: store.DefinitionInput{Name: s.Harness.Definition.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash}, Stores: s.Harness.Definition.Stores, Auth: s.Harness.Definition.Auth, Config: s.Harness.Definition.Config, Merge: s.Harness.Definition.Merge, Prepare: s.Harness.Definition.Prepare, Launch: store.Launch{Binary: s.Harness.Definition.Binary, Args: append(append([]string(nil), s.Harness.Definition.Launch.Args...), s.Settings.HarnessArgs...), Continue: s.Harness.Definition.Launch.Continue, Shell: s.Settings.Shell, OnExit: s.Settings.OnExit}, Setup: s.Setup, Ownership: 1, ManifestVersion: 1}
+	record = store.Record{Version: store.RecordVersion, ID: id, Identity: s.Identity, Created: created, Activity: time.Now().UTC(), Action: "create", Applied: s.FingerprintsFor(image.ID), Inputs: s.Inputs, ImageTag: docker.Namespace + "/session:" + id, ImageID: image.ID, Creation: docker.CreatePlan{Name: s.Identity.Name, Image: image.ID, Network: s.Settings.Network, Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports, RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata}, EnvSources: s.EnvSources, Definition: store.DefinitionInput{Name: s.Harness.Definition.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash}, Stores: s.Harness.Definition.Stores, Auth: s.Harness.Definition.Auth, Config: s.Harness.Definition.Config, Merge: s.Harness.Definition.Merge, Prepare: s.Harness.Definition.Prepare, Launch: store.Launch{Binary: s.Harness.Definition.Binary, Args: append(append([]string(nil), s.Harness.Definition.Launch.Args...), s.Settings.HarnessArgs...), Continue: s.Harness.Definition.Launch.Continue, Shell: s.Settings.Shell}, Setup: s.Setup, Ownership: 1, ManifestVersion: 1}
+	record.ManualStart = seed.ManualStart
 	if previous != nil {
+		record.ManualStart = previous.ManualStart
 		record.Activity = previous.Activity
 		record.Action = "recreate"
 	} else {
@@ -578,6 +588,7 @@ func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker
 	// Terminal defaults are invocation-local; configured env takes precedence at
 	// creation. Recovery uses today's terminal without changing the saved contract.
 	plan := record.Creation
+	plan.RestartPolicy = restartPolicy(record.ManualStart)
 	plan.Env = append(append([]string(nil), e.TerminalEnv...), plan.Env...)
 	id, err := e.Docker.Create(ctx, plan, e.owner(record))
 	if err != nil {
@@ -630,7 +641,7 @@ func (e *Engine) runHook(ctx context.Context, c docker.Container, r store.Record
 	return e.Docker.Exec(ctx, c, e.owner(r), []string{"bash", "-s"}, nil, docker.Streams{In: bytes.NewReader(hook.Data), Out: e.Streams.Out, Err: e.Streams.Err})
 }
 func (e *Engine) stopUnattached(l *store.Locked, r store.Record) error {
-	if r.ID == "" || r.Launch.OnExit != "stop" {
+	if r.ID == "" || r.ManualStart {
 		return nil
 	}
 	active, err := l.Active()
@@ -655,7 +666,7 @@ func (e *Engine) attach(ctx context.Context, l *store.Locked, c docker.Container
 // attachRun owns the lease for both container commands and foreground SSH
 // controllers. A host-side master must protect the environment just as an exec does.
 func (e *Engine) attachRun(l *store.Locked, r store.Record, action string, run func() error) (err error) {
-	lease, err := l.Lease(action, r.Launch.OnExit)
+	lease, err := l.Lease(action)
 	if err != nil {
 		return err
 	}
@@ -670,7 +681,7 @@ func (e *Engine) attachRun(l *store.Locked, r store.Record, action string, run f
 				current, touchErr := lock.Touch(r.ID, action)
 				active, aerr := lock.Active()
 				cleanupErr = errors.Join(touchErr, aerr)
-				if current.ID != "" && aerr == nil && len(active) == 0 && lease.OnExit == "stop" {
+				if current.ID != "" && aerr == nil && len(active) == 0 && !current.ManualStart {
 					live, exists, ierr := e.inspect(cleanup, current)
 					cleanupErr = errors.Join(cleanupErr, ierr)
 					if ierr == nil && exists && live.State.Running {
@@ -709,7 +720,7 @@ func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, e
 	if err != nil {
 		return Result{}, err
 	}
-	running := exists && container.State.Running
+	running := old.ManualStart || (exists && container.State.Running)
 	r, c, err := e.create(ctx, l, s, &old, force)
 	if err != nil {
 		return Result{}, err

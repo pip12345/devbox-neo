@@ -200,6 +200,7 @@ func (d *Daemon) run(a []string) (string, error) {
 		c := docker.Container{ID: fmt.Sprintf("%064x", d.Sequence), Name: "/" + name, Image: a[len(a)-2]}
 		c.Config.Labels = labels()
 		c.State.Status = "created"
+		c.HostConfig.RestartPolicy.Name = flag("--restart")
 		c.HostConfig.NetworkMode = flag("--network")
 		if c.HostConfig.NetworkMode == "" {
 			c.HostConfig.NetworkMode = "default"
@@ -211,6 +212,20 @@ func (d *Daemon) run(a []string) (string, error) {
 		c.NetworkSettings.Networks = map[string]docker.Endpoint{primary: {NetworkID: primary, IPAddress: "172.20.0.2", Gateway: "172.20.0.1"}}
 		d.Containers[name] = c
 		return c.ID, nil
+	case "update":
+		id := a[len(a)-1]
+		for name, c := range d.Containers {
+			if c.ID == id {
+				for _, arg := range a {
+					if policy, ok := strings.CutPrefix(arg, "--restart="); ok {
+						c.HostConfig.RestartPolicy.Name = policy
+					}
+				}
+				d.Containers[name] = c
+				return "", nil
+			}
+		}
+		return "", fmt.Errorf("container missing")
 	case "start", "stop", "rm":
 		id := a[len(a)-1]
 		for name, c := range d.Containers {

@@ -62,7 +62,6 @@ type ImportSession struct {
 	Created  time.Time                `json:"created"`
 	Activity time.Time                `json:"activity"`
 	Action   string                   `json:"action"`
-	ReadOnly bool                     `json:"read_only"`
 	Desired  environment.Fingerprints `json:"desired"`
 }
 type MergePlan struct {
@@ -667,7 +666,21 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 		if c.Rename[profile] != "" {
 			profile = c.Rename[profile]
 		}
-		identity, e := environment.Identify(i.Workspace, profile, profile == "")
+		if profile == "" {
+			profile = i.SourceProfile
+			if c.Rename[profile] != "" {
+				profile = c.Rename[profile]
+			}
+		}
+		var identity environment.Identity
+		var e error
+		if i.Profile == "" {
+			// A source project session records its base profile (including none).
+			// Destination defaults must not silently select a different combination.
+			identity, e = environment.Identify(i.Workspace, profile, true)
+		} else {
+			identity, e = environment.Select(preview, i.Workspace, profile, false, m.host())
+		}
 		if e != nil {
 			plan.block(i.Key, i.Key, "Workspace is unavailable or noncanonical.")
 			continue
@@ -719,7 +732,7 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 			}
 			proposed = &l
 		}
-		q := environment.Request{Home: preview, Workspace: i.Workspace, Profile: profile, ExpectedName: identity.Name, Salt: id, UID: m.UID, GID: m.GID, Host: m.host(), ReadOnly: meta.Creation.ReadOnly}
+		q := environment.Request{Home: preview, Workspace: i.Workspace, Profile: profile, Salt: id, UID: m.UID, GID: m.GID, Host: m.host(), Recorded: &identity}
 		spec, e := environment.Preview(q, proposed)
 		if e != nil {
 			plan.block("config:"+i.Key, i.Key, "Final configuration cannot be resolved; review participating profiles/projects and required host environment variables.")
@@ -769,7 +782,7 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 			}
 		}
 		if unsafe {
-			plan.block("env:"+i.Key, i.Key, "Move raw Docker --env entries into extra_env before importing; raw values must not enter a saved creation record.")
+			plan.block("env:"+i.Key, i.Key, "Move raw Docker --env entries into env before importing; raw values must not enter a saved creation record.")
 			continue
 		}
 		fields := changedSettings(meta, spec)
@@ -779,8 +792,8 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 		if meta.ProxyEnabled {
 			plan.change("proxy:"+i.Key, i.Key, "Proxy protection will not carry over; Neo does not restrict container egress.")
 		}
-		if profile != "" {
-			plan.change("profile-rules:"+i.Key, i.Key, "Explicit profiles exclude all project artifacts under Neo's rules.")
+		if identity.Project && identity.Profile != "" {
+			plan.change("profile-rules:"+i.Key, i.Key, "The imported session has a separate identity for its profile and project combination.")
 		}
 		plan.change("create:"+i.Key, i.Key, "Build a fresh environment and run its setup code; shared workspace and external side effects cannot be rolled back.")
 		needConfig := false
@@ -818,7 +831,7 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 		}
 		created, _ := time.Parse(time.RFC3339Nano, i.Created)
 		activity, _ := time.Parse(time.RFC3339Nano, i.Activity)
-		plan.Sessions = append(plan.Sessions, ImportSession{Item: i.Key, Identity: identity, ID: i.SessionID, Created: created, Activity: activity, Action: i.Action, ReadOnly: meta.Creation.ReadOnly, Desired: spec.Fingerprints})
+		plan.Sessions = append(plan.Sessions, ImportSession{Item: i.Key, Identity: identity, ID: i.SessionID, Created: created, Activity: activity, Action: i.Action, Desired: spec.Fingerprints})
 	}
 	for old, name := range c.Rename {
 		if j.Inventory.item("profile:"+old) == nil || !config.Name.MatchString(name) {
@@ -878,10 +891,10 @@ func changedSettings(old oldMetadata, s environment.Spec) []string {
 	fields := []string{}
 	eq := func(a, b []string) bool { return strings.Join(a, "\x00") == strings.Join(b, "\x00") }
 	if !eq(old.Creation.Mounts, s.Settings.Mounts) {
-		fields = append(fields, "extra_mounts")
+		fields = append(fields, "mounts")
 	}
 	if !eq(old.Creation.Ports, s.Settings.Ports) {
-		fields = append(fields, "extra_ports")
+		fields = append(fields, "ports")
 	}
 	if !eq(old.Creation.DockerArgs, s.Settings.DockerArgs) {
 		fields = append(fields, "docker_args")
@@ -907,8 +920,11 @@ func changedSettings(old oldMetadata, s environment.Spec) []string {
 	if !reflect.DeepEqual(env(old.Creation.Env), env(s.Env())) {
 		fields = append(fields, "environment")
 	}
-	if old.OnExit != "" && old.OnExit != s.Settings.OnExit {
-		fields = append(fields, "on_exit")
+	if old.OnExit != "" {
+		fields = append(fields, "removed on_exit")
+	}
+	if old.Creation.ReadOnly {
+		fields = append(fields, "removed workspace read_only")
 	}
 	return fields
 }
@@ -1606,7 +1622,7 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 			return err
 		}
 	}
-	spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, Profile: job.Identity.Profile, ExpectedName: job.Identity.Name, ReadOnly: job.ReadOnly, Host: m.host()})
+	spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, Profile: job.Identity.Profile, Recorded: &job.Identity, Host: m.host()})
 	if err != nil {
 		return publicFailure("Final configuration no longer resolves.", job.Identity.Name, err)
 	}

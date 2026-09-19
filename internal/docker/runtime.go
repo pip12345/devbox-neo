@@ -48,7 +48,10 @@ type Container struct {
 		Labels map[string]string `json:"Labels"`
 	} `json:"Config"`
 	HostConfig struct {
-		NetworkMode string `json:"NetworkMode"`
+		NetworkMode   string `json:"NetworkMode"`
+		RestartPolicy struct {
+			Name string `json:"Name"`
+		} `json:"RestartPolicy"`
 	} `json:"HostConfig"`
 	NetworkSettings struct {
 		Networks map[string]Endpoint `json:"Networks"`
@@ -101,14 +104,15 @@ type Mount struct {
 	ReadOnly bool     `json:"read_only"`
 }
 type CreatePlan struct {
-	Name     string   `json:"name"`
-	Image    string   `json:"image"`
-	Network  string   `json:"network"`
-	Mounts   []Mount  `json:"mounts"`
-	Env      []string `json:"-"`
-	Ports    []string `json:"ports,omitempty"`
-	RawArgs  []string `json:"docker_args,omitempty"`
-	Metadata string   `json:"devcontainer_metadata,omitempty"`
+	RestartPolicy string   `json:"-"`
+	Name          string   `json:"name"`
+	Image         string   `json:"image"`
+	Network       string   `json:"network"`
+	Mounts        []Mount  `json:"mounts"`
+	Env           []string `json:"-"`
+	Ports         []string `json:"ports,omitempty"`
+	RawArgs       []string `json:"docker_args,omitempty"`
+	Metadata      string   `json:"devcontainer_metadata,omitempty"`
 }
 type BuildPlan struct {
 	Directory    string
@@ -243,7 +247,13 @@ func (r Runtime) Create(ctx context.Context, p CreatePlan, o Owner) (string, err
 	if err := ValidateEnv(p.Env); err != nil {
 		return "", err
 	}
-	args := []string{"create", "--name", p.Name, "--init", "--user", "devuser", "--workdir", "/workspace"}
+	if p.RestartPolicy == "" {
+		p.RestartPolicy = "no"
+	}
+	if p.RestartPolicy != "no" && p.RestartPolicy != "unless-stopped" {
+		return "", fmt.Errorf("invalid managed restart policy")
+	}
+	args := []string{"create", "--name", p.Name, "--init", "--user", "devuser", "--workdir", "/workspace", "--restart", p.RestartPolicy}
 	labels := o.Labels()
 	for _, k := range sortedKeys(labels) {
 		args = append(args, "--label", k+"="+labels[k])

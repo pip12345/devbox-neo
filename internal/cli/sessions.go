@@ -51,7 +51,7 @@ func transferCommand(factory engineFactory, profile *string, mode string) *cobra
 	if mode == "relocate" {
 		description = "Move session state to another folder or profile"
 	}
-	cmd := &cobra.Command{Use: mode + " <source> [destination-folder]", Short: description, Long: description + ".\nRetry the same command to resume an interrupted transfer.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: mode + " <folder|session> [destination-folder]", Short: description, Long: description + ".\nRetry the same command to resume an interrupted transfer.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := factory(cmd)
 		if err != nil {
 			return err
@@ -77,8 +77,8 @@ func transferCommand(factory engineFactory, profile *string, mode string) *cobra
 		_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s %s: %s -> %s\n", action, mode, result.Source, result.Destination)
 		return err
 	}}
-	cmd.Flags().StringVar(&options.From, "from", "", "Source profile name or .project")
-	cmd.Flags().StringVar(&options.To, "to", "", "Destination profile name or .project in the same folder")
+	cmd.Flags().StringVar(&options.From, "from", "", "Source slot: .profile-NAME, .profile-NAME.project, or .project")
+	cmd.Flags().StringVar(&options.To, "to", "", "Destination slot: .profile-NAME, .profile-NAME.project, or .project")
 	cmd.Flags().BoolVar(&options.DryRun, "dry-run", false, "Preview without copying session data")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print transfer result as JSON")
 	return cmd

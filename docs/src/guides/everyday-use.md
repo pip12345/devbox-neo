@@ -24,7 +24,7 @@ Use `status` when you want more detail:
 devbox-neo status .
 ```
 
-If a folder has several environments, select a profile with `--profile NAME` or use an exact environment name from `list`.
+Folder commands select the current profile plus participating project settings. Use `--profile NAME` to select another base profile, or an exact session name from `list`. If the selected combination has not been created, the command fails rather than using another environment.
 
 ## Open an interactive shell
 
@@ -56,18 +56,21 @@ devbox-neo exec . -- bash -lc 'git status && git diff --stat'
 
 ## Keep a container running
 
-By default, the container stops when the last attached harness, shell, command, or SSH-sharing terminal exits. To leave it running after this harness launch:
-
-```sh
-devbox-neo open . --on-exit running
-```
-
-You can also start the container without launching anything, then stop it when you're done:
+Normally the container stops when the last attached harness, shell, command, or SSH-sharing terminal exits. To keep it running until you explicitly stop it:
 
 ```sh
 devbox-neo start .
+```
+
+You can run this even while a harness is open. Later attachments do not change that choice. After a reboot, Docker restarts the container when Docker starts; it does not resume your old harness process or terminal.
+
+When you're done:
+
+```sh
 devbox-neo stop .
 ```
+
+It stays stopped across reboot. Opening it again without another manual `start` restores normal automatic shutdown.
 
 Stop refuses to interrupt active Devbox commands unless you pass `--force`.
 
@@ -79,7 +82,7 @@ Put one-off harness arguments after `--`. For example, to launch Pi in regular t
 devbox-neo open . -- --tui-mode regular
 ```
 
-For options you use every time, set `harness_args` in your [profile or project configuration](configuration.md).
+For options you use every time, set `harness_args` and its matching `harness` in the same [profile or project configuration](configuration.md).
 
 ## Enable completion
 

@@ -35,34 +35,23 @@ func TestExecutableName(t *testing.T) {
 
 func TestFlagHelpDescribesActions(t *testing.T) {
 	for _, tt := range []struct{ command, flag, description string }{
-		{"create", "harness-arg", "Pass an argument to the harness (repeatable)"},
 		{"open", "harness-arg", "Pass an argument to the harness (repeatable)"},
-		{"recreate", "harness-arg", "Pass an argument to the harness (repeatable)"},
 		{"recreate", "image", "Rebuild the image without using the build cache"},
 		{"recreate", "all", "Recreate all Devbox containers, add --profile NAME to recreate all belonging to one profile"},
-		{"create", "on-exit", "After the last command exits: stop (stop container) or running (leave running)"},
-		{"open", "on-exit", "After the last command exits: stop (stop container) or running (leave running)"},
-		{"recreate", "on-exit", "After the last command exits: stop (stop container) or running (leave running)"},
-		{"open", "profile", "Use a named profile"},
-		{"create", "harness", "Choose the harness to install"},
-		{"create", "network", "Docker network to use: default, host, or an existing network name"},
-		{"create", "env", "Set a container environment variable: KEY=VALUE (repeatable)"},
-		{"create", "volume", "Mount SOURCE:TARGET[:OPTIONS] in the container (repeatable)"},
-		{"create", "port", "Publish [HOST_IP:]HOST_PORT:CONTAINER_PORT (repeatable)"},
-		{"create", "docker-arg", "Pass a Docker option, e.g. --docker-arg=--memory=2g (repeatable)"},
+		{"open", "profile", "Select the base profile"},
 		{"stop", "force", "Stop even if commands are still running"},
 		{"delete", "force", "Allow container deletion despite attached commands; never implies deleting saved data"},
 		{"profile delete", "force", "Delete without prompting"},
 		{"global config", "show", "Show resolved settings and where they come from"},
 		{"profile config", "show", "Show resolved settings and where they come from"},
 		{"project config", "show", "Show resolved settings and where they come from"},
-		{"project config", "profile", "With --show, use this profile instead of the project's configuration"},
+		{"project config", "profile", "With --show, select the base profile beneath project configuration"},
 		{"profile init", "harness", "Choose a harness by name"},
 		{"project init", "harness", "Choose a harness by name, or inherit to use the profile/global setting"},
-		{"clone", "from", "Source profile name or .project"},
-		{"clone", "to", "Destination profile name or .project in the same folder"},
-		{"relocate", "from", "Source profile name or .project"},
-		{"relocate", "to", "Destination profile name or .project in the same folder"},
+		{"clone", "from", "Source slot: .profile-NAME, .profile-NAME.project, or .project"},
+		{"clone", "to", "Destination slot: .profile-NAME, .profile-NAME.project, or .project"},
+		{"relocate", "from", "Source slot: .profile-NAME, .profile-NAME.project, or .project"},
+		{"relocate", "to", "Destination slot: .profile-NAME, .profile-NAME.project, or .project"},
 		{"delete", "older-than", "Select environments inactive longer than this duration, e.g. 720h; rechecked while locked"},
 	} {
 		cmd, _, err := New().Find(strings.Fields(tt.command))
@@ -84,8 +73,8 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 		{"project create", "Create project configuration in .devbox/"},
 		{"profile init", "Choose a harness and add optional configuration files"},
 		{"project init", "Choose a harness and add optional configuration files"},
-		{"shell", "Open a shell in an existing container"},
-		{"exec", "Run a command in an existing container"},
+		{"shell", "Open a shell in a session"},
+		{"exec", "Run a command in a session"},
 		{"recreate", "Recreate the container with current settings, keeping session data"},
 		{"status", "Show session details, active commands, and pending configuration changes"},
 
@@ -121,12 +110,12 @@ func TestOpenCommandOwnsTargetAndFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	for _, text := range []string{"open <target>", "--continue", "--on-exit", "--harness-arg"} {
+	for _, text := range []string{"open <folder|session>", "--continue", "--harness-arg", "--ignore-project"} {
 		if !strings.Contains(help, text) {
 			t.Fatalf("open help is missing %q: %s", text, help)
 		}
 	}
-	for _, flag := range []string{"create", "network", "env", "volume", "port", "docker-arg", "read-only", "harness"} {
+	for _, flag := range []string{"create", "network", "env", "volume", "port", "docker-arg", "read-only", "harness", "on-exit"} {
 		if strings.Contains(help, "--"+flag+" ") {
 			t.Fatalf("open help advertises creation flag %q: %s", flag, help)
 		}
@@ -159,8 +148,8 @@ func TestCreateCommandOwnsCreationButNotLaunchFlags(t *testing.T) {
 		t.Fatal(cmd, err)
 	}
 	for _, flag := range []string{"harness", "network", "env", "volume", "port", "docker-arg", "on-exit", "read-only", "harness-arg"} {
-		if cmd.Flags().Lookup(flag) == nil {
-			t.Fatal("missing creation flag", flag)
+		if cmd.Flags().Lookup(flag) != nil {
+			t.Fatal("removed creation flag remains", flag)
 		}
 	}
 	for _, flag := range []string{"create", "continue"} {

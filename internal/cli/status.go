@@ -14,7 +14,7 @@ import (
 
 func statusCommand(factory engineFactory, profile *string) *cobra.Command {
 	var asJSON, all bool
-	cmd := &cobra.Command{Use: "status [target]", Short: "Show session details, active commands, and pending configuration changes", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "status [folder|session]", Short: "Show session details, active commands, and pending configuration changes", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if all && len(args) != 0 {
 			return fmt.Errorf("--all does not accept an exact target")
 		}
@@ -51,6 +51,11 @@ func statusCommand(factory engineFactory, profile *string) *cobra.Command {
 		printView(cmd, view)
 		if details.Record != nil {
 			cmd.Printf("Session: %s\nHarness: %s\nImage: %s\nActive commands: %d\n", displayCell(details.SessionID), displayCell(details.Harness), displayCell(details.Record.ImageID), len(details.Active))
+			lifetime := "automatic (stop after the last attached command)"
+			if details.Record.ManualStart {
+				lifetime = "manual (until stop; restarts with Docker)"
+			}
+			cmd.Printf("Lifetime: %s\n", lifetime)
 		}
 		cmd.Printf("Changes: %s\n", statusChange(view))
 		if view.ConfigError != "" {

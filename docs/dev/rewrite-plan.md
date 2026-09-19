@@ -12,8 +12,8 @@ Rewrite Devbox around one canonical environment model and one orchestration entr
 
 - persistent Docker environments;
 - profile-specific environment slots;
-- current profile/project artifact types, with explicit profiles isolated from project artifacts;
-- configurable `on_exit` behavior with attached-command leases;
+- current profile/project artifact types, with profile selection separate from project exclusion;
+- manual-start intent and automatic shutdown after the last attached-command lease;
 - complete session state management, including filtered deletion, relocate, clone, and interrupted-transfer recovery, but no session aliases or permanent historical lineage;
 - built-in harness definitions for Pi and OpenCode only;
 - user-defined harnesses loaded from `~/.devbox/harnesses/<name>/harness.json`;
@@ -44,8 +44,8 @@ The main complexity sources are:
 2. **Harness declarations are compiled in.** The current registry is partly declarative, but config validation, defaults, image construction, auth, state, and transfer behavior all depend on the compiled registry.
 3. **Open resolves the same environment through many representations.** Global settings, layer settings, artifacts, `OpenPlan`, creation settings, metadata, session records, leases, and environment transactions overlap.
 4. **State has multiple authorities.** Docker labels, `metadata.json`, and `session.json` each own part of environment identity or behavior.
-5. **Artifact resolution is powerful but non-obvious.** Explicit `--profile` changes profile/project precedence, and different artifact types compose differently.
-6. **Safe `on_exit=stop` requires coordination.** Attached commands need leases, stale-process detection, locks, and cleanup after cancellation.
+5. **Artifact resolution is powerful but non-obvious.** Profile selection and project participation define environment identity, and different artifact types compose differently.
+6. **Safe automatic shutdown requires coordination.** Attached commands need leases, stale-process detection, locks, and cleanup after cancellation.
 7. **Session transfer is transactional behavior.** Relocate and clone require deterministic multi-lock acquisition, ownership checks, destination staging, rollback, and interrupted-transfer recovery.
 
 The rewrite must make these retained rules explicit and give each one a single owner.
@@ -79,7 +79,7 @@ The rewrite must make these retained rules explicit and give each one a single o
 
 ### Profiles and environment identity
 
-Keep profile slots. A workspace may have separate durable environments for named profiles and for the project slot.
+A workspace has separate durable environments for each profile/project combination. Names end in `.profile-NAME`, `.profile-NAME.project`, or `.project`. Each combination requires explicit creation. Folder-targeted commands calculate one exact identity and fail if it is absent; they never substitute another saved profile.
 
 Container identity remains a function of:
 
@@ -87,7 +87,7 @@ Container identity remains a function of:
 canonical workspace path + slot
 ```
 
-The reserved project slot remains distinct from profile names.
+Recorded profile and project participation are retained during exact-name access and recreation, independently of changed defaults.
 
 ### Artifact types and precedence
 
@@ -103,17 +103,17 @@ Use one layer-selection rule for all profile/project artifacts:
 
 - without explicit `--profile`, the default profile is the base when configured and project artifacts win, unless the participating project sets `inherit_profile: false`;
 - `inherit_profile: false` excludes all profile artifacts, not global defaults; it makes the project standalone with respect to profiles;
-- `ignore_project_overrides` excludes all project artifacts, including their `inherit_profile` setting, and uses the applicable profile;
-- with explicit `--profile <name>`, use only the named profile and exclude all project artifacts;
-- excluded project artifacts are not read, parsed, validated, merged, or fingerprinted; a malformed project `.devbox/config.json` cannot block explicit-profile startup;
-- global settings and built-in defaults still apply in both cases, with CLI overrides last;
+- `ignore_project` or `--ignore-project` excludes all project artifacts, including their `inherit_profile` setting, and uses the applicable profile;
+- explicit `--profile <name>` selects the base beneath the project; it conflicts with participating `inherit_profile: false`; use `--ignore-project` for profile-only operation;
+- excluded project artifacts are not read, parsed, validated, merged, or fingerprinted; a malformed project `.devbox/config.json` cannot block startup with `--ignore-project`;
+- global settings and built-in defaults still apply; public creation uses configuration files, not overrides;
 - `config.json` merges participating layers by schema;
 - `Dockerfile`, `setup.sh`, and `entrypoint.sh` use winner-by-existence among participating layers;
 - harness directories overlay recursively in the same base-to-winner order.
 
 This deliberately replaces the current explicit-profile precedence reversal. Invalid participating configuration remains a hard error; exclusion is not an invalid-config fallback.
 
-Read a participating project's sparse config once to determine `inherit_profile` before loading a default profile. An excluded profile is not loaded or validated, so a missing or malformed default profile cannot block a standalone project. Reject `inherit_profile` in global and profile config. With explicit `--profile`, do not read project config to discover this setting.
+Read a participating project's sparse config once to determine `inherit_profile` before loading a default profile. An excluded profile is not loaded or validated, so a missing or malformed default profile cannot block a standalone project. Reject `inherit_profile` in global and profile config. Explicit profiles still read participating project inheritance settings. The shared selection stage reads only identity-affecting fields; full desired resolution separately validates participating sources.
 
 This behavior must exist in one pure resolver with table-driven tests. No other package may reimplement artifact precedence.
 
@@ -133,15 +133,7 @@ Valid values:
 - `host`: use Docker host networking;
 - any other value: use that existing Docker network as the primary network.
 
-The CLI uses the same model:
-
-```text
-devbox create <folder> --network default
-devbox create <folder> --network host
-devbox create <folder> --network <existing-network>
-```
-
-`--network` overrides the resolved profile/project value for creation. It is also accepted by `recreate`, but not `open`. It is a creation-time option; changing it requires container recreation. `host` is incompatible with published ports. Named networks must exist before any build or container mutation. Devbox never creates or deletes the selected network.
+Set `network` through the profile/project configuration menu or JSON. Creation and recreation read it from those sources. Changing it requires container recreation. `host` is incompatible with published ports. Named networks must exist before any build or container mutation. Devbox never creates or deletes the selected network.
 
 Replace the current `host_network` and `extra_networks` configuration fields with this scalar `network` field. As a scalar, a higher-priority layer replaces the lower-priority value instead of appending.
 
@@ -159,7 +151,7 @@ This separation prevents runtime network commands from silently changing durable
 
 ### SSH sharing
 
-`devbox ssh <target> <destination> [--host-master]` is a foreground, user-authenticated SSH connection shared with one environment. The user answers normal SSH prompts in the host terminal; the agent reuses the authenticated control socket. Container master is the default. Explicit, invocation-only `--host-master` uses host SSH configuration/credentials and displays this warning before authentication:
+`devbox ssh <folder|session> <destination> [--host-master]` is a foreground, user-authenticated SSH connection shared with one environment. The user answers normal SSH prompts in the host terminal; the agent reuses the authenticated control socket. Container master is the default. Explicit, invocation-only `--host-master` uses host SSH configuration/credentials and displays this warning before authentication:
 
 ```text
 WARNING: Running in host SSH master mode
@@ -172,7 +164,7 @@ and data outside the container.
 
 The flag is the opt-in; no extra confirmation is added. Host mode never adopts an unrelated personal master. Neither mode copies keys/config or forces agent/X11 forwarding off. Normal SSH configuration supplies keys, ports, and ProxyJump where the master runs. No identity flag, raw SSH argv passthrough, detached mode, remembered mode, credential provisioning, automatic reconnect, or separate disconnect command is included.
 
-SSH uses the shared `startAccess` startup preparation and `attachRun` lease lifecycle. It requires an existing session, may recover its missing container under the recorded rules, synchronizes before stopped-container startup, and does not reload desired config for running access. Its lease protects stop/recreation/deletion/transfer; cleanup revokes SSH before applying the last attached command's `on_exit`. Forced container stop/removal or lost Docker contact also ends a host master.
+SSH uses the shared `startAccess` startup preparation and `attachRun` lease lifecycle. It requires an existing session, may recover its missing container under the recorded rules, synchronizes before stopped-container startup, and does not reload desired config for running access. Its lease protects stop/recreation/deletion/transfer; cleanup revokes SSH before checking current manual-start intent and the remaining attachments. Forced container stop/removal or lost Docker contact also ends a host master.
 
 New/recreated environments mount `sessions/<name>/runtime/ssh` at `/devbox/ssh`. SSH refuses a record without this mount and recommends explicit recreation. This runtime directory is not copied by clone/relocate and is not a credential store. Each invocation gets a unique connection directory with a socket, owner lock, supervisor lifetime lock, and client Include file. The kernel releases the controller's owner lock on exit; a foreground supervisor/watchdog terminates the actual SSH master, even if the Docker CLI disconnects during authentication. No long-lived daemon or general host-control service is introduced.
 
@@ -182,10 +174,12 @@ The runtime explicitly includes OpenSSH client tools and util-linux (`flock`). R
 
 ### Lifecycle
 
-Keep current configurable behavior:
+Use command-driven lifetime:
 
-- `on_exit: running` leaves the container running;
-- `on_exit: stop` stops it after the last attached Devbox command exits;
+- manual `start` keeps the container running until explicit `stop`, including restart when Docker starts after reboot;
+- without manual start, the last attached command stops it and Docker does not restart it at boot;
+- attachments never change manual intent; `stop` clears it only on success;
+- derive Docker restart policy from session intent (`unless-stopped` or `no`), not configuration or per-lease policy; remove `on_exit` entirely;
 - `open`, `shell`, `exec`, and `ssh` create attached-command leases;
 - stale leases are detected and reaped;
 - stop/recreate/delete/transfer enforce the appropriate active-session rules;
@@ -338,7 +332,7 @@ Store one durable record at:
 
 It contains:
 
-- schema version `2` (strict current format; older development records require a clean reset, with no compatibility reader or migration);
+- schema version `3` (strict current format; older development records require a clean reset, with no compatibility reader or migration);
 - required image/container/runtime input snapshots, with committed fingerprints validated against them;
 - immutable random session ID;
 - deterministic container name, workspace, slot, and profile;
@@ -346,13 +340,13 @@ It contains:
 - created time, last activity time, and last action;
 - image/container/runtime fingerprints for change detection, not as substitutes for recreation inputs;
 - session-owned final image tag, image ID, and image-input fingerprint;
-- concrete non-secret creation settings: workspace binding and read-only mode, other mounts, ports, primary network, public raw Docker arguments, and container metadata;
+- concrete non-secret creation settings: writable workspace binding, other mounts, ports, primary network, public raw Docker arguments, and container metadata;
 - the recorded harness store/auth layout and non-secret runtime preparation contract, so recovery does not depend on a newer harness definition;
 - secret-source references and verification fingerprints, never secret values;
 - required hook/input paths and hashes for recorded preparation, plus setup completion tied to the container instance;
-- a non-secret recorded launch contract containing harness name, binary, default/continue args, configured harness args, default shell, definition hash, and lifecycle policy;
+- a non-secret recorded launch contract containing harness name, binary, default/continue args, configured harness args, shell argv, and definition hash;
 - Docker ownership version;
-- lifecycle policy required for stale-lease cleanup;
+- session-level `manual_start` intent, separate from desired inputs and attached-command leases;
 - managed config manifest version and location.
 
 Creation and recreation commit all input snapshots. Runtime synchronization advances only its snapshot and fingerprint together; warnings and status inspection never advance baselines. Recovery preserves recorded image/container inputs. Transfers commit the destination's own resolved inputs.
@@ -375,7 +369,7 @@ Recovery requires:
 
 For sensitive config environment inputs, retain a file/field/index reference with keyed fingerprints of the source expression and resolved assignment. Reread that exact expression and expand it once from the invoking process environment; do not copy literal credentials or expressions containing credentials into the record. Managed auth references identify paths, not copies of credentials; normal credential rotation does not change the recorded mount contract. Literal secret-bearing inputs with no source reference are not persisted and make exact recovery unavailable. Do not invent a source, store a secret, or silently replace an old value with a changed one.
 
-If these conditions hold, create from the recorded image and settings, preserve session identity/state, and rerun required per-container preparation. Do not rebuild a missing image or consult current config as an automatic recovery fallback. If an input is missing or changed, return an actionable recovery error before container mutation and point to `devbox recreate <target>` to explicitly use current configuration. An existing container does not need its old host env values merely to start or run commands.
+If these conditions hold, create from the recorded image and settings, preserve session identity/state, and rerun required per-container preparation. Do not rebuild a missing image or consult current config as an automatic recovery fallback. If an input is missing or changed, return an actionable recovery error before container mutation and point to `devbox recreate <folder|session>` to explicitly use current configuration. An existing container does not need its old host env values merely to start or run commands.
 
 ## State Layout
 
@@ -425,9 +419,9 @@ A session is durable Devbox state and recreation identity. A container is dispos
 The saved session is the top-level environment model. `list`, `status`, `relocate`, `clone`, and `delete` are root commands; there is no `session` group or separate container-only list/status.
 
 - `list` inventories saved environments, including missing containers, corrupt records, and pending transfer endpoints, without resolving desired configuration.
-- `status <target>` and `status --all` show container state separately from configuration errors and pending runtime/recreate/rebuild changes. Missing containers do not imply configuration failure.
+- `status <folder|session>` and `status --all` show container state separately from configuration errors and pending runtime/recreate/rebuild changes. Missing containers do not imply configuration failure.
 - Both list and bulk status warn separately about installation-managed containers without session records; JSON has separate `sessions` and `unmatched_containers` arrays, not invented session rows.
-- `status <target>` also exposes the recorded contract and live leases; desired-configuration errors do not hide these details. Single-target JSON adds `record` and `active` to the status fields, while bulk rows remain compact. Exact pending-transfer endpoints remain inspectable without records, omit `record`, and skip desired resolution. There is no separate `show` command.
+- `status <folder|session>` also exposes the recorded contract and live leases; desired-configuration errors do not hide these details. Single-target JSON adds `record` and `active` to the status fields, while bulk rows remain compact. Exact pending-transfer endpoints remain inspectable without records, omit `record`, and skip desired resolution. There is no separate `show` command.
 - `start`, `stop`, `shell`, `exec`, `logs`, and `recreate` retain their runtime contracts.
 - `delete` coordinates container deletion and optional saved-state deletion under one lock set. Without scope, the CLI asks about the container first, then saved data. Mutually exclusive `--container` and `--session` select runtime-only or whole-environment deletion without prompts. Explicit scope is required for scripts, JSON output, and dry runs. `--force` only relaxes container attached-command protection. Saved-state deletion still requires container absence and idle leases.
 
@@ -445,7 +439,7 @@ Use `~/.devbox/config.json` for machine-local defaults:
   "default_profile": "",
   "default_harness": "",
   "global_env": [],
-  "ignore_project_overrides": false
+  "ignore_project": false
 }
 ```
 
@@ -457,24 +451,23 @@ There are no proxy fields. A newly initialized home has no profiles and does not
 | `default_profile` | string | `""` | Profile used when applicable and not selected explicitly |
 | `default_harness` | string | `""` | Harness fallback when no layer or CLI selection applies |
 | `global_env` | string array | `[]` | `KEY=VALUE` literals or `KEY` host passthrough when set |
-| `ignore_project_overrides` | boolean | `false` | Exclude all project artifacts |
+| `ignore_project` | boolean | `false` | Exclude all project artifacts |
 
 ### Profile/project config
 
-Layers remain sparse. Missing fields inherit; present scalar values replace. Lists append only where the table specifies append; `default_shell` is an argv value and replaces as a whole.
+Layers remain sparse. Missing fields inherit; present scalar values replace. Lists append only where the table specifies append; `shell` is an argv value and replaces as a whole.
 
 | Field | Type | Default | Layer behavior |
 |---|---|---|---|
 | `version` | integer | `1` | Validate supported version |
-| `on_exit` | string | `"stop"` | Replace; `running` or `stop` |
-| `default_shell` | string array | `["bash"]` | Replace; must be non-empty |
+| `shell` | string array | `["bash"]` | Replace; must be non-empty |
 | `harness` | string | `""` | Replace; empty uses global fallback, otherwise an effective registry name |
-| `harness_args` | string array | `[]` | Append exact argv entries |
+| `harness_args` | string array | `[]` | Append only from layers explicitly naming the selected harness; configured arrays require a local harness |
 | `network` | string | `"default"` | Replace primary network; `default`, `host`, or an existing network |
 | `docker_args` | string array | `[]` | Append subject to Devbox-owned argument restrictions |
-| `extra_mounts` | string array | `[]` | Append validated mount declarations |
-| `extra_env` | string array | `[]` | Append `KEY=VALUE` entries with valid env names |
-| `extra_ports` | string array | `[]` | Append validated published-port declarations |
+| `mounts` | string array | `[]` | Append validated mount declarations |
+| `env` | string array | `[]` | Append `KEY=VALUE` entries with valid env names |
+| `ports` | string array | `[]` | Append validated published-port declarations |
 | `vscode` | object | `{}` | Contains only the optional `extensions` string array; extensions append |
 | `inherit_profile` | boolean | `true` | Project-only layer-selection setting; `false` excludes all profile artifacts |
 
@@ -489,7 +482,7 @@ Strict rules:
 - unsupported versions fail;
 - normal config load/save code has no migration logic or dependency on the separate migration utility;
 - validation runs after full resolution;
-- CLI overrides apply last;
+- source configuration defines creation settings; invocation-only open arguments are appended at launch and are not saved;
 - config is read once per operation.
 
 ### Host environment substitution
@@ -498,7 +491,7 @@ Global, profile, and project config string values may reference the host process
 
 ```json
 {
-  "extra_env": ["WORK_TOKEN=${env:WORK_TOKEN}"]
+  "env": ["WORK_TOKEN=${env:WORK_TOKEN}"]
 }
 ```
 
@@ -512,7 +505,7 @@ The `env:` prefix explicitly selects a host environment variable, not a containe
 - Track substituted values through merge provenance. Redact environment/auth values in human and JSON diagnostics, including validation errors; ordinary configuration fields are public. Do not persist the host-environment snapshot or dump expanded configuration into session records. Persist only the defined non-secret recorded settings and source references; secret-bearing values contribute only through secret-safe fingerprints.
 - Apply this syntax only to Devbox global/profile/project configuration, not harness definitions, copied harness files, Dockerfiles, hooks, CLI arguments, or durable state. Harness-definition `${user}` remains a separate existing template contract.
 
-Excluded project configuration contributes no variable references and cannot fail explicit-profile resolution because a host variable is unset. Ordinary image/container/runtime change planning handles changes in expanded values; there is no separate environment-refresh lifecycle.
+Excluded project configuration contributes no variable references and cannot fail project-excluded resolution because a host variable is unset. Ordinary image/container/runtime change planning handles changes in expanded values; there is no separate environment-refresh lifecycle.
 
 Terminal display passthrough is invocation-local, not substituted desired config. Capture the existing Devbox display-variable allowlist once per invocation. Supply present values before configured env at creation/recovery and as overrides on each attached `open`, `shell`, and `exec`. Do not persist these values or add env-source references or fingerprints. Changing terminals needs no recreation, and forwarding does not import host dotfiles or change recorded shell argv.
 
@@ -528,7 +521,7 @@ Scoped config commands expose this trace through `--show`:
 
 ```text
 devbox global config --show
-devbox profile config <name> --show
+devbox profile config <profile> --show
 devbox project config <folder> --show [--profile <name>]
 ```
 
@@ -536,7 +529,7 @@ Without `--show`, each command opens a numbered terminal settings menu. With `--
 
 Menus use canonical line input and shared selection/text controls without a TUI dependency. Config submenus, profile/project init, and profile selection share bold headings, aligned numbered choices, wrapped text, and dim secondary instructions; terminal output checks, `NO_COLOR`, and `TERM=dumb` control styling without changing input rules. Local source values remain separate from effective/redacted display values. Each submitted operation immediately re-reads under the owning configuration lock, rejects a changed edited field, and preserves unrelated concurrent edits and source expressions. Reset removes the local key; list controls edit local contributions only. The overview uses a short scope title and Setting/Value/Source columns, without a full-path or lifecycle banner. It shares its value formatter with human `--show`: scalars and shell commands inline, other list entries below the setting, a source beside each entry, and long values wrapped rather than truncated. Empty values display as `None`. Human nested fields use dotted paths for their source annotations; `--show --json` retains the original structure and complete values. Lists open directly with add/edit/remove actions relevant to their contents and reset only for an existing source key. Each operation saves immediately after validation; there are no drafts, save/discard actions, or additional confirmations. Back only navigates. Invalid or conflicting operations are reported without changing the saved field, and the editor reloads current source before the next operation. Source types and supported literal values are validated before saving, while effective cross-field and host-dependent validation remains with the normal resolver. Resolution errors stay visible without blocking local editing; malformed source schemas still require file repair. Enter submits input. Cancellation/EOF abandons incomplete input and retains completed changes.
 
-For profile config, effective resolution includes built-in defaults, global config, and the selected profile. For project config, it includes exactly the participating layers used by the `open` flow: built-in defaults, global config, the applicable profile, and project overrides when enabled. Explicit `--profile` excludes the project layer and all project artifacts; project `inherit_profile: false` excludes the profile layer and all profile artifacts. `--show` reports excluded layers without loading them.
+For profile config, effective resolution includes built-in defaults, global config, and the selected profile. For project config, it includes exactly the participating layers used by the `open` flow: built-in defaults, global config, the applicable profile, and project overrides when enabled. Explicit `--profile` selects the base beneath the project; `--ignore-project` excludes the project layer and all project artifacts; project `inherit_profile: false` excludes the profile layer and all profile artifacts. `--show` reports excluded layers without loading them.
 
 The human provenance display shows participating layers in their actual application order, effective values and their sources, contributions to appended lists, and winning artifact paths. It identifies layers excluded by configuration rather than implying they participated. JSON output exposes the same information. Both render the resolver's source trace; there is no separate visualization resolver or command. Human source labels use `default` or the edited scope name, and `inherited - global` / `inherited - profile` for lower-layer contributions. Non-empty list headings have no aggregate source label. The resolver records per-entry layer names while merging lists; `trace.entry_sources` aligns with resolved values even when entries are identical or environment values are redacted. The overview includes inherited entries, but editors only expose the selected layer's entries. Menu labels follow effective provenance, not whether the edited file contains the key. If resolution fails, known source values retain their owning-scope label while unavailable values are labelled `unknown`.
 
@@ -606,7 +599,7 @@ Provide exact next commands for these common states:
 |---|---|
 | `profile list` is empty | `devbox profile create <name>` |
 | environment list is empty | configure a profile/project, then `devbox create <folder>` |
-| listed environment has a missing container | `devbox start <target>` for recorded recovery |
+| listed environment has a missing container | `devbox start <folder\|session>` for recorded recovery |
 | selected profile is missing | exact `profile create` command plus available profiles |
 | selected harness is missing | owning `profile config`, `project config`, or `init` command |
 | profile/project already exists on `create` | its `config` and `init` commands |
@@ -615,7 +608,7 @@ Provide exact next commands for these common states:
 | container deletion succeeds | ask about saved data in interactive mode, retain it for `--container`, or delete it for `--session` |
 | filtered state cleanup is blocked by a container | exact `devbox delete` command first |
 | primary network is missing | `docker network create <name>` or owning config command |
-| recorded recovery input is missing or changed | identify the input without secrets; `devbox recreate <target>` to use current config |
+| recorded recovery input is missing or changed | identify the input without secrets; `devbox recreate <folder\|session>` to use current config |
 | managed config changes are deferred while running | stop when safe, then open the target to synchronize before startup |
 
 Filtered cleanup guides users to preview first:
@@ -857,7 +850,7 @@ Resolve the desired file tree in accepted precedence order:
 2. profile harness artifact directory, when applicable;
 3. project harness artifact directory, only when project overrides participate.
 
-Explicit `--profile` excludes the project directory entirely, matching all other artifact types.
+`--ignore-project` excludes the project directory entirely, matching all other artifact types.
 
 Copy regular files and traverse directories in harness config trees. Warn with each source path and skip symlinks and other non-regular entries without following links; skipped entries do not override lower-layer files. Carry warnings through defaults, layer resolution, source copying, and seeding to user output. Config-root symlinks and filesystem read failures remain errors. Preserving symlinks is separate work; Docker build-context validation is unchanged.
 
@@ -987,7 +980,7 @@ A session compares current resolved image inputs with its own recorded image-inp
 - forced rebuild with unchanged inputs affects only targeted sessions;
 - a real shared profile/Dockerfile change creates pending image drift for every session whose resolved inputs changed;
 - those sessions still open their existing containers normally;
-- `devbox recreate <target>` builds automatically when the target's image inputs changed;
+- `devbox recreate <folder|session>` builds automatically when the target's image inputs changed;
 - ordinary required builds may use Docker build cache;
 - `--image` forces a no-cache build of the target's Devbox-controlled image stages even when inputs are unchanged; it does not by itself promise refreshed upstream base images;
 - `recreate --all --image` applies the same no-cache policy to each selected session independently; Docker may still deduplicate resulting layers.
@@ -1051,7 +1044,7 @@ Immutable creation inputs remain pending:
 - image and Dockerfile inputs;
 - harness installation/selection and store mounts;
 - primary network;
-- ports, mounts, container env, read-only mode, and raw Docker args.
+- ports, mounts, container env, and raw Docker args.
 
 ### Container commands
 
@@ -1100,13 +1093,13 @@ With the proxy removed, the owned Docker aggregate contains only the main contai
 1. acquire the session operation lock;
 2. reject incompatible pending transfers;
 3. ensure the environment is running;
-4. create an attached-command lease containing host PID, process start identity, action, and requested `on_exit` policy;
+4. create an attached-command lease containing host PID, process start identity, and action; manual keep-running intent belongs to the session, not the lease;
 5. release the operation lock;
 6. run the attached Docker command;
 7. reacquire the operation lock in bounded cleanup;
 8. remove the lease;
 9. reap stale leases;
-10. apply last-attached-command `on_exit` behavior;
+10. stop only if no live attachment remains and the current session has no manual-start intent;
 11. return the attached command's exit status unless cleanup is the only failure.
 
 The lease subsystem belongs to the session store. Application workflows call it; they do not manipulate lease files.
@@ -1114,8 +1107,8 @@ The lease subsystem belongs to the session store. Application workflows call it;
 ### Start and stop
 
 - `create <folder>` creates a new session from current resolved configuration under the external operation lock. Refuse an existing session even if its container is missing; reject corrupt records, pending transfers, and uncommitted state. Use normal image building, managed-config synchronization, startup, preparation, setup, and binary checks, then stop the committed container without running entrypoint or launching a harness. A final-stop failure retains the committed session and points to `stop`.
-- `start <target>` means ensure an existing session is running: start its container without loading desired config, or recover a missing container only under the recorded recovery conditions. Never create a new session. Run recorded compatible preparation and leave it running without launching a harness or creating an attached-command lease.
-- existing-container `start` does not compute desired drift or synchronize new managed config. Invalid desired config and unset host variables unrelated to starting the recorded container cannot block it.
+- `start <folder|session>` ensures an existing session is running and records manual keep-running intent until stop. Use ordinary stopped-container preparation or recorded recovery. Never create a new session or launch the harness. Docker restarts manually started containers after reboot; it does not resume harness processes or attachments.
+- already-running `start` does not resolve desired config. Stopped-container startup uses the shared preparation boundary; invalid participating config blocks it.
 - `start` replaces the old `open --detach` behavior.
 - `stop` rejects active leases unless a force option explicitly permits disruption.
 - there is no proxy sidecar to coordinate.
@@ -1123,8 +1116,8 @@ The lease subsystem belongs to the session store. Application workflows call it;
 ### Recreate
 
 ```text
-devbox recreate <target>
-devbox recreate <target> --image
+devbox recreate <folder|session>
+devbox recreate <folder|session> --image
 devbox recreate --all
 devbox recreate --all --image
 ```
@@ -1162,7 +1155,7 @@ flowchart TD
     K --> L[Create lease]
     L --> M[Release lock]
     M --> N[Launch harness]
-    N --> O[Lease cleanup and on_exit]
+    N --> O[Lease cleanup and manual-intent check]
 ```
 
 Rules:
@@ -1172,12 +1165,12 @@ Rules:
 - a missing container with an existing durable session follows the strict recorded recovery conditions; unavailable recovery inputs require explicit `recreate`, never automatic creation from current config;
 - a brand-new configured target with no durable session requires explicit `create`; `open` and `start` do not create it;
 - a usable existing container opens from its recorded contract even when creation-time config drift exists;
-- drift produces a concise warning and `devbox recreate <target>` hint, never a blocking prompt or error;
+- drift produces a concise warning and `devbox recreate <folder|session>` hint, never a blocking prompt or error;
 - the `open` command never performs destructive recreation;
 - setup runs once per container creation and records completion in the session record, not an opaque home marker;
 - entrypoint hook runs on every open;
 - these hooks are the only persisted pre-harness customization points; `open` has no `--init` or `--run` command injection;
-- ad hoc commands use `devbox exec`, including `devbox exec <target> -- bash -s < script.sh` for a host script;
+- ad hoc commands use `devbox exec`, including `devbox exec <folder|session> -- bash -s < script.sh` for a host script;
 - managed harness config synchronization occurs while stopped or absent, before startup and in-container preparation; running containers retain their live files and defer managed config changes;
 - record commit is part of successful creation.
 
@@ -1220,19 +1213,19 @@ The CLI is resource-first. Global, profile, and project configuration stays unde
 
 ```text
 devbox create <folder> [-p NAME]
-devbox open <target> [-c] [-p NAME]
+devbox open <folder|session> [-c] [-p NAME]
 devbox list [--sort name|last-active] [--wide] [--json]
-devbox status <target> [--json]
+devbox status <folder|session> [--json]
 devbox status --all [--profile NAME] [--json]
-devbox start <target>
-devbox stop <target>
+devbox start <folder|session>
+devbox stop <folder|session>
 devbox delete [target...]
 devbox delete --all|--stopped
-devbox shell <target>
-devbox exec <target> -- <argv...>
-devbox ssh <target> <destination> [--host-master]
-devbox logs <target>
-devbox recreate <target> [--image]
+devbox shell <folder|session>
+devbox exec <folder|session> -- <argv...>
+devbox ssh <folder|session> <destination> [--host-master]
+devbox logs <folder|session>
+devbox recreate <folder|session> [--image]
 devbox recreate --all [--image]
 devbox network inspect|env|connect|disconnect
 devbox relocate|clone ...
@@ -1245,29 +1238,29 @@ Missing-container sessions and corrupt records remain listed. Unmatched managed 
 Deletion examples:
 
 ```text
-devbox delete <target>                         # interactive container, then saved-data choices
-devbox delete <target> --container            # runtime only, no prompts
-devbox delete <target> --session              # whole environment, no prompts
+devbox delete <folder|session>                         # interactive container, then saved-data choices
+devbox delete <folder|session> --container            # runtime only, no prompts
+devbox delete <folder|session> --session              # whole environment, no prompts
 devbox delete --all --session --dry-run
 devbox delete --session --orphaned [--older-than <duration>] --dry-run
 ```
 
 Saved state is removed only after verified container absence and idle-session checks. Auth, shared caches, workspace files, and source configuration are not part of deletion. Cancellation or failure after container deletion retains remaining saved state; it does not restore deleted containers.
 
-The `open` command accepts only launch options: `--continue`, `--on-exit`, `--harness-arg`, and one-off harness arguments after `--`. Container-setting options (`--harness`, `--network`, `--env`, `--volume`, `--port`, `--docker-arg`, and `--read-only`) belong to `create` and `recreate`, which also accept `--on-exit` and `--harness-arg`. Because the target follows an explicit command, workspace names do not collide with top-level command names.
+The `open` command accepts `--continue`, `--harness-arg`, and one-off harness arguments after `--`. Creation/recreation accept only selection and operational flags. Harness selection, network, env, mounts, ports, and raw Docker options belong in configuration. Workspace read-only mode and `on_exit` are removed. Because the target follows an explicit command, workspace names do not collide with top-level command names.
 
 The `open` command has no `--detach`, `--recreate-container`, `--recreate-image`, `--init`, or `--run`. `create` owns new stopped environments, `start` owns detached access to existing sessions, `recreate` owns replacement, one-time preparation belongs in `setup.sh`, every-open preparation belongs in `entrypoint.sh`, and ad hoc commands use `devbox exec`.
 
 Network command semantics:
 
 ```text
-devbox network inspect <target>
-devbox network env <target>
-devbox network connect <secondary-network> <target>
-devbox network disconnect <secondary-network> <target>
+devbox network inspect <folder|session>
+devbox network env <folder|session>
+devbox network connect <secondary-network> <folder|session>
+devbox network disconnect <secondary-network> <folder|session>
 ```
 
-`network env` emits shell-safe exports specifically for scripting, including `source <(devbox network env <target>)` and single-value printing where supported. It remains a first-class shorthand rather than forcing scripts to transform inspect JSON.
+`network env` emits shell-safe exports specifically for scripting, including `source <(devbox network env <folder|session>)` and single-value printing where supported. It remains a first-class shorthand rather than forcing scripts to transform inspect JSON.
 
 `connect` and `disconnect` never edit profile/project config. They are rejected for host-network containers, and `disconnect` cannot remove the configured primary network.
 
@@ -1284,8 +1277,8 @@ Without `--show`, `global config` opens the interactive global dashboard. With `
 
 ```text
 devbox profile create <name>
-devbox profile config <name>
-devbox profile config <name> --show [--json]
+devbox profile config <profile>
+devbox profile config <profile> --show [--json]
 devbox profile init <name> [--harness <name>]
 devbox profile list
 devbox profile set [name] [--clear]
@@ -1316,14 +1309,14 @@ devbox project init <folder> [--harness <name|inherit>]
 
 | Workflow | Rewrite contract |
 |---|---|
-| One-off launch options | Retain continue, harness selection/args, `on_exit`, read-only workspace, extra mounts/env/ports, and validated raw Docker args; `network` replaces old network flags |
+| One-off launch options | Retain continuation and invocation-only harness arguments; all container settings belong in sparse profile/project configuration |
 | Existing-container access | Already-running start/shell/exec use recorded settings without desired config; stopped-container access synchronizes compatible runtime config before starting. Folder plus explicit profile or exact name selects the slot |
 | IDE attachment | `start` replaces detach; retain non-root user/workspace devcontainer metadata and `vscode.extensions` container metadata |
 | Agent documentation | Keep `/devbox/docs`, `/devbox/AGENTS.md`, and built-in documentation skills; init does not copy the Devbox skill into profile/project config, but explicit user overrides remain supported |
 | Network scripting | Keep inspect JSON, shell-safe env exports, single-value printing, and generated `/devbox/network/env` and `/devbox/network/inspect.json` runtime facts |
 | Authentication | Preserve managed host auth and login persistence; arbitrary global auth-path overrides are outside the initial rewrite schema |
 | Automation | Keep non-interactive create/config display, explicit init selections, dry-run session operations, and command exit-code/cancellation contracts; do not require dashboards for the first working path |
-| Docker escape hatch | Raw arguments cannot override Devbox-owned identity, labels, primary network, managed mounts, `DEVBOX_*` env, or image/command boundaries; value-taking raw options use one `--option=value` token |
+| Docker escape hatch | Raw arguments cannot override Devbox-owned identity, labels, primary network, restart policy, managed mounts, `DEVBOX_*` env, or image/command boundaries; value-taking raw options use one `--option=value` token |
 
 These are retained contracts, not additional command families. Removed workflows remain listed below rather than being silently reintroduced for parity.
 
@@ -1395,7 +1388,7 @@ Build the first complete runtime path before dashboards or exhaustive package im
 - resolve an explicitly configured profile once into `EnvironmentSpec`, including creation settings, source trace, and image/container/runtime fingerprints;
 - implement the session record, installation identity, external operation locks, ownership checks, and leases needed for this path;
 - build through a typed Docker adapter with installation-owned images and session-scoped tags;
-- synchronize managed config while stopped, create/start the container, and launch Pi with bounded cleanup and `on_exit`;
+- synchronize managed config while stopped, create/start the container, and launch Pi with bounded cleanup and manual-start intent;
 - reopen the same container without recreation, report valid drift without blocking, and explicitly recreate while preserving session identity/state;
 - implement `recreate --image` as a no-cache build and preserve foreground exit status;
 - keep fixtures and direct config files sufficient to exercise the path; do not build dashboards first.
@@ -1414,8 +1407,8 @@ Build the first complete runtime path before dashboards or exhaustive package im
 
 ### Phase 3: Complete configuration, artifacts, and image contracts
 
-- implement the full sparse global/profile/project schemas, fresh-home defaults, CLI overrides, and retained field validation;
-- implement default-profile/project layering, explicit-profile isolation, and project-only `inherit_profile: false` in one resolver;
+- implement the full sparse global/profile/project schemas, fresh-home defaults and retained field validation;
+- implement default-profile/project layering, explicit project exclusion, and project-only `inherit_profile: false` in one resolver;
 - implement `${env:NAME}` using one host-environment snapshot, source-expression preservation, secret-source references, and redacted diagnostics;
 - complete every artifact's resolution and source trace, including ordinary overlays and stopped-only managed-config synchronization;
 - complete layered Dockerfile build plans, setup/entrypoint contracts, and embedded runtime assets/docs;
@@ -1429,7 +1422,7 @@ Build the first complete runtime path before dashboards or exhaustive package im
 - implement exact recorded recovery, including missing/changed input diagnostics and explicit recreation when recovery is unavailable;
 - implement shared stopped-container startup synchronization for open/start/shell/exec, with strict invalid-config errors and config-independent running access;
 - complete target/slot resolution and command-name path disambiguation;
-- complete lease staleness, signal-safe cleanup, `on_exit`, setup completion, and stopped-only sync/deferral tests;
+- complete lease staleness, signal-safe cleanup, manual-start/reboot policy, setup completion, and stopped-only sync/deferral tests;
 - implement environment list/status and runtime logs/delete, batched Docker inventory, retained IDE metadata, and network runtime facts/commands;
 - add corruption, concurrency, ownership, and failed-commit tests.
 
@@ -1471,11 +1464,11 @@ Build the first complete runtime path before dashboards or exhaustive package im
 
 ### Unit tests
 
-- strict standard-JSON decoding, exact field/default validation, rejection of comments, and whole-argv replacement for `default_shell`;
+- strict standard-JSON decoding, exact field/default validation, rejection of comments, and whole-argv replacement for `shell`;
 - host environment substitution: embedded and array string references, unset versus empty variables, JSON-safe replacement, non-recursive expansion, source-expression preservation, redacted human/JSON errors and provenance, and fingerprint changes;
 - registry override and origin rules;
 - complete artifact precedence matrix and provenance rendering for layer order, scalar sources, appended-list contributions, winning artifacts, and excluded layers;
-- explicit-profile isolation: malformed project JSON, unset project variable references, and project Dockerfiles/hooks/harness files neither affect resolution nor enter fingerprints;
+- explicit project exclusion: malformed project JSON, unset project variable references, and project Dockerfiles/hooks/harness files neither affect resolution nor enter fingerprints;
 - project-only `inherit_profile`: default true, false excludes every profile artifact and missing/invalid default profiles, global project exclusion takes priority, and global/profile schemas reject the field;
 - immutable spec and deterministic fingerprints;
 - fresh-home empty profile/default state;
@@ -1504,12 +1497,12 @@ Cover:
 - Pi and OpenCode image creation;
 - one custom harness definition;
 - auth and store persistence;
-- default-profile/project precedence and explicit-profile startup with malformed excluded project configuration;
+- default-profile/project precedence and project-excluded startup with malformed excluded project configuration;
 - default-base and custom-base layered Dockerfile builds;
 - authoritative managed-file synchronization before open/start/shell/exec startup, shared-JSON conflicts, running-container deferral, and application at the next start;
 - Pi `settings.json` owned-key updates while stopped, with undeclared Pi-owned keys unchanged;
 - the same `json-keys` strategy in a custom harness;
-- concurrent attached commands and `on_exit`;
+- concurrent attached commands and manual-start intent;
 - recreation preserving state and exact missing-container recovery without current-config fallback;
 - missing/changed recovery inputs require explicit recreation, while existing containers remain startable without their original host secret values;
 - session-scoped image tags, shared image IDs with installation-only image ownership labels, targeted no-cache rebuild isolation, and safe tag cleanup;
@@ -1580,11 +1573,11 @@ The rewrite is complete when:
 - proxy code and behavior do not exist;
 - Pi and OpenCode work through parsed built-in definitions;
 - a user can add or override a harness through `~/.devbox/harnesses/<name>/harness.json` without recompilation;
-- profile slots, default-profile/project layering, explicit-profile isolation, and standalone `inherit_profile: false` projects pass a complete resolution matrix;
+- profile slots, default-profile/project layering, explicit project exclusion, and standalone `inherit_profile: false` projects pass a complete resolution matrix;
 - `${env:NAME}` resolves from one host-environment snapshot in participating configuration without rewriting expressions, exposing env/auth values in diagnostics, or persisting secret-bearing values in session records;
 - managed harness config synchronization replaces modified ordinary copies, removes obsolete managed files, preserves unmanaged state and undeclared shared-JSON keys, and runs before ordinary startup, never on running attachment; malformed live shared JSON still blocks synchronization;
 - Pi's declared `settings.json` keys update while all undeclared Pi-owned keys remain intact;
-- `on_exit` remains safe with concurrent attached commands;
+- manual-start intent and automatic shutdown remain safe with concurrent attached commands;
 - all retained session operations work through one durable session record and transfer engine, with no permanent lineage and stopped-container safety for state copying;
 - missing-container recovery uses concrete recorded settings and available verified inputs, never saved secrets or an implicit current-config fallback;
 - Docker destructive operations require lock ownership and installation labels;

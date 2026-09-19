@@ -53,8 +53,8 @@ func TestStatusReportsLiveLeasesWithoutReaping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	live, liveErr := lock.Lease("exec", "running")
-	stale, staleErr := lock.Lease("shell", "running")
+	live, liveErr := lock.Lease("exec")
+	stale, staleErr := lock.Lease("shell")
 	lock.Close()
 	if liveErr != nil || staleErr != nil {
 		t.Fatal(liveErr, staleErr)
@@ -120,9 +120,12 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 	names := map[string]string{}
 	for _, profile := range []string{"clean", "runtime", "container", "image", "invalid", "corrupt", "recordless", "mismatch", "missing"} {
 		q.Profile = profile
-		write(t, filepath.Join(e.Store.Home, "profiles", profile, "config.json"), `{"version":1,"harness":"pi","on_exit":"running"}`)
+		write(t, filepath.Join(e.Store.Home, "profiles", profile, "config.json"), `{"version":1,"harness":"pi"}`)
 		result, err := createAndOpen(ctx, e, q)
 		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = e.Start(ctx, result.Name, ""); err != nil {
 			t.Fatal(err)
 		}
 		names[profile] = result.Name

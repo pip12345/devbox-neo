@@ -73,7 +73,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if out, err := run("status", "--all", "--profile", "absent"); err != nil || !strings.Contains(out, "No matching saved environments.") {
 		t.Fatal("incorrect empty bulk status", out, err)
 	}
-	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host","extra_env":["TOKEN=private-status-value"]}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host","env":["TOKEN=private-status-value"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"status", result.Name}, {"status", "--all"}} {
@@ -110,7 +110,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if err != nil || json.Unmarshal([]byte(out), &single) != nil || single.Record == nil || single.ConfigError == "" {
 		t.Fatal("JSON config error hid saved details", out, err)
 	}
-	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host","extra_env":["TOKEN=private-status-value"]}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host","env":["TOKEN=private-status-value"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	destination := t.TempDir()

@@ -17,13 +17,15 @@ flowchart TD
 
 `config.Decode` rejects duplicate JSON keys as well as schema errors. Duplicate-key rejection matters because different JSON consumers otherwise disagree about the same file's meaning. Source parsing and effective validation are separate: editing a literal source field should not require unrelated inherited or host-dependent fields to resolve.
 
-`artifact.ResolveWithHost` is the authority for participation:
+`artifact.Select` owns participation; the full resolver and direct session lookup share it:
 
-- Explicit profile selection excludes the project entirely.
-- Otherwise, the global default profile participates beneath the project.
-- Project `inherit_profile: false` removes the profile before reading it.
-- Global project exclusion removes the project and its inheritance choice.
-- CLI overrides apply after selected layers; an empty harness falls back to the global default.
+- Explicit profile selection replaces the default base profile, without excluding project artifacts.
+- Project `inherit_profile: false` removes the default profile before reading it; an explicit profile conflicts and fails.
+- Global or invocation project exclusion removes the project and its inheritance choice.
+- Recorded participation pins a saved session's sources independently of changed defaults.
+- An empty resolved harness falls back to the global default.
+
+Target selection reads only identity-affecting settings, without expanding unrelated env references or loading harness/build inputs. Full resolution validates participating sources before runtime preparation. Configured `harness_args` requires a harness in the same file; only layers naming the final selected harness contribute arguments and argument provenance. Invocation arguments are appended at launch and never saved as desired configuration.
 
 This ordering makes excluded broken/missing layers irrelevant instead of reading them and then trying to suppress their errors. Project-init inheritance previews use the same resolver with a proposed layer.
 
@@ -41,7 +43,7 @@ Resolution captures one host environment snapshot, then expands `${env:NAME}` in
 
 Sensitivity follows the destination field, not the variable name or substitution mechanism. Env/auth values are sensitive; paths, networks, argv, and other settings remain public. This lets diagnostics explain ordinary changes without accidentally treating every host-dependent path as a secret.
 
-Sensitive config env is recorded as file/field/index references plus installation-keyed hashes of both the expression and resolved assignment. Recovery rereads exactly those entries. An unrelated file edit does not invalidate recovery, while changing the expression or assignment does. Definition env is reconstructed from its verified recorded definition source. Invocation-only env has no durable source.
+Sensitive config env is recorded as file/field/index references plus installation-keyed hashes of both the expression and resolved assignment. Recovery rereads exactly those entries. An unrelated file edit does not invalidate recovery, while changing the expression or assignment does. Definition env is reconstructed from its verified recorded definition source. Public creation commands accept no configuration overrides; lasting env settings belong in source files.
 
 The Docker adapter renders creation env through a private `0600` temporary file. Neither values nor its temporary path enter the session record. Display redacts env values and never serializes the host snapshot. Terminal display passthrough is a separate invocation-local channel described in [lifecycle](lifecycle.md#invocation-local-terminal-metadata).
 

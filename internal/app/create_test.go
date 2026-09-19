@@ -57,7 +57,7 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 func TestCreatePreparesWithoutOpeningAndLeavesStopped(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","on_exit":"running"}`)
+	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi"}`)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/setup.sh"), "echo setup\n")
 	write(t, filepath.Join(e.Store.Home, "profiles/test/entrypoint.sh"), "echo entrypoint\n")
 	result, err := e.Create(ctx, q)
@@ -86,7 +86,7 @@ func TestCreatePreparesWithoutOpeningAndLeavesStopped(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, _ = d.Snapshot(result.Name)
-	if !c.State.Running || count(d, "create") != 1 || record(t, e, result.Name).ID != r.ID {
+	if c.State.Running || count(d, "create") != 1 || record(t, e, result.Name).ID != r.ID {
 		t.Fatal("open did not reuse the created environment")
 	}
 }
@@ -99,8 +99,6 @@ func TestOpenLaunchOverridesDoNotRecreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := record(t, e, created.Name)
-	onExit := "running"
-	q.Overrides.OnExit = &onExit
 	q.Overrides.HarnessArgs = []string{"--version"}
 	q.Continue = true
 	q.Args = []string{"--one-off"}
@@ -109,10 +107,10 @@ func TestOpenLaunchOverridesDoNotRecreate(t *testing.T) {
 	}
 	after := record(t, e, created.Name)
 	c, _ := d.Snapshot(created.Name)
-	if count(d, "create") != 1 || count(d, "build") != 1 || !c.State.Running || after.Launch.OnExit != "running" || !reflect.DeepEqual(after.Inputs.Container, before.Inputs.Container) || !reflect.DeepEqual(after.Inputs.Image, before.Inputs.Image) {
-		t.Fatal("launch overrides changed creation settings or lost on-exit policy")
+	if count(d, "create") != 1 || count(d, "build") != 1 || c.State.Running || !reflect.DeepEqual(after.Inputs.Container, before.Inputs.Container) || !reflect.DeepEqual(after.Inputs.Image, before.Inputs.Image) {
+		t.Fatal("launch overrides changed creation settings or automatic shutdown")
 	}
-	want := []string{"pi", "--tui-mode", "fullscreen", "--version", "-c", "--one-off"}
+	want := []string{"pi", "--tui-mode", "fullscreen", "-c", "--version", "--one-off"}
 	for _, args := range d.History() {
 		if args[0] == "exec" && argvSuffix(args, want) {
 			return

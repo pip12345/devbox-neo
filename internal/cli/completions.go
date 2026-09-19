@@ -157,17 +157,21 @@ func completeTarget(source completionSource, index int, multiple bool) func(*cob
 
 func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 	containers := completionContainers(runtime)
-	slots := func(cmd *cobra.Command) []string { return append(completeProfiles(cmd), ".project") }
+	slots := func(cmd *cobra.Command) []string {
+		values := []string{".project"}
+		for _, profile := range completeProfiles(cmd) {
+			values = append(values, ".profile-"+profile, ".profile-"+profile+".project")
+		}
+		return values
+	}
 	_ = root.RegisterFlagCompletionFunc("profile", completeFlag(completeProfiles))
 	_ = root.MarkPersistentFlagDirname("home")
 	var visit func(*cobra.Command)
 	visit = func(cmd *cobra.Command) {
 		path := strings.TrimPrefix(cmd.CommandPath(), root.Name()+" ")
 		switch path {
-		case "open", "start", "recreate", "status", "ssh":
+		case "open", "start", "recreate", "status", "ssh", "shell", "exec", "stop", "logs":
 			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
-		case "shell", "exec", "stop", "logs":
-			cmd.ValidArgsFunction = completeTarget(containers, 0, false)
 		case "delete":
 			cmd.ValidArgsFunction = completeTarget(func(cmd *cobra.Command) []string {
 				return append(completeSessions(cmd), containers(cmd)...)
@@ -180,9 +184,9 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 				return completeTarget(completeSessions, 0, false)(cmd, args, prefix)
 			}
 		case "network inspect", "network env":
-			cmd.ValidArgsFunction = completeTarget(containers, 0, false)
+			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
 		case "network connect", "network disconnect":
-			cmd.ValidArgsFunction = completeTarget(containers, 1, false)
+			cmd.ValidArgsFunction = completeTarget(completeSessions, 1, false)
 		case "profile init", "profile config", "profile set", "profile delete":
 			cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
 				if len(args) != 0 {
@@ -203,8 +207,7 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 		for flag, source := range map[string]completionSource{
 			"profile": completeProfiles, "from-profile": completeProfiles,
 			"from": slots, "to": slots, "harness": completeHarnesses,
-			"sort":    func(*cobra.Command) []string { return []string{"name", "last-active"} },
-			"on-exit": func(*cobra.Command) []string { return []string{"running", "stop"} },
+			"sort": func(*cobra.Command) []string { return []string{"name", "last-active"} },
 		} {
 			if cmd == root || cmd.Flags().Lookup(flag) == nil {
 				continue

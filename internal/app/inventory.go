@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"devbox/internal/docker"
+	"devbox/internal/environment"
 	"devbox/internal/store"
 )
 
@@ -40,26 +41,32 @@ func (e *Engine) sessionInventory(entries []store.Entry, live []docker.Container
 	entries = retained
 	known := map[string]bool{}
 	profiles := map[string]string{}
+	projects := map[string]bool{}
 	for _, entry := range entries {
 		known[entry.Name] = true
 		if entry.Err == nil {
 			profiles[entry.Name] = entry.Record.Identity.Profile
+			projects[entry.Name] = entry.Record.Identity.Project
 		}
 	}
 	for _, c := range live {
 		// Labels retain filtering for corrupt records; they never authorize mutations.
 		name := strings.TrimPrefix(c.Name, "/")
-		if _, recorded := profiles[name]; !recorded && c.Config.Labels[docker.Namespace+".slot"] == "profile:"+profile {
-			profiles[name] = profile
+		if _, recorded := profiles[name]; !recorded {
+			p, project, err := environment.ParseSlot(c.Config.Labels[docker.Namespace+".slot"])
+			if err == nil {
+				profiles[name] = p
+				projects[name] = project
+			}
 		}
 	}
 	for _, view := range e.inventoryViews(entries, live, true) {
-		if profile == "" || profiles[view.Name] == profile {
+		if (profile == "" || profiles[view.Name] == profile) && !(e.IgnoreProject && projects[view.Name]) {
 			report.Sessions = append(report.Sessions, view)
 		}
 	}
 	for _, view := range e.inventoryViews(entries, live, false) {
-		if !known[view.Name] && (profile == "" || profiles[view.Name] == profile) {
+		if !known[view.Name] && (profile == "" || profiles[view.Name] == profile) && !(e.IgnoreProject && projects[view.Name]) {
 			report.UnmatchedContainers = append(report.UnmatchedContainers, view)
 		}
 	}

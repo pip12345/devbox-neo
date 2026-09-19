@@ -32,7 +32,7 @@ func TestAccessSynchronizesOnlyAtStartup(t *testing.T) {
 				e, d, q := fixture(t)
 				ctx := context.Background()
 				profile := filepath.Join(e.Store.Home, "profiles/test")
-				write(t, filepath.Join(profile, "config.json"), `{"version":1,"harness":"pi","on_exit":"running"}`)
+				write(t, filepath.Join(profile, "config.json"), `{"version":1,"harness":"pi"}`)
 				write(t, filepath.Join(profile, "pi/managed.txt"), "old")
 				write(t, filepath.Join(profile, "pi/obsolete.txt"), "old")
 				write(t, filepath.Join(profile, "pi/settings.json"), `{"packages":["old"]}`)

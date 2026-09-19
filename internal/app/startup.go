@@ -20,13 +20,13 @@ func (e *Engine) creationDrift(result *Result, r store.Record, spec environment.
 // startup is needed. Transaction rollback uses recorded startup, not this path.
 func (e *Engine) startAccess(ctx context.Context, lock *store.Locked, c docker.Container, exists bool, r *store.Record, desired *environment.Spec, result *Result) (docker.Container, bool, error) {
 	if exists && c.State.Running {
-		return c, false, nil
+		return c, false, e.syncRestart(ctx, c, *r)
 	}
 	if err := lock.RequireIdle(); err != nil {
 		return c, false, err
 	}
 	if desired == nil {
-		spec, err := e.resolveSpec(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, ExpectedName: r.Identity.Name})
+		spec, err := e.resolveSpec(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Recorded: &r.Identity})
 		if err != nil {
 			e.resolutionWarnings(spec)
 			return c, false, err
@@ -53,7 +53,6 @@ func applyLaunch(r *store.Record, spec environment.Spec) {
 	if r.Definition.Hash == spec.Harness.Hash {
 		r.Launch.Args = append(append([]string(nil), spec.Harness.Definition.Launch.Args...), spec.Settings.HarnessArgs...)
 	}
-	r.Launch.OnExit = spec.Settings.OnExit
 	r.Launch.Shell = append([]string(nil), spec.Settings.Shell...)
 }
 

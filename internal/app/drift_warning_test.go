@@ -132,8 +132,11 @@ func TestOpenCancelledAfterCreationWarningDoesNotMutate(t *testing.T) {
 
 func TestOpenWithoutCreationDriftDiagnostics(t *testing.T) {
 	e, _, q := fixture(t)
-	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","on_exit":"running"}`)
+	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi"}`)
 	if _, err := createAndOpen(context.Background(), e, q); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Start(context.Background(), q.Workspace, q.Profile); err != nil {
 		t.Fatal(err)
 	}
 	for _, change := range []string{"unchanged", "runtime-only", "runtime-deferred"} {

@@ -46,7 +46,7 @@ An environment can still appear in `list` after its container has been removed. 
 devbox-neo start .
 ```
 
-`open` can restore it too. If recovery reports unavailable inputs, use `recreate` to build from current configuration. One-off environment values passed with `--env` must be supplied again during recreation after container loss.
+`open` can restore it too. If recovery reports unavailable inputs, use `recreate` to build from current configuration. Set environment variables in profile/project configuration, using host references for secrets.
 
 ## Copy saved harness state to another folder
 
@@ -67,10 +67,10 @@ To move rather than copy, use `relocate` with the same source and destination sy
 You can also move between profile and project environments in the same folder:
 
 ```sh
-devbox-neo relocate . --from basic --to .project
+devbox-neo relocate . --from .profile-basic --to .profile-basic.project
 ```
 
-Here, a **slot** means a named profile or the folder's project configuration. The destination project must already be initialized. See [transfer commands](../reference/commands.md#transfers) for selector rules.
+Here, a **slot** means the selected profile/project combination. The destination project must already be initialized. See [transfer commands](../reference/commands.md#transfers) for selector rules.
 
 If a transfer is interrupted, inspect `list` or `status <exact-name>`, fix the reported problem, and retry the same command. Leave pending state in place so Devbox can resume safely.
 

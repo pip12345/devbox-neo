@@ -22,6 +22,8 @@ type View struct {
 	Name                string                    `json:"name"`
 	Workspace           string                    `json:"workspace,omitempty"`
 	Profile             string                    `json:"profile,omitempty"`
+	Project             bool                      `json:"project"`
+	ManualStart         bool                      `json:"manual_start"`
 	Harness             string                    `json:"harness,omitempty"`
 	SessionID           string                    `json:"session_id,omitempty"`
 	LastActivity        time.Time                 `json:"last_activity,omitempty"`
@@ -38,7 +40,7 @@ type View struct {
 }
 
 func recordView(r store.Record) View {
-	return View{Name: r.Identity.Name, Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Harness: r.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action}
+	return View{Name: r.Identity.Name, Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Project: r.Identity.Project, ManualStart: r.ManualStart, Harness: r.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action}
 }
 func (e *Engine) inventory(ctx context.Context) ([]store.Entry, []docker.Container, error) {
 	entries, err := e.Store.Inventory(ctx)
@@ -98,7 +100,7 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 }
 
 func (e *Engine) desiredStatus(view *View, r store.Record) {
-	desired, err := e.Resolve(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, ExpectedName: r.Identity.Name})
+	desired, err := e.Resolve(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Recorded: &r.Identity})
 	if err != nil {
 		view.ConfigError = err.Error()
 	} else {
@@ -140,7 +142,11 @@ func (e *Engine) selectContainers(ctx context.Context, selection Selection) ([]s
 			return nil, err
 		}
 		for _, c := range containers {
-			if selection.Profile != "" && c.Config.Labels[docker.Namespace+".slot"] != "profile:"+selection.Profile {
+			_, project, _ := environment.ParseSlot(c.Config.Labels[docker.Namespace+".slot"])
+			if e.IgnoreProject && project {
+				continue
+			}
+			if selection.Profile != "" && !environment.SlotHasProfile(c.Config.Labels[docker.Namespace+".slot"], selection.Profile) {
 				continue
 			}
 			if !selection.Stopped || !c.State.Running {
@@ -220,7 +226,11 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection
 		if !exists {
 			continue
 		}
-		if selection.Profile != "" && owner.Slot != "profile:"+selection.Profile {
+		_, project, _ := environment.ParseSlot(owner.Slot)
+		if e.IgnoreProject && project {
+			return nil, fmt.Errorf("project selection does not match the selected session")
+		}
+		if selection.Profile != "" && !environment.SlotHasProfile(owner.Slot, selection.Profile) {
 			return nil, fmt.Errorf("profile does not match the selected container")
 		}
 		if selection.Stopped && c.State.Running {
@@ -266,11 +276,8 @@ func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 	if !filepath.IsAbs(owner.Workspace) || filepath.Clean(owner.Workspace) != owner.Workspace {
 		return owner, fmt.Errorf("invalid container workspace ownership")
 	}
-	if owner.Slot != "project" {
-		profile, ok := strings.CutPrefix(owner.Slot, "profile:")
-		if !ok || !config.Name.MatchString(profile) {
-			return owner, fmt.Errorf("invalid container slot ownership")
-		}
+	if _, _, err := environment.ParseSlot(owner.Slot); err != nil {
+		return owner, err
 	}
 	if strings.TrimPrefix(c.Name, "/") != environment.ContainerName(owner.Workspace, owner.Slot) {
 		return owner, fmt.Errorf("container name does not match its labelled identity")
@@ -316,12 +323,12 @@ func (e *Engine) RecreateAll(ctx context.Context, force bool, options Request) (
 		request := options
 		request.Workspace = r.Identity.Workspace
 		request.Profile = r.Identity.Profile
-		request.ExpectedName = r.Identity.Name
+		request.Recorded = &r.Identity
 		spec, err := e.Resolve(request)
 		if err != nil {
 			return nil, err
 		}
-		planned = append(planned, replacement{lock, r, spec, c.State.Running})
+		planned = append(planned, replacement{lock, r, spec, r.ManualStart || c.State.Running})
 	}
 	applied := []string{}
 	for _, item := range planned {

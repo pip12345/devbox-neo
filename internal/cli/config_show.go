@@ -14,7 +14,7 @@ func configCommand(factory resourceFactory, scope string) *cobra.Command {
 	use := "config"
 	args := cobra.NoArgs
 	if scope == "profile" {
-		use += " <name>"
+		use += " <profile>"
 		args = cobra.ExactArgs(1)
 	}
 	if scope == "project" {
@@ -66,7 +66,7 @@ func configCommand(factory resourceFactory, scope string) *cobra.Command {
 	cmd.Flags().BoolVar(&show, "show", false, "Show resolved settings and where they come from")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print --show output as JSON")
 	if scope == "project" {
-		cmd.Flags().StringVar(&selectedProfile, "profile", "", "With --show, use this profile instead of the project's configuration")
+		cmd.Flags().StringVarP(&selectedProfile, "profile", "p", "", "With --show, select the base profile beneath project configuration")
 	}
 	return cmd
 }

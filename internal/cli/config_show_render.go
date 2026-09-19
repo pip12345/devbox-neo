@@ -48,7 +48,7 @@ func printConfigView(out io.Writer, view resource.ConfigView) error {
 			label: displayCell(key), value: value,
 			origin:       configSourceForScope(view.Scope, configSourceLabel(view.Trace.Sources[key])),
 			entryOrigins: configEntryOrigins(view.Scope, view.Trace.EntrySources[key]),
-			command:      key == "default_shell",
+			command:      key == "shell",
 		})
 	}
 	keys := make([]string, 0, len(view.Values))

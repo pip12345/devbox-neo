@@ -32,7 +32,7 @@ func TestSourceConfigCompatibility(t *testing.T) {
 	}
 	for _, data := range []string{`{}`, `{"version":null}`, `{"version":1}`} {
 		l, _, err := convertLayer([]byte(data))
-		if err != nil || l.OnExit != nil || l.Shell != nil || l.Harness != nil || l.Network != nil {
+		if err != nil || l.Shell != nil || l.Harness != nil || l.Network != nil {
 			t.Fatalf("sparse inheritance lost: %v", err)
 		}
 	}

@@ -209,7 +209,7 @@ func ValidateRaw(args []string, protected []string, workspace, userHome string) 
 			return fmt.Errorf("value-taking raw Docker options require --option=value")
 		}
 		switch flag {
-		case "--name", "--network", "--net", "--label-file", "--env-file", "--entrypoint", "--rm", "--user", "--workdir", "--init", "--volumes-from":
+		case "--restart", "--name", "--network", "--net", "--label-file", "--env-file", "--entrypoint", "--rm", "--user", "--workdir", "--init", "--volumes-from":
 			return fmt.Errorf("raw Docker option %s is owned by Devbox", flag)
 		case "--label":
 			key, _, _ := strings.Cut(value, "=")

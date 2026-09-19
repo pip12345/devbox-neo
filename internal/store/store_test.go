@@ -67,7 +67,7 @@ func TestLeasePIDReuseAndCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer l.Close()
-	lease, err := l.Lease("open", "stop")
+	lease, err := l.Lease("open")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestLeasePIDReuseAndCorruption(t *testing.T) {
 	if err != nil || len(active) != 0 {
 		t.Fatalf("PID reuse not reaped: %v", err)
 	}
-	lease, err = l.Lease("open", "stop")
+	lease, err = l.Lease("open")
 	if err != nil {
 		t.Fatal(err)
 	}

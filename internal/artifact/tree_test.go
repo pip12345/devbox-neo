@@ -29,7 +29,7 @@ func TestSkippedEntriesDoNotOverrideLowerLayers(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, profile := range []string{"", "base"} {
-		r, err := Resolve(home, work, profile, config.Layer{})
+		r, err := PreviewSelection(home, work, Selection{Profile: profile, IgnoreProject: profile != ""}, config.Layer{}, nil, config.Snapshot())
 		if err != nil {
 			t.Fatal(err)
 		}

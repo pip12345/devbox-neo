@@ -35,7 +35,7 @@ func TestMissingConfigurationGuidanceIncludesDefaultProfileSelection(t *testing.
 		if !errors.As(err, &actionable) || actionable.Code != "configuration_missing" || len(actionable.Next) != 3 {
 			t.Fatalf("unexpected guidance: %v", err)
 		}
-		want := [][]string{{"devbox-neo", "profile", "create", "<name>"}, {"devbox-neo", "profile", "set", "<name>"}, {"devbox-neo", "project", "create", work}}
+		want := [][]string{{"devbox-neo", "profile", "create", "<profile>"}, {"devbox-neo", "profile", "set", "<profile>"}, {"devbox-neo", "project", "create", work}}
 		for i, step := range actionable.Next {
 			if !reflect.DeepEqual(step.Command, want[i]) {
 				t.Fatal(step, want[i])
@@ -65,12 +65,12 @@ func TestLayerParticipation(t *testing.T) {
 		wantArgs                                 []string
 		fail                                     bool
 	}{
-		{name: "project wins", global: `{"version":1,"default_profile":"base"}`, profile: `{"version":1,"harness":"pi","harness_args":["profile"]}`, project: `{"version":1,"harness_args":["project"]}`, wantProfile: "base", wantArgs: []string{"profile", "project"}},
-		{name: "explicit excludes invalid project", profile: `{"version":1,"harness":"pi","harness_args":["profile"]}`, project: `invalid`, explicit: "base", wantProfile: "base", wantArgs: []string{"profile"}},
-		{name: "explicit excludes env references", profile: `{"version":1,"harness":"pi"}`, project: `{"version":1,"network":"${env:MISSING}"}`, explicit: "base", wantProfile: "base"},
+		{name: "project wins", global: `{"version":1,"default_profile":"base"}`, profile: `{"version":1,"harness":"pi","harness_args":["profile"]}`, project: `{"harness":"pi","version":1,"harness_args":["project"]}`, wantProfile: "base", wantArgs: []string{"profile", "project"}},
+		{name: "explicit includes invalid project", fail: true, profile: `{"version":1,"harness":"pi","harness_args":["profile"]}`, project: `invalid`, explicit: "base", wantProfile: "base", wantArgs: []string{"profile"}},
+		{name: "explicit includes env references", fail: true, profile: `{"version":1,"harness":"pi"}`, project: `{"version":1,"network":"${env:MISSING}"}`, explicit: "base", wantProfile: "base"},
 		{name: "standalone ignores missing default", global: `{"version":1,"default_profile":"missing"}`, project: `{"version":1,"inherit_profile":false,"harness":"pi"}`},
 		{name: "standalone ignores corrupt default", global: `{"version":1,"default_profile":"base"}`, profile: `invalid`, project: `{"version":1,"inherit_profile":false,"harness":"pi"}`},
-		{name: "global excludes project inheritance", global: `{"version":1,"default_profile":"base","ignore_project_overrides":true}`, profile: `{"version":1,"harness":"pi"}`, project: `{"version":1,"inherit_profile":false}`, wantProfile: "base"},
+		{name: "global excludes project inheritance", global: `{"version":1,"default_profile":"base","ignore_project":true}`, profile: `{"version":1,"harness":"pi"}`, project: `{"version":1,"inherit_profile":false}`, wantProfile: "base"},
 		{name: "invalid contributing project fails", global: `{"version":1,"default_profile":"base"}`, profile: `{"version":1,"harness":"pi"}`, project: `invalid`, fail: true},
 		{name: "missing selected profile", explicit: "base", fail: true},
 	}
@@ -124,9 +124,6 @@ func TestArtifactsFollowTheSameSelectedLayers(t *testing.T) {
 			t.Fatal(err)
 		}
 		wanted := "project"
-		if explicit != "" {
-			wanted = "profile"
-		}
 		if tree["settings.json"].Layer != wanted {
 			t.Fatal("config tree precedence drift")
 		}

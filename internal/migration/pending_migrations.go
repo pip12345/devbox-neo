@@ -60,7 +60,7 @@ func (m Merger) PendingPlan(ctx context.Context, j *Journal, accept []string) (M
 		} else if !os.IsNotExist(err) {
 			return p, err
 		}
-		spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, Profile: job.Identity.Profile, ExpectedName: job.Identity.Name, ReadOnly: job.ReadOnly, Host: m.host()})
+		spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, Profile: job.Identity.Profile, Recorded: &job.Identity, Host: m.host()})
 		if err != nil {
 			return p, publicFailure("Pending environment configuration does not resolve.", job.Identity.Name, err)
 		}
@@ -72,7 +72,7 @@ func (m Merger) PendingPlan(ctx context.Context, j *Journal, accept []string) (M
 		}
 		for _, arg := range spec.Settings.DockerArgs {
 			if strings.HasPrefix(arg, "--env=") {
-				return p, fmt.Errorf("move raw Docker env entries to extra_env before importing")
+				return p, fmt.Errorf("move raw Docker env entries to env before importing")
 			}
 		}
 		if spec.Fingerprints != job.Desired {

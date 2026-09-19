@@ -15,7 +15,7 @@ func (e *Engine) validateEnvSource(r store.Record, source config.EnvSource) erro
 		_, err := fsutil.Path(e.Store.Home, "config.json")
 		return err
 	}
-	if source.Field != "extra_env" {
+	if source.Field != "env" {
 		return fmt.Errorf("env field does not match its owner")
 	}
 	if source.Path == filepath.Join(r.Identity.Workspace, ".devbox/config.json") {

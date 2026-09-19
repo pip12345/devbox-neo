@@ -29,7 +29,6 @@ type Launch struct {
 	Args     []string `json:"args"`
 	Continue []string `json:"continue_args"`
 	Shell    []string `json:"shell"`
-	OnExit   string   `json:"on_exit"`
 }
 type DefinitionInput struct {
 	Name   string `json:"name"`
@@ -38,6 +37,7 @@ type DefinitionInput struct {
 }
 type Record struct {
 	Version         int                      `json:"version"`
+	ManualStart     bool                     `json:"manual_start"`
 	ID              string                   `json:"id"`
 	Identity        environment.Identity     `json:"identity"`
 	Created         time.Time                `json:"created_at"`
@@ -62,7 +62,7 @@ type Record struct {
 	ManifestVersion int                      `json:"manifest_version"`
 }
 
-const RecordVersion = 2
+const RecordVersion = 3
 
 // Runtime synchronization must advance its explanation baseline together with
 // its fingerprint. Image/container inputs remain committed until recreation.
@@ -84,8 +84,8 @@ func (r Record) Validate(name string) error {
 	if r.Identity.Name != environment.ContainerName(r.Identity.Workspace, r.Identity.Slot) || filepath.Clean(r.Identity.Workspace) != r.Identity.Workspace {
 		return fmt.Errorf("recorded workspace/slot does not match its container name")
 	}
-	if (r.Identity.Slot == "project" && r.Identity.Profile != "") || (r.Identity.Slot != "project" && (!config.Name.MatchString(r.Identity.Profile) || r.Identity.Slot != "profile:"+r.Identity.Profile)) {
-		return fmt.Errorf("invalid recorded slot")
+	if err := r.Identity.ValidateSlot(); err != nil {
+		return err
 	}
 	if !strings.HasPrefix(r.ImageID, "sha256:") || !hashPattern.MatchString(strings.TrimPrefix(r.ImageID, "sha256:")) || r.ImageTag != docker.Namespace+"/session:"+r.ID || r.Creation.Name != name || r.Creation.Image != r.ImageID {
 		return fmt.Errorf("incomplete recorded creation contract")
@@ -99,7 +99,7 @@ func (r Record) Validate(name string) error {
 	if r.Inputs.Container.Identity != r.Identity || r.Inputs.Image.Harness != r.Definition.Name || r.Inputs.Image.Definition.Hash != r.Definition.Hash || r.Inputs.FingerprintsFor(r.ImageID) != r.Applied {
 		return fmt.Errorf("recorded inputs do not match the committed fingerprints or identity")
 	}
-	if r.Launch.Binary == "" || len(r.Launch.Shell) == 0 || (r.Launch.OnExit != "stop" && r.Launch.OnExit != "running") || !config.Name.MatchString(r.Definition.Name) {
+	if r.Launch.Binary == "" || len(r.Launch.Shell) == 0 || !config.Name.MatchString(r.Definition.Name) {
 		return fmt.Errorf("invalid recorded launch contract")
 	}
 	if r.Created.IsZero() || r.Activity.IsZero() || !hashPattern.MatchString(r.SetupContainer) {
@@ -117,7 +117,7 @@ func (r Record) Validate(name string) error {
 		}
 		switch source.Kind {
 		case "file":
-			if !filepath.IsAbs(source.Path) || source.Index < 0 || (source.Field != "global_env" && source.Field != "extra_env") {
+			if !filepath.IsAbs(source.Path) || source.Index < 0 || (source.Field != "global_env" && source.Field != "env") {
 				return fmt.Errorf("invalid recorded environment source")
 			}
 		case "invocation":
@@ -161,7 +161,7 @@ func (r Record) Validate(name string) error {
 			extra = append(extra, m)
 			continue
 		}
-		if seen || m.Kind == "volume" || (m.Target == "/workspace" && m.Source != r.Identity.Workspace) {
+		if seen || m.Kind == "volume" || (m.Target == "/workspace" && (m.Source != r.Identity.Workspace || m.ReadOnly)) {
 			return fmt.Errorf("invalid recorded managed mount")
 		}
 		targets[m.Target] = true
@@ -185,7 +185,7 @@ func (r Record) Validate(name string) error {
 	if r.Creation.Metadata != "" && !json.Valid([]byte(r.Creation.Metadata)) {
 		return fmt.Errorf("invalid IDE metadata")
 	}
-	if err := (config.Settings{OnExit: r.Launch.OnExit, Shell: r.Launch.Shell, Harness: r.Definition.Name, Network: r.Creation.Network}).Validate(); err != nil {
+	if err := (config.Settings{Shell: r.Launch.Shell, Harness: r.Definition.Name, Network: r.Creation.Network}).Validate(); err != nil {
 		return fmt.Errorf("invalid recorded settings: %w", err)
 	}
 	return nil

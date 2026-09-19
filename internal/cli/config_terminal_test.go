@@ -44,7 +44,7 @@ func TestConfigCommandWithTerminalInputKeepsTerminalMode(t *testing.T) {
 		t.Fatal("dumb terminal received styling")
 	}
 	s := menuService(t)
-	input := fieldNumber(t, "global", "ignore_project_overrides") + "\n1\n1\n0\n"
+	input := fieldNumber(t, "global", "ignore_project") + "\n1\n1\n0\n"
 	if _, err = master.WriteString(input); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestConfigCommandWithTerminalInputKeepsTerminalMode(t *testing.T) {
 	}
 	owner, _ := s.ConfigOwner("global", "")
 	source, err := s.ConfigSource(owner)
-	if err != nil || string(source["ignore_project_overrides"]) != "true" {
+	if err != nil || string(source["ignore_project"]) != "true" {
 		t.Fatal("terminal menu did not save", out.String(), err)
 	}
 	after, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)

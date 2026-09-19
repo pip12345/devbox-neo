@@ -153,7 +153,7 @@ func TestMissingDockerProducesStructuredFailure(t *testing.T) {
 
 func TestConfigurationAndHarnessFailuresUseSharedCodes(t *testing.T) {
 	for _, tt := range []struct{ config, definition, code string }{
-		{`{"version":1,"harness":"pi","extra_env":["private-value"]}`, "", "invalid_configuration"},
+		{`{"version":1,"harness":"pi","env":["private-value"]}`, "", "invalid_configuration"},
 		{`{"version":1,"harness":"not-installed"}`, "", "unknown_harness"},
 		{`{"version":1,"harness":"pi"}`, `{"version":1,"name":"pi","env":{"TOKEN":"private-value"},"config":"bad"}`, "invalid_harness_definition"},
 	} {

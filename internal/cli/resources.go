@@ -28,7 +28,7 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 			}
 			return s.Project(name)
 		}
-		argument := "<name>"
+		argument := "<profile>"
 		createHelp := "Create a named profile"
 		harnessHelp := "Choose a harness by name"
 		if kind == "project" {
@@ -169,7 +169,7 @@ func profileList(factory resourceFactory) *cobra.Command {
 }
 func profileSet(factory resourceFactory) *cobra.Command {
 	var clear bool
-	cmd := &cobra.Command{Use: "set [name]", Short: "Select or clear the default profile", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "set [profile]", Short: "Select or clear the default profile", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := factory(cmd)
 		if err != nil {
 			return err

@@ -23,7 +23,6 @@ type Lease struct {
 	ID      string    `json:"id"`
 	Process Process   `json:"process"`
 	Action  string    `json:"action"`
-	OnExit  string    `json:"on_exit"`
 	Created time.Time `json:"created_at"`
 }
 
@@ -61,7 +60,7 @@ func ProcessIdentity(pid int) (Process, error) {
 	}
 	return p, nil
 }
-func (l *Locked) Lease(action, onExit string) (Lease, error) {
+func (l *Locked) Lease(action string) (Lease, error) {
 	var lease Lease
 	p, err := ProcessIdentity(os.Getpid())
 	if err != nil {
@@ -71,14 +70,11 @@ func (l *Locked) Lease(action, onExit string) (Lease, error) {
 	if err != nil {
 		return lease, err
 	}
-	if onExit != "stop" && onExit != "running" {
-		return lease, fmt.Errorf("invalid lease policy")
-	}
 	dir, err := l.Dir("active")
 	if err != nil {
 		return lease, err
 	}
-	lease = Lease{Version: 1, ID: id, Process: p, Action: action, OnExit: onExit, Created: time.Now().UTC()}
+	lease = Lease{Version: 2, ID: id, Process: p, Action: action, Created: time.Now().UTC()}
 	return lease, fsutil.JSON(filepath.Join(dir, id+".json"), lease)
 }
 func (l *Locked) Release(id string) error {
@@ -127,7 +123,7 @@ func (l *Locked) active(reap bool) ([]Lease, error) {
 		if err = config.Decode(b, &lease); err != nil {
 			return nil, fmt.Errorf("corrupt lease: %w", err)
 		}
-		if lease.Version != 1 || !idPattern.MatchString(lease.ID) || entry.Name() != lease.ID+".json" || lease.Process.PID < 1 || lease.Process.Start == "" || lease.Process.Boot == "" || (lease.OnExit != "stop" && lease.OnExit != "running") {
+		if lease.Version != 2 || !idPattern.MatchString(lease.ID) || entry.Name() != lease.ID+".json" || lease.Process.PID < 1 || lease.Process.Start == "" || lease.Process.Boot == "" {
 			return nil, fmt.Errorf("invalid lease identity")
 		}
 		current, err := ProcessIdentity(lease.Process.PID)

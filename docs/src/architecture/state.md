@@ -6,7 +6,7 @@ The saved session is the top-level environment model. Docker inventory supplies 
 
 `environment.ContainerPrefix` defines the `devbox-` lookup convention independently of `docker.Namespace`, which defines `devbox-rewrite.*` labels and image tags.
 
-Identity uses the canonical workspace path and slot. A slot is either a named profile or the folder's project configuration. Names contain a readable canonical folder basename, a 12-hex path/slot hash, and `.profile-<name>` or `.project`.
+Identity uses the canonical workspace path and participating profile/project combination. Names contain a readable canonical folder basename, a 12-hex path/combination hash, and `.profile-<name>`, `.profile-<name>.project`, or `.project`. Profile and project participation are recorded explicitly and validated against the slot. All folder-targeted commands calculate that exact identity; none searches for another available profile. Exact names use the saved combination even when defaults change.
 
 The readable basename is lowercased and bounded to 32 characters from `a-z0-9_.-`; invalid runs become `-`, edge punctuation is trimmed, and an empty result becomes `workspace`. Sanitization and truncation do not change the hash input. Symlink aliases therefore produce the same identity. Records validate against the naming rule.
 
@@ -18,13 +18,13 @@ Images carry installation ownership and final session tags. Removing a tag requi
 
 `sessions/<container>/session.json` holds:
 
-- stable session ID and canonical environment identity;
+- stable session ID, canonical environment identity, and `manual_start` intent;
 - recorded image/container association and creation settings;
 - launch settings, definition source verification, setup input, and environment source references;
 - complete applied image/container/runtime inputs and fingerprints;
 - creation time, last recorded activity, and last action.
 
-Schema `2` requires complete applied snapshots. Public settings, source paths, modes, and hashes are durable; env/auth values and file contents are not. Raw env diagnostics are redacted. Records are atomically replaced with restrictive permissions, and invalid records stay errors rather than becoming absence.
+Schema `3` requires complete applied snapshots and records manual keep-running intent separately from desired configuration. Public settings, source paths, modes, and hashes are durable; env/auth values and file contents are not. Raw env diagnostics are redacted. Records are atomically replaced with restrictive permissions, and invalid records stay errors rather than becoming absence.
 
 Creation/recreation commits image and container baselines. `Record.ApplyRuntime` advances runtime inputs with their fingerprint at application commit points. Status and warning generation never alter either baseline.
 

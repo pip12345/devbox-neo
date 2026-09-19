@@ -48,7 +48,7 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := record(t, e, opened.Name)
-	opts := TransferOptions{Mode: "relocate", Source: q.Workspace, Destination: t.TempDir()}
+	opts := TransferOptions{Mode: "relocate", Source: q.Workspace, Profile: q.Profile, Destination: t.TempDir()}
 	d.Fail = func(args []string) error {
 		if args[0] == "rm" && args[len(args)-1] == source.SetupContainer {
 			return errors.New("interruption")

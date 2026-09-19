@@ -32,19 +32,18 @@ func ConfigFields(scope string) []ConfigField {
 			{Key: "default_profile", Kind: "string", Help: "Default named profile; reset for no default."},
 			{Key: "default_harness", Kind: "string", Help: "Harness used when participating layers do not select one."},
 			{Key: "global_env", Kind: "list", Help: "Environment entries for all containers: NAME or KEY=VALUE. Prefer host references; typed input is visible.", Sensitive: true},
-			{Key: "ignore_project_overrides", Kind: "bool", Help: "Exclude project configuration and artifacts."},
+			{Key: "ignore_project", Kind: "bool", Help: "Exclude project configuration and artifacts."},
 		}
 	}
 	fields := []ConfigField{
 		{Key: "harness", Kind: "string", Help: "Select a harness; reset to use inherited selection."},
-		{Key: "on_exit", Kind: "string", Help: "After the last attached command: stop or running."},
 		{Key: "network", Kind: "string", Help: "Primary network: default, host, or an existing Docker network name."},
-		{Key: "default_shell", Kind: "list", Help: "Shell command followed by its arguments, one entry each. Replaces the inherited shell; the command cannot be empty."},
-		{Key: "harness_args", Kind: "list", Help: "Arguments added by this config, one argument per entry. Inherited harness arguments are kept."},
+		{Key: "shell", Kind: "list", Help: "Shell command followed by its arguments, one entry each. Replaces the inherited shell; the command cannot be empty."},
+		{Key: "harness_args", Kind: "list", Help: "Arguments for the harness named in this config, one per entry. Matching harness layers append; other harness arguments are ignored."},
 		{Key: "docker_args", Kind: "list", Help: "Docker options added by this config. Inherited options are kept. Use --option=value for options with values."},
-		{Key: "extra_mounts", Kind: "list", Help: "Mounts added by this config. Inherited mounts are kept. Format: SOURCE:/absolute/target[:options]."},
-		{Key: "extra_env", Kind: "list", Help: "KEY=VALUE entries added by this config. Inherited entries are kept. Prefer ${env:NAME}; typed input is visible.", Sensitive: true},
-		{Key: "extra_ports", Kind: "list", Help: "Port forwards added by this config. Inherited forwards are kept. Format: [HOST_IP:]HOST_PORT:CONTAINER_PORT."},
+		{Key: "mounts", Kind: "list", Help: "Mounts added by this config. Inherited mounts are kept. Format: SOURCE:/absolute/target[:options]."},
+		{Key: "env", Kind: "list", Help: "KEY=VALUE entries added by this config. Inherited entries are kept. Prefer ${env:NAME}; typed input is visible.", Sensitive: true},
+		{Key: "ports", Kind: "list", Help: "Port forwards added by this config. Inherited forwards are kept. Format: [HOST_IP:]HOST_PORT:CONTAINER_PORT."},
 		{Key: "vscode", Kind: "extensions", Help: "VS Code extension IDs added by this config. Inherited extensions are kept."},
 	}
 	if scope == "project" {
@@ -133,7 +132,7 @@ func (s Service) SetConfigField(ctx context.Context, o Owner, key string, expect
 		_, err = config.ParseLayer(data, o.Kind == "project")
 	}
 	if err != nil {
-		return fmt.Errorf("invalid configuration source")
+		return fmt.Errorf("invalid configuration source: %w", err)
 	}
 	if bytes.Equal(b, data) {
 		return nil
@@ -168,7 +167,8 @@ func (s Service) validateConfigField(scope string, field ConfigField, value json
 	if scope == "global" {
 		_, err = config.ParseGlobal(data)
 	} else {
-		_, err = config.ParseLayer(data, scope == "project")
+		var layer config.Layer
+		err = config.Decode(data, &layer)
 	}
 	if err != nil {
 		return invalid
@@ -201,20 +201,20 @@ func (s Service) validateConfigField(scope string, field ConfigField, value json
 				return fmt.Errorf("select an existing valid profile or reset to no default")
 			}
 		}
-	case "on_exit", "network", "default_shell":
+	case "network", "shell":
 		layer, _ := config.ParseLayer(data, scope == "project")
 		settings := config.Defaults()
 		settings.Apply(layer)
 		if settings.ValidateFields() != nil {
 			return invalid
 		}
-	case "extra_env", "global_env", "extra_ports":
+	case "env", "global_env", "ports":
 		var entries []string
 		if err = json.Unmarshal(value, &entries); err != nil {
 			return invalid
 		}
 		for _, entry := range entries {
-			if field.Key == "extra_ports" {
+			if field.Key == "ports" {
 				err = docker.ValidatePort(entry)
 			} else if field.Key == "global_env" && !strings.Contains(entry, "=") {
 				if !config.EnvName.MatchString(entry) {

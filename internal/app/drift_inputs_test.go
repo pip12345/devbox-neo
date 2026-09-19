@@ -24,7 +24,7 @@ func TestDriftBaselineTracksAppliedNotMerelyDesiredInputs(t *testing.T) {
 				t.Fatal(err)
 			}
 			initial := record(t, e, result.Name)
-			write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host","extra_env":["TOKEN=never-display-me"]}`)
+			write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host","env":["TOKEN=never-display-me"]}`)
 			write(t, filepath.Join(e.Store.Home, "profiles/test/pi/new-file"), "new config")
 			before, err := e.Status(ctx, result.Name, "")
 			if err != nil || before.Desired != environment.Recreate {
@@ -87,12 +87,17 @@ func TestDeferredOrFailedOpenDoesNotAdvanceRuntimeBaseline(t *testing.T) {
 		t.Run(map[bool]string{false: "failed", true: "deferred"}[running], func(t *testing.T) {
 			e, d, q := fixture(t)
 			if running {
-				write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","on_exit":"running"}`)
+				write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi"}`)
 			}
 			ctx := context.Background()
 			result, err := createAndOpen(ctx, e, q)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if running {
+				if _, err = e.Start(ctx, result.Name, ""); err != nil {
+					t.Fatal(err)
+				}
 			}
 			initial := record(t, e, result.Name)
 			write(t, filepath.Join(e.Store.Home, "profiles/test/pi/new-file"), "new config")
@@ -164,7 +169,7 @@ func TestSessionRecordRequiresCompleteCurrentInputSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := record(t, e, result.Name)
-	if original.Version != 2 {
+	if original.Version != store.RecordVersion {
 		t.Fatal("record format not updated")
 	}
 	data, err := json.Marshal(original)

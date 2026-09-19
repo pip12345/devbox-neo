@@ -112,7 +112,7 @@ func TestSSHStartupLeasesConcurrentConnectionsAndCleanup(t *testing.T) {
 	finishSSH(t, second)
 	c, _ = d.Snapshot(result.Name)
 	if c.State.Running {
-		t.Fatal("last SSH lease did not apply on_exit")
+		t.Fatal("last SSH lease did not trigger automatic shutdown")
 	}
 	entries, _ := filepath.Glob(filepath.Join(e.Store.Home, "sessions", result.Name, sshshare.RelativeRoot, "c", "*", "config"))
 	if len(entries) != 0 {

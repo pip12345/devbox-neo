@@ -61,12 +61,20 @@ Devbox does not enforce network egress restrictions or provide an offline mode.
 On the host, devbox-neo create <folder> prepares a new environment and leaves it
 stopped without launching a harness. Open/start require an existing session and
 never create new sessions. They still recover a missing container for retained
-session state. Container-setting flags belong to create/recreate; open accepts
-launch settings, continuation, and harness arguments.
+session state. Container settings belong in profile/project configuration, not
+creation flags. Open accepts continuation and invocation-only harness arguments.
+A session records its profile/project combination. --profile selects the base
+without excluding project overrides; --ignore-project explicitly excludes them.
+Each combination requires its own create; folder commands never substitute another
+profile's session. Exact session names retain their recorded combination.
+Manual start keeps a container running until stop, including automatic restart
+when Docker starts after reboot. Without manual start, the last attached Devbox
+command stops it. Open never changes this intent. Reboot restarts the container,
+not the prior harness process, terminal, or SSH connection.
 On the host, devbox-neo list shows saved environments and their running/stopped/missing
 containers. Status --all checks their configuration and changed local inputs, including
 environments without containers; it does not check upstream releases. Both commands
-warn separately about managed containers without session records. Status <target>
+warn separately about managed containers without session records. Status <folder|session>
 combines saved session details, active commands, container state, and pending changes;
 invalid current config does not hide saved details. Clone and relocate are also
 top-level commands; there is no separate show command or session command group.
@@ -86,11 +94,15 @@ container commands; it never expands scope or bypasses saved-state idle checks.
 Ordinary recreate builds changed image inputs automatically. Open prints creation
 drift reasons first, before startup, then continues immediately. Status and open
 share detailed setting/file changes; env reasons show variable names, never values.
-Session record schema 2 requires a complete applied-input snapshot. Older development
+Session record schema 3 requires a complete applied-input snapshot. Older development
 records require a clean reset with the previous build; there is no automatic migration.
 
 The built-in Pi launch defaults to --tui-mode fullscreen (upstream experimental).
 A later --tui-mode regular in harness_args or one-off harness arguments overrides it.
+Configured harness_args must name their harness in the same config file; arguments
+from layers naming a different harness are ignored. Configuration fields use mounts,
+ports, env, shell, and ignore_project. Keep project configuration sparse: absent fields
+inherit, additive lists append, and overlapping mount targets fail.
 Existing recorded environments require recreation to adopt changed harness defaults.
 Host CLI failures show short messages, target context, and labeled next commands.
 Suggestions do not run automatically; Then marks a sequence and Or an alternative.

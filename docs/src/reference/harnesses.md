@@ -9,7 +9,7 @@ A harness is a coding tool Devbox launches, such as Pi or OpenCode. Its definiti
 | Pi | `pi --tui-mode fullscreen` | `-c` | `/home/devuser/.pi/agent` |
 | OpenCode | `opencode` | `-c` | `/home/devuser/.config/opencode` |
 
-Configured `harness_args` follow built-in launch arguments; `open --continue` adds continuation arguments; one-off arguments after `--` come last. For Pi regular mode, set `harness_args` to `["--tui-mode", "regular"]` or pass those arguments after `open <target> --`. The built-in fullscreen flag takes precedence over Pi's saved `tuiMode` setting.
+Configured `harness_args` follow built-in launch arguments. Configured arguments require `harness` in the same file; layers naming other harnesses contribute no arguments. `open --continue` adds continuation arguments; one-off `--harness-arg` values and arguments after `--` follow, without being saved. For Pi regular mode, set `harness_args` to `["--tui-mode", "regular"]` or pass those arguments after `open <folder|session> --`. The built-in fullscreen flag takes precedence over Pi's saved `tuiMode` setting.
 
 Pi's shared JSON ownership is:
 

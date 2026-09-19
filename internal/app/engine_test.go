@@ -78,7 +78,7 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 	first := record(t, e, result.Name)
 	container, _ := d.Snapshot(result.Name)
 	if container.State.Running {
-		t.Fatal("on_exit stop did not stop")
+		t.Fatal("automatic shutdown did not stop the container")
 	}
 	if first.SetupContainer != container.ID || first.Applied.Container == "" {
 		t.Fatal("creation contract incomplete")
@@ -232,11 +232,14 @@ func TestRunningManagedConfigIsDeferred(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	path := filepath.Join(e.Store.Home, "profiles/test/config.json")
-	write(t, path, `{"version":1,"harness":"pi","on_exit":"running"}`)
+	write(t, path, `{"version":1,"harness":"pi"}`)
 	settings := filepath.Join(e.Store.Home, "profiles/test/pi/settings.json")
 	write(t, settings, `{"packages":["old"]}`)
 	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.Start(ctx, result.Name, ""); err != nil {
 		t.Fatal(err)
 	}
 	first := record(t, e, result.Name)
@@ -276,9 +279,12 @@ func TestRunningManagedConfigIsDeferred(t *testing.T) {
 func TestRuntimeOnlyChangesDoNotClaimFileDeferral(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
-	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","on_exit":"running"}`)
+	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi"}`)
 	result, err := createAndOpen(ctx, e, q)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.Start(ctx, result.Name, ""); err != nil {
 		t.Fatal(err)
 	}
 	manifest := filepath.Join(e.Store.Home, "sessions", result.Name, "harnesses/pi/managed-config.json")

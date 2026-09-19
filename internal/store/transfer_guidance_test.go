@@ -27,9 +27,9 @@ func TestTransferRetryCommandsKeepExactEndpoints(t *testing.T) {
 	}{
 		{"relocate", source, destination, []string{"devbox-neo", "relocate", source.Name, destination.Workspace}},
 		{"clone", source, destination, []string{"devbox-neo", "clone", source.Name, destination.Workspace}},
-		{"clone", source, identity(destination.Workspace, "other"), []string{"devbox-neo", "clone", source.Name, destination.Workspace, "--profile", "other"}},
-		{"relocate", source, identity(workspace, ""), []string{"devbox-neo", "relocate", workspace, "--from", "basic", "--to", ".project"}},
-		{"clone", identity(workspace, ""), source, []string{"devbox-neo", "clone", workspace, "--from", ".project", "--to", "basic"}},
+		{"clone", source, identity(destination.Workspace, "other"), []string{"devbox-neo", "clone", source.Name, destination.Workspace, "--to", ".profile-other"}},
+		{"relocate", source, identity(workspace, ""), []string{"devbox-neo", "relocate", workspace, "--from", ".profile-basic", "--to", ".project"}},
+		{"clone", identity(workspace, ""), source, []string{"devbox-neo", "clone", workspace, "--from", ".project", "--to", ".profile-basic"}},
 	} {
 		j := Transfer{Mode: tt.mode, Source: tt.from, Destination: tt.to}
 		got := j.RetryStep()

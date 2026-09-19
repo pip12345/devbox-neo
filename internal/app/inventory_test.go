@@ -15,7 +15,7 @@ func TestMissingContainersStillHaveConfigurationStatus(t *testing.T) {
 		change       environment.Change
 		invalid      bool
 	}{
-		{"unchanged", `{"version":1,"harness":"pi","on_exit":"stop"}`, environment.NoChange, false},
+		{"unchanged", `{"version":1,"harness":"pi"}`, environment.NoChange, false},
 		{"changed", `{"version":1,"harness":"pi","network":"host"}`, environment.Recreate, false},
 		{"invalid", "broken", "", true},
 	} {

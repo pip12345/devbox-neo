@@ -42,7 +42,7 @@ sequenceDiagram
     A->>A: Withdraw client Include
     A->>S: Release owner flock
     S->>M: Terminate master
-    A->>A: Clean lease and apply on_exit
+    A->>A: Clean lease and check manual intent
 ```
 
 Authentication readiness is detected through the live control socket. Only then is the per-connection Include file atomically published under `/devbox/ssh`. This prevents clients from seeing an unauthenticated endpoint as available.
@@ -59,7 +59,7 @@ A separate `master.lock` lets cleanup wait for actual process teardown, includin
 
 Revocation has two parts: remove the Include to withdraw discovery, then release the owner lock to terminate the live connection. Inert directories may remain after failure; retrying that destination or deleting saved state cleans them. They are never treated as reconnectable state.
 
-For host masters, a bounded Docker inspection each second also terminates sharing after forced container stop/removal or lost Docker contact. SSH revocation finishes before attached-command lease cleanup and last-command `on_exit` handling.
+For host masters, a bounded Docker inspection each second also terminates sharing after forced container stop/removal or lost Docker contact. SSH revocation finishes before attached-command lease cleanup and automatic shutdown when no attachment or manual keep-running intent remains.
 
 ## Socket paths and generated clients
 

@@ -79,7 +79,7 @@ func (e *Engine) SSH(ctx context.Context, target, profile, destination string, o
 		return err
 	}
 	return e.attachRun(l, r, "ssh", func() (runErr error) {
-		// Revoke SSH before releasing its environment lease or applying on_exit.
+		// Revoke SSH before releasing its environment lease can trigger automatic shutdown.
 		defer func() { runErr = errors.Join(runErr, connection.Close()) }()
 		return e.runSSH(ctx, c, r, connection, options)
 	})

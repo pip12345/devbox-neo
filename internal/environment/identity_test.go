@@ -11,7 +11,7 @@ import (
 )
 
 func TestContainerNameUsesFolderAndTwelveHexCharacterHash(t *testing.T) {
-	for _, slot := range []string{"project", "profile:pi-basic"} {
+	for _, slot := range []string{"project", "profile:pi-basic", "profile:pi-basic.project"} {
 		workspace := "/workspace/example"
 		sum := sha256.Sum256([]byte(workspace + "\x00" + slot))
 		want := "devbox-example-" + hex.EncodeToString(sum[:6]) + "." + strings.ReplaceAll(slot, ":", "-")

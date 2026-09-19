@@ -13,10 +13,10 @@ func TestConfigShowUsesRuntimeLayersAndRedactsEnvironment(t *testing.T) {
 	t.Setenv("CONFIG_TEST_SECRET", "never-print-this")
 	resourceCLI(t, home, "profile", "create", "base")
 	p := filepath.Join(home, "profiles/base/config.json")
-	os.WriteFile(p, []byte(`{"version":1,"harness":"pi","extra_env":["TOKEN=${env:CONFIG_TEST_SECRET}"],"harness_args":["--base"]}`), 0600)
+	os.WriteFile(p, []byte(`{"version":1,"harness":"pi","env":["TOKEN=${env:CONFIG_TEST_SECRET}"],"harness_args":["--base"]}`), 0600)
 	resourceCLI(t, home, "profile", "set", "base")
 	resourceCLI(t, home, "project", "create", workspace)
-	os.WriteFile(filepath.Join(workspace, ".devbox/config.json"), []byte(`{"version":1,"harness_args":["--project"]}`), 0600)
+	os.WriteFile(filepath.Join(workspace, ".devbox/config.json"), []byte(`{"harness":"pi","version":1,"harness_args":["--project"]}`), 0600)
 	out, err := resourceCLI(t, home, "project", "config", workspace, "--show", "--json")
 	if err != nil {
 		t.Fatal(err)
@@ -34,9 +34,9 @@ func TestConfigShowUsesRuntimeLayersAndRedactsEnvironment(t *testing.T) {
 		}
 	}
 	os.WriteFile(filepath.Join(workspace, ".devbox/config.json"), []byte(`{"harness":"${env:UNSET_EXCLUDED}"}`), 0600)
-	out, err = resourceCLI(t, home, "project", "config", workspace, "--profile", "base", "--show", "--json")
+	out, err = resourceCLI(t, home, "project", "config", workspace, "--profile", "base", "--ignore-project", "--show", "--json")
 	if err != nil || !strings.Contains(out, `"excluded":["project"]`) {
-		t.Fatal("display did not use explicit-profile isolation", out, err)
+		t.Fatal("display did not honor explicit project exclusion", out, err)
 	}
 }
 func TestSparseConfigCanBeShownBeforeHarnessSelection(t *testing.T) {

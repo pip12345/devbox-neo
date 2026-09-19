@@ -40,7 +40,7 @@ func Resolve(home, workspace, explicit string, override config.Layer) (Resolved,
 }
 
 func ResolveWithHost(home, workspace, explicit string, override config.Layer, host config.Host) (Resolved, error) {
-	return resolve(home, workspace, explicit, override, nil, host)
+	return resolve(home, workspace, Selection{Profile: explicit}, override, nil, host)
 }
 
 // PreviewProject uses the normal participation rules for a proposed project
@@ -50,12 +50,16 @@ func PreviewProject(home, workspace string, project config.Layer, host config.Ho
 }
 
 // Preview resolves a proposed project edit through the same participation
-// rules, without publishing it. Explicit profiles still exclude project data.
+// rules, without publishing it.
 func Preview(home, workspace, explicit string, override config.Layer, project *config.Layer, host config.Host) (Resolved, error) {
-	return resolve(home, workspace, explicit, override, project, host)
+	return resolve(home, workspace, Selection{Profile: explicit}, override, project, host)
 }
 
-func resolve(home, workspace, explicit string, override config.Layer, proposed *config.Layer, host config.Host) (r Resolved, err error) {
+func PreviewSelection(home, workspace string, selection Selection, override config.Layer, project *config.Layer, host config.Host) (Resolved, error) {
+	return resolve(home, workspace, selection, override, project, host)
+}
+
+func resolve(home, workspace string, selection Selection, override config.Layer, proposed *config.Layer, host config.Host) (r Resolved, err error) {
 	defer func() {
 		var actionable *commanderror.Error
 		if err != nil && !errors.As(err, &actionable) {
@@ -64,7 +68,7 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 	}()
 	r = Resolved{Settings: config.Defaults(), Trace: Trace{Winners: map[string]string{}, Sources: map[string][]string{}, EntrySources: map[string][]string{}}}
 	for range r.Settings.Shell {
-		r.Trace.EntrySources["default_shell"] = append(r.Trace.EntrySources["default_shell"], "built-in default")
+		r.Trace.EntrySources["shell"] = append(r.Trace.EntrySources["shell"], "built-in default")
 	}
 	g, err := config.ReadGlobal(filepath.Join(home, "config.json"), host)
 	if err != nil {
@@ -73,14 +77,15 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 	r.Global = g
 	r.Settings.Env = append(r.Settings.Env, g.GlobalEnv...)
 	r.Settings.EnvInputs = append(r.Settings.EnvInputs, g.EnvInputs...)
-	r.Trace.appendContribution("extra_env", "global", len(g.GlobalEnv))
-	profile := explicit
-	if profile == "" {
-		profile = g.DefaultProfile
+	r.Trace.appendContribution("env", "global", len(g.GlobalEnv))
+	participation, err := Select(home, workspace, selection, proposed, host)
+	if err != nil {
+		return r, err
 	}
+	profile := participation.Profile
 	projectPath := filepath.Join(workspace, ".devbox", "config.json")
 	var project *config.Layer
-	if explicit != "" || g.IgnoreProject {
+	if !participation.Project {
 		r.Trace.Excluded = append(r.Trace.Excluded, "project")
 	} else {
 		var l config.Layer
@@ -106,8 +111,7 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 		if err == nil {
 			project = &l
 			r.Project = true
-			if l.InheritProfile != nil && !*l.InheritProfile {
-				profile = ""
+			if profile == "" {
 				r.Trace.Excluded = append(r.Trace.Excluded, "profile")
 			}
 		}
@@ -145,7 +149,23 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 			commanderror.Next("Or configure this project", "project", "create", workspace))
 	}
 	r.Trace.Layers = append(r.Trace.Layers, Layer{Name: "built-in default"}, Layer{Name: "global", Path: filepath.Join(home, "config.json")})
+	selectedHarness := g.DefaultHarness
 	for _, l := range r.Layers {
+		if l.Config.Harness != nil {
+			selectedHarness = *l.Config.Harness
+		}
+	}
+	if override.Harness != nil {
+		selectedHarness = *override.Harness
+	}
+	if selectedHarness == "" {
+		selectedHarness = g.DefaultHarness
+	}
+	for _, l := range r.Layers {
+		// Arguments belong to the harness named by their own source layer.
+		if l.Config.Harness == nil || *l.Config.Harness != selectedHarness {
+			l.Config.HarnessArgs = nil
+		}
 		r.Settings.Apply(l.Config)
 		r.Trace.Layers = append(r.Trace.Layers, l)
 		r.Trace.contributions(l.Name, l.Config)
@@ -189,18 +209,18 @@ func resolve(home, workspace, explicit string, override config.Layer, proposed *
 	return r, nil
 }
 func (t *Trace) contributions(name string, l config.Layer) {
-	for key, set := range map[string]bool{"on_exit": l.OnExit != nil, "default_shell": l.Shell != nil, "harness": l.Harness != nil, "network": l.Network != nil} {
+	for key, set := range map[string]bool{"shell": l.Shell != nil, "harness": l.Harness != nil, "network": l.Network != nil} {
 		if set {
 			t.Sources[key] = []string{name}
 		}
 	}
 	if l.Shell != nil {
-		t.EntrySources["default_shell"] = nil
+		t.EntrySources["shell"] = nil
 		for range *l.Shell {
-			t.EntrySources["default_shell"] = append(t.EntrySources["default_shell"], name)
+			t.EntrySources["shell"] = append(t.EntrySources["shell"], name)
 		}
 	}
-	for key, n := range map[string]int{"harness_args": len(l.HarnessArgs), "docker_args": len(l.DockerArgs), "extra_mounts": len(l.Mounts), "extra_env": len(l.Env), "extra_ports": len(l.Ports), "vscode.extensions": len(l.VSCode.Extensions)} {
+	for key, n := range map[string]int{"harness_args": len(l.HarnessArgs), "docker_args": len(l.DockerArgs), "mounts": len(l.Mounts), "env": len(l.Env), "ports": len(l.Ports), "vscode.extensions": len(l.VSCode.Extensions)} {
 		t.appendContribution(key, name, n)
 	}
 }

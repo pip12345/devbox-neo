@@ -16,7 +16,7 @@ func driftFixture(t *testing.T) (Spec, Request) {
 	t.Helper()
 	home, workspace := t.TempDir(), t.TempDir()
 	root := filepath.Join(home, "profiles/test")
-	putBuild(t, filepath.Join(root, "config.json"), `{"version":1,"harness":"pi","extra_env":["TOKEN=old-secret"],"docker_args":["--env=RAW=raw-secret"],"extra_ports":["8080:80","9090:90"]}`)
+	putBuild(t, filepath.Join(root, "config.json"), `{"version":1,"harness":"pi","env":["TOKEN=old-secret"],"docker_args":["--env=RAW=raw-secret"],"ports":["8080:80","9090:90"]}`)
 	putBuild(t, filepath.Join(root, "Dockerfile"), "FROM debian:bookworm-slim\n")
 	putBuild(t, filepath.Join(root, ".dockerignore"), "pi/\n")
 	putBuild(t, filepath.Join(root, "data"), "old data")
@@ -79,7 +79,6 @@ func TestDetailedComparisonCoversFingerprintInputs(t *testing.T) {
 		{"workspace", "workspace", "value_changed", Recreate, func(i *Inputs) { i.Container.Identity.Workspace += "-new" }},
 		{"slot", "slot", "value_changed", Recreate, func(i *Inputs) { i.Container.Identity.Slot = "project" }},
 		{"network", "network", "value_changed", Recreate, func(i *Inputs) { i.Container.Network = "host" }},
-		{"read-only", "read_only", "value_changed", Recreate, func(i *Inputs) { i.Container.ReadOnly = true }},
 		{"stores", "harness_stores", "entry_added", Recreate, func(i *Inputs) {
 			i.Container.Stores = append(i.Container.Stores, harness.Store{Name: "new", Target: "/home/devuser/new", Scope: "environment"})
 		}},
@@ -117,7 +116,6 @@ func TestDetailedComparisonCoversFingerprintInputs(t *testing.T) {
 		{"launch args", "launch_args", "entry_added", RuntimeSync, func(i *Inputs) { i.Runtime.Launch.Args = append(i.Runtime.Launch.Args, "--new") }},
 		{"continue args", "continue_args", "entry_added", RuntimeSync, func(i *Inputs) { i.Runtime.Launch.Continue = append(i.Runtime.Launch.Continue, "--new") }},
 		{"harness args", "harness_args", "entry_added", RuntimeSync, func(i *Inputs) { i.Runtime.Args = append(i.Runtime.Args, "--new") }},
-		{"on-exit", "on_exit", "value_changed", RuntimeSync, func(i *Inputs) { i.Runtime.OnExit = "running" }},
 		{"shell", "shell", "entry_added", RuntimeSync, func(i *Inputs) { i.Runtime.Shell = []string{"zsh"} }},
 	}
 	for _, tt := range tests {
@@ -166,7 +164,7 @@ func TestDetailedComparisonRoundTripProvenanceAndDeduplication(t *testing.T) {
 	file.Hash = next.Image.Dockerfile.Hash
 	next.Image.Context["Dockerfile"] = file
 	next.Container.Network = "host"
-	next.Runtime.OnExit = "running"
+	next.Runtime.Launch.Continue = append(next.Runtime.Launch.Continue, "--new")
 	report := CompareInputs(s.Inputs, next)
 	if report.Change != RebuildAndRecreate || len(report.PendingInputChanges) != 3 || len(report.PendingCreationChanges()) != 2 {
 		t.Fatal("duplicated image propagation or file reason", report)

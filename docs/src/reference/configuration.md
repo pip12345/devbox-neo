@@ -19,7 +19,7 @@ Files use strict JSON: unknown fields, duplicate keys, comments, trailing commas
 | `version` | `1` | Schema version |
 | `default_profile` | `""` | Profile used without an explicit selection |
 | `default_harness` | `""` | Harness fallback when the resolved selection is empty |
-| `ignore_project_overrides` | `false` | Exclude all project configuration and artifacts |
+| `ignore_project` | `false` | Exclude all project configuration and artifacts |
 | `global_env` | `[]` | `KEY=VALUE` assignments, or `KEY` to pass through a present host variable |
 
 ## Profile and project fields
@@ -28,30 +28,31 @@ Files use strict JSON: unknown fields, duplicate keys, comments, trailing commas
 |---|---|---|
 | `version` | `1` | Validate |
 | `harness` | `""` | Replace; then use global fallback if empty |
-| `on_exit` | `"stop"` | Replace; `stop` or `running` |
-| `default_shell` | `["bash"]` | Replace entire non-empty argv |
+| `shell` | `["bash"]` | Replace entire non-empty argv |
 | `network` | `"default"` | Replace; `default`, `host`, or existing Docker network name |
-| `harness_args` | `[]` | Append arguments |
-| `extra_env` | `[]` | Append `KEY=VALUE`; later assignments win |
-| `extra_mounts` | `[]` | Append `SOURCE:/absolute/target[:options]` |
-| `extra_ports` | `[]` | Append numeric Docker port declarations |
+| `harness_args` | `[]` | Append only when this layer's explicit `harness` matches the selected harness; configured arguments require `harness` in the same file |
+| `env` | `[]` | Append `KEY=VALUE`; later assignments win |
+| `mounts` | `[]` | Append `SOURCE:/absolute/target[:options]` |
+| `ports` | `[]` | Append numeric Docker port declarations |
 | `docker_args` | `[]` | Append validated Docker options |
 | `vscode.extensions` | `[]` | Append extension names to container IDE metadata |
 | `inherit_profile` | `true` | Project-only; choose whether the profile participates |
 
 ## Selection and precedence
 
-1. Explicit `--profile` selects that profile and excludes every project artifact.
-2. Otherwise, `default_profile` supplies the base profile and project settings apply above it.
-3. Project `inherit_profile: false` excludes the profile, including missing or invalid profile files.
-4. Global `ignore_project_overrides` excludes the project and its inheritance setting.
-5. CLI overrides apply last. An empty resolved harness falls back to `default_harness`.
+1. `--profile` selects the base profile; otherwise `default_profile` supplies it.
+2. Project settings and artifacts apply above the base profile.
+3. Project `inherit_profile: false` excludes the default profile, including missing or invalid profile files. Combining it with explicit `--profile` is an error.
+4. `--ignore-project` or global `ignore_project` excludes the project and its inheritance setting.
+5. An empty resolved harness falls back to `default_harness`.
+
+Creation and recreation use configuration files, not container-setting flags. A saved session pins its profile/project combination; exact-name access and recreation do not switch sources when defaults change. A later project inheritance setting that conflicts with a recorded combined session fails rather than changing its identity.
 
 At least one profile or project layer must participate. Excluded layers contribute neither settings nor artifacts. Scalar and list merges follow the field table above.
 
 ## Editing and inspection
 
-Use `global config`, `profile config <name>`, or `project config <folder>` for numbered terminal menus. Add `--show [--json]` to inspect effective values, participating layers, sources, and artifact winners without editing. Project inspection also accepts `--profile NAME`; `--json` and that profile option require `--show`.
+Use `global config`, `profile config <profile>`, or `project config <folder>` for numbered terminal menus. Add `--show [--json]` to inspect effective values, participating layers, sources, and artifact winners without editing. Project inspection also accepts `--profile NAME`; `--json` and that profile option require `--show`.
 
 | Menu action | Effect |
 |---|---|
@@ -75,11 +76,11 @@ Env/auth values are sensitive. Paths, names, networks, argv, and Docker options 
 
 At creation, later values win:
 
-`terminal → harness defaults → global → profile → project → CLI`
+`terminal → harness defaults → global → profile → project`
 
 Explicit raw Docker `--env=KEY=VALUE` options take Docker CLI precedence. `DEVBOX_*` is reserved. Env values must be single-line and contain no NUL.
 
-Config env can be recovered after container loss only while its recorded source entries still match. CLI-only `--env` has no durable source; supply it again with explicit `recreate` after loss. Existing-container access does not need old env values. Session records never contain env/auth values.
+Config env can be recovered after container loss only while its recorded source entries still match. If they changed, recreation applies current configuration. Existing-container access does not need old env values. Session records never contain env/auth values.
 
 ### Terminal forwarding
 
@@ -89,14 +90,14 @@ Each attached `open`, `shell`, or `exec` forwards present host display variables
 
 Unset variables add no override. These values refresh per invocation, do not require recreation, and are not saved configuration. Host dotfiles are not imported.
 
-### Creation options
+### Container settings
 
-Container-setting flags belong to `create` and `recreate`; see the [option table](commands.md#creation-and-launch-options).
+Set lasting container settings in profile/project configuration, using the config menu or JSON. `create` and `recreate` apply those settings; they do not accept container-setting overrides.
 
 - **Mounts:** bind sources must exist. Relative bind sources resolve against the workspace; bare names designate user volumes. Targets cannot overlap the workspace, runtime, harness stores, or auth mounts.
 - **Ports:** numeric ports in `1–65535`; mapped ranges must have equal sizes. Host networking cannot publish ports.
 - **Raw Docker options:** value-taking options use one `--option=value` token; supported booleans may stand alone. Raw bind sources must be absolute.
-- **Protected Docker settings:** identity, ownership labels, user/workdir, entrypoint, primary network, managed mounts/env, IDE metadata, and host gateway alias cannot be replaced.
+- **Protected Docker settings:** identity, ownership labels, user/workdir, entrypoint, primary network, restart policy, managed mounts/env, IDE metadata, and host gateway alias cannot be replaced.
 
 ## Artifacts
 

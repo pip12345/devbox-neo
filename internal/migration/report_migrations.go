@@ -142,7 +142,7 @@ func ConfigurationComparison(j *Journal, item Item, c MergeChoices) ([]string, e
 		ordered = append(ordered, key)
 	}
 	sort.Strings(ordered)
-	public := map[string]bool{"version": true, "default_profile": true, "default_harness": true, "on_exit": true, "default_shell": true, "harness": true, "network": true, "host_network": true, "extra_networks": true, "extra_mounts": true, "extra_ports": true, "vscode": true, "ignore_project_overrides": true, "inherit_profile": true, "proxy": true}
+	public := map[string]bool{"mounts": true, "ports": true, "shell": true, "ignore_project": true, "version": true, "default_profile": true, "default_harness": true, "on_exit": true, "default_shell": true, "harness": true, "network": true, "host_network": true, "extra_networks": true, "extra_mounts": true, "extra_ports": true, "vscode": true, "ignore_project_overrides": true, "inherit_profile": true, "proxy": true}
 	lines := []string{"Compare " + display(target) + " with staged source:"}
 	for _, key := range ordered {
 		if strings.TrimSpace(string(before[key])) == strings.TrimSpace(string(after[key])) {

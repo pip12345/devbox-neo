@@ -269,7 +269,7 @@ func TestUnsupportedOwnersRequireExplicitSkipAndPropagate(t *testing.T) {
 	}
 	absent(t, filepath.Join(p.Work, "staged-home/profiles/unsupported"))
 }
-func TestProjectSlotDoesNotBecomeInheritedProfileSlot(t *testing.T) {
+func TestProjectSlotIncludesItsInheritedProfile(t *testing.T) {
 	p, _ := fixture(t)
 	workspace := filepath.Join(filepath.Dir(p.Source), "project")
 	put(t, filepath.Join(workspace, ".devbox/config.json"), `{"version":1,"harness":"opencode","host_network":false}`)
@@ -277,7 +277,7 @@ func TestProjectSlotDoesNotBecomeInheritedProfileSlot(t *testing.T) {
 	before := treeSnapshot(t, workspace)
 	v := inventory(t, p)
 	item := v.item("session:" + name)
-	if item.Profile != "" || item.SourceProfile != "work" || item.Target != environment.ContainerName(workspace, "project") {
+	if item.Profile != "" || item.SourceProfile != "work" || item.Target != environment.ContainerName(workspace, "profile:work.project") {
 		t.Fatalf("wrong slot: %+v", item)
 	}
 	mustStage(t, v)

@@ -16,7 +16,7 @@ func TestConfigEditsPreserveSourceAndConcurrentFields(t *testing.T) {
 	s := fixture(t)
 	o, _ := s.Profile("basic")
 	path := filepath.Join(o.Root, "config.json")
-	put(t, path, `{"version":1,"harness":"${env:NOT_SET}","extra_env":["TOKEN=${env:NOT_SET}"],"network":"default"}`)
+	put(t, path, `{"version":1,"harness":"${env:NOT_SET}","env":["TOKEN=${env:NOT_SET}"],"network":"default"}`)
 	source, err := s.ConfigSource(o)
 	if err != nil {
 		t.Fatal(err)
@@ -25,17 +25,17 @@ func TestConfigEditsPreserveSourceAndConcurrentFields(t *testing.T) {
 	if err = s.SetConfigField(ctx, o, "network", source["network"], json.RawMessage(`"host"`), false); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.SetConfigField(ctx, o, "on_exit", source["on_exit"], json.RawMessage(`"running"`), false); err != nil {
+	if err = s.SetConfigField(ctx, o, "shell", source["shell"], json.RawMessage(`["sh"]`), false); err != nil {
 		t.Fatal("unrelated concurrent edit was blocked", err)
 	}
 	if err = s.SetConfigField(ctx, o, "network", source["network"], json.RawMessage(`"default"`), false); !errors.Is(err, ErrConfigChanged) {
 		t.Fatal("stale same-field edit was not rejected", err)
 	}
 	current, _ := s.ConfigSource(o)
-	if string(current["network"]) != `"host"` || string(current["on_exit"]) != `"running"` || string(current["harness"]) != string(source["harness"]) || !sameConfigValue(current["extra_env"], source["extra_env"]) {
+	if string(current["network"]) != `"host"` || !sameConfigValue(current["shell"], json.RawMessage(`["sh"]`)) || string(current["harness"]) != string(source["harness"]) || !sameConfigValue(current["env"], source["env"]) {
 		t.Fatal("edit flattened expressions or lost unrelated changes", current)
 	}
-	if err = s.SetConfigField(ctx, o, "extra_env", source["extra_env"], json.RawMessage(`["TOKEN=${env:NOT_SET}","SECOND=value"]`), false); err != nil {
+	if err = s.SetConfigField(ctx, o, "env", source["env"], json.RawMessage(`["TOKEN=${env:NOT_SET}","SECOND=value"]`), false); err != nil {
 		t.Fatal("an unrelated save's formatting change caused a false conflict", err)
 	}
 	if err = s.SetConfigField(ctx, o, "network", current["network"], nil, true); err != nil {
@@ -87,7 +87,7 @@ func TestConfigEditingScopesAndValidation(t *testing.T) {
 				}
 			}
 			if scope != "global" {
-				for _, test := range []struct{ key, value string }{{"on_exit", `"invalid"`}, {"network", `"not a network"`}, {"default_shell", `[]`}, {"extra_ports", `["99999:80"]`}, {"extra_env", `["DEVBOX_BAD=secret-value"]`}} {
+				for _, test := range []struct{ key, value string }{{"on_exit", `"invalid"`}, {"network", `"not a network"`}, {"shell", `[]`}, {"ports", `["99999:80"]`}, {"env", `["DEVBOX_BAD=secret-value"]`}} {
 					if err = s.SetConfigField(context.Background(), o, test.key, nil, json.RawMessage(test.value), false); err == nil || strings.Contains(err.Error(), "secret-value") {
 						t.Fatal("invalid literal accepted or secret exposed", err)
 					}

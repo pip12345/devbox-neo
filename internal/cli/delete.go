@@ -44,7 +44,7 @@ func confirmDeletion(reader *bufio.Reader, out io.Writer, prompt app.DeletePromp
 func deleteCommand(factory engineFactory, profile *string) *cobra.Command {
 	var options app.DeleteOptions
 	var container, session, asJSON bool
-	cmd := &cobra.Command{Use: "delete [target...]", Short: "Delete containers, optionally also deleting saved session data", Args: cobra.ArbitraryArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "delete [folder|session...]", Short: "Delete containers, optionally also deleting saved session data", Args: cobra.ArbitraryArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if container && session {
 			return fmt.Errorf("choose --container or --session, not both")
 		}

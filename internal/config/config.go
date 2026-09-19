@@ -21,7 +21,7 @@ type Global struct {
 	DefaultProfile string              `json:"default_profile"`
 	DefaultHarness string              `json:"default_harness"`
 	GlobalEnv      []string            `json:"global_env"`
-	IgnoreProject  bool                `json:"ignore_project_overrides"`
+	IgnoreProject  bool                `json:"ignore_project"`
 }
 type VSCode struct {
 	Extensions []string `json:"extensions,omitempty"`
@@ -31,34 +31,32 @@ type Layer struct {
 	References     map[string][]string `json:"-"`
 	EnvInputs      []EnvInput          `json:"-"`
 	Version        int                 `json:"version"`
-	OnExit         *string             `json:"on_exit,omitempty"`
-	Shell          *[]string           `json:"default_shell,omitempty"`
+	Shell          *[]string           `json:"shell,omitempty"`
 	Harness        *string             `json:"harness,omitempty"`
 	Network        *string             `json:"network,omitempty"`
 	HarnessArgs    []string            `json:"harness_args,omitempty"`
 	DockerArgs     []string            `json:"docker_args,omitempty"`
-	Mounts         []string            `json:"extra_mounts,omitempty"`
-	Env            []string            `json:"extra_env,omitempty"`
-	Ports          []string            `json:"extra_ports,omitempty"`
+	Mounts         []string            `json:"mounts,omitempty"`
+	Env            []string            `json:"env,omitempty"`
+	Ports          []string            `json:"ports,omitempty"`
 	VSCode         VSCode              `json:"vscode,omitempty"`
 	InheritProfile *bool               `json:"inherit_profile,omitempty"`
 }
 type Settings struct {
 	EnvInputs   []EnvInput `json:"-"`
-	OnExit      string     `json:"on_exit"`
-	Shell       []string   `json:"default_shell"`
+	Shell       []string   `json:"shell"`
 	Harness     string     `json:"harness"`
 	Network     string     `json:"network"`
 	HarnessArgs []string   `json:"harness_args"`
 	DockerArgs  []string   `json:"docker_args"`
-	Mounts      []string   `json:"extra_mounts"`
+	Mounts      []string   `json:"mounts"`
 	Env         []string   `json:"-"`
-	Ports       []string   `json:"extra_ports"`
+	Ports       []string   `json:"ports"`
 	VSCode      VSCode     `json:"vscode"`
 }
 
 func Defaults() Settings {
-	return Settings{OnExit: "stop", Shell: []string{"bash"}, Network: "default"}
+	return Settings{Shell: []string{"bash"}, Network: "default"}
 }
 
 var Name = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,47}$`)
@@ -189,7 +187,7 @@ func ResolveLayer(b []byte, path string, project bool, host Host) (l Layer, err 
 	}
 	l.Raw = b
 	l.References = refs
-	l.EnvInputs, err = envInputs(raw.Env, l.Env, path, "extra_env", host, false)
+	l.EnvInputs, err = envInputs(raw.Env, l.Env, path, "env", host, false)
 	return l, err
 }
 
@@ -224,6 +222,9 @@ func ParseLayer(b []byte, project bool) (Layer, error) {
 	if !project && l.InheritProfile != nil {
 		return l, fmt.Errorf("inherit_profile is project-only")
 	}
+	if l.HarnessArgs != nil && (l.Harness == nil || *l.Harness == "") {
+		return l, fmt.Errorf("harness_args requires a harness in the same configuration layer")
+	}
 	return l, nil
 }
 func ParseGlobal(b []byte) (Global, error) {
@@ -237,9 +238,6 @@ func ParseGlobal(b []byte) (Global, error) {
 	return g, nil
 }
 func (s *Settings) Apply(l Layer) {
-	if l.OnExit != nil {
-		s.OnExit = *l.OnExit
-	}
 	if l.Shell != nil {
 		s.Shell = append([]string(nil), (*l.Shell)...)
 	}
@@ -267,11 +265,8 @@ func (s Settings) Validate() error {
 	return nil
 }
 func (s Settings) ValidateFields() error {
-	if s.OnExit != "stop" && s.OnExit != "running" {
-		return fmt.Errorf("on_exit must be stop or running")
-	}
 	if len(s.Shell) == 0 || s.Shell[0] == "" {
-		return fmt.Errorf("default_shell must be non-empty argv")
+		return fmt.Errorf("shell must be non-empty argv")
 	}
 	if s.Harness != "" && !Name.MatchString(s.Harness) {
 		return fmt.Errorf("invalid harness name")

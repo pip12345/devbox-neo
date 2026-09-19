@@ -70,7 +70,6 @@ func CompareInputs(before, after Inputs) Report {
 	d.scalar("workspace", c.Identity.Workspace, n.Identity.Workspace)
 	d.scalar("slot", c.Identity.Slot, n.Identity.Slot)
 	d.scalar("network", c.Network, n.Network)
-	d.scalar("read_only", strconv.FormatBool(c.ReadOnly), strconv.FormatBool(n.ReadOnly))
 	d.list("harness_stores", publicEntries(c.Stores), publicEntries(n.Stores))
 	d.list("auth_mounts", publicEntries(c.Auth), publicEntries(n.Auth))
 	envStart := len(d.inputChanges)
@@ -100,7 +99,6 @@ func CompareInputs(before, after Inputs) Report {
 	d.list("launch_args", r.Launch.Args, s.Launch.Args)
 	d.list("continue_args", r.Launch.Continue, s.Launch.Continue)
 	d.list("harness_args", r.Args, s.Args)
-	d.scalar("on_exit", r.OnExit, s.OnExit)
 	d.list("shell", r.Shell, s.Shell)
 	return Report{Compare(before.Fingerprints(), after.Fingerprints()), d.inputChanges}
 }
@@ -271,13 +269,13 @@ func (r InputChange) String() string {
 		"image_mode": "image build mode", "harness": "harness", "harness_definition": "harness definition",
 		"dockerfile": "Dockerfile", "ignore_rules": "Docker ignore rules", "build_context": "build context file",
 		"generated_layer": "generated Devbox image layer", "build_argument": "build argument",
-		"workspace": "workspace", "slot": "slot", "network": "network", "read_only": "read-only",
+		"workspace": "workspace", "slot": "slot", "network": "network",
 		"harness_stores": "harness stores", "auth_mounts": "auth mounts", "env": "environment variable",
 		"setup": "setup.sh", "mounts": "mounts", "ports": "ports", "docker_args": "Docker arguments",
 		"docker_env": "Docker environment arguments", "metadata": "IDE metadata", "host_alias": "host alias",
 		"runtime_assets": "bundled runtime guidance", "managed_config": "managed config file", "entrypoint": "entrypoint.sh",
 		"launch_args": "harness launch arguments", "continue_args": "continuation arguments", "harness_args": "harness arguments",
-		"on_exit": "on-exit", "shell": "shell",
+		"shell": "shell",
 	}
 	label := labels[r.Field]
 	if label == "" {

@@ -329,7 +329,10 @@ func convertLayer(b []byte) (config.Layer, []string, error) {
 	if len(old.Networks) > 0 {
 		return config.Layer{}, nil, fmt.Errorf("extra_networks requires manual review: Neo has one primary network")
 	}
-	l := config.Layer{Version: 1, OnExit: old.OnExit, Shell: old.Shell, Harness: old.Harness, HarnessArgs: old.HarnessArgs, DockerArgs: old.DockerArgs, Mounts: old.Mounts, Env: old.Env, Ports: old.Ports, VSCode: old.VSCode}
+	l := config.Layer{Version: 1, Shell: old.Shell, Harness: old.Harness, HarnessArgs: old.HarnessArgs, DockerArgs: old.DockerArgs, Mounts: old.Mounts, Env: old.Env, Ports: old.Ports, VSCode: old.VSCode}
+	if old.OnExit != nil {
+		notices = append(notices, "Removed on_exit; manual start keeps sessions running until stop, including across reboot.")
+	}
 	if old.HostNetwork != nil {
 		network := "default"
 		if *old.HostNetwork {
@@ -342,7 +345,7 @@ func convertLayer(b []byte) (config.Layer, []string, error) {
 	}
 	// Parse the raw result before host expansion: expressions remain expressions.
 	if _, err := config.ParseLayer(encode(l), false); err != nil {
-		return l, notices, fmt.Errorf("converted layer does not match Neo's schema")
+		return l, notices, fmt.Errorf("converted layer does not match Neo's schema: %w", err)
 	}
 	return l, notices, nil
 }
@@ -532,9 +535,6 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 		}
 		if m.Profile != "" {
 			v.depend(key, "profile:"+m.Profile)
-			if !projectSlot {
-				v.notice(key, "Explicit profile imports exclude project artifacts under Neo's rules.")
-			}
 		}
 		v.depend(key, "auth:"+m.Harness)
 		if problem := workspaceDiagnostic(m.Folder); problem != "" {
@@ -559,7 +559,7 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 					v.inventoryLayer(ctx, projectKey, projectRoot, filepath.Join("projects", digest([]byte(m.Folder))), g.DefaultHarness, true)
 				}
 			}
-			if projectSlot {
+			if projectSlot || !g.IgnoreProject {
 				v.depend(key, projectKey)
 				if g.DefaultProfile != "" && !g.IgnoreProject {
 					v.depend(key, "profile:"+g.DefaultProfile)
@@ -571,10 +571,8 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 		if projectSlot && v.item("project:"+m.Folder) == nil {
 			v.issue(key, "Project-slot session has no project artifacts; manual review required.")
 		}
-		slot := "project"
-		if !projectSlot && m.Profile != "" {
-			slot = "profile:" + m.Profile
-		}
+		projectParticipates := projectSlot || (v.item("project:"+m.Folder) != nil && !g.IgnoreProject)
+		slot := environment.Slot(m.Profile, projectParticipates)
 		v.item(key).Target = environment.ContainerName(m.Folder, slot)
 		if m.ProxyEnabled {
 			v.notice(key, "Proxy protection will not carry over.")

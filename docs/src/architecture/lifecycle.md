@@ -28,7 +28,7 @@ flowchart TD
 | Container | Image dependency, mounts, network, env verification, setup input | Creation/recreation commit |
 | Runtime | Managed files, launch settings, entrypoint, runtime assets | Successful application through `Record.ApplyRuntime` |
 
-Snapshots contain public values and hashes, not file contents or secret values. Schema `2` requires all three and validates their fingerprints. Historical baselines are not inferred from current source files.
+Snapshots contain public values and hashes, not file contents or secret values. Schema `3` requires all three and validates their fingerprints. Historical baselines are not inferred from current source files.
 
 `CompareInputs` emits leaf changes in stable order. Action priority is image over container over runtime. The image-to-container hash dependency does not become a duplicate user-facing reason. Dockerfile and ignore entries also appear only once per physical change even when included in the context.
 
@@ -98,7 +98,7 @@ Recovery materializes the recorded creation contract, not a newly resolved one. 
 - setup source content;
 - recoverable environment source entries.
 
-A new user override cannot replace a recorded built-in definition during recovery. Missing durable roots are not recreated as empty state. CLI-only environment values have no durable source and make exact recovery unavailable; explicit recreation supplies a new contract.
+A new user override cannot replace a recorded built-in definition during recovery. Missing durable roots are not recreated as empty state. Environment values are reconstructed from recorded source references; changed or missing values can require explicit recreation with current configuration.
 
 Compatible desired runtime config can synchronize during ordinary recovery, but image/container settings remain recorded. Transaction rollback and committed-transfer recovery follow their recorded transaction rather than resolving newer desired configuration.
 
@@ -119,11 +119,15 @@ sequenceDiagram
     E->>D: Run foreground command
     D-->>E: Exit
     E->>S: Reacquire lock, remove lease
-    E->>D: Apply last-command on_exit
+    E->>D: Stop if idle and not manually started
     E-->>C: Result plus cleanup errors
 ```
 
-Cleanup uses an independent bounded context so cancellation of the foreground operation does not skip state cleanup. It removes the lease, reaps stale processes, and applies the last attached command's `on_exit` policy. A failed hook or lease setup stops a newly started container when the policy requires it and no other attachment exists.
+Cleanup uses an independent bounded context so cancellation of the foreground operation does not skip state cleanup. It removes the lease, reaps stale processes, and reads current manual-start intent while holding the operation lock. The last attachment stops the container only when `manual_start` is false. A failed hook or lease setup stops a newly started automatic container when no other attachment exists.
+
+Explicit `start` records manual intent even if the container is already running. Successful `stop` clears it; rejected stop leaves it intact. Attachments never change it. Intent persists across CLI processes, container recreation/recovery, and host reboot. Docker's managed restart policy is `unless-stopped` for manual sessions and `no` otherwise; raw Docker options cannot override it. Intent is session state, not a desired-input fingerprint or per-lease policy. Changing restart policy and publishing the record occur under the operation lock; a failed record save attempts to restore the prior Docker policy.
+
+Docker boot restart uses the existing container, not normal CLI preparation: it does not resolve changed desired config, relaunch harnesses, or restore SSH/terminal attachments. Subsequent ordinary CLI access retains its normal preparation rules.
 
 Leases contain Linux process start ticks and boot identity to distinguish PID reuse. Corrupt or unverifiable leases fail closed rather than being assumed idle. Foreground SSH controllers use the same lease owner as Docker attachments.
 

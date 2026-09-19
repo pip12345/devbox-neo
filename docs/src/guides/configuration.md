@@ -12,7 +12,7 @@ Open the configuration menu:
 devbox-neo profile config basic
 ```
 
-Choose a setting, then enter its new value. For example, set `on_exit` to `running` if you usually want the container left running after you exit.
+Choose a setting, then enter its new value. For example, add a mount or published port. Leave settings absent when you want to inherit them rather than copying defaults into the file.
 
 Each valid edit saves immediately. Use `0` to go back or exit, and `:back` to cancel text entry. Resetting a setting removes your local choice so its inherited value applies again.
 
@@ -46,20 +46,20 @@ Then open the project settings menu:
 devbox-neo project config .
 ```
 
-Normally, project settings build on your default profile. Project scalar values replace profile values; lists such as mounts and harness arguments append to them. See the [field table](../reference/configuration.md#profile-and-project-fields) for exact merge rules.
+Normally, project settings build on your selected profile. Project scalar values replace profile values; lists such as mounts append, and overlapping mount targets fail. Harness arguments append only from layers naming the selected harness; a configured `harness_args` list must name its `harness` in the same file. See the [field table](../reference/configuration.md#profile-and-project-fields) for exact merge rules.
 
-Project configuration selects a separate environment for that folder. If you've only created a profile environment so far, create the project environment before opening it:
+Each profile/project combination selects a separate environment for that folder. If you've only created a profile environment so far, create the project environment before opening it:
 
 ```sh
 devbox-neo create .
 devbox-neo open .
 ```
 
-The existing profile environment remains available with `--profile basic`. An explicit `--profile` uses that profile alone and ignores project settings.
+The existing profile-only environment remains available with `--profile basic --ignore-project`. Plain `--profile basic` includes project settings. Another profile plus the same project requires its own `create`.
 
 ## Make a project self-contained
 
-To stop inheriting a profile, set the project's `inherit_profile` to `false` and choose its harness explicitly.
+To stop inheriting a profile, set the project's `inherit_profile` to `false` and choose its harness explicitly. An explicit `--profile` conflicts with a standalone project; use `--ignore-project` if you want the profile alone.
 
 For a new project configuration, you can start with a one-time copy of a profile:
 
@@ -76,7 +76,7 @@ You can edit `.devbox/config.json` directly. This example passes a token from th
 ```json
 {
   "version": 1,
-  "extra_env": ["WORK_TOKEN=${env:WORK_TOKEN}"]
+  "env": ["WORK_TOKEN=${env:WORK_TOKEN}"]
 }
 ```
 

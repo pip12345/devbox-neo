@@ -27,6 +27,7 @@ type Transfer struct {
 	SourceID      string                   `json:"source_id"`
 	DestinationID string                   `json:"destination_id"`
 	Running       bool                     `json:"restore_running"`
+	ManualStart   bool                     `json:"manual_start"`
 	Started       time.Time                `json:"started_at"`
 	Desired       environment.Fingerprints `json:"desired"`
 }
@@ -45,17 +46,11 @@ type Reservation struct {
 // It does not rediscover defaults or depend on the source record still existing.
 func (j Transfer) RetryStep() commanderror.Step {
 	if j.Source.Workspace == j.Destination.Workspace {
-		slot := func(id environment.Identity) string {
-			if id.Slot == "project" {
-				return ".project"
-			}
-			return id.Profile
-		}
-		return commanderror.Next("Resume transfer", j.Mode, j.Source.Workspace, "--from", slot(j.Source), "--to", slot(j.Destination))
+		return commanderror.Next("Resume transfer", j.Mode, j.Source.Workspace, "--from", j.Source.Selector(), "--to", j.Destination.Selector())
 	}
 	args := []string{j.Mode, j.Source.Name, j.Destination.Workspace}
-	if j.Mode == "clone" && j.Destination.Profile != j.Source.Profile {
-		args = append(args, "--profile", j.Destination.Profile)
+	if j.Destination.Slot != j.Source.Slot {
+		args = append(args, "--to", j.Destination.Selector())
 	}
 	return commanderror.Next("Resume transfer", args...)
 }
@@ -70,19 +65,19 @@ func (j Transfer) Validate() error {
 	if j.Phase != "prepare" && j.Phase != "committed" {
 		return fmt.Errorf("invalid transfer phase")
 	}
-	if (j.Mode == "relocate") != (j.SourceID == j.DestinationID) || (j.Mode == "clone" && j.Running) {
+	if (j.Mode == "relocate") != (j.SourceID == j.DestinationID) || (j.Mode == "clone" && (j.Running || j.ManualStart)) {
 		return fmt.Errorf("invalid transfer policy")
 	}
 	for _, id := range []environment.Identity{j.Source, j.Destination} {
 		if !validName(id.Name) || !filepath.IsAbs(id.Workspace) || filepath.Clean(id.Workspace) != id.Workspace || id.Name != environment.ContainerName(id.Workspace, id.Slot) {
 			return fmt.Errorf("invalid transfer endpoint")
 		}
-		if (id.Slot == "project" && id.Profile != "") || (id.Slot != "project" && (!config.Name.MatchString(id.Profile) || id.Slot != "profile:"+id.Profile)) {
-			return fmt.Errorf("invalid transfer slot")
+		if err := id.ValidateSlot(); err != nil {
+			return err
 		}
 	}
-	if j.Source.Workspace != j.Destination.Workspace && ((j.Mode == "relocate" && j.Source.Slot != j.Destination.Slot) || (j.Mode == "clone" && j.Source.Profile != "" && j.Destination.Profile == "")) {
-		return fmt.Errorf("unsupported cross-folder transfer slots")
+	if j.Source.Workspace != j.Destination.Workspace && j.Mode == "relocate" && j.Source.Slot != j.Destination.Slot {
+		return fmt.Errorf("cross-folder relocation must retain the source combination")
 	}
 	if j.Source.Name == j.Destination.Name {
 		return fmt.Errorf("transfer endpoints must differ")

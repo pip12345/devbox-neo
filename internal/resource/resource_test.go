@@ -200,7 +200,7 @@ func TestSourceEditsPreserveExpressionsWithoutReadingHostValues(t *testing.T) {
 	s := fixture(t)
 	ctx := context.Background()
 	source, _ := s.Profile("expressions")
-	raw := `{"version":1,"extra_env":["TOKEN=${env:NOT_READ}"],"harness":"pi"}`
+	raw := `{"version":1,"env":["TOKEN=${env:NOT_READ}"],"harness":"pi"}`
 	put(t, filepath.Join(source.Root, "config.json"), raw)
 	project, _ := s.Project(t.TempDir())
 	if _, err := s.Create(ctx, project, "expressions"); err != nil {

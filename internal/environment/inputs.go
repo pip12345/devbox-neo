@@ -48,7 +48,6 @@ type ImageInputs struct {
 type ContainerInputs struct {
 	Identity    Identity          `json:"identity"`
 	Network     string            `json:"network"`
-	ReadOnly    bool              `json:"read_only"`
 	Stores      []harness.Store   `json:"stores"`
 	Auth        []harness.Auth    `json:"auth"`
 	Env         map[string]string `json:"env_hashes"`
@@ -67,7 +66,6 @@ type RuntimeInputs struct {
 	Entrypoint FileInput            `json:"entrypoint"`
 	Launch     harness.Launch       `json:"launch"`
 	Args       []string             `json:"args"`
-	OnExit     string               `json:"on_exit"`
 	Shell      []string             `json:"shell"`
 }
 
@@ -99,7 +97,7 @@ func (p ImageBuildPlan) inputs(h harness.Effective, salt string) ImageInputs {
 }
 
 func (s Spec) captureInputs(salt, assetsHash string) Inputs {
-	container := ContainerInputs{Identity: s.Identity, Network: s.Settings.Network, ReadOnly: s.ReadOnly,
+	container := ContainerInputs{Identity: s.Identity, Network: s.Settings.Network,
 		Stores: slices.Clone(s.Harness.Definition.Stores), Auth: slices.Clone(s.Harness.Definition.Auth),
 		Env: map[string]string{}, Setup: hookInput(s.Setup), Mounts: slices.Clone(s.ExtraMounts),
 		Ports: slices.Clone(s.Settings.Ports), RawArgs: slices.Clone(s.Settings.DockerArgs),
@@ -119,7 +117,7 @@ func (s Spec) captureInputs(salt, assetsHash string) Inputs {
 		}
 	}
 	runtime := RuntimeInputs{Assets: assetsHash, Files: map[string]FileInput{}, Entrypoint: hookInput(s.Entrypoint),
-		Launch: s.Harness.Definition.Launch, Args: slices.Clone(s.Settings.HarnessArgs), OnExit: s.Settings.OnExit, Shell: slices.Clone(s.Settings.Shell)}
+		Launch: s.Harness.Definition.Launch, Args: slices.Clone(s.Settings.HarnessArgs), Shell: slices.Clone(s.Settings.Shell)}
 	for name, file := range s.Files {
 		source := file.Source
 		// Default-tree provenance identifies the definition. Diagnostics need
@@ -159,9 +157,8 @@ func (r RuntimeInputs) Fingerprint() string {
 		Entrypoint FileState
 		Launch     harness.Launch
 		Args       []string
-		OnExit     string
 		Shell      []string
-	}{r.Assets, fileStates(r.Files), r.Entrypoint.FileState, r.Launch, r.Args, r.OnExit, r.Shell})
+	}{r.Assets, fileStates(r.Files), r.Entrypoint.FileState, r.Launch, r.Args, r.Shell})
 }
 
 func (i Inputs) Fingerprints() Fingerprints {
@@ -244,5 +241,5 @@ func (i Inputs) Validate() error {
 			}
 		}
 	}
-	return (config.Settings{Harness: i.Image.Harness, Network: i.Container.Network, OnExit: i.Runtime.OnExit, Shell: i.Runtime.Shell}).Validate()
+	return (config.Settings{Harness: i.Image.Harness, Network: i.Container.Network, Shell: i.Runtime.Shell}).Validate()
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,50 +22,23 @@ func (e *Engine) readSession(ctx context.Context, name string) (store.Record, er
 	return r, err
 }
 
-// Locate uses only durable identity, never desired config or the harness registry.
+// Locate resolves one requested identity, never a convenient inventory match.
+// Exact names bypass configuration; folder selection reads only participation.
 func (e *Engine) Locate(ctx context.Context, target, profile string) (store.Record, error) {
 	if strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
-		return e.readSession(ctx, target)
-	}
-	id, err := environment.Identify(target, "", true)
-	if err != nil {
-		return store.Record{}, commanderror.New("workspace_unavailable", "Cannot access workspace: "+err.Error(), target, err)
-	}
-	if profile != "" {
-		id, err := environment.Identify(target, profile, false)
-		if err != nil {
-			return store.Record{}, err
+		r, err := e.readSession(ctx, target)
+		if err == nil && ((profile != "" && profile != r.Identity.Profile) || (e.IgnoreProject && r.Identity.Project)) {
+			return store.Record{}, fmt.Errorf("selection does not match the recorded session")
 		}
-		return e.readSession(ctx, id.Name)
+		return r, err
 	}
-	entries, err := os.ReadDir(filepath.Join(e.Store.Home, "sessions"))
+	id, err := environment.Select(e.Store.Home, target, profile, e.IgnoreProject, nil)
 	if err != nil {
 		return store.Record{}, err
 	}
-	var matches []store.Record
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			return store.Record{}, fmt.Errorf("unexpected non-directory in session inventory")
-		}
-		r, err := e.Store.Read(ctx, entry.Name())
-		if err != nil {
-			return store.Record{}, err
-		}
-		if r.Identity.Workspace == id.Workspace && (profile == "" || r.Identity.Profile == profile) {
-			matches = append(matches, r)
-		}
-	}
-	if len(matches) == 0 {
-		return store.Record{}, commanderror.New("session_missing", "No session found for this workspace.", id.Workspace, os.ErrNotExist,
-			commanderror.Next("List sessions", "list"))
-	}
-	if len(matches) > 1 {
-		return store.Record{}, commanderror.New("ambiguous_target", "Multiple environments found. Select a profile or container name.", id.Workspace, nil,
-			commanderror.Next("List sessions", "list"))
-	}
-	return matches[0], nil
+	return e.readSession(ctx, id.Name)
 }
-func (e *Engine) Start(ctx context.Context, target, profile string) (Result, error) {
+func (e *Engine) Start(ctx context.Context, target, profile string) (result Result, err error) {
 	r, err := e.Locate(ctx, target, profile)
 	var missing *commanderror.Error
 	if errors.As(err, &missing) && missing.Code == "session_missing" &&
@@ -89,8 +61,14 @@ func (e *Engine) Start(ctx context.Context, target, profile string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	result := Result{Name: r.Identity.Name}
-	c, _, err = e.startAccess(ctx, l, c, exists, &r, nil, &result)
+	result = Result{Name: r.Identity.Name}
+	started := false
+	defer func() {
+		if err != nil && started {
+			err = errors.Join(err, e.stopUnattached(l, r))
+		}
+	}()
+	c, started, err = e.startAccess(ctx, l, c, exists, &r, nil, &result)
 	if err != nil {
 		return result, err
 	}
@@ -99,7 +77,7 @@ func (e *Engine) Start(ctx context.Context, target, profile string) (Result, err
 	}
 	r.Action = "start"
 	r.Activity = time.Now().UTC()
-	return result, l.Save(r)
+	return result, e.saveManual(ctx, l, c, &r, true)
 }
 func (e *Engine) Stop(ctx context.Context, target, profile string, force bool) error {
 	r, err := e.Locate(ctx, target, profile)
@@ -135,7 +113,7 @@ func (e *Engine) Stop(ctx context.Context, target, profile string, force bool) e
 	}
 	r.Action = "stop"
 	r.Activity = time.Now().UTC()
-	return l.Save(r)
+	return e.saveManual(ctx, l, c, &r, false)
 }
 func (e *Engine) Exec(ctx context.Context, target, profile string, argv []string, shell bool) (err error) {
 	if _, err := store.ProcessIdentity(os.Getpid()); err != nil {

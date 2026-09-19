@@ -33,7 +33,7 @@ Single-target status includes saved session ID, harness, image, active-command c
 |---|---|
 | `list --json` | Object with `sessions` and `unmatched_containers` arrays |
 | `status --all --json` | Same inventory shape, enriched with desired-change diagnostics |
-| `status <target> --json` | One status object, plus `record` and `active` details |
+| `status <folder\|session> --json` | One status object, plus `record` and `active` details |
 
 Bulk arrays are present even when empty. List session order follows `--sort`. Status fields include `desired_change`, `pending_input_changes`, `config_error`, `error`, and `pending_transfer` where applicable. Bulk rows omit full records and leases.
 

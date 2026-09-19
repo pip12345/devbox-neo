@@ -18,7 +18,7 @@ import (
 func TestConfigRowsKeepListItemsBelowAlignedOrigins(t *testing.T) {
 	rows := []configDisplayRow{
 		{label: "Harness", value: "pi", origin: "profile"},
-		{label: "Extra mounts", value: []string{"/data:/data:ro", "/cache:/cache"}, origin: "default", entryOrigins: []string{"default", "default"}},
+		{label: "Mounts", value: []string{"/data:/data:ro", "/cache:/cache"}, origin: "default", entryOrigins: []string{"default", "default"}},
 		{label: "Environment variables", value: []any{}, origin: "default"},
 	}
 	var out bytes.Buffer
@@ -39,7 +39,7 @@ func TestConfigRowsKeepListItemsBelowAlignedOrigins(t *testing.T) {
 		} else {
 			column = got
 		}
-		if strings.HasPrefix(line, "Extra mounts:") && strings.Contains(line, "/data") {
+		if strings.HasPrefix(line, "Mounts:") && strings.Contains(line, "/data") {
 			t.Fatal("list was still placed on the heading line")
 		}
 		if strings.HasPrefix(line, "Environment variables:") && !strings.Contains(line, "None") {
@@ -85,6 +85,9 @@ func TestConfigMenuDisplaysEveryListItemWithoutStretching(t *testing.T) {
 	s := menuService(t)
 	owner, _ := s.Profile("basic")
 	s.Create(context.Background(), owner, "")
+	if err := s.SetConfigField(context.Background(), owner, "harness", nil, json.RawMessage(`"pi"`), false); err != nil {
+		t.Fatal(err)
+	}
 	args := make([]string, 12)
 	for i := range args {
 		args[i] = fmt.Sprintf("--option-%d=value", i)
@@ -126,7 +129,7 @@ func TestConfigShowUsesMultilineValuesAndLeavesJSONUnchanged(t *testing.T) {
 	contents := map[string]any{
 		"version": 1, "harness": "pi",
 		"harness_args": []string{"--first", "--second", long},
-		"extra_env":    []string{"TOKEN=do-not-print"},
+		"env":          []string{"TOKEN=do-not-print"},
 		"vscode":       map[string]any{"extensions": []string{"example.one", "example.two"}},
 	}
 	data, _ := json.Marshal(contents)

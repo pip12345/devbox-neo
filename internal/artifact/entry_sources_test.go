@@ -13,8 +13,8 @@ import (
 func TestEntrySourcesFollowAppendOrderIncludingDuplicates(t *testing.T) {
 	home, work := t.TempDir(), t.TempDir()
 	put(t, filepath.Join(home, "config.json"), `{"version":1,"default_profile":"base","default_harness":"pi","global_env":["UNSET","DUP=global"]}`)
-	put(t, filepath.Join(home, "profiles/base/config.json"), `{"version":1,"harness_args":["same","same"],"extra_mounts":["same"],"extra_env":["DUP=profile","EXPR=${env:VALUE}"],"vscode":{"extensions":["same"]},"default_shell":["bash","-l"]}`)
-	put(t, filepath.Join(work, ".devbox/config.json"), `{"version":1,"harness_args":["same"],"extra_mounts":["same"],"extra_env":["DUP=project"],"vscode":{"extensions":["same"]},"default_shell":["sh"]}`)
+	put(t, filepath.Join(home, "profiles/base/config.json"), `{"harness":"pi","version":1,"harness_args":["same","same"],"mounts":["same"],"env":["DUP=profile","EXPR=${env:VALUE}"],"vscode":{"extensions":["same"]},"shell":["bash","-l"]}`)
+	put(t, filepath.Join(work, ".devbox/config.json"), `{"harness":"pi","version":1,"harness_args":["same"],"mounts":["same"],"env":["DUP=project"],"vscode":{"extensions":["same"]},"shell":["sh"]}`)
 	for _, explicit := range []string{"", "base"} {
 		r, err := ResolveWithHost(home, work, explicit, config.Layer{HarnessArgs: []string{"same"}, Env: []string{"DUP=cli"}}, config.Host{"VALUE": "expanded-private-value"})
 		if err != nil {
@@ -24,18 +24,12 @@ func TestEntrySourcesFollowAppendOrderIncludingDuplicates(t *testing.T) {
 		wantPair := []string{"profile", "project"}
 		wantEnv := []string{"global", "profile", "profile", "project", "CLI"}
 		wantShell := []string{"project"}
-		if explicit != "" {
-			wantArgs = []string{"profile", "profile", "CLI"}
-			wantPair = []string{"profile"}
-			wantEnv = []string{"global", "profile", "profile", "CLI"}
-			wantShell = []string{"profile", "profile"}
-		}
-		for key, want := range map[string][]string{"harness_args": wantArgs, "extra_mounts": wantPair, "extra_env": wantEnv, "vscode.extensions": wantPair, "default_shell": wantShell} {
+		for key, want := range map[string][]string{"harness_args": wantArgs, "mounts": wantPair, "env": wantEnv, "vscode.extensions": wantPair, "shell": wantShell} {
 			if !reflect.DeepEqual(r.Trace.EntrySources[key], want) {
 				t.Fatalf("%s sources = %v, want %v", key, r.Trace.EntrySources[key], want)
 			}
 		}
-		if len(r.Trace.EntrySources["extra_env"]) != len(r.Settings.Env) || len(r.Trace.EntrySources["harness_args"]) != len(r.Settings.HarnessArgs) {
+		if len(r.Trace.EntrySources["env"]) != len(r.Settings.Env) || len(r.Trace.EntrySources["harness_args"]) != len(r.Settings.HarnessArgs) {
 			t.Fatal("entry metadata is not aligned with resolved values")
 		}
 		b, _ := json.Marshal(r.Trace)
@@ -54,7 +48,7 @@ func TestEntrySourcesRespectStandaloneProjectsAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key, want := range map[string][]string{"harness_args": {"project"}, "extra_env": {"global"}, "default_shell": {"built-in default"}} {
+	for key, want := range map[string][]string{"harness_args": {"project"}, "env": {"global"}, "shell": {"built-in default"}} {
 		if !reflect.DeepEqual(r.Trace.EntrySources[key], want) {
 			t.Fatalf("%s sources = %v, want %v", key, r.Trace.EntrySources[key], want)
 		}

@@ -76,19 +76,20 @@ Documentation and network files are Devbox-managed runtime data. SSH runtime dat
 Container and session-directory names use:
 
 - `devbox-<folder>-<12-hex-hash>.profile-<name>`
+- `devbox-<folder>-<12-hex-hash>.profile-<name>.project`
 - `devbox-<folder>-<12-hex-hash>.project`
 
-The hash covers the canonical workspace path and slot. The readable folder portion is lowercase, sanitized, and limited to 32 characters. Symlink aliases resolve to the same workspace identity.
+The hash covers the canonical workspace path and profile/project combination. Each combination requires separate creation. The saved session and its container share the same name; a missing container does not remove the session. The readable folder portion is lowercase, sanitized, and limited to 32 characters. Symlink aliases resolve to the same workspace identity.
 
 Names locate resources; labels prove ownership. Containers carry installation, ownership-version, session, workspace, and slot labels under `devbox-rewrite.*`. Images carry installation ownership; final tags are `devbox-rewrite/session:<session-id>`.
 
 ## Record and recovery contract
 
-Session schema `2` requires complete `inputs.image`, `inputs.container`, and `inputs.runtime` snapshots. Records contain public settings, paths, file hashes/modes, and keyed env hashes—not file contents or env/auth values. `env_sources` identifies exact recoverable source entries.
+Session schema `3` requires complete `inputs.image`, `inputs.container`, and `inputs.runtime` snapshots. Records contain public settings, paths, file hashes/modes, and keyed env hashes—not file contents or env/auth values. `env_sources` identifies exact recoverable source entries.
 
 `open` and `start` restore a missing container using its recorded image, mount layout, verified definition/setup inputs, and recoverable environment sources. They do not replace recorded creation settings with current configuration. Missing inputs require explicit recreation. Existing named external volumes must still exist.
 
-Recreation preserves the session ID. Clone allocates a new ID; relocate preserves it. Transfers retain a journal until completion and leave no permanent lineage record.
+Recreation preserves the session ID and recorded profile/project combination while applying those sources' current contents. `manual_start` records keep-running intent outside configuration fingerprints: manual `start` keeps the container running until `stop`, including automatic restart with Docker after reboot. Without manual start, the last attached command stops it and it does not restart at boot. Clone allocates a new ID and starts with automatic lifetime; relocate preserves identity and manual intent. Transfers retain a journal until completion and leave no permanent lineage record.
 
 `last_activity` and `last_action` describe recorded Devbox operations, not filesystem activity. List output's container creation time comes from Docker. Corrupt records remain diagnostics rather than being treated as missing state.
 

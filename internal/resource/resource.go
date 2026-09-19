@@ -18,7 +18,10 @@ import (
 	"devbox/internal/harness"
 )
 
-type Service struct{ Home string }
+type Service struct {
+	Home          string
+	IgnoreProject bool
+}
 
 // For projects, Name retains the entered folder for command hints; Root and
 // Workspace remain canonical paths for filesystem operations.
