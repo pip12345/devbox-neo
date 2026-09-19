@@ -13,9 +13,9 @@ import (
 // These requests are invocation-local: resume reconstructs them from metadata
 // and compares the resulting selected snapshot with the durable journal.
 type scanRequest struct {
-	item, source, relative string
-	tree                   bool
-	skip                   map[string]bool
+	item, source, relative, projection string
+	tree                               bool
+	skip                               map[string]bool
 }
 
 func snapshotSelected(ctx context.Context, discovery *Inventory, excluded map[string]string, progress *preparationProgress) (*Inventory, error) {
@@ -46,7 +46,7 @@ func snapshotSelected(ctx context.Context, discovery *Inventory, excluded map[st
 		progress.item(request.item)
 		var err error
 		if request.tree {
-			err = v.tree(ctx, request.item, request.source, request.relative, request.skip)
+			err = v.tree(ctx, request.item, request.source, request.relative, request.skip, request.projection)
 		} else {
 			err = v.file(ctx, request.item, request.source, request.relative)
 		}

@@ -75,6 +75,7 @@ type MergePlan struct {
 	Sessions            []ImportSession    `json:"sessions"`
 	Reviews             []Review           `json:"reviews"`
 	Notices             []string           `json:"notices"`
+	Warnings            []string           `json:"warnings,omitempty"`
 	DestinationSnapshot string             `json:"destination_snapshot"`
 }
 
@@ -98,9 +99,10 @@ func (p *MergePlan) change(key, item, message string) {
 func (p MergePlan) Fingerprint() string { return digest(encode(p)) }
 
 type Capture struct {
-	Root      string `json:"root"`
-	Container string `json:"container"`
-	Hash      string `json:"hash"`
+	Root      string   `json:"root"`
+	Container string   `json:"container"`
+	Hash      string   `json:"hash"`
+	Changes   []string `json:"changes,omitempty"`
 }
 type Attempt struct {
 	Phase     string `json:"phase"`
@@ -799,6 +801,9 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 					return plan, fmt.Errorf("captured config changed")
 				}
 				plan.Captures[i.Key] = captured
+				if len(captured.Changes) > 0 {
+					plan.change("capture-conversion:"+i.Key, i.Key, strings.Join(captured.Changes, " "))
+				}
 			}
 		}
 		managedJournal := *j
@@ -818,6 +823,23 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 	for old, name := range c.Rename {
 		if j.Inventory.item("profile:"+old) == nil || !config.Name.MatchString(name) {
 			return plan, fmt.Errorf("invalid profile rename decision")
+		}
+	}
+	used := map[string]bool{}
+	for _, pub := range plan.Publications {
+		used[pub.Item] = true
+	}
+	for _, job := range plan.Sessions {
+		used[job.Item] = true
+	}
+	for _, item := range j.Inventory.Items {
+		if used[item.Key] {
+			for _, warning := range item.Warnings {
+				plan.Warnings = append(plan.Warnings, item.Key+": "+warning)
+			}
+			if len(item.Changes) > 0 {
+				plan.change("conversion:"+item.Key, item.Key, strings.Join(item.Changes, " "))
+			}
 		}
 	}
 	sort.Slice(plan.Publications, func(a, b int) bool { return plan.Publications[a].Target < plan.Publications[b].Target })

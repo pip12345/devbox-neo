@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,8 +20,8 @@ import (
 	"devbox/internal/store"
 )
 
-func TestEntryMenuExplainsActionsWithoutMutations(t *testing.T) {
-	for _, input := range []string{"0\n", "q\n", "wrong\n2\n3\n0\n", ""} {
+func TestEntryMenuIsCompactAndReadOnly(t *testing.T) {
+	for _, input := range []string{"0\n", "q\n", "wrong\n3\n4\n0\n", ""} {
 		t.Run(input, func(t *testing.T) {
 			source, destination := homes(t)
 			out, err, runtime := execute(t, true, input)
@@ -31,13 +32,18 @@ func TestEntryMenuExplainsActionsWithoutMutations(t *testing.T) {
 			} else if err != nil {
 				t.Fatal(err)
 			}
-			for _, text := range []string{"   [1]  Copy old Devbox data into staging", "Neither installation nor project files are changed", "   [2]  Review and import staged data into Neo", "   [3]  Continue an interrupted migration", "Unavailable:", "   [0]  Exit", "   Choose a number > "} {
+			for _, text := range []string{"   [1]  Preview migration (read-only)", "   [2]  Prepare staged copy", "   [3]  Review and import (not staged)", "   [4]  Resume (nothing pending)", "   [0]  Exit", "   Choose a number > "} {
 				if !strings.Contains(out, text) {
 					t.Fatalf("missing %q: %s", text, out)
 				}
 			}
-			if strings.Contains(out, "--replace-auth") || strings.Contains(out, "private-value") {
-				t.Fatal(out)
+			for _, extra := range []string{"--replace-auth", "private-value", "Neither installation", "Start with option", destination + ".migration"} {
+				if strings.Contains(out, extra) {
+					t.Fatal("landing menu includes action details", out)
+				}
+			}
+			if input == "0\n" && strings.Count(out, "\n") > 16 {
+				t.Fatal("landing menu is too verbose", out)
 			}
 			if runtime.calls != 0 {
 				t.Fatal("entry menu inspected Docker")
@@ -48,14 +54,79 @@ func TestEntryMenuExplainsActionsWithoutMutations(t *testing.T) {
 	}
 }
 
+func TestEntryMenuPreviewUsesDryRunWithoutMutations(t *testing.T) {
+	for _, state := range []string{"absent", "prepared", "unreadable"} {
+		t.Run(state, func(t *testing.T) {
+			var source, destination string
+			if state == "prepared" {
+				p, _ := preparedMenuFixture(t)
+				source, destination = p.Source, p.Destination
+			} else {
+				source, destination = homes(t)
+			}
+			work := destination + ".migration"
+			if state == "unreadable" {
+				put(t, filepath.Join(work, "keep"), "unrelated")
+			}
+			snapshot := func(root string) map[string]string {
+				t.Helper()
+				files := map[string]string{}
+				if _, err := os.Stat(root); os.IsNotExist(err) {
+					return files
+				}
+				err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					if entry.IsDir() {
+						files[path] = "directory"
+						return nil
+					}
+					b, err := os.ReadFile(path)
+					files[path] = string(b)
+					return err
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return files
+			}
+			beforeSource, beforeWork, beforeDestination := snapshot(source), snapshot(work), snapshot(destination)
+			out, err, runtime := execute(t, true, "1\n")
+			if err != nil {
+				t.Fatal(err)
+			}
+			explicit, err, explicitRuntime := execute(t, false, "", "--dry-run")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasSuffix(out, explicit) {
+				t.Fatal("menu preview diverged from dry-run")
+			}
+			if runtime.calls != 0 || explicitRuntime.calls != 0 {
+				t.Fatal("preview inspected Docker")
+			}
+			for _, pair := range [][2]map[string]string{{beforeSource, snapshot(source)}, {beforeWork, snapshot(work)}, {beforeDestination, snapshot(destination)}} {
+				if !reflect.DeepEqual(pair[0], pair[1]) {
+					t.Fatal("preview mutated files")
+				}
+			}
+			if state == "absent" {
+				notExist(t, work)
+				notExist(t, filepath.Join(source, "state/locks"))
+			}
+		})
+	}
+}
+
 func TestEntryMenuStagesOnlyAfterItsOwnApproval(t *testing.T) {
 	for _, test := range []struct {
 		input    string
 		prepared bool
 	}{
-		{"1\n0\n", false},
-		{"1\n3\nn\n0\n", false},
-		{"1\n3\ny\n", true},
+		{"2\n0\n", false},
+		{"2\n3\nn\n0\n", false},
+		{"2\n3\ny\n", true},
 	} {
 		t.Run(test.input, func(t *testing.T) {
 			source, destination := homes(t)
@@ -113,7 +184,7 @@ func preparedMenuFixture(t *testing.T) (migration.Paths, migration.Merger) {
 
 func TestEntryMenuPreparedImportStillRequiresMergeApproval(t *testing.T) {
 	paths, merger := preparedMenuFixture(t)
-	for _, input := range []string{"1\n3\n0\n", "2\n0\n", "2\n5\nn\n0\n"} {
+	for _, input := range []string{"2\n4\n0\n", "3\n0\n", "3\n5\nn\n0\n"} {
 		out, err, _ := executeWithMerger(t, merger, true, input)
 		if err != nil {
 			t.Fatal(out, err)
@@ -127,7 +198,7 @@ func TestEntryMenuPreparedImportStillRequiresMergeApproval(t *testing.T) {
 			t.Fatal("entering merge review authorized import")
 		}
 	}
-	out, err, _ := executeWithMerger(t, merger, true, "2\n5\ny\n")
+	out, err, _ := executeWithMerger(t, merger, true, "3\n5\ny\n")
 	if err != nil {
 		t.Fatal(out, err)
 	}
@@ -141,8 +212,8 @@ func TestEntryMenuPreparedImportStillRequiresMergeApproval(t *testing.T) {
 	if j.Phase != "completed" {
 		t.Fatal(j.Phase)
 	}
-	out, err, runtime := execute(t, true, "1\n2\n3\n0\n")
-	if err != nil || !strings.Contains(out, "Migration is complete") {
+	out, err, runtime := execute(t, true, "2\n3\n4\n0\n")
+	if err != nil || !strings.Contains(out, "Resume (completed)") {
 		t.Fatal(out, err)
 	}
 	if runtime.calls != 0 {
@@ -162,8 +233,8 @@ func TestEntryMenuResumesInterruptedStaging(t *testing.T) {
 		t.Fatal(err)
 	}
 	put(t, filepath.Join(paths.Work, "journal.json"), string(data))
-	out, err, runtime := execute(t, true, "1\n2\n3\n")
-	if err != nil || !strings.Contains(out, "Copying into staging is incomplete") {
+	out, err, runtime := execute(t, true, "2\n3\n4\n")
+	if err != nil || !strings.Contains(out, "Review and import (copy incomplete)") {
 		t.Fatal(out, err)
 	}
 	j, err = migration.Load(paths)
@@ -184,7 +255,7 @@ func TestEntryMenuResumesApprovedMerge(t *testing.T) {
 		}
 		return nil
 	}
-	if _, err, _ := executeWithMerger(t, merger, true, "2\n5\ny\n"); err == nil {
+	if _, err, _ := executeWithMerger(t, merger, true, "3\n5\ny\n"); err == nil {
 		t.Fatal("fault did not trigger")
 	}
 	j, err := migration.Load(paths)
@@ -195,8 +266,8 @@ func TestEntryMenuResumesApprovedMerge(t *testing.T) {
 		t.Fatal(j.Phase)
 	}
 	merger.Fault = nil
-	out, err, _ := executeWithMerger(t, merger, true, "1\n2\n3\n")
-	if err != nil || !strings.Contains(out, "Import into Neo is incomplete") {
+	out, err, _ := executeWithMerger(t, merger, true, "2\n3\n4\n")
+	if err != nil || !strings.Contains(out, "Review and import (merge incomplete)") {
 		t.Fatal(out, err)
 	}
 	j, err = migration.Load(paths)
@@ -211,7 +282,7 @@ func TestEntryMenuResumesApprovedMerge(t *testing.T) {
 func TestEntryMenuRefusesUnknownWorkDirectory(t *testing.T) {
 	source, destination := homes(t)
 	put(t, filepath.Join(destination+".migration", "keep"), "unrelated")
-	out, err, runtime := execute(t, true, "1\n2\n3\n0\n")
+	out, err, runtime := execute(t, true, "2\n3\n4\n0\n")
 	if err != nil || !strings.Contains(out, "Cannot read migration state") {
 		t.Fatal(out, err)
 	}
@@ -235,7 +306,7 @@ func TestEntryMenuUsesExplicitEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, source) || !strings.Contains(out, destination+".migration") {
+	if !strings.Contains(out, source) || !strings.Contains(out, destination) || strings.Contains(out, destination+".migration") {
 		t.Fatal(out)
 	}
 	notExist(t, destination+".migration")
@@ -328,10 +399,79 @@ func TestStageSelectionUsesNumberedCacheChoiceAndZeroBack(t *testing.T) {
 	if !selection.Caches || !has(selection.Skip, "profile:work") {
 		t.Fatal(selection)
 	}
-	for _, text := range []string{"   [1]  [include] profile:work", "   [2]  Toggle caches", "   [0]  Back"} {
+	for _, text := range []string{"   [1]  [include] [Metadata OK] profile:work", "   [2]  Toggle caches", "   [0]  Back"} {
 		if !strings.Contains(out.String(), text) {
 			t.Fatal(out.String())
 		}
+	}
+}
+
+func TestStageSelectionShowsMetadataStatusSeparatelyFromSelection(t *testing.T) {
+	v := &migration.Inventory{Items: []migration.Item{
+		{Key: "global:config", Kind: "global"},
+		{Key: "session:warning", Kind: "session", Harness: "pi", Warnings: []string{"Retained unsupported state."}},
+		{Key: "session:error", Kind: "session", Harness: "pi", Issues: []string{"Missing workspace."}},
+	}}
+	var out bytes.Buffer
+	s := migration.Selection{Skip: []string{"session:error"}}
+	if err := choose(menu{in: bufio.NewReader(strings.NewReader("3\n0\n")), out: &out}, v, &s); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{
+		"[include] [Metadata OK] global:config",
+		"[include] [Warning] session:warning (pi)",
+		"[skip] [Error] session:error (pi)",
+		"[include] [Error] session:error (pi)",
+	} {
+		if !strings.Contains(out.String(), text) {
+			t.Fatal("missing status", text, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "()") || strings.Contains(out.String(), "\x1b") {
+		t.Fatal("empty harness or ANSI in plain menu")
+	}
+	if len(s.Skip) != 0 || len(v.Items[2].Issues) != 1 {
+		t.Fatal("toggle changed metadata status or failed to update selection")
+	}
+}
+
+func TestStageSelectionExcludeAll(t *testing.T) {
+	v := &migration.Inventory{Items: []migration.Item{
+		{Key: "global:config"}, {Key: "profile:work"}, {Key: "session:example"}, {Key: "cache:pi/npm-cache"},
+	}}
+	for _, tc := range []struct {
+		name, input string
+		want        []string
+	}{
+		{"all off", "6\n0\n", []string{"global:config", "profile:work", "session:example", "cache:pi/npm-cache"}},
+		{"repeat", "6\n6\n0\n", []string{"global:config", "profile:work", "session:example", "cache:pi/npm-cache"}},
+		{"select again", "6\n1\n2\n0\n", []string{"session:example", "cache:pi/npm-cache"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			ui := menu{in: bufio.NewReader(strings.NewReader(tc.input)), out: &out}
+			s := migration.Selection{Skip: []string{"profile:work"}, Caches: true, ExternalAuth: []string{"auth:opencode"}}
+			if err := choose(ui, v, &s); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(s.Skip, tc.want) || s.Caches {
+				t.Fatal(s)
+			}
+			if !reflect.DeepEqual(s.ExternalAuth, []string{"auth:opencode"}) {
+				t.Fatal("changed unrelated auth approval")
+			}
+			if !strings.Contains(out.String(), "   [6]  Exclude all items") {
+				t.Fatal(out.String())
+			}
+		})
+	}
+	var out bytes.Buffer
+	s := migration.Selection{Caches: true}
+	if err := choose(menu{in: bufio.NewReader(strings.NewReader("2\n0\n")), out: &out}, &migration.Inventory{}, &s); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Skip) != 0 || s.Caches {
+		t.Fatal("empty inventory did not turn off caches")
 	}
 }
 

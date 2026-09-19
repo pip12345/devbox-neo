@@ -294,7 +294,7 @@ func TestProjectSlotDoesNotBecomeInheritedProfileSlot(t *testing.T) {
 	}
 }
 func TestSourceVersionAndDuplicateJSONFailClosed(t *testing.T) {
-	for _, data := range []string{`{"version":1}`, `{"version":2,"version":2}`, `{"version":2,"secret-extra":"never-print-this"}`} {
+	for _, data := range []string{`{"version":3}`, `{"version":2,"version":2}`, `{"version":2,"secret-extra":"never-print-this"}`} {
 		t.Run(data, func(t *testing.T) {
 			p, _ := fixture(t)
 			put(t, filepath.Join(p.Source, "global.json"), data)

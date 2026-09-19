@@ -1553,7 +1553,7 @@ For each CLI command, test:
 
 There is no automatic compatibility with the current `~/.devbox`. Users may perform a manual clean cutover or explicitly run the separate utility described in [migration-plan.md](migration-plan.md).
 
-The migration utility stages converted data, keeps the original home at `~/.devbox.old`, handles approved project-config changes separately, and creates fresh rewrite containers from copied portable state. Its journal, source schemas, and old-resource handling stay outside normal runtime packages. It never teaches the rewrite to adopt old containers or accept old records.
+The migration utility stages converted data, keeps the original home in place at `~/.devbox`, handles approved project-config changes separately, and creates fresh rewrite containers from copied portable state. Its journal, source schemas, and old-resource handling stay outside normal runtime packages. It never teaches the rewrite to adopt old containers or accept old records.
 
 During development:
 

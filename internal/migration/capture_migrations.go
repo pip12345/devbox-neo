@@ -75,7 +75,7 @@ func (m Merger) CaptureConfigs(ctx context.Context, p Paths, choices MergeChoice
 		}
 		if previous, ok := j.Captures[item.Key]; ok {
 			removePreview(captured.Root)
-			if previous.Container != captured.Container || previous.Hash != captured.Hash {
+			if previous.Container != captured.Container || previous.Hash != captured.Hash || digest(encode(previous.Changes)) != digest(encode(captured.Changes)) {
 				return j, fmt.Errorf("container configuration changed since capture; preserve this run and prepare a new reviewed snapshot")
 			}
 			continue
@@ -124,7 +124,7 @@ func (m Merger) verifyCaptures(ctx context.Context, j *Journal, plan MergePlan) 
 			return err
 		}
 		removePreview(fresh.Root)
-		if fresh.Container != previous.Container || fresh.Hash != previous.Hash {
+		if fresh.Container != previous.Container || fresh.Hash != previous.Hash || digest(encode(fresh.Changes)) != digest(encode(previous.Changes)) {
 			return fmt.Errorf("source container configuration changed since review")
 		}
 	}
@@ -138,9 +138,15 @@ func (m Merger) capture(ctx context.Context, j *Journal, item Item) (result Capt
 	if !exists {
 		return result, fmt.Errorf("container-only OpenCode config is unavailable for %s; explicitly omit it or skip the session", item.Name)
 	}
-	labels := c.Config.Labels
-	if c.State.Running || labels["devbox.managed"] != "true" || labels["devbox.installation_id"] != j.Inventory.Installation || labels["devbox.session_id"] != item.SessionID {
-		return result, fmt.Errorf("config source is running or its ownership does not match")
+	if c.State.Running {
+		return result, fmt.Errorf("config source is running")
+	}
+	if err := verifySourceContainer(ctx, &j.Inventory, item, c, false); err != nil {
+		return result, err
+	}
+	layout, err := inspectSourceLayout(item.Path)
+	if err != nil {
+		return result, err
 	}
 	root, err := os.MkdirTemp(j.Inventory.Paths.Work, "capture-")
 	if err != nil {
@@ -160,7 +166,8 @@ func (m Merger) capture(ctx context.Context, j *Journal, item Item) (result Capt
 		_ = writer.CloseWithError(err)
 		done <- err
 	}()
-	extractErr := extractConfig(captureCtx, tar.NewReader(reader), root, filepath.Join(item.Path, ".staged-harness/opencode"))
+	var changes []string
+	extractErr := extractConfig(captureCtx, tar.NewReader(reader), root, filepath.Join(layout.projection, "opencode"), &changes)
 	if extractErr != nil {
 		cancel()
 	}
@@ -174,6 +181,9 @@ func (m Merger) capture(ctx context.Context, j *Journal, item Item) (result Capt
 	if err != nil || !present || after.ID != c.ID || after.State.Running {
 		return result, fmt.Errorf("config source changed during capture")
 	}
+	if err := verifySourceContainer(ctx, &j.Inventory, item, after, false); err != nil {
+		return result, err
+	}
 	if err = syncStagedDirectories(ctx, root); err != nil {
 		return result, err
 	}
@@ -181,11 +191,12 @@ func (m Merger) capture(ctx context.Context, j *Journal, item Item) (result Capt
 	if err != nil {
 		return result, err
 	}
-	return Capture{Root: root, Container: c.ID, Hash: hash}, nil
+	return Capture{Root: root, Container: c.ID, Hash: hash, Changes: changes}, nil
 }
-func extractConfig(ctx context.Context, tr *tar.Reader, root, generated string) error {
+func extractConfig(ctx context.Context, tr *tar.Reader, root, generated string, changes *[]string) error {
 	type link struct{ relative, target string }
 	links := []link{}
+	omitted := map[string]bool{}
 	seen := map[string]bool{}
 	prefix := ""
 	first := true
@@ -278,6 +289,11 @@ func extractConfig(ctx context.Context, tr *tar.Reader, root, generated string) 
 			}
 			info, err := os.Lstat(source)
 			if err != nil {
+				if os.IsNotExist(err) && changes != nil && staleProjection(generated, l.relative, l.target) {
+					*changes = append(*changes, projectionOmission(l.relative, l.target))
+					omitted[l.relative] = true
+					continue
+				}
 				return err
 			}
 			if info.IsDir() {
@@ -303,6 +319,9 @@ func extractConfig(ctx context.Context, tr *tar.Reader, root, generated string) 
 		}
 	}
 	for _, l := range links {
+		if omitted[l.relative] {
+			continue
+		}
 		target := filepath.Join(root, l.relative)
 		resolved, err := filepath.EvalSymlinks(target)
 		if err != nil || !within(root, resolved) {

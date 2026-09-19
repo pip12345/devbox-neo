@@ -52,6 +52,7 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 	f.StringVar(&source, "source", "", "Old home (default ~/.devbox; DEVBOX_HOME is ignored)")
 	f.StringVar(&destination, "destination", "", "Neo home (default ~/.devbox-neo; staging uses its .migration sibling)")
 	f.BoolVar(&dry, "dry-run", false, "Read-only metadata inventory; no payload scan, report file, or locks")
+	f.Bool("verbose", false, "Show full inventory details; saved reports are always detailed")
 	f.BoolVar(&stage, "stage", false, "Prepare converted host-backed data and report; does not merge")
 	f.BoolVar(&merge, "merge", false, "Review and explicitly merge a prepared import")
 	f.BoolVar(&resume, "resume", false, "Resume an already approved staging or merge operation")
@@ -121,7 +122,7 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 			if err != nil || action == "" {
 				return err
 			}
-			stage, merge, resume = action == "stage", action == "merge", action == "resume"
+			dry, stage, merge, resume = action == "preview", action == "stage", action == "merge", action == "resume"
 		}
 		mergeFlags := confirmMerge || capture || pending || choices.Global != "" || len(renames) > 0 || len(choices.Reuse) > 0 || len(choices.Projects) > 0 || len(choices.ReplaceAuth) > 0 || len(choices.Accept) > 0 || len(choices.OmitConfig) > 0
 		if mergeFlags && !merge {
@@ -142,6 +143,7 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 			if err != nil {
 				return err
 			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Continuing previously approved work from %s.\n", safe(p.Work))
 			if j.Merge != nil {
 				j, err = merger.Resume(cmd.Context(), p)
 			} else {
@@ -209,7 +211,7 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 			return err
 		}
 		if dry {
-			return migration.Report(cmd.OutOrStdout(), v, nil)
+			return printInventory(cmd, v, nil)
 		}
 		if _, err := os.Lstat(p.Work); err == nil {
 			return fmt.Errorf("staging already exists; inspect its report and use --resume for an interrupted run")
@@ -219,7 +221,7 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 		selection := migration.Selection{Skip: skip, Caches: caches, ExternalAuth: external}
 		if !interactive {
 			excluded, err := v.Select(selection)
-			if reportErr := migration.Report(cmd.OutOrStdout(), v, &migration.Journal{Phase: "Staging preview", Excluded: excluded}); reportErr != nil {
+			if reportErr := printInventory(cmd, v, &migration.Journal{Phase: "Staging preview", Excluded: excluded}); reportErr != nil {
 				return reportErr
 			}
 			if err != nil {
@@ -231,7 +233,7 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 			fmt.Fprintln(cmd.OutOrStdout(), "Checking stopped source writers, then copying and verifying host-backed data...")
 			j, err := migration.Stage(cmd.Context(), v, selection, runtime, cmd.OutOrStdout())
 			if j != nil {
-				err = errors.Join(err, migration.Report(cmd.OutOrStdout(), &j.Inventory, j))
+				err = errors.Join(err, printInventory(cmd, &j.Inventory, j))
 			}
 			return err
 		}
@@ -240,9 +242,20 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 	return cmd
 }
 
+func printInventory(cmd *cobra.Command, v *migration.Inventory, j *migration.Journal) error {
+	detailed, err := cmd.Flags().GetBool("verbose")
+	if err != nil {
+		return err
+	}
+	if detailed {
+		return migration.Report(cmd.OutOrStdout(), v, j)
+	}
+	return migration.CompactReport(cmd.OutOrStdout(), v, j)
+}
+
 func printMigrationResult(cmd *cobra.Command, j *migration.Journal, err error) error {
 	if j != nil {
-		return errors.Join(err, migration.Report(cmd.OutOrStdout(), &j.Inventory, j))
+		return errors.Join(err, printInventory(cmd, &j.Inventory, j))
 	}
 	return err
 }
@@ -322,7 +335,7 @@ func stageMenu(cmd *cobra.Command, runtime migration.SourceRuntime, v *migration
 		}
 		switch choice {
 		case "1":
-			if err = migration.Report(m.out, v, nil); err != nil {
+			if err = printInventory(cmd, v, nil); err != nil {
 				return err
 			}
 		case "2":
@@ -364,6 +377,9 @@ func stageMenu(cmd *cobra.Command, runtime migration.SourceRuntime, v *migration
 					fmt.Fprintf(m.out, "  Skip %s (%s)\n", safe(item.Key), safe(reason))
 				} else {
 					fmt.Fprintf(m.out, "  Copy %s\n", safe(item.Key))
+					for _, warning := range item.Warnings {
+						fmt.Fprintf(m.out, "    Warning: %s\n", safe(warning))
+					}
 					selected++
 				}
 			}
@@ -385,7 +401,7 @@ func stageMenu(cmd *cobra.Command, runtime migration.SourceRuntime, v *migration
 				fmt.Fprintln(m.out, "Checking stopped source writers, then copying and verifying host-backed data...")
 				j, stageErr := migration.Stage(cmd.Context(), v, proposed, runtime, m.out)
 				if j != nil {
-					return errors.Join(stageErr, migration.Report(m.out, &j.Inventory, j))
+					return errors.Join(stageErr, printInventory(cmd, &j.Inventory, j))
 				}
 				if stageErr == nil {
 					return nil
@@ -443,10 +459,11 @@ func choose(m menu, v *migration.Inventory, s *migration.Selection) error {
 			if has(s.Skip, item.Key) {
 				state = "skip"
 			}
-			m.option(n+1, fmt.Sprintf("[%s] %s (%s)", state, safe(item.Key), safe(item.Harness)))
+			m.option(n+1, fmt.Sprintf("[%s] %s", state, migration.InventoryItemLabel(m.out, item)))
 		}
 		m.option(len(v.Items)+1, fmt.Sprintf("Toggle caches (currently %t)", s.Caches))
-		answer, err := m.readChoice(len(v.Items)+1, "Back")
+		m.option(len(v.Items)+2, "Exclude all items")
+		answer, err := m.readChoice(len(v.Items)+2, "Back")
 		if err != nil {
 			return err
 		}
@@ -454,6 +471,14 @@ func choose(m menu, v *migration.Inventory, s *migration.Selection) error {
 			return nil
 		}
 		n, _ := strconv.Atoi(answer)
+		if n == len(v.Items)+2 {
+			s.Skip = nil
+			for _, item := range v.Items {
+				s.Skip = append(s.Skip, item.Key)
+			}
+			s.Caches = false
+			continue
+		}
 		if n == len(v.Items)+1 {
 			s.Caches = !s.Caches
 			continue

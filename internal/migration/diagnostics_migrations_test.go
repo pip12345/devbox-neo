@@ -55,9 +55,9 @@ func TestSchemaDiagnosticsIdentifyStructureWithoutValues(t *testing.T) {
 	}
 }
 
-func TestVersionDiagnosticsDistinguishMissingNullZeroAndMismatch(t *testing.T) {
+func TestVersionDiagnosticsRejectExplicitInvalidLayerVersions(t *testing.T) {
 	for _, tc := range []struct{ data, found string }{
-		{`{}`, "missing"}, {`{"version":null}`, "null"}, {`{"version":0}`, "0"}, {`{"version":3}`, "3"},
+		{`{"version":0}`, "0"}, {`{"version":3}`, "3"},
 	} {
 		_, _, err := convertLayer([]byte(tc.data))
 		if err == nil {
@@ -84,8 +84,8 @@ func TestSessionDiagnosticsSeparateVersionsAndCreationSettings(t *testing.T) {
 			root := filepath.Join(p.Source, "sessions", name)
 			rewriteObject(t, filepath.Join(root, "session.json"), func(v map[string]json.RawMessage) { v["version"] = []byte("2") })
 			rewriteObject(t, filepath.Join(root, "metadata.json"), func(v map[string]json.RawMessage) {
-				v["metadata_version"] = []byte("3")
-				delete(v, "ownership_version")
+				v["metadata_version"] = []byte("5")
+				v["ownership_version"] = []byte("2")
 				if creation == "missing" {
 					delete(v, "creation_settings")
 				} else {
@@ -94,7 +94,7 @@ func TestSessionDiagnosticsSeparateVersionsAndCreationSettings(t *testing.T) {
 			})
 			v := inventory(t, p)
 			text := strings.Join(v.item("session:"+name).Issues, "\n")
-			requireText(t, text, `session.json: field "version": found 2; expected version 1`, `metadata.json: field "metadata_version": found 3; expected version 4`, `metadata.json: field "ownership_version": found missing; expected version 1`, "creation_settings is "+creation)
+			requireText(t, text, `session.json: field "version": found 2; expected version 1`, `metadata.json: field "metadata_version": found 5; supported versions are 3 and 4`, `metadata.json: field "ownership_version": found 2; supported versions are 0 (pre-label) and 1`, "creation_settings is "+creation)
 			if _, err := v.Select(Selection{}); err == nil {
 				t.Fatal("unsupported source accepted")
 			}
@@ -115,9 +115,12 @@ func TestSessionDiagnosticsIdentifyReadAndDecodeFailuresSeparately(t *testing.T)
 	if err := os.Remove(filepath.Join(root, "session.json")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Mkdir(filepath.Join(root, "session.json"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	put(t, filepath.Join(root, "metadata.json"), `{"metadata_version":"private-value"}`)
 	text := strings.Join(inventory(t, p).item("session:"+name).Issues, "\n")
-	requireText(t, text, "Cannot read session.json", "does not exist", "Invalid metadata.json", `field "metadata_version"`, "expected integer, got string")
+	requireText(t, text, "Cannot read session.json", "Invalid metadata.json", `field "metadata_version"`, "expected integer, got string")
 	if strings.Contains(text, "private-value") {
 		t.Fatal("metadata leaked")
 	}
@@ -160,12 +163,12 @@ func TestGlobalSchemaDiagnosticsNameTheFileAndField(t *testing.T) {
 	if strings.Contains(err.Error(), "private-value") {
 		t.Fatal("global value leaked")
 	}
-	put(t, filepath.Join(p.Source, "global.json"), `{"version":1}`)
+	put(t, filepath.Join(p.Source, "global.json"), `{"version":3}`)
 	_, err = InventorySource(t.Context(), p)
 	if err == nil {
 		t.Fatal("unsupported global accepted")
 	}
-	requireText(t, err.Error(), `global.json: field "version": found 1; expected version 2`)
+	requireText(t, err.Error(), `global.json: field "version": found 3; supported versions are 1 and 2`)
 	absent(t, p.Work)
 }
 
@@ -256,7 +259,7 @@ func TestGeneratedLinkFailureShowsTargetAndAttemptedHostMapping(t *testing.T) {
 	}
 }
 
-func TestUnmappedLayoutDiagnosticShowsEntryKindsAndRootLink(t *testing.T) {
+func TestUnexpectedLayoutAliasDiagnosticShowsTarget(t *testing.T) {
 	p, name := fixture(t)
 	root := filepath.Join(p.Source, "sessions", name)
 	for _, dir := range []string{".internal", "harnesses"} {
@@ -267,25 +270,27 @@ func TestUnmappedLayoutDiagnosticShowsEntryKindsAndRootLink(t *testing.T) {
 	if err := os.Rename(filepath.Join(root, "pi"), filepath.Join(root, "harnesses/pi")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("harnesses/pi", filepath.Join(root, "pi")); err != nil {
+	if err := os.Symlink("harnesses/other", filepath.Join(root, "pi")); err != nil {
 		t.Fatal(err)
 	}
 	v := inventory(t, p)
 	text := strings.Join(v.item("session:"+name).Issues, "\n")
-	requireText(t, text, `".internal" (directory)`, `"harnesses" (directory)`, `-> "harnesses/pi"`, "symlink-backed harness roots are not supported")
+	requireText(t, text, "Unexpected source layout alias", `-> "harnesses/other"`, "expected a real canonical directory")
 	if _, err := v.Select(Selection{}); err == nil {
 		t.Fatal("unmapped layout accepted")
 	}
 }
 
-func TestInventoriedDoesNotClaimImportReadiness(t *testing.T) {
+func TestMetadataPreviewDoesNotClaimStagingOrImportReadiness(t *testing.T) {
 	p, _ := fixture(t)
 	v := inventory(t, p)
 	var out bytes.Buffer
 	if err := Report(&out, v, nil); err != nil {
 		t.Fatal(err)
 	}
-	requireText(t, out.String(), "[Inventoried] profile:work", "not a validated import", "Docker checks and final configuration review")
+	requireText(t, out.String(), "[Metadata OK] profile:work", "Planned staging path:", "No data has been copied", "not a validated import", "Docker checks and final configuration review")
+	absent(t, p.Work)
+	absent(t, filepath.Join(p.Source, "state/locks"))
 	if strings.Contains(out.String(), "[Ready]") {
 		t.Fatal("inventory claims readiness")
 	}

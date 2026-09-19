@@ -85,19 +85,24 @@ func oldContainerName(workspace, profile string) string {
 	}
 	return name
 }
-func directoryNames(root string) ([]string, error) {
+func (v *Inventory) directoryNames(root string) ([]string, error) {
 	entries, err := readEntries(root)
 	if err != nil {
 		return nil, err
 	}
 	names := []string{}
 	for _, entry := range entries {
+		// Acquiring old-CLI locks may create state/ in a pre-label home. Its
+		// installation identity is checked separately; bookkeeping is not payload.
+		if root == v.Paths.Source && entry.Name() == "state" {
+			continue
+		}
 		names = append(names, entry.Name()+":"+entry.Type().String())
 	}
 	return names, nil
 }
 func (v *Inventory) directory(root string) error {
-	names, err := directoryNames(root)
+	names, err := v.directoryNames(root)
 	if err != nil {
 		return err
 	}
@@ -132,6 +137,8 @@ type Item struct {
 	Dependencies  []string `json:"dependencies,omitempty"`
 	Issues        []string `json:"issues,omitempty"`
 	Notices       []string `json:"notices,omitempty"`
+	Changes       []string `json:"changes,omitempty"`
+	Warnings      []string `json:"warnings,omitempty"`
 	Bytes         int64    `json:"bytes"`
 	Scanned       bool     `json:"scanned,omitempty"`
 }
@@ -197,8 +204,8 @@ func (v *Inventory) depend(key, dep string) {
 	}
 }
 
-// These private schemas pin the current source versions. No old startup loaders,
-// schema repairs, or historical version fallbacks are called by the importer.
+// Private source schemas are normalized in source_migrations.go. No old startup
+// loader or in-place repair runs against the source installation.
 type oldGlobal struct {
 	Version        int                          `json:"version"`
 	DefaultProfile string                       `json:"default_profile"`
@@ -209,18 +216,21 @@ type oldGlobal struct {
 	Harnesses      map[string]map[string]string `json:"harnesses"`
 }
 type oldLayer struct {
-	Version     int       `json:"version"`
-	OnExit      *string   `json:"on_exit"`
-	Shell       *[]string `json:"default_shell"`
-	Harness     *string   `json:"harness"`
-	HarnessArgs []string  `json:"harness_args"`
-	DockerArgs  []string  `json:"docker_args"`
-	Mounts      []string  `json:"extra_mounts"`
-	Env         []string  `json:"extra_env"`
-	Ports       []string  `json:"extra_ports"`
-	Networks    []string  `json:"extra_networks"`
-	HostNetwork *bool     `json:"host_network"`
-	Proxy       *struct {
+	Version       int       `json:"version"`
+	OnExit        *string   `json:"on_exit"`
+	Shell         *[]string `json:"default_shell"`
+	Harness       *string   `json:"harness"`
+	HarnessArgs   []string  `json:"harness_args"`
+	DockerArgs    []string  `json:"docker_args"`
+	Mounts        []string  `json:"extra_mounts"`
+	Env           []string  `json:"extra_env"`
+	Ports         []string  `json:"extra_ports"`
+	Networks      []string  `json:"extra_networks"`
+	HostNetwork   *bool     `json:"host_network"`
+	AutoRebuild   *bool     `json:"auto_rebuild"`
+	LegacyProxy   *bool     `json:"proxy_enabled"`
+	LegacyDomains *[]string `json:"proxy_allowed_domains"`
+	Proxy         *struct {
 		Enabled *bool `json:"enabled"`
 		Allow   *struct {
 			Domains []string `json:"domains"`
@@ -312,12 +322,9 @@ func (v *Inventory) read(ctx context.Context, path string) ([]byte, error) {
 }
 func encode(value any) []byte { b, _ := json.MarshalIndent(value, "", "  "); return append(b, '\n') }
 func convertLayer(b []byte) (config.Layer, []string, error) {
-	var old oldLayer
-	if err := config.Decode(b, &old); err != nil {
-		return config.Layer{}, nil, fmt.Errorf("invalid config.json: %s", schemaDiagnostic(err))
-	}
-	if problem := versionDiagnostic(b, "version", old.Version, 1); problem != "" {
-		return config.Layer{}, nil, fmt.Errorf("config.json: %s", problem)
+	old, notices, err := sourceLayer(b)
+	if err != nil {
+		return config.Layer{}, nil, err
 	}
 	if len(old.Networks) > 0 {
 		return config.Layer{}, nil, fmt.Errorf("extra_networks requires manual review: Neo has one primary network")
@@ -329,13 +336,6 @@ func convertLayer(b []byte) (config.Layer, []string, error) {
 			network = "host"
 		}
 		l.Network = &network
-	}
-	notices := []string{}
-	if l.Network != nil {
-		notices = append(notices, "Converted host_network to network: "+*l.Network+".")
-	}
-	if old.Proxy != nil {
-		notices = append(notices, "Proxy settings removed; Neo does not enforce an allowlist or restrict egress.")
 	}
 	if l.Harness != nil && *l.Harness != "" && !supported(*l.Harness) {
 		return l, notices, fmt.Errorf("unsupported harness %s; manually review/fix or skip this owner and dependent sessions", strconv.QuoteToASCII(*l.Harness))
@@ -361,28 +361,32 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 	if checked != p {
 		return nil, fmt.Errorf("invalid staging path")
 	}
+	if info, err := os.Stat(p.Source); err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("source home must be an existing directory")
+	}
 	v := &Inventory{Paths: p, SourceHashes: map[string]string{}, Directories: map[string][]string{}, Notices: []string{"Original home and Docker resources are retained in place.", "Workspace contents, external mounts/volumes, and arbitrary container-layer files are not backed up.", "Caches are excluded unless explicitly selected.", "Aliases and permanent lineage are report-only; they do not become Neo commands."}}
 	identityPath := filepath.Join(p.Source, "state/installation-id")
 	b, err := v.read(ctx, identityPath)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("cannot read source installation identity: %w", err)
 	}
 	v.Installation = strings.TrimSpace(string(b))
-	if !idPattern.MatchString(v.Installation) {
+	if err == nil && !idPattern.MatchString(v.Installation) {
 		return nil, fmt.Errorf("invalid source installation identity")
 	}
 	globalPath := filepath.Join(p.Source, "global.json")
 	key := v.add("global", "config", globalPath).Key
 	b, err = v.read(ctx, globalPath)
+	if os.IsNotExist(err) {
+		b, err = []byte(`{}`), nil
+		v.notice(key, "No global.json exists; converting the old CLI's built-in global defaults without creating source files.")
+	}
 	if err != nil {
 		return nil, fmt.Errorf("cannot read source global configuration: %w", err)
 	}
-	var g oldGlobal
-	if err := config.Decode(b, &g); err != nil {
-		return nil, fmt.Errorf("invalid global.json: %s", schemaDiagnostic(err))
-	}
-	if problem := versionDiagnostic(b, "version", g.Version, 2); problem != "" {
-		return nil, fmt.Errorf("global.json: %s", problem)
+	g, err := sourceGlobal(b)
+	if err != nil {
+		return nil, err
 	}
 	ng := config.Global{Version: 1, DefaultProfile: g.DefaultProfile, DefaultHarness: g.DefaultHarness, GlobalEnv: g.GlobalEnv, IgnoreProject: g.IgnoreProject}
 	if g.DefaultHarness != "" && !supported(g.DefaultHarness) {
@@ -392,9 +396,12 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 		v.depend(key, "profile:"+g.DefaultProfile)
 	}
 	if g.ProxyEnabled {
-		v.notice(key, "Proxy protection will not carry over; Neo does not restrict container egress.")
+		v.item(key).Changes = append(v.item(key).Changes, "Proxy protection will not carry over; Neo does not restrict container egress.")
 	}
-	v.notice(key, "Converted global.json version 2 to Neo config.json version 1; supported defaults and env expressions are retained.")
+	if v.Installation == "" {
+		v.notice(key, "Source has no installation ID; only metadata-backed pre-label sessions can be imported. No source identity will be created.")
+	}
+	v.notice(key, "Converted global.json to Neo config.json version 1; supported defaults and env expressions are retained.")
 	v.generated(key, globalPath, "config.json", encode(ng), 0600)
 	profiles, err := readEntries(filepath.Join(p.Source, "profiles"))
 	if err != nil {
@@ -441,6 +448,9 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 			{"session.json", rb, rerr, &r},
 			{"metadata.json", mb, merr, &m},
 		} {
+			if source.name == "session.json" && os.IsNotExist(source.readErr) {
+				continue
+			}
 			if source.readErr != nil {
 				v.issue(key, "Cannot read "+source.name+": "+filesystemDiagnostic(source.readErr)+".")
 			} else if err := config.Decode(source.data, source.value); err != nil {
@@ -450,21 +460,23 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 		if len(v.item(key).Issues) > 0 {
 			continue
 		}
-		for _, check := range []struct {
-			file, field      string
-			data             []byte
-			actual, expected int
-		}{
-			{"session.json", "version", rb, r.Version, 1},
-			{"metadata.json", "metadata_version", mb, m.Version, 4},
-			{"metadata.json", "ownership_version", mb, m.Ownership, 1},
-		} {
-			if problem := versionDiagnostic(check.data, check.field, check.actual, check.expected); problem != "" {
-				v.issue(key, check.file+": "+problem+".")
+		if os.IsNotExist(rerr) {
+			r, err = v.missingRecord(root, m)
+			if err != nil {
+				v.issue(key, "Cannot establish creation time for missing session record.")
 			}
+			v.notice(key, "Source has no session.json; a stable import ID is assigned without modifying the source. No historical activity is invented.")
+		} else if problem := versionDiagnostic(rb, "version", r.Version, 1); problem != "" {
+			v.issue(key, "session.json: "+problem+".")
 		}
-		if m.Creation == nil {
-			v.issue(key, "metadata.json: creation_settings is "+fieldPresence(mb, "creation_settings")+"; expected a recorded settings object.")
+		for _, problem := range metadataProblems(mb, m) {
+			v.issue(key, problem)
+		}
+		if m.Ownership == 1 && v.Installation == "" {
+			v.issue(key, "Labeled source metadata requires the source state/installation-id; restore it before import.")
+		}
+		if m.Ownership == 0 {
+			v.notice(key, "Pre-label source ownership will be verified against matching host metadata; containers are never adopted.")
 		}
 		if len(v.item(key).Issues) > 0 {
 			continue
@@ -709,7 +721,7 @@ func readEntries(path string) ([]os.DirEntry, error) {
 }
 func (v *Inventory) inventoryLayer(ctx context.Context, key, root, rel, defaultHarness string, project bool) {
 	b, err := v.read(ctx, filepath.Join(root, "config.json"))
-	if os.IsNotExist(err) && project {
+	if os.IsNotExist(err) {
 		b = []byte(`{"version":1}`)
 		err = nil
 	}
@@ -719,7 +731,7 @@ func (v *Inventory) inventoryLayer(ctx context.Context, key, root, rel, defaultH
 	}
 	l, notices, err := convertLayer(b)
 	for _, n := range notices {
-		v.notice(key, n)
+		v.item(key).Changes = append(v.item(key).Changes, n)
 	}
 	if err != nil {
 		v.issue(key, err.Error())
@@ -746,37 +758,24 @@ func (v *Inventory) inventoryLayer(ctx context.Context, key, root, rel, defaultH
 	v.scans = append(v.scans, scanRequest{item: key, source: root, relative: rel, tree: true, skip: skip})
 }
 func (v *Inventory) inventorySessionState(ctx context.Context, key, root, target, active string) {
-	entries, err := readEntries(root)
+	layout, err := inspectSourceLayout(root)
 	if err != nil {
-		v.issue(key, "Cannot inspect session state.")
+		v.issue(key, err.Error())
 		return
 	}
-	for _, entry := range entries {
-		name := entry.Name()
-		switch name {
-		case "session.json", "metadata.json", ".active", ".fallback-defaults", ".staged-harness", "proxy-ca":
+	for path, link := range layout.aliases {
+		v.SourceHashes[path] = "link:" + digest([]byte(link))
+	}
+	for path, names := range layout.directories {
+		v.Directories[path] = names
+	}
+	for _, name := range sourceHarnessNames {
+		source := layout.stores[name]
+		if source == "" {
 			continue
 		}
 		if !supported(name) {
-			kind := "file"
-			if entry.IsDir() {
-				kind = "directory"
-			} else if entry.Type()&os.ModeSymlink != 0 {
-				kind = "symlink"
-			} else if entry.Type() != 0 {
-				kind = "special file"
-			}
-			v.issue(key, fmt.Sprintf("Unmapped session entry %s (%s); only pi/ and opencode/ harness roots and known bookkeeping are supported. No data from this entry was mapped.", strconv.QuoteToASCII(name), kind))
-			continue
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			path := filepath.Join(root, name)
-			link, err := os.Readlink(path)
-			if err != nil {
-				v.issue(key, "Cannot read harness-root symlink "+strconv.QuoteToASCII(path)+": "+filesystemDiagnostic(err)+".")
-			} else {
-				v.issue(key, fmt.Sprintf("Harness state root %s -> %s is a symlink; symlink-backed harness roots are not supported.", strconv.QuoteToASCII(path), strconv.QuoteToASCII(link)))
-			}
+			v.item(key).Warnings = append(v.item(key).Warnings, fmt.Sprintf("Not imported: retained %s harness state at %q. Only Pi/OpenCode stores are copied; this store and any conversations in it remain untouched in the old installation.", name, source))
 			continue
 		}
 		storeName := "home"
@@ -784,14 +783,14 @@ func (v *Inventory) inventorySessionState(ctx context.Context, key, root, target
 			storeName = "data"
 		}
 		rel := filepath.Join("sessions", target, "harnesses", name, "stores", storeName)
-		v.scans = append(v.scans, scanRequest{item: key, source: filepath.Join(root, name), relative: rel, tree: true, skip: map[string]bool{"auth.json": true}})
+		v.scans = append(v.scans, scanRequest{item: key, source: source, relative: rel, projection: filepath.Join(layout.projection, name), tree: true, skip: map[string]bool{"auth.json": true}})
 		v.depend(key, "auth:"+name)
 	}
-	if _, err := os.Stat(filepath.Join(root, active)); err != nil {
+	if layout.stores[active] == "" {
 		v.issue(key, "Recorded harness state directory is missing.")
 	}
 	if active == "opencode" {
-		v.notice(key, "OpenCode's separate container-only config must be inventoried before staging can claim a complete portable snapshot.")
+		v.notice(key, "OpenCode's separate container-only config must be captured during merge review, or explicitly omitted.")
 	}
 }
 func (v *Inventory) file(ctx context.Context, key, source, relative string) error {
@@ -831,7 +830,16 @@ func privateMode(mode os.FileMode) os.FileMode {
 	}
 	return 0600
 }
-func (v *Inventory) tree(ctx context.Context, key, root, rel string, skip map[string]bool) error {
+func (v *Inventory) tree(ctx context.Context, key, root, rel string, skip map[string]bool, projection string) error {
+	return v.projectedTree(ctx, key, root, rel, skip, projection, map[string]bool{})
+}
+
+func (v *Inventory) projectedTree(ctx context.Context, key, root, rel string, skip map[string]bool, projection string, visiting map[string]bool) error {
+	if visiting[root] {
+		return fmt.Errorf("cyclic generated config projection: %s", root)
+	}
+	visiting[root] = true
+	defer delete(visiting, root)
 	if _, err := fsutil.Path(root, "."); err != nil {
 		return err
 	}
@@ -868,7 +876,8 @@ func (v *Inventory) tree(ctx context.Context, key, root, rel string, skip map[st
 			// Relative internal links retain their meaning. Generated container links
 			// require their own proven mapping, never traversal through a guessed host path.
 			v.SourceHashes[path] = "link:" + digest([]byte(link))
-			if strings.HasPrefix(key, "session:") && (link == "/devbox/harness-config" || strings.HasPrefix(link, "/devbox/harness-config/")) {
+			if projection != "" && (link == "/devbox/harness-config" || strings.HasPrefix(link, "/devbox/harness-config/")) {
+				entryRelative := local
 				local := strings.TrimPrefix(link, "/devbox/harness-config/")
 				if link == "/devbox/harness-config" {
 					local = "."
@@ -876,17 +885,27 @@ func (v *Inventory) tree(ctx context.Context, key, root, rel string, skip map[st
 				if !filepath.IsLocal(local) {
 					return fmt.Errorf("generated config link %s -> %s escapes its config root; no host mapping attempted", strconv.QuoteToASCII(path), strconv.QuoteToASCII(link))
 				}
-				stagedRoot := filepath.Join(v.item(key).Path, ".staged-harness", filepath.Base(root))
+				stagedRoot := projection
 				mapped := filepath.Join(stagedRoot, local)
 				if _, err := fsutil.Path(stagedRoot, local); err != nil {
 					return fmt.Errorf("generated config link %s -> %s; mapped host path %s rejected: %s", strconv.QuoteToASCII(path), strconv.QuoteToASCII(link), strconv.QuoteToASCII(mapped), filesystemDiagnostic(err))
 				}
 				info, err := os.Stat(mapped)
 				if err != nil {
+					// Only the live home's mirrored links are generated. Links
+					// inside staged user content are not disposable projections.
+					if os.IsNotExist(err) && staleProjection(stagedRoot, entryRelative, link) && !within(projection, root) {
+						if err := v.directory(stagedRoot); err != nil {
+							return err
+						}
+						v.SourceHashes[mapped] = "missing"
+						v.item(key).Changes = append(v.item(key).Changes, projectionOmission(path, link))
+						return nil
+					}
 					return fmt.Errorf("generated config link %s -> %s; mapped host path %s unavailable: %s", strconv.QuoteToASCII(path), strconv.QuoteToASCII(link), strconv.QuoteToASCII(mapped), filesystemDiagnostic(err))
 				}
 				if info.IsDir() {
-					return v.tree(ctx, key, mapped, target, nil)
+					return v.projectedTree(ctx, key, mapped, target, nil, projection, visiting)
 				}
 				return v.file(ctx, key, mapped, target)
 			}
@@ -1003,8 +1022,10 @@ func (d DockerSource) CheckIdle(ctx context.Context, v *Inventory, excluded map[
 	// Auth and caches are shared across source sessions. A skipped or unrecorded
 	// installation-owned container must not keep writing them while we copy.
 	var ids bytes.Buffer
-	if err := d.Runtime.Runner.Run(ctx, docker.Command{Args: []string{"container", "ls", "--all", "--filter", "label=devbox.managed=true", "--filter", "label=devbox.installation_id=" + v.Installation, "--format", "{{.ID}}"}, Stdout: &ids}); err != nil {
-		return commanderror.New("migration_source_unavailable", "Cannot inventory source Docker resources.", v.Paths.Source, err)
+	if v.Installation != "" {
+		if err := d.Runtime.Runner.Run(ctx, docker.Command{Args: []string{"container", "ls", "--all", "--filter", "label=devbox.managed=true", "--filter", "label=devbox.installation_id=" + v.Installation, "--format", "{{.ID}}"}, Stdout: &ids}); err != nil {
+			return commanderror.New("migration_source_unavailable", "Cannot inventory source Docker resources.", v.Paths.Source, err)
+		}
 	}
 	for _, id := range strings.Fields(ids.String()) {
 		if !regexp.MustCompile(`^[a-f0-9]{12,64}$`).MatchString(id) {
@@ -1027,9 +1048,11 @@ func (d DockerSource) CheckIdle(ctx context.Context, v *Inventory, excluded map[
 		}
 	}
 	for _, i := range v.Items {
-		if i.Kind != "session" || excluded[i.Key] != "" {
+		if i.Kind != "session" {
 			continue
 		}
+		// Legacy writers do not appear in the installation-label inventory.
+		// Check them even when excluded: auth and caches are shared.
 		for _, name := range []string{i.Name, "devbox-proxy-" + i.Name} {
 			c, exists, err := d.Runtime.Inspect(ctx, name)
 			if err != nil {
@@ -1038,9 +1061,11 @@ func (d DockerSource) CheckIdle(ctx context.Context, v *Inventory, excluded map[
 			if !exists {
 				continue
 			}
-			labels := c.Config.Labels
-			if labels["devbox.managed"] != "true" || labels["devbox.installation_id"] != v.Installation || labels["devbox.session_id"] != i.SessionID {
-				return fmt.Errorf("source Docker ownership mismatch: %s", name)
+			if excluded[i.Key] != "" && !c.State.Running {
+				continue
+			}
+			if err := verifySourceContainer(ctx, v, i, c, name != i.Name); err != nil {
+				return err
 			}
 			if c.State.Running {
 				return fmt.Errorf("source container is running: %s; stop it with the old Devbox CLI and recheck", name)
@@ -1054,28 +1079,30 @@ func checkLeases(ctx context.Context, v *Inventory) error {
 		if i.Kind != "session" {
 			continue
 		}
-		entries, err := readEntries(filepath.Join(i.Path, ".active"))
-		if err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			b, err := readRegular(ctx, filepath.Join(i.Path, ".active", entry.Name()))
+		for _, leaseDir := range sourceLeasePaths(i.Path) {
+			entries, err := readEntries(leaseDir)
 			if err != nil {
-				return fmt.Errorf("cannot verify source lease: %s", i.Name)
+				return err
 			}
-			var lease struct {
-				PID     int    `json:"pid"`
-				Started string `json:"started_at"`
-			}
-			if json.Unmarshal(b, &lease) != nil || lease.PID <= 0 {
-				return fmt.Errorf("invalid source lease; review with old CLI: %s", i.Name)
-			}
-			err = syscall.Kill(lease.PID, 0)
-			if err == nil || errors.Is(err, syscall.EPERM) {
-				return fmt.Errorf("source has active attached commands: %s", i.Name)
-			}
-			if !errors.Is(err, syscall.ESRCH) {
-				return fmt.Errorf("cannot verify source process: %s", i.Name)
+			for _, entry := range entries {
+				b, err := readRegular(ctx, filepath.Join(leaseDir, entry.Name()))
+				if err != nil {
+					return fmt.Errorf("cannot verify source lease: %s", i.Name)
+				}
+				var lease struct {
+					PID     int    `json:"pid"`
+					Started string `json:"started_at"`
+				}
+				if json.Unmarshal(b, &lease) != nil || lease.PID <= 0 {
+					return fmt.Errorf("invalid source lease; review with old CLI: %s", i.Name)
+				}
+				err = syscall.Kill(lease.PID, 0)
+				if err == nil || errors.Is(err, syscall.EPERM) {
+					return fmt.Errorf("source has active attached commands: %s", i.Name)
+				}
+				if !errors.Is(err, syscall.ESRCH) {
+					return fmt.Errorf("cannot verify source process: %s", i.Name)
+				}
 			}
 		}
 	}
@@ -1158,7 +1185,17 @@ type Journal struct {
 	CurrentItem         string             `json:"current_item,omitempty"`
 }
 
+// Report retains the complete inventory for saved reports and explicit detail views.
 func Report(w io.Writer, v *Inventory, j *Journal) error {
+	return inventoryReport(w, v, j, true)
+}
+
+func CompactReport(w io.Writer, v *Inventory, j *Journal) error {
+	return inventoryReport(w, v, j, false)
+}
+
+func inventoryReport(w io.Writer, v *Inventory, j *Journal, detailed bool) error {
+	paint := reportColors(w)
 	var b strings.Builder
 	status := "Preview (read-only)"
 	if j != nil {
@@ -1173,41 +1210,47 @@ func Report(w io.Writer, v *Inventory, j *Journal) error {
 			status = "completed with exclusions"
 		}
 	}
-	fmt.Fprintf(&b, "Devbox -> Neo migration\nStatus: %s\nSource: %s\nDestination: %s\nStaging: %s\n", display(status), display(v.Paths.Source), display(v.Paths.Destination), display(v.Paths.Work))
+	stagingLabel := "Staging"
+	if j == nil || j.ID == "" {
+		stagingLabel = "Planned staging path"
+	}
+	fmt.Fprintf(&b, "%s\nStatus: %s\nSource: %s\nDestination: %s\n%s: %s\n", paint.heading("Devbox -> Neo migration"), display(status), display(v.Paths.Source), display(v.Paths.Destination), stagingLabel, display(v.Paths.Work))
 	if j != nil && j.ID != "" {
-		fmt.Fprintf(&b, "Run: %s\nStarted: %s\nUpdated: %s\nRecorded staged files: %d\n", j.ID, j.Started.Format(time.RFC3339), j.Updated.Format(time.RFC3339), len(j.Completed))
+		if detailed {
+			fmt.Fprintf(&b, "Run: %s\nStarted: %s\nUpdated: %s\n", j.ID, j.Started.Format(time.RFC3339), j.Updated.Format(time.RFC3339))
+		}
+		fmt.Fprintf(&b, "Recorded staged files: %d\n", len(j.Completed))
 		if j.Failure != "" {
 			fmt.Fprintf(&b, "Error: %s\n", display(j.Failure))
 		}
 	}
-	if j == nil || (j.Merge == nil && j.Phase != "prepared") {
-		fmt.Fprintln(&b, "Metadata only: [Inventoried] means no metadata errors found, not a validated import. Payload sizes, deep-tree checks and hashing are deferred until staging selection. Docker checks and final configuration review are still required.")
+	if j == nil || j.ID == "" {
+		if detailed {
+			fmt.Fprintln(&b, "Metadata only: [Metadata OK] means no metadata errors found, not a validated import. No data has been copied. Payload files/links, sizes, deep-tree checks and hashing are deferred until staging selection. Docker checks and final configuration review are still required.")
+		} else {
+			fmt.Fprintln(&b, "\nMetadata only — not a validated import. No data has been copied.")
+			fmt.Fprintln(&b, "Payload/link checks happen during staging; Docker and final config checks follow.")
+		}
+	}
+	var notes reportNotes
+	group := ""
+	if !detailed {
+		notes = collectReportNotes(v.Items)
+		fmt.Fprintln(&b, "\n"+inventorySummary(v.Items, j))
 	}
 	for _, i := range v.Items {
-		state := "Inventoried"
-		if len(i.Issues) > 0 {
-			state = "Error"
-		}
-		if j != nil && j.Phase == "prepared" {
-			state = "Staged"
-		}
-		if j != nil && j.Failure != "" && j.CurrentItem == i.Key {
-			state = "Failed"
-		}
-		if j != nil && j.Excluded[i.Key] != "" {
-			state = "Skipped"
-		}
-		if j != nil && j.Merge != nil {
-			if j.Merge.Plan.Excluded[i.Key] != "" {
-				state = "Skipped"
-			} else if i.Kind == "session" {
-				state = "Pending"
-				if a := j.Merge.Attempts[i.Key]; a != nil && a.Phase == "done" {
-					state = "Imported"
-				}
+		state := reportItemState(i, j)
+		if !detailed {
+			if group != i.Kind {
+				group = i.Kind
+				fmt.Fprintf(&b, "\n%s\n", paint.heading(reportGroup(group)))
+			} else if i.Kind == "session" || i.Kind == "profile" {
+				fmt.Fprintln(&b)
 			}
+			compactItem(&b, i, j, state, notes, paint)
+			continue
 		}
-		fmt.Fprintf(&b, "\n[%s] %s\n  Path: %s\n", state, display(i.Key), display(i.Path))
+		fmt.Fprintf(&b, "\n%s %s\n  Path: %s\n", paint.status(state), paint.item(i), display(i.Path))
 		if i.Harness != "" {
 			fmt.Fprintf(&b, "  Harness: %s\n", display(i.Harness))
 		}
@@ -1235,13 +1278,28 @@ func Report(w io.Writer, v *Inventory, j *Journal) error {
 		for _, notice := range i.Notices {
 			fmt.Fprintf(&b, "  Review: %s\n", display(notice))
 		}
+		for _, change := range i.Changes {
+			fmt.Fprintf(&b, "  Conversion: %s\n", display(change))
+		}
+		for _, warning := range i.Warnings {
+			fmt.Fprintf(&b, "  Warning: %s\n", display(warning))
+		}
 		if i.Scanned {
 			fmt.Fprintf(&b, "  Portable bytes: %d\n", i.Bytes)
 		} else {
 			fmt.Fprintln(&b, "  Portable data: not scanned; only selected data is scanned during staging.")
 		}
 	}
-	fmt.Fprintln(&b, "\nRetained originals and limitations:")
+	if !detailed && len(notes.shared) > 0 {
+		fmt.Fprintln(&b, "\n"+paint.heading("Shared notes summary:"))
+		for n, note := range notes.shared {
+			fmt.Fprintf(&b, "  %d. %s\n", n+1, display(note))
+		}
+	}
+	if !detailed {
+		fmt.Fprintln(&b, "\nFull inventory details: --verbose (also kept in the saved report).")
+	}
+	fmt.Fprintln(&b, "\n"+paint.heading("Retained originals and limitations:"))
 	for _, notice := range v.Notices {
 		fmt.Fprintf(&b, "  %s\n", display(notice))
 	}
@@ -1302,7 +1360,7 @@ func Load(p Paths) (*Journal, error) {
 		return nil, err
 	}
 	var j Journal
-	if config.Decode(b, &j) != nil || j.Version != journalVersion || !idPattern.MatchString(j.ID) || j.Inventory.Paths != p || !idPattern.MatchString(j.Inventory.Installation) {
+	if config.Decode(b, &j) != nil || j.Version != journalVersion || !idPattern.MatchString(j.ID) || j.Inventory.Paths != p || (j.Inventory.Installation != "" && !idPattern.MatchString(j.Inventory.Installation)) {
 		return nil, fmt.Errorf("unrecognized or mismatched migration journal; no files changed")
 	}
 	if j.Inventory.SourceHashes == nil || j.Inventory.Directories == nil || j.Excluded == nil || j.Completed == nil {
@@ -1456,7 +1514,7 @@ func verifySource(ctx context.Context, v *Inventory) error {
 	}
 	sort.Strings(keys)
 	for root, expected := range v.Directories {
-		actual, err := directoryNames(root)
+		actual, err := v.directoryNames(root)
 		if err != nil || digest(encode(actual)) != digest(encode(expected)) {
 			return fmt.Errorf("source directory changed; review/restage: %s", root)
 		}

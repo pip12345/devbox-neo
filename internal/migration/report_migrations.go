@@ -40,6 +40,9 @@ func ReviewReport(w io.Writer, p MergePlan) error {
 	for _, notice := range p.Notices {
 		fmt.Fprintf(&b, "  Keep: %s\n", display(notice))
 	}
+	for _, warning := range p.Warnings {
+		fmt.Fprintf(&b, "  Warning: %s\n", display(warning))
+	}
 	for _, r := range p.Reviews {
 		state := "Needs acceptance"
 		if r.Blocking {

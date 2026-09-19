@@ -84,6 +84,16 @@ func TestHelpDryRunAndUnavailableMergeMakeNoChanges(t *testing.T) {
 			if strings.Contains(out, "private-value") {
 				t.Fatal("leaked config")
 			}
+			if len(args) == 1 && args[0] == "--dry-run" {
+				for _, text := range []string{"[Metadata OK]", "Planned staging path:", "No data has been copied"} {
+					if !strings.Contains(out, text) {
+						t.Fatal("unclear dry-run output", out)
+					}
+				}
+				if strings.Contains(out, "[Staged]") || strings.Contains(out, "[Inventoried]") {
+					t.Fatal("misleading preview status", out)
+				}
+			}
 			if fake.calls != 0 {
 				t.Fatal("read-only operation inspected Docker")
 			}
@@ -93,6 +103,70 @@ func TestHelpDryRunAndUnavailableMergeMakeNoChanges(t *testing.T) {
 		})
 	}
 }
+func TestVerboseInventoryAndSavedReportKeepFullDetails(t *testing.T) {
+	source, destination := homes(t)
+	compact, err, runtime := execute(t, false, "", "--dry-run")
+	if err != nil || runtime.calls != 0 {
+		t.Fatal(err)
+	}
+	full, err, runtime := execute(t, false, "", "--dry-run", "--verbose")
+	if err != nil || runtime.calls != 0 {
+		t.Fatal(err)
+	}
+	detail := "Path: " + filepath.Join(source, "profiles/work")
+	if strings.Contains(compact, detail) || !strings.Contains(full, detail) {
+		t.Fatal("verbosity did not control inventory details")
+	}
+	menu, err, runtime := execute(t, true, "1\n", "--verbose")
+	if err != nil || runtime.calls != 0 || !strings.HasSuffix(menu, full) {
+		t.Fatal("menu lost verbose setting", err)
+	}
+	notExist(t, destination+".migration")
+	notExist(t, filepath.Join(source, "state/locks"))
+	if out, err, _ := execute(t, false, "", "--stage", "--confirm-stage"); err != nil {
+		t.Fatal(out, err)
+	}
+	data, err := os.ReadFile(filepath.Join(destination+".migration", "report.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), detail) {
+		t.Fatal("saved report lost full details")
+	}
+}
+
+func TestStageMenuShowsWarningsBeforeConfirmation(t *testing.T) {
+	source, destination := homes(t)
+	p, err := migration.NewPaths(source, destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := migration.InventorySource(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warning := "Not imported: retained unsupported store; original remains untouched."
+	v.Items[0].Warnings = []string{warning}
+	fake := &sourceFake{}
+	cmd := newCommand(fake, migration.Merger{}, true)
+	cmd.SetContext(context.Background())
+	cmd.SetIn(strings.NewReader("3\nn\n0\n"))
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := stageMenu(cmd, fake, v, migration.Selection{}); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	warnAt, confirmAt := strings.Index(text, "Warning: "+warning), strings.Index(text, "Prepare this scope")
+	if warnAt < 0 || confirmAt < warnAt {
+		t.Fatal("warning hidden behind confirmation", text)
+	}
+	if fake.calls != 0 {
+		t.Fatal("cancelled preparation inspected Docker")
+	}
+	notExist(t, p.Work)
+}
+
 func TestNonInteractiveRequiresExplicitStageApproval(t *testing.T) {
 	_, destination := homes(t)
 	out, err, _ := execute(t, false, "", "--stage")

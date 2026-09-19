@@ -510,7 +510,7 @@ func TestConfigArchiveRejectsTraversalAndEscapingLinks(t *testing.T) {
 		if err := w.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if err := extractConfig(context.Background(), tar.NewReader(&data), t.TempDir(), t.TempDir()); err == nil {
+		if err := extractConfig(context.Background(), tar.NewReader(&data), t.TempDir(), t.TempDir(), nil); err == nil {
 			t.Fatal("unsafe archive accepted", header.Name)
 		}
 	}
