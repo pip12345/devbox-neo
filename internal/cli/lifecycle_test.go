@@ -114,10 +114,10 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	destination := t.TempDir()
-	if out, err := run("clone", result.Name, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {
+	if out, err := run("copy", result.Name, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {
 		t.Fatal(out, err)
 	}
-	if out, err := run("clone", result.Name, destination, "--json"); err != nil || !strings.Contains(out, `"mode":"clone"`) {
+	if out, err := run("copy", result.Name, destination, "--json"); err != nil || !strings.Contains(out, `"mode":"clone"`) {
 		t.Fatal(out, err)
 	}
 	for _, order := range []string{"name", "last-active"} {
@@ -138,7 +138,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 			t.Fatal("session text and JSON disagree", table, err)
 		}
 	}
-	if _, err := run("relocate", result.Name, "--from", "test"); err == nil {
+	if _, err := run("copy", result.Name, "--move", "--from", "test"); err == nil {
 		t.Fatal("incomplete slot flags accepted")
 	}
 	if _, err = run("delete", result.Name); err == nil {

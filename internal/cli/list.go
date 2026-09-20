@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"devbox/internal/app"
+	"devbox/internal/store"
 )
 
 func sortViews(views []app.View, by string) {
@@ -159,7 +160,7 @@ func printListRows(out io.Writer, views []app.View, table string) error {
 		}
 		if view.Pending != nil {
 			p := view.Pending
-			if _, err := fmt.Fprintf(out, "* %s: pending %s (%s): %s -> %s; retry the same transfer command.\n", displayCell(view.Name), displayCell(p.Mode), displayCell(p.Phase), displayCell(p.Source), displayCell(p.Destination)); err != nil {
+			if _, err := fmt.Fprintf(out, "* %s: pending %s (%s): %s -> %s; retry the same transfer command.\n", displayCell(view.Name), displayCell(store.TransferCommand(p.Mode)), displayCell(p.Phase), displayCell(p.Source), displayCell(p.Destination)); err != nil {
 				return err
 			}
 		}

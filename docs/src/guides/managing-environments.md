@@ -52,22 +52,22 @@ devbox-neo start .
 
 Prepare the destination workspace and its profile or project settings first. Transfers copy saved harness state, not your project files or tools installed only inside the container.
 
-Close attached commands, then stop and clone:
+Close attached commands, then stop and copy:
 
 ```sh
 devbox-neo stop /path/to/project
-devbox-neo clone /path/to/project /path/to/copy --dry-run
-devbox-neo clone /path/to/project /path/to/copy
+devbox-neo copy /path/to/project /path/to/copy --dry-run
+devbox-neo copy /path/to/project /path/to/copy
 ```
 
-The destination must not already have an environment in the selected slot. Clone leaves it stopped and keeps the source.
+The destination must not already have an environment in the selected slot. Copy leaves it stopped and keeps the source.
 
-To move rather than copy, use `relocate` with the same source and destination syntax. It removes the source environment after the destination is ready and preserves whether it was running.
+To move rather than copy, add `--move` to `copy`. It removes the source environment after the destination is ready and preserves whether it was running.
 
 You can also move between profile and project environments in the same folder:
 
 ```sh
-devbox-neo relocate . --from .profile-basic --to .profile-basic.project
+devbox-neo copy . --move --from .profile-basic --to .profile-basic.project
 ```
 
 Here, a **slot** means the selected profile/project combination. The destination project must already be initialized. See [transfer commands](../reference/commands.md#transfers) for selector rules.

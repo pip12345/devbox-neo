@@ -98,7 +98,7 @@ func TestTransferIdentityStateAndRunningPolicy(t *testing.T) {
 				if (copied.ID == original.ID) != (mode == "relocate") {
 					t.Fatal("wrong identity policy")
 				}
-				if copied.Identity.Workspace != target || copied.Action != mode {
+				if copied.Identity.Workspace != target || copied.Action != store.TransferCommand(mode) {
 					t.Fatal("wrong destination contract", copied.Identity)
 				}
 				view, err := e.Status(ctx, result.Destination, "")
@@ -214,7 +214,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 		t.Fatal("source not restarted")
 	}
 	var pendingError *commanderror.Error
-	if _, err = e.Start(ctx, opened.Name, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "devbox-neo relocate "+opened.Name+" "+opts.Destination {
+	if _, err = e.Start(ctx, opened.Name, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "devbox-neo copy --move "+opened.Name+" "+opts.Destination {
 		t.Fatal("pending source not guarded", err)
 	}
 	j, err := e.Store.ReadTransfer(opened.Name)

@@ -176,7 +176,7 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 			cmd.ValidArgsFunction = completeTarget(func(cmd *cobra.Command) []string {
 				return append(completeSessions(cmd), containers(cmd)...)
 			}, 0, true)
-		case "clone", "relocate":
+		case "copy":
 			cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
 				if len(args) == 1 {
 					return nil, cobra.ShellCompDirectiveFilterDirs

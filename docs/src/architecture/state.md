@@ -92,11 +92,11 @@ Selection filters intersect. Age uses recorded activity, and unknown activity is
 
 ## Transfer state machine
 
-`app/transfer.go` owns clone/relocate orchestration; `store` owns journal persistence and portable store copying. A single external journal at `state/transfers/<source-container>.json` reserves both endpoint names.
+`app/transfer.go` owns `copy` / `copy --move` orchestration; `store` owns journal persistence and portable store copying. A single external journal at `state/transfers/<source-container>.json` reserves both endpoint names.
 
 Both endpoint operation locks are acquired in sorted order. Ordinary `Locked.Load` rejects pending work, while inventory and transfer operations can inspect it. Pending lookup scans unfinished journals; corrupt journals fail mutations closed because endpoint reservations cannot be trusted.
 
-The journal records public endpoint identities, session IDs, transfer mode/phase, intended running state, and destination input fingerprints. It is not a second creation record and contains no env/auth values. Destination creation accepts the journal's allocated identity so retry cannot allocate another session.
+The journal records public endpoint identities, session IDs, transfer mode/phase, intended running state, and destination input fingerprints. Internal modes remain `clone` for `copy` and `relocate` for `copy --move`; JSON transfer results and pending summaries use these mode values too. It is not a second creation record and contains no env/auth values. Destination creation accepts the journal's allocated identity so retry cannot allocate another session.
 
 ```mermaid
 stateDiagram-v2
@@ -109,11 +109,11 @@ stateDiagram-v2
 
 ### Prepare: source is authoritative
 
-The engine validates current portability declarations and requires the source's active definition to remain unchanged. Clone requires a stopped or absent source; relocate may stop a running source and remember its intent. Both require idle endpoints and an unused destination.
+The engine validates current portability declarations and requires the source's active definition to remain unchanged. `copy` requires a stopped or absent source; `copy --move` may stop a running source and remember its intent. Both require idle endpoints and an unused destination.
 
 Only declared environment stores and ownership manifests are copied. Auth overlays, cache stores, records, leases, and SSH runtime data are excluded. Workspace files and container-layer tools are not part of the state tree. Symlinks are copied as opaque entries without traversal; special files are rejected.
 
-Destination resolution uses the normal configuration pipeline. Image building, synchronization, setup, and runtime installation follow ordinary creation. Clone leaves the destination stopped; relocate restores the source's original running intent at the destination.
+Destination resolution uses the normal configuration pipeline. Image building, synchronization, setup, and runtime installation follow ordinary creation. `copy` leaves the destination stopped; `copy --move` restores the source's original running intent at the destination.
 
 If preparation fails, bounded rollback cleans the destination, restores the source image tag after a relocation build, and restarts a previously running source. The journal remains pending. A preparation retry requires matching destination fingerprints and recopies the authoritative source because rollback may have restarted it and allowed its state to change.
 
@@ -123,4 +123,4 @@ Publishing `committed` changes authority before source removal. Once publication
 
 A committed retry does not resolve new desired config or copy state again. It verifies the recorded destination, recovers a missing destination container when recorded inputs permit, and finishes source cleanup. Copying again here could overwrite newer destination history with stale source data.
 
-The journal lives outside the source directory so deleting source state cannot lose the recovery plan or reservation. Only completed cleanup removes the journal and releases both names. Clone creates a new session ID; relocate preserves it. No permanent lineage record is needed after completion.
+The journal lives outside the source directory so deleting source state cannot lose the recovery plan or reservation. Only completed cleanup removes the journal and releases both names. `copy` creates a new session ID; `copy --move` preserves it. No permanent lineage record is needed after completion.

@@ -25,7 +25,7 @@ func TestListDetailsAndSorting(t *testing.T) {
 	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"NAME", "PROFILE", "LAST ACTIVE", ".project", "2 hours ago", "just now", "stopped!*", "no durable record", "pending clone"} {
+	for _, want := range []string{"NAME", "PROFILE", "LAST ACTIVE", ".project", "2 hours ago", "just now", "stopped!*", "no durable record", "pending copy"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
@@ -58,7 +58,7 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	views := []app.View{
 		{Name: "recent", SessionID: "project", Harness: "pi", Workspace: "/work/project", LastActivity: now},
 		{Name: "older", Profile: "basic", Harness: "opencode", Exists: true, Workspace: "/work/api", LastActivity: now.Add(-2 * time.Hour)},
-		{Name: "broken", Error: "corrupt record", Pending: &store.Reservation{Mode: "clone", Phase: "prepare", Source: "older", Destination: "broken"}},
+		{Name: "broken", Error: "corrupt record", Pending: &store.Reservation{Mode: "relocate", Phase: "prepare", Source: "older", Destination: "broken"}},
 	}
 	sortViews(views, "last-active")
 	var out bytes.Buffer
@@ -69,7 +69,7 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	if got := strings.Fields(lines[0]); strings.Join(got, " ") != "NAME HARNESS PROFILE LAST ACTIVE CONTAINER FOLDER" {
 		t.Fatal("not a session-focused table", lines[0])
 	}
-	for _, want := range []string{"pi", ".project", "just now", "missing", "opencode", "basic", "2 hours ago", "stopped", "missing!*", "corrupt record", "pending clone"} {
+	for _, want := range []string{"pi", ".project", "just now", "missing", "opencode", "basic", "2 hours ago", "stopped", "missing!*", "corrupt record", "pending copy --move"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}

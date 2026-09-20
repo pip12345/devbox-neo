@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"devbox/internal/app"
+	"devbox/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -36,7 +37,7 @@ func containerCommands(factory engineFactory, profile *string) []*cobra.Command 
 func printView(cmd *cobra.Command, view app.View) {
 	cmd.Printf("%s  %s  %s\n", displayCell(view.Name), containerState(view), displayCell(view.Workspace))
 	if view.Pending != nil {
-		cmd.Printf("  Pending %s (%s): %s -> %s\n  Retry the same transfer command.\n", displayCell(view.Pending.Mode), displayCell(view.Pending.Phase), displayCell(view.Pending.Source), displayCell(view.Pending.Destination))
+		cmd.Printf("  Pending %s (%s): %s -> %s\n  Retry the same transfer command.\n", displayCell(store.TransferCommand(view.Pending.Mode)), displayCell(view.Pending.Phase), displayCell(view.Pending.Source), displayCell(view.Pending.Destination))
 	}
 	if view.Error != "" {
 		cmd.Printf("  Error: %s\n", displayCell(view.Error))

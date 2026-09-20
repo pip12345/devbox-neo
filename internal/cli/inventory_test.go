@@ -143,13 +143,13 @@ func TestDeleteCLIFlagsAndTerminalPrompts(t *testing.T) {
 
 func TestTopLevelCommandsHaveNoSessionCompatibilityGroup(t *testing.T) {
 	root := New()
-	for _, name := range []string{"list", "status", "clone", "relocate", "delete"} {
+	for _, name := range []string{"list", "status", "copy", "delete"} {
 		cmd, _, err := root.Find([]string{name})
 		if err != nil || cmd.Name() != name {
 			t.Fatal(name, err)
 		}
 	}
-	for _, name := range []string{"session", "show", "reset", "prune"} {
+	for _, name := range []string{"session", "show", "reset", "prune", "clone", "relocate"} {
 		// Group validation now owns unknown-command errors; Find can return the
 		// root for validation without making the removed name a real command.
 		cmd := New()

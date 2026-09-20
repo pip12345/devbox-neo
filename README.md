@@ -14,7 +14,7 @@ make check
 bin/devbox-neo --help
 ```
 
-Saved environments are the top-level model: use `list`, `status <folder|session>`, `status --all`, `clone`, and `relocate`. Single-target status combines saved session details, active commands, container state, and pending configuration changes. There is no `session` command group. List/status retain environments without containers and warn separately about unmatched managed containers.
+Saved environments are the top-level model: use `list`, `status <folder|session>`, `status --all`, and `copy` (add `--move` to remove the source after copying). Single-target status combines saved session details, active commands, container state, and pending configuration changes. There is no `session` command group. List/status retain environments without containers and warn separately about unmatched managed containers.
 
 `delete <folder|session>` asks about container deletion, then saved data. Explicit `--container` deletes runtime only; `--session` deletes the whole environment, without prompts. Filter cleanup with `--older-than`, `--orphaned`, `--stopped`, or `--all`; preview with `--dry-run` and an explicit scope. `--force` never expands scope. There is no separate `prune` command.
 

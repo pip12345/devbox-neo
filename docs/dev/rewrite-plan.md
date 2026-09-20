@@ -218,7 +218,7 @@ replaces the embedded Pi definition completely. The registry must report the eff
 2. **One durable aggregate.** `session.json` is the host-side authority for one durable session slot; its Docker container is disposable runtime.
 3. **One mutation lock owner.** Every session mutation goes through the session store and its external locks.
 4. **Pure resolution, effectful execution.** Config, target, harness, artifact, and change resolution are pure where possible.
-5. **Typed transitions.** Create, open, recreate, delete, clone, and relocate are explicit operations, not flags that silently alter another operation's contract.
+5. **Typed transitions.** Create, open, recreate, delete, and copy are explicit operations. Copy retains the source by default; `copy --move` explicitly selects source removal after destination commitment.
 6. **No hidden fallback.** Invalid participating configuration, missing selected profiles, ownership mismatch, and corrupt state fail clearly. Already-running `start`, `shell`, and `exec` do not load desired config. When startup is needed, all access commands resolve valid participating config and synchronize compatible runtime inputs; errors never become ignored-sync fallbacks.
 7. **No harness-specific lifecycle branches.** Differences live in validated harness definitions.
 8. **No prompt-driven core policy.** The engine returns a plan or typed requirement. The CLI may ask one question or require an explicit flag.
@@ -416,7 +416,7 @@ External lock paths remain outside removable session directories so deletion can
 
 A session is durable Devbox state and recreation identity. A container is disposable Docker runtime linked to the session through deterministic naming and ownership/session-ID labels. Container/session names use `devbox-<folder>-<12-hex-hash>.profile-<name>` or `devbox-<folder>-<12-hex-hash>.project`, hashing the full canonical workspace path and slot. The canonical folder basename is lowercased, sanitized to `a-z0-9_.-` with invalid runs replaced by `-`, and limited to 32 characters. Edge punctuation is trimmed; an empty result becomes `workspace`. The prefix is independent of the Docker ownership namespace.
 
-The saved session is the top-level environment model. `list`, `status`, `relocate`, `clone`, and `delete` are root commands; there is no `session` group or separate container-only list/status.
+The saved session is the top-level environment model. `list`, `status`, `copy`, and `delete` are root commands; there is no `session` group or separate container-only list/status.
 
 - `list` inventories saved environments, including missing containers, corrupt records, and pending transfer endpoints, without resolving desired configuration.
 - `status <folder|session>` and `status --all` show container state separately from configuration errors and pending runtime/recreate/rebuild changes. Missing containers do not imply configuration failure.
@@ -1176,7 +1176,9 @@ Rules:
 
 ## Session Operations
 
-### Relocate and clone
+### Copy and move
+
+The CLI exposes `copy` and `copy --move`, with no `clone` or `relocate` aliases. Internal journal/JSON modes and harness capability fields remain `clone` and `relocate`, respectively.
 
 Use one transfer engine with explicit mode-specific policy:
 
@@ -1228,7 +1230,7 @@ devbox logs <folder|session>
 devbox recreate <folder|session> [--image]
 devbox recreate --all [--image]
 devbox network inspect|env|connect|disconnect
-devbox relocate|clone ...
+devbox copy ... [--move]
 ```
 
 `list` shows saved environment name, harness, profile, last activity, container state, and folder. Default ordering is by name; `--sort last-active` puts newest activity first with names breaking ties and unknown activity last. `--wide` adds exact UTC activity/creation timestamps and last action. Creation time comes from Docker. Stopped/missing rows are dimmed after alignment; diagnostics remain undimmed. Terminal opt-outs retain plain text. Listing never resolves desired configuration or adds per-row Docker calls.

@@ -29,7 +29,7 @@ Temporary work uses `.build-*` and `.runtime-*` under the home, `.devbox-create-
 
 ## What survives
 
-| Data | Stop/start | Recreate | Clone/relocate |
+| Data | Stop/start | Recreate | Copy/move |
 |---|---|---|---|
 | Workspace files | Retained on host | Retained on host | Not copied; prepare destination separately |
 | Declared environment stores | Retained | Retained | Copied |
@@ -89,7 +89,7 @@ Session schema `3` requires complete `inputs.image`, `inputs.container`, and `in
 
 `open` and `start` restore a missing container using its recorded image, mount layout, verified definition/setup inputs, and recoverable environment sources. They do not replace recorded creation settings with current configuration. Missing inputs require explicit recreation. Existing named external volumes must still exist.
 
-Recreation preserves the session ID and recorded profile/project combination while applying those sources' current contents. `manual_start` records keep-running intent outside configuration fingerprints: manual `start` keeps the container running until `stop`, including automatic restart with Docker after reboot. Without manual start, the last attached command stops it and it does not restart at boot. Clone allocates a new ID and starts with automatic lifetime; relocate preserves identity and manual intent. Transfers retain a journal until completion and leave no permanent lineage record.
+Recreation preserves the session ID and recorded profile/project combination while applying those sources' current contents. `manual_start` records keep-running intent outside configuration fingerprints: manual `start` keeps the container running until `stop`, including automatic restart with Docker after reboot. Without manual start, the last attached command stops it and it does not restart at boot. `copy` allocates a new ID and starts with automatic lifetime; `copy --move` preserves identity and manual intent. Transfers retain a journal until completion and leave no permanent lineage record.
 
 `last_activity` and `last_action` describe recorded Devbox operations, not filesystem activity. List output's container creation time comes from Docker. Corrupt records remain diagnostics rather than being treated as missing state.
 

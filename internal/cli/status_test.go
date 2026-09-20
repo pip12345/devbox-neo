@@ -19,7 +19,7 @@ func TestStatusTableSeparatesLiveStateFromChanges(t *testing.T) {
 		{Name: "image", Exists: true, Desired: environment.RebuildAndRecreate},
 		{Name: "invalid", Exists: true, Running: true, ConfigError: "invalid config\nnext line"},
 		{Name: "broken", Exists: true, Error: "corrupt record"},
-		{Name: "pending", Exists: true, Pending: &store.Reservation{Mode: "clone", Phase: "prepare"}},
+		{Name: "pending", Exists: true, Pending: &store.Reservation{Mode: "relocate", Phase: "prepare"}},
 		{Name: "unknown", Exists: true},
 	}
 	var out bytes.Buffer
@@ -27,7 +27,7 @@ func TestStatusTableSeparatesLiveStateFromChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	for _, want := range []string{"NAME", "CONTAINER", "CHANGE", "No changes", "Runtime changes", "Recreate needed", "Rebuild + recreate needed", "corrupt record", `invalid config\nnext line`, "devbox-neo recreate container", "devbox-neo recreate image"} {
+	for _, want := range []string{"NAME", "CONTAINER", "CHANGE", "No changes", "Runtime changes", "Recreate needed", "Rebuild + recreate needed", "corrupt record", `invalid config\nnext line`, "devbox-neo recreate container", "devbox-neo recreate image", "pending copy --move"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q: %s", want, text)
 		}

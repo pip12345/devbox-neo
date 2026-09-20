@@ -48,10 +48,9 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 		{"project config", "profile", "With --show, select the base profile beneath project configuration"},
 		{"profile init", "harness", "Choose a harness by name"},
 		{"project init", "harness", "Choose a harness by name, or inherit to use the profile/global setting"},
-		{"clone", "from", "Source slot: .profile-NAME, .profile-NAME.project, or .project"},
-		{"clone", "to", "Destination slot: .profile-NAME, .profile-NAME.project, or .project"},
-		{"relocate", "from", "Source slot: .profile-NAME, .profile-NAME.project, or .project"},
-		{"relocate", "to", "Destination slot: .profile-NAME, .profile-NAME.project, or .project"},
+		{"copy", "from", "Source slot: .profile-NAME, .profile-NAME.project, or .project"},
+		{"copy", "to", "Destination slot: .profile-NAME, .profile-NAME.project, or .project"},
+		{"copy", "move", "Remove the source after the destination is ready, preserving session identity and running intent"},
 		{"delete", "older-than", "Select environments inactive longer than this duration, e.g. 720h; rechecked while locked"},
 	} {
 		cmd, _, err := New().Find(strings.Fields(tt.command))
@@ -78,8 +77,7 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 		{"recreate", "Recreate the container with current settings, keeping session data"},
 		{"status", "Show session details, active commands, and pending configuration changes"},
 
-		{"clone", "Copy session state to another folder or profile"},
-		{"relocate", "Move session state to another folder or profile"},
+		{"copy", "Copy session state to another folder or profile"},
 	} {
 		t.Run(tt.command, func(t *testing.T) {
 			root := New()

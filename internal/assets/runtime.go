@@ -34,7 +34,7 @@ survive stop/start but are lost on recreation. Workspace files and declared
 harness stores persist on the host. Devbox prepares parents for declared harness
 mounts, but unmounted directories remain container-local even when writable.
 Managed authentication and shared caches are
-separate from saved session state. Session clone/relocate copy only declared
+separate from saved session state. Session copy and copy --move transfer only declared
 harness state, not workspace files or container-layer tools. Pending transfers
 reserve both endpoints; retry the same host CLI command instead of deleting
 journals or session directories by hand.
@@ -76,8 +76,9 @@ containers. Status --all checks their configuration and changed local inputs, in
 environments without containers; it does not check upstream releases. Both commands
 warn separately about managed containers without session records. Status <folder|session>
 combines saved session details, active commands, container state, and pending changes;
-invalid current config does not hide saved details. Clone and relocate are also
-top-level commands; there is no separate show command or session command group.
+invalid current config does not hide saved details. Copy is also a top-level command;
+add --move to remove the source after the destination is ready. There is no separate
+show command or session command group.
 Managed profile/project files are authoritative: local edits to their live copies
 are overwritten at the next startup. Open/start/shell/exec/ssh synchronize before
 starting stopped containers, never merely when attaching to running ones.

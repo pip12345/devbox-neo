@@ -47,8 +47,8 @@ Definitions use strict JSON and schema version `1`.
 | `config.path` | Relative config directory within that store; default `.` |
 | `config_merge` | Shared-JSON ownership declarations; entries below |
 | `auth` | Managed authentication mounts; entries below |
-| `session.clone` | Whether declared state supports cloning |
-| `session.relocate` | Whether declared state supports relocation |
+| `session.clone` | Whether declared state supports `copy` |
+| `session.relocate` | Whether declared state supports `copy --move` |
 | `prepare` | Array of non-empty argv arrays for container preparation |
 
 ### Store entries

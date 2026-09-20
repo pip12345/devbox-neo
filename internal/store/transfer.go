@@ -42,15 +42,29 @@ type Reservation struct {
 	retry       commanderror.Step
 }
 
+// TransferCommand renders the CLI operation for a journal mode. The durable
+// modes also select harness capabilities; they are not CLI command names.
+func TransferCommand(mode string) string {
+	if mode == "relocate" {
+		return "copy --move"
+	}
+	return "copy"
+}
+
 // RetryStep uses the journal's exact endpoints, including same-folder slots.
 // It does not rediscover defaults or depend on the source record still existing.
 func (j Transfer) RetryStep() commanderror.Step {
-	if j.Source.Workspace == j.Destination.Workspace {
-		return commanderror.Next("Resume transfer", j.Mode, j.Source.Workspace, "--from", j.Source.Selector(), "--to", j.Destination.Selector())
+	args := []string{"copy"}
+	if j.Mode == "relocate" {
+		args = append(args, "--move")
 	}
-	args := []string{j.Mode, j.Source.Name, j.Destination.Workspace}
-	if j.Destination.Slot != j.Source.Slot {
-		args = append(args, "--to", j.Destination.Selector())
+	if j.Source.Workspace == j.Destination.Workspace {
+		args = append(args, j.Source.Workspace, "--from", j.Source.Selector(), "--to", j.Destination.Selector())
+	} else {
+		args = append(args, j.Source.Name, j.Destination.Workspace)
+		if j.Destination.Slot != j.Source.Slot {
+			args = append(args, "--to", j.Destination.Selector())
+		}
 	}
 	return commanderror.Next("Resume transfer", args...)
 }

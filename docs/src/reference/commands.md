@@ -124,11 +124,13 @@ Network exports include `DEVBOX_HOST`, `DEVBOX_NETWORK`, `DEVBOX_PRIMARY_NETWORK
 
 | Command | Effect |
 |---|---|
-| `clone <folder\|session> <destination-folder> [--to SLOT]` | Copy saved harness state with a new session ID; source must be stopped/absent; destination stays stopped |
-| `relocate <folder\|session> <destination-folder>` | Move saved state, preserve ID and running/stopped intent, then remove source |
-| `clone\|relocate <folder> --from SLOT --to SLOT` | Transfer between same-folder slots: `.profile-NAME`, `.profile-NAME.project`, or `.project` |
+| `copy <folder\|session> <destination-folder> [--to SLOT]` | Copy saved harness state with a new session ID; source must be stopped/absent; destination stays stopped |
+| `copy <folder\|session> <destination-folder> --move` | Move saved state, preserve ID and running/stopped intent, then remove source |
+| `copy <folder> --from SLOT --to SLOT [--move]` | Transfer between same-folder slots: `.profile-NAME`, `.profile-NAME.project`, or `.project` |
 
-Both commands accept `--dry-run` and `--json`. Folder sources use the common selection rules; `--profile` selects the source profile. `--from SLOT` explicitly selects the source combination and cannot be combined with `--profile`. Without a destination folder, `--to SLOT` is required. Cross-folder transfers retain the source combination unless clone supplies `--to SLOT`; cross-folder relocation retains the source combination. Destination profiles must exist; project destinations must be initialized. Same-folder examples use suffix selectors such as `--from .profile-basic --to .profile-basic.project`.
+`copy` accepts `--dry-run` and `--json`, with or without `--move`. Folder sources use the common selection rules; `--profile` selects the source profile. `--from SLOT` explicitly selects the source combination and cannot be combined with `--profile`. Without a destination folder, `--to SLOT` is required. Cross-folder copies retain the source combination unless `--to SLOT` is supplied; with `--move`, cross-folder transfers must retain the source combination. Destination profiles must exist; project destinations must be initialized. Same-folder examples use suffix selectors such as `--from .profile-basic --to .profile-basic.project`.
+
+JSON transfer results and pending summaries report `mode: "clone"` for `copy` and `mode: "relocate"` for `copy --move`.
 
 Transfers require idle endpoints, an unused destination, and harness portability declarations. Destination configuration controls creation. Only declared environment stores and managed-config manifests are copied—not workspace files, container-layer tools, auth, shared caches, active commands, or SSH connections.
 
