@@ -86,7 +86,7 @@ Invalid participating configuration or malformed live shared JSON blocks startup
 
 `open` still resolves desired settings and reports creation drift. It does not write managed files while running. If the existing ownership manifest already matches the desired files, runtime-only hook/launch changes can advance the runtime baseline. Otherwise it reports deferral without advancing the file manifest or claiming the files were applied.
 
-Before recovery, synchronization, startup, or entrypoint output, Open emits image/container drift reasons and the recreation command. This is a warning, not authorization to replace the container. Runtime changes remain visible in status without being mislabeled as creation changes.
+Before recovery, synchronization, startup, or before-open hook output, `open` emits image/container drift reasons and the recreation command. This is a warning, not authorization to replace the container. Runtime changes remain visible in status without being mislabeled as creation changes.
 
 The ordered `before-open.sh` chain runs on each Open before attachment. Each script is a separate process; failure stops the chain and blocks attachment. Existing containers launch their recorded harness; a newly selected definition does not silently change the container's installed capabilities.
 
@@ -127,11 +127,23 @@ sequenceDiagram
 
 Cleanup uses an independent bounded context so cancellation of the foreground operation does not skip state cleanup. It removes the lease, reaps stale processes, and reads current manual-start intent while holding the operation lock. The last attachment stops the container only when `manual_start` is false. A failed hook or lease setup stops a newly started automatic container when no other attachment exists.
 
-Explicit `start` records manual intent even if the container is already running. Successful `stop` clears it; rejected stop leaves it intact. Attachments never change it. Intent persists across CLI processes, container recreation/recovery, and host reboot. Docker's managed restart policy is `unless-stopped` for manual sessions and `no` otherwise; raw Docker options cannot override it. Intent is session state, not a desired-input fingerprint or per-lease policy. Changing restart policy and publishing the record occur under the operation lock; a failed record save attempts to restore the prior Docker policy.
-
-Docker boot restart uses the existing container, not normal CLI preparation: it does not resolve changed desired config, relaunch harnesses, or restore SSH/terminal attachments. Subsequent ordinary CLI access retains its normal preparation rules.
-
 Leases contain Linux process start ticks and boot identity to distinguish PID reuse. Corrupt or unverifiable leases fail closed rather than being assumed idle. Foreground SSH controllers use the same lease owner as Docker attachments.
+
+### Manual start and Docker restart
+
+`manual_start` belongs to the session, not to config fingerprints or individual leases:
+
+| Operation | Effect on `manual_start` |
+|---|---|
+| Explicit `start` | Set, even when already running |
+| Successful `stop` | Clear; a rejected stop leaves it unchanged |
+| Attach or detach a command | No change |
+
+The value survives recreation, recovery, and reboot. Docker enforces it through `unless-stopped` when set and `no` otherwise; raw Docker options cannot override this policy.
+
+`saveManual` updates Docker's policy and saves the record under the operation lock. If saving fails, it attempts to restore the previous policy so a failed command does not silently change reboot behavior.
+
+At boot, Docker starts the existing container without CLI preparation. It does not apply changed config or restore harness processes, SSH connections, or terminal attachments.
 
 ## Invocation-local terminal metadata
 

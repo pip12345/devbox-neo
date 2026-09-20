@@ -43,21 +43,17 @@ Files use strict JSON: unknown fields, duplicate keys, comments, trailing commas
 
 1. `--profile` selects the base profile; otherwise `default_profile` supplies it.
 2. Project settings and artifacts in `<workspace>/.devbox/` apply above the base profile.
-3. Apply `inherit` cutoffs before reading excluded sources' settings or artifacts. Project `inherit: false` excludes the preceding profile even when selected explicitly; missing or invalid excluded profile files are irrelevant.
+3. Project `inherit: false` excludes the profile and its artifacts, even with explicit `--profile`. Excluded files are not read.
 4. `--ignore-project` or global `ignore_project` excludes the project and its inheritance setting.
 5. An empty resolved harness falls back to `default_harness`.
 
-Creation and recreation use configuration files, not container-setting flags. A saved session pins its source directories and identity; exact-name access and recreation do not switch sources when defaults change. An inheritance edit that changes recorded participation fails rather than renaming saved state.
+At least one profile or project must be selected, and its required files must exist. Settings merge according to the field table above.
 
-Profile/project selection determines the environment's name suffix. Config files have no `name` field. Source creation seeds only `version`; each selected directory supplies `config.json` plus optional artifacts.
-
-A required missing source is an error.
-
-At least one profile or project layer must participate. Excluded layers contribute neither settings nor artifacts. Scalar and list merges follow the field table above.
+An exact session name keeps its saved profile/project combination when defaults change. Recreation also keeps that combination; changing `inherit` cannot turn an existing combined environment into a project-only one. Create a separate environment for the new combination.
 
 ## Editing and inspection
 
-Use `global config`, `profile config <profile>`, or `project config <folder|session>` for numbered terminal menus. Add `--show [--json]` to inspect effective values, participating layers, sources, and artifact winners without editing. Project inspection also accepts `--profile NAME`; `--json` and that profile option require `--show`.
+Use `global config`, `profile config <profile>`, or `project config <folder|session>` for numbered terminal menus. Add `--show [--json]` to inspect effective values, their sources, and ordered Dockerfiles and scripts without editing. Project inspection also accepts `--profile NAME`; `--json` and that profile option require `--show`.
 
 | Menu action | Effect |
 |---|---|
@@ -121,9 +117,11 @@ Scripts run as the development user in `/workspace`, with sudo available. Each s
 
 ## Image inputs
 
-Devbox prepares the selected upstream image with its runtime, development user, host UID/GID, home, and sudo access. Participating Dockerfiles then build in order; each must extend `DEVBOX_BASE`. Devbox restores the user/home/workdir contract between stages, preserves custom PATH additions, and installs/validates the selected harness last. The default upstream image is `debian:bookworm-slim`.
+`base_image` defaults to `debian:bookworm-slim`. Each Dockerfile extends `DEVBOX_BASE`: the profile builds first, then the project, and Devbox installs the harness last.
 
-Bases must be Debian/Ubuntu-compatible and must not conflict with the requested development UID or `devuser` identity. Conflicts fail clearly instead of changing unrelated accounts. Tools installed under paths hidden by managed mounts will not be visible at runtime.
+Each Dockerfile starts as `devuser`, with home `/home/devuser` and working directory `/workspace`. Custom PATH additions carry forward. Use sudo for system changes.
+
+The base must be Debian/Ubuntu-compatible. An existing `devuser` must match the host UID/GID and use `/home/devuser`; another account must not already own the requested UID. Tools installed under paths hidden by managed mounts will not be visible at runtime.
 
 | Input / behavior | Rule |
 |---|---|

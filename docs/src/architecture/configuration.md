@@ -6,9 +6,10 @@ Configuration has three distinct owners: `resource` edits source files, `artifac
 
 ```mermaid
 flowchart TD
-    HOST[Capture host environment] --> READ[Decode and expand config]
-    READ --> LAYERS[Select participating layers]
-    LAYERS --> MERGE[Merge settings and trace sources]
+    HOST[Capture host environment] --> GLOBAL[Read global config]
+    GLOBAL --> LAYERS[Select config sources]
+    LAYERS --> READ[Decode and expand retained configs]
+    READ --> MERGE[Merge settings and trace sources]
     MERGE --> HAR[Load selected harness]
     HAR --> FILES[Overlay defaults and config files]
     FILES --> PLAN[Capture image and runtime inputs]
@@ -17,19 +18,19 @@ flowchart TD
 
 `config.Decode` rejects duplicate JSON keys as well as schema errors. Duplicate-key rejection matters because different JSON consumers otherwise disagree about the same file's meaning. Source parsing and effective validation are separate: editing a literal source field should not require unrelated inherited or host-dependent fields to resolve.
 
-`artifact.Select` owns participation; the full resolver and direct session lookup share it:
+### Selecting sources
 
-- Explicit profile selection replaces the default base profile, without excluding project artifacts.
-- Selected directories are generic sources with optional `inherit` metadata. An `inherit: false` cutoff removes all preceding sources, even an explicitly selected profile, before their settings or artifacts are read.
-- Global or invocation project exclusion removes the project and its inheritance choice.
-- Recorded source references pin a saved session independently of changed defaults. Project configuration lives in the workspace's `.devbox/` directory.
-- An empty resolved harness falls back to the global default.
+`artifact.Select` is shared by full resolution and folder lookup. It chooses profile/project directories from flags and global defaults, or uses a saved session's recorded sources for exact-name access. The [selection rules](../reference/configuration.md#selection-and-precedence) apply before settings and artifacts are loaded.
 
-Target selection reads only identity-affecting settings, without expanding unrelated env references or loading harness/build inputs. `RetainSources` walks backwards and stops at the last inheritance cutoff, so excluded directories need not be available. The frontend determines environment identity from retained profile/project participation; the generic merger has no config-name field or naming rules. Full resolution validates participating sources before runtime preparation. Configured `harness_args` requires a harness in the same file; only layers naming the final selected harness contribute arguments and argument provenance. Invocation arguments are appended at launch and never saved as desired configuration.
+`RetainSources` walks backwards through the directories and stops at the last `inherit: false`. Earlier sources are discarded without reading them, so an excluded broken profile cannot block resolution. Folder lookup reads only selection metadata; it does not expand unrelated env references or load harness/build inputs.
 
-This ordering makes excluded broken/missing layers irrelevant instead of reading them and then trying to suppress their errors. Project-init inheritance previews use the same resolver with a proposed layer.
+### Merging settings and artifacts
 
-Dockerfiles, `setup.sh`, and `before-open.sh` contribute ordered chains. Harness configuration overlays files by relative path: definition defaults, profile, then project. Scalars replace and declared lists append; shell argv replaces as a unit.
+The full resolver expands and validates the retained configs. Scalars replace earlier values, declared lists append, and shell argv replaces as a unit. An empty harness selection falls back to the global default.
+
+Harness selection precedes argument merging. A configured `harness_args` list must name its harness in the same file; only lists matching the final harness contribute arguments and provenance. One-off launch arguments are appended later and are not saved.
+
+Dockerfiles, `setup.sh`, and `before-open.sh` form ordered chains. Harness files overlay by relative path: definition defaults, profile, then project. Project-init previews use this same resolver, replacing only the proposed project's settings.
 
 ### Provenance is resolution data
 
@@ -97,7 +98,7 @@ Preparation validates a Debian/Ubuntu base, installs runtime tools, and creates 
 
 Execution supplies `DEVBOX_BASE`, `DEVBOX_USER`, `DEVBOX_USER_HOME`, `DEVBOX_WORKSPACE`, `DEVBOX_UID`, and `DEVBOX_GID`. Each custom stage receives the preceding image's unique temporary tag. Docker image layer ancestry verifies that customization retained the supplied base; this is a runtime contract check, not a security sandbox. Captured stage inputs and generated layer bytes are fingerprinted in order. `--image` disables cache across every controlled stage.
 
-Each stage is staged in a separate directory. Cleanup verifies image identity and installation ownership before removing all intermediate tags, on success or failure. Source directory permissions are restored in staging and owner access is restored before cleanup. Unchanged image inputs can reuse Docker's build cache across environments; container-only settings do not independently invalidate image installation.
+Each build stage uses a separate temporary directory. Cleanup verifies image identity and installation ownership before removing all intermediate tags, on success or failure. Source directory permissions are restored in staging and owner access is restored before cleanup. Unchanged image inputs can reuse Docker's build cache across environments; container-only settings do not independently invalidate image installation.
 
 ### Mount-parent ownership
 

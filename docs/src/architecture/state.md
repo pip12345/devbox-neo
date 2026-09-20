@@ -6,13 +6,15 @@ The saved session is the top-level environment model. Docker inventory supplies 
 
 `environment.ContainerPrefix` defines the `devbox-` lookup convention independently of `docker.Namespace`, which defines `devbox-rewrite.*` labels and image tags.
 
-Identity uses the canonical workspace path and retained profile/project selection. The selection frontend produces `.profile-<name>`, `.profile-<name>.project`, or `.project` suffixes. Session names also include a readable folder basename and a 12-hex workspace/slot hash. Saved source directories are recorded explicitly. The generic config merger does not name environments, and source files have no `name` field. Exact names use recorded sources even when defaults change.
+`environment.Identity` combines the canonical workspace path with the retained profile/project selection. This selection determines the `.profile-<name>`, `.profile-<name>.project`, or `.project` suffix; the generic config merger only composes source contents. Names also include a readable folder basename and a 12-hex workspace/slot hash.
+
+The record stores source directories separately from identity. Exact-name access uses those sources even when defaults change.
 
 Folder targeting uses the selected profile and the workspace's `.devbox/` metadata to locate one session, without scanning other saved sessions. `--ignore-project` selects profile-only configuration. Inheritance changes cannot rename recorded state implicitly.
 
 The readable basename is lowercased and bounded to 32 characters from `a-z0-9_.-`; invalid runs become `-`, edge punctuation is trimmed, and an empty result becomes `workspace`. Sanitization and truncation do not change the hash input. Symlink aliases therefore produce the same identity. Records validate against the naming rule.
 
-Docker ownership checks use installation ID, ownership version, session ID, workspace, and slot labels. Application inspection additionally verifies the image and recorded container instance association. A matching name with different labels or instance identity fails rather than being adopted.
+Docker ownership checks use installation ID, ownership version, session ID, workspace, slot, profile, and project-participation labels. Application inspection additionally verifies the image and recorded container instance association. A matching name with different labels or instance identity fails rather than being adopted.
 
 Images carry installation ownership and final session tags. Removing a tag requires verifying both ownership and its expected image association; a mutable name alone does not authorize deletion.
 
@@ -21,12 +23,15 @@ Images carry installation ownership and final session tags. Removing a tag requi
 `sessions/<container>/session.json` holds:
 
 - stable session ID, canonical environment identity, and `manual_start` intent;
+- ordered profile/project source references;
 - recorded image/container association and creation settings;
 - launch settings, definition source verification, setup input, and environment source references;
 - complete applied image/container/runtime inputs and fingerprints;
 - creation time, last recorded activity, and last action.
 
-Schema `3` requires complete applied snapshots and records manual keep-running intent separately from desired configuration. Public settings, source paths, modes, and hashes are durable; env/auth values and file contents are not. Raw env diagnostics are redacted. Records are atomically replaced with restrictive permissions, and invalid records stay errors rather than becoming absence.
+Schema `4` requires the ordered `sources` and complete image/container/runtime input snapshots. [Lifecycle](lifecycle.md#one-input-model) describes their contents and fingerprint rules. Older development records require a clean reset; there is no migration reader.
+
+Records contain public settings, paths, modes, and hashes, not file contents or env/auth values. Raw env diagnostics are redacted. Records are atomically replaced with restrictive permissions; invalid records remain errors rather than being treated as missing.
 
 Creation/recreation commits image and container baselines. `Record.ApplyRuntime` advances runtime inputs with their fingerprint at application commit points. Status and warning generation never alter either baseline.
 
@@ -61,7 +66,7 @@ Inventory joins one installation-filtered Docker list and batched inspection wit
 | Corrupt/incomplete saved state | Session diagnostic, not fabricated valid state |
 | Pending endpoint without record | Inspectable reserved endpoint |
 
-Profile filtering uses valid recorded identity, or live slot labels when records are unavailable. Broken entries with unknown profiles remain visible in unfiltered inventory. Listing does not resolve desired configuration and never repairs or adopts resources.
+Profile filtering uses valid recorded identity, or live profile/project labels when records are unavailable. Broken entries with unknown profiles remain visible in unfiltered inventory. Listing does not resolve desired configuration and never repairs or adopts resources.
 
 Bulk status enriches the same inventory with the normal resolver and `environment.CompareInputs`. Runtime state remains independent of configuration health: a missing container can still have comparable inputs, while a running container can have invalid desired config.
 
@@ -98,7 +103,11 @@ Selection filters intersect. Age uses recorded activity, and unknown activity is
 
 Both endpoint operation locks are acquired in sorted order. Ordinary `Locked.Load` rejects pending work, while inventory and transfer operations can inspect it. Pending lookup scans unfinished journals; corrupt journals fail mutations closed because endpoint reservations cannot be trusted.
 
-The journal records public endpoint identities, the original explicit `--to` selector (`requested_to`), session IDs, transfer mode/phase, intended running state, and destination input fingerprints. Retries accept the original selector or the effective destination suffix, even when an inheritance cutoff removed the requested profile; they do not reload config to reinterpret the selector. Internal modes remain `clone` for `copy` and `relocate` for `copy --move`; JSON transfer results and pending summaries use these mode values too. It is not a second creation record and contains no env/auth values. Destination creation accepts the journal's allocated identity so retry cannot allocate another session.
+The journal stores endpoint identities, session IDs, mode/phase, intended running state, and destination fingerprints. It contains no env/auth values. Destination creation uses the allocated ID, so retries cannot create a different session.
+
+`requested_to` retains the original explicit destination selector. Inheritance may remove its profile, so retry accepts either that selector or the resulting destination suffix without re-reading config to interpret it.
+
+Internal modes are `clone` for `copy` and `relocate` for `copy --move`. Harness capabilities and JSON output use these same values.
 
 ```mermaid
 stateDiagram-v2

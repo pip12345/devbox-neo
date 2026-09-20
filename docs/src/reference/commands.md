@@ -12,7 +12,7 @@ Executable: `devbox-neo`. Use `<command> --help` for command-specific help.
 
 `<folder|session>` accepts a workspace folder or an exact saved session name from `list`. Every folder-targeted command selects the current profile/project combination and fails if that session does not exist; it never substitutes another profile. Exact names retain their recorded combination even when defaults change, and conflicting explicit selection flags fail. The session and its replaceable container share a name; there is no separate container selector.
 
-Configuration commands instead take `<folder>` for project files or `<profile>` for profile files. They do not require an existing session.
+Profile/project configuration commands work without an existing environment. `project config` also accepts a session name to select its workspace.
 
 ## Environment lifecycle
 
@@ -62,7 +62,7 @@ Mount, environment, port, and raw Docker validation rules are in [configuration]
 
 See [output and errors](output.md) for columns, change classifications, and JSON fields.
 
-## Configuration-owner commands
+## Configuration commands
 
 These commands edit configuration, not containers.
 
@@ -81,7 +81,9 @@ These commands edit configuration, not containers.
 | `profile config <profile>` | Edit profile settings |
 | `project config <folder\|session>` | Edit the workspace's `.devbox/` configuration |
 
-Config-owner `create` seeds only `version`, without choosing a harness or default profile. `init` preserves existing files; artifacts are `harness-config`, `setup.sh`, `before-open.sh`, and `Dockerfile`. Interactive init offers missing choices. Non-interactive init needs an existing harness selection or `--harness`; `--json` never prompts. Profile deletion retains global defaults and existing environments.
+`profile create` and `project create` create minimal configuration without choosing a harness or default profile. `profile delete` removes its files but leaves the default-profile setting and existing environments unchanged.
+
+`init` preserves existing files. Available artifacts are `harness-config`, `setup.sh`, `before-open.sh`, and `Dockerfile`. Interactive init offers missing files to add. Non-interactive init needs an existing harness selection or `--harness`; `--json` never prompts.
 
 Config commands accept `--show [--json]` for effective values without a menu. `project config --show` also accepts `--profile NAME`. Editing requires a terminal; each valid operation saves immediately. See [configuration editing](configuration.md#editing-and-inspection).
 
@@ -128,13 +130,24 @@ Network exports include `DEVBOX_HOST`, `DEVBOX_NETWORK`, `DEVBOX_PRIMARY_NETWORK
 | `copy <folder\|session> <destination-folder> --move` | Move saved state, preserve ID and running/stopped intent, then remove source |
 | `copy <folder> --from SLOT --to SLOT [--move]` | Transfer between same-folder slots: `.profile-NAME`, `.profile-NAME.project`, or `.project` |
 
-`copy` accepts `--dry-run` and `--json`, with or without `--move`. Folder sources use the common selection rules; `--profile` selects the source profile. `--from SLOT` selects the source's actual dot-prefixed name suffix and cannot be combined with `--profile`. `--to SLOT` uses profile/project selection notation (`.profile-NAME`, `.profile-NAME.project`, or `.project`); the retained profile/project selection determines its name. Without a destination folder, `--to SLOT` is required. Cross-folder copies retain the source combination unless `--to SLOT` is supplied; with `--move`, cross-folder transfers must retain the source combination. Destination profiles must exist; project destinations must be initialized. Project sources use the destination workspace's `.devbox/`; transfers do not copy project configuration. Same-folder examples use suffix selectors such as `--from .profile-basic --to .profile-basic.project`.
+| Option | Meaning |
+|---|---|
+| `--profile NAME` | Select the source's base profile |
+| `--from SLOT` | Select the source by its exact name suffix, such as `.profile-basic`; conflicts with `--profile` |
+| `--to SLOT` | Select destination configuration: `.profile-NAME`, `.profile-NAME.project`, or `.project`; destination `inherit` rules apply |
+| `--move` | Remove the source after the destination is ready |
+| `--dry-run` | Preview without copying state |
+| `--json` | Print the result as JSON |
+
+Without a destination folder, `--to` is required. Cross-folder copies keep the source's profile/project combination unless `--to` selects another; cross-folder moves must keep that combination.
+
+Any selected destination profile must exist. If project configuration is selected, initialize the destination's `.devbox/` first. Transfers do not copy project configuration.
 
 JSON transfer results and pending summaries report `mode: "clone"` for `copy` and `mode: "relocate"` for `copy --move`.
 
-Transfers require idle endpoints, an unused destination, and harness portability declarations. Destination configuration controls creation. Only declared environment stores and managed-config manifests are copied—not workspace files, container-layer tools, auth, shared caches, active commands, or SSH connections.
+Both environments must have no active Devbox commands, the destination must be unused, and the harness must support copying or moving its state. Destination configuration controls creation. Saved harness state and managed-file tracking are copied; workspace files, container-local tools, auth, shared caches, and live connections are not.
 
-Pending transfers reserve both endpoints and block ordinary mutations, including forced deletion. Retry the same command to resume. Before destination commitment, destination inputs must match the journal. After commitment, retry finishes recorded recovery and cleanup without copying again.
+An unfinished transfer blocks changes to both environments, including forced deletion. Fix the reported problem and retry the same command. If preparation failed, keep the destination configuration unchanged until the retry succeeds. Cleanup retries do not repeat a completed copy.
 
 ## Deletion
 

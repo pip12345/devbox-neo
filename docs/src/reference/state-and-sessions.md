@@ -19,7 +19,7 @@ Paths below are relative to the selected home.
 | `sessions/<container>/harnesses/<harness>/managed-config.json` | Managed file/key ownership manifest |
 | `sessions/<container>/runtime/ssh/` | Transient shared SSH sockets and generated client config |
 | `state/installation-id` | Installation identity used for Docker ownership |
-| `state/transfers/<source-container>.json` | Pending transfer journal reserving both endpoints and retaining any explicit destination selector as `requested_to` |
+| `state/transfers/<source-container>.json` | Pending transfer journal; keeps both environments reserved until completion |
 | `state/locks/installation.lock` | Home initialization lock |
 | `state/locks/config/*.lock` | Configuration-owner locks |
 | `state/locks/sessions/*.operation.lock` | Environment-operation locks |
@@ -85,11 +85,11 @@ Names locate resources; labels prove ownership. Containers carry installation, o
 
 ## Record and recovery contract
 
-Session schema `4` requires complete `inputs.image`, `inputs.container`, and `inputs.runtime` snapshots plus ordered `sources` references. Image inputs contain the base image, generated layers, and ordered Dockerfile/context/ignore snapshots; setup and before-open inputs are ordered arrays. Older development records require a clean reset, not migration. Records contain public settings, paths, file hashes/modes, and keyed env hashes—not file contents or env/auth values. `env_sources` identifies exact recoverable source entries, restricted to the saved config sources or global config. Project sources live in the workspace's `.devbox/` directory.
+Session records track the configuration used to create the container and locate its saved harness state. They do not store env/auth values. Unsupported session formats require a clean development-state reset; there is no automatic migration.
 
 `open` and `start` restore a missing container using its recorded image, mount layout, verified definition/setup inputs, and recoverable environment sources. They do not replace recorded creation settings with current configuration. Missing inputs require explicit recreation. Existing named external volumes must still exist.
 
-Recreation preserves the session ID and recorded profile/project combination while applying those sources' current contents. `manual_start` records keep-running intent outside configuration fingerprints: manual `start` keeps the container running until `stop`, including automatic restart with Docker after reboot. Without manual start, the last attached command stops it and it does not restart at boot. `copy` allocates a new ID and starts with automatic lifetime; `copy --move` preserves identity and manual intent. Transfers retain a journal until completion and leave no permanent lineage record.
+Recreation keeps the session ID and profile/project combination while applying current configuration. It also keeps your choice to leave the container running with `start`. `copy` creates a new ID and leaves the destination stopped; `copy --move` preserves the ID and running/stopped behavior. See [lifecycle commands](commands.md#environment-lifecycle) for start/stop behavior across attachments and reboot.
 
 `last_activity` and `last_action` describe recorded Devbox operations, not filesystem activity. List output's container creation time comes from Docker. Corrupt records remain diagnostics rather than being treated as missing state.
 

@@ -23,9 +23,9 @@ RUN sudo apt-get update \
     && sudo rm -rf /var/lib/apt/lists/*
 ```
 
-Devbox has already prepared the development user, home, sudo, and runtime tools. Use `sudo` for system packages; user-scoped installers run as the development user. Common tools such as Bash, Git, curl, sudo, Vim, jq, zip, and unzip are already included. Devbox installs your chosen harness after customization.
+Your Dockerfile runs as the development user. Use `sudo` for system packages; install user tools without it. Common tools such as Bash, Git, curl, Vim, jq, zip, and unzip are already included. Devbox installs your chosen harness afterward.
 
-To choose another Debian/Ubuntu-compatible upstream image, set `base_image` in the profile/project config menu rather than replacing `FROM ${DEVBOX_BASE}`. Bases with conflicting user IDs fail instead of changing unrelated accounts.
+Keep `FROM ${DEVBOX_BASE}`. To choose a different base image, set `base_image` in the profile or project config menu. See [base-image requirements](../reference/configuration.md#image-inputs).
 
 Apply the image change to an existing profile environment:
 

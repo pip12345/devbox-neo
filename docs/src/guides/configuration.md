@@ -46,7 +46,7 @@ Then open the project settings menu:
 devbox-neo project config .
 ```
 
-Normally, project settings build on your selected profile. Project scalar values replace profile values; lists such as mounts append, and overlapping mount targets fail. Harness arguments append only from layers naming the selected harness; a configured `harness_args` list must name its `harness` in the same file. See the [field table](../reference/configuration.md#profile-and-project-fields) for exact merge rules.
+Project settings build on your selected profile. For example, the project can choose a different harness or add ports to those in the profile. Leave a setting absent to keep the profile's value. See the [configuration reference](../reference/configuration.md#profile-and-project-fields) for each setting's merge rules.
 
 Each profile/project combination selects a separate environment for that folder. If you've only created a profile environment so far, create the project environment before opening it:
 
