@@ -75,8 +75,8 @@ func transferCommand(factory engineFactory, profile *string) *cobra.Command {
 		return err
 	}}
 	cmd.Flags().BoolVar(&move, "move", false, "Remove the source after the destination is ready")
-	cmd.Flags().StringVar(&options.From, "from", "", "Source slot: .profile-NAME, .profile-NAME.project, or .project")
-	cmd.Flags().StringVar(&options.To, "to", "", "Destination slot: .profile-NAME, .profile-NAME.project, or .project")
+	cmd.Flags().StringVar(&options.From, "from", "", "Source session suffix, e.g. .profile-work.project")
+	cmd.Flags().StringVar(&options.To, "to", "", "Destination config selection: .profile-NAME, .profile-NAME.project, or .project")
 	cmd.Flags().BoolVar(&options.DryRun, "dry-run", false, "Preview without copying session data")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print transfer result as JSON")
 	return cmd

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"devbox/internal/artifact"
 	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/docker"
@@ -47,14 +48,8 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string,
 	if strings.HasPrefix(q.Source, environment.ContainerPrefix) && !strings.ContainsAny(q.Source, "/\\") {
 		return q.Source, nil
 	}
-	r, err := e.Locate(ctx, q.Source, q.Profile)
-	if err == nil {
-		return r.Identity.Name, nil
-	}
-	// After committed source cleanup, its external journal is still retryable.
-	if !errors.Is(err, os.ErrNotExist) {
-		return "", err
-	}
+	// A journal pins source identity even after source deletion or config edits.
+	// Retry selection must not reload desired configuration.
 	workspace, pathErr := filepath.Abs(q.Source)
 	if pathErr != nil {
 		return "", pathErr
@@ -68,7 +63,7 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string,
 	}
 	name := ""
 	for _, j := range journals {
-		if j.Source.Workspace == workspace {
+		if j.Source.Workspace == workspace && (q.Profile == "" || j.Source.Profile == q.Profile) && !(e.IgnoreProject && j.Source.Project) {
 			if name != "" {
 				return "", fmt.Errorf("multiple pending transfers.\nUse the exact source name.")
 			}
@@ -78,20 +73,36 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string,
 	if name != "" {
 		return name, nil
 	}
-	return "", err
+	r, err := e.Locate(ctx, q.Source, q.Profile)
+	return r.Identity.Name, err
 }
 func (e *Engine) transferDestination(q TransferOptions, source environment.Identity) (environment.Identity, error) {
 	workspace := q.Destination
 	if workspace == "" {
 		workspace = source.Workspace
 	}
+	profile, project := source.Profile, source.Project
 	if q.To != "" {
-		return transferSlot(workspace, q.To)
+		selected, err := environment.IdentifySlot(workspace, q.To)
+		if err != nil {
+			return selected, err
+		}
+		profile, project = selected.Profile, selected.Project
 	}
-	id, err := environment.Identify(workspace, source.Profile, source.Project)
+	id, err := environment.Identify(workspace, profile, project)
 	if err != nil {
 		return id, err
 	}
+	if project {
+		id.ProjectDir = source.ProjectDir
+	}
+	selected, err := artifact.Select(e.Store.Home, id.Workspace, artifact.Selection{Profile: profile, ProjectDir: id.ProjectDir, Sources: environment.SelectionSources(e.Store.Home, id)}, nil, config.Snapshot())
+	if err != nil {
+		return id, err
+	}
+	id.Profile, id.Project, id.ProjectDir = selected.Profile, selected.Project, selected.ProjectDir
+	id.Slot = environment.Slot(id.Profile, id.Project)
+	id.Name = environment.ContainerName(id.Workspace, id.Slot)
 	return id, nil
 }
 func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode string) ([]harness.Definition, error) {
@@ -182,11 +193,27 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if (q.Profile != "" && sourceIdentity.Profile != q.Profile) || (e.IgnoreProject && sourceIdentity.Project) {
 		return result, fmt.Errorf("selection does not match the source session")
 	}
-	destinationIdentity, err := e.transferDestination(q, sourceIdentity)
-	if err != nil {
-		return result, err
+	var destinationIdentity environment.Identity
+	if journal != nil {
+		destinationIdentity = journal.Destination
+		workspace := sourceIdentity.Workspace
+		if q.Destination != "" {
+			workspace = q.Destination
+		}
+		probe, pathErr := environment.Identify(workspace, "", true)
+		if pathErr != nil {
+			return result, pathErr
+		}
+		if probe.Workspace != destinationIdentity.Workspace || (q.To != "" && q.To != journal.RequestedTo && q.To != destinationIdentity.Selector()) {
+			return result, fmt.Errorf("pending transfer has a different destination or selection")
+		}
+	} else {
+		destinationIdentity, err = e.transferDestination(q, sourceIdentity)
+		if err != nil {
+			return result, err
+		}
 	}
-	if q.Mode == "relocate" && sourceIdentity.Workspace != destinationIdentity.Workspace && sourceIdentity.Slot != destinationIdentity.Slot {
+	if q.Mode == "relocate" && sourceIdentity.Workspace != destinationIdentity.Workspace && (sourceIdentity.Profile != destinationIdentity.Profile || sourceIdentity.Project != destinationIdentity.Project) {
 		return result, fmt.Errorf("cross-folder relocation must retain the source combination; change slots in the same folder first")
 	}
 	if sourceName == destinationIdentity.Name {
@@ -280,7 +307,11 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		}
 	}
 	if destinationIdentity.Project {
-		p, pathErr := fsutil.Path(destinationIdentity.Workspace, ".devbox/config.json")
+		root := destinationIdentity.ProjectDir
+		if root == "" {
+			root = filepath.Join(destinationIdentity.Workspace, ".devbox")
+		}
+		p, pathErr := fsutil.Path(root, "config.json")
 		if pathErr != nil {
 			return result, pathErr
 		}
@@ -288,9 +319,12 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, fmt.Errorf("project destination must be initialized: %w", pathErr)
 		}
 	}
-	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, Profile: destinationIdentity.Profile, Recorded: &destinationIdentity})
+	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, Profile: destinationIdentity.Profile, ProjectDir: destinationIdentity.ProjectDir, Sources: environment.SelectionSources(e.Store.Home, destinationIdentity)})
 	if err != nil {
 		return result, err
+	}
+	if spec.Identity != destinationIdentity {
+		return result, fmt.Errorf("destination selection changed during transfer")
 	}
 	if err = e.Docker.Network(ctx, spec.Settings.Network); err != nil {
 		return result, err
@@ -310,7 +344,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 				return result, idErr
 			}
 		}
-		journal = &store.Transfer{Version: 1, ID: nonce, Mode: q.Mode, Phase: "prepare", Source: source.Identity, Destination: destinationIdentity, SourceID: source.ID, DestinationID: id, Running: q.Mode == "relocate" && (source.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.ManualStart, Started: time.Now().UTC(), Desired: spec.Fingerprints}
+		journal = &store.Transfer{Version: 1, ID: nonce, Mode: q.Mode, Phase: "prepare", Source: source.Identity, Destination: destinationIdentity, RequestedTo: q.To, SourceID: source.ID, DestinationID: id, Running: q.Mode == "relocate" && (source.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.ManualStart, Started: time.Now().UTC(), Desired: spec.Fingerprints}
 	}
 	result = transferResult(*journal, q.DryRun)
 	if q.DryRun {
@@ -401,7 +435,7 @@ func (e *Engine) clearTransferAttempt(ctx context.Context, destination *store.Lo
 		return readErr
 	}
 	if exists {
-		owner := docker.Owner{Installation: e.Store.Installation, Session: j.DestinationID, Workspace: j.Destination.Workspace, Slot: j.Destination.Slot}
+		owner := docker.Owner{Installation: e.Store.Installation, Session: j.DestinationID, Workspace: j.Destination.Workspace, Slot: j.Destination.Slot, Profile: j.Destination.Profile, Project: j.Destination.Project}
 		if err = c.Verify(owner); err != nil {
 			return err
 		}

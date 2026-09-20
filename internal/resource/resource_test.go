@@ -265,7 +265,7 @@ func TestProjectInitInheritanceUsesResolver(t *testing.T) {
 			}
 			raw := `{"version":1,"harness":"pi"}`
 			if standalone {
-				raw = `{"version":1,"harness":"opencode","inherit_profile":false}`
+				raw = `{"version":1,"harness":"opencode","inherit":false}`
 			}
 			put(t, filepath.Join(project.Root, "config.json"), raw)
 			result, err := s.Init(ctx, project, InitOptions{Harness: "inherit"})
@@ -299,6 +299,28 @@ func TestProjectInitInheritanceUsesResolver(t *testing.T) {
 		t.Fatal("failed inheritance changed config")
 	}
 }
+func TestProjectInitInheritsProfileWhenProjectIsIgnored(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	put(t, filepath.Join(s.Home, "profiles/base/config.json"), `{"harness":"pi"}`)
+	put(t, filepath.Join(s.Home, "config.json"), `{"default_profile":"base","ignore_project":true}`)
+	project, err := s.Project(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Create(ctx, project, ""); err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.Init(ctx, project, InitOptions{Harness: "inherit"})
+	if err != nil || result.Harness != "pi" {
+		t.Fatal(result, err)
+	}
+	_, layer, err := readLayer(project)
+	if err != nil || layer.Harness != nil {
+		t.Fatal("inherited harness was persisted", layer, err)
+	}
+}
+
 func TestProfileListShowsInvalidEntriesAndSetIsExplicit(t *testing.T) {
 	s := fixture(t)
 	ctx := context.Background()

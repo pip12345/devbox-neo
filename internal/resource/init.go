@@ -17,7 +17,7 @@ import (
 	"devbox/internal/harness"
 )
 
-var InitArtifacts = []string{"harness-config", "setup.sh", "entrypoint.sh", "Dockerfile"}
+var InitArtifacts = []string{"harness-config", "setup.sh", "before-open.sh", "Dockerfile"}
 
 type InitOptions struct {
 	Harness         string
@@ -80,11 +80,15 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 		if err != nil {
 			return result, err
 		}
-		proposed, err := config.ParseLayer(desired, true)
+		proposed, err := config.ParseLayer(desired)
 		if err != nil {
 			return result, err
 		}
-		resolved, err := artifact.PreviewProject(s.Home, o.Workspace, proposed, host)
+		projectDir := ""
+		if o.Root != filepath.Join(o.Workspace, ".devbox") {
+			projectDir = o.Root
+		}
+		resolved, err := artifact.PreviewSelection(s.Home, o.Workspace, artifact.Selection{Profile: s.SelectedProfile, ProjectDir: projectDir, IgnoreProject: s.IgnoreProject}, config.Layer{}, &proposed, host)
 		if err != nil {
 			return result, fmt.Errorf("harness inheritance is unavailable: %w\nInitialize a lower configuration layer or select a harness with --harness NAME.", err)
 		}
@@ -131,10 +135,10 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 				return result, err
 			}
 		case "Dockerfile":
-			files[name] = harness.File{Data: []byte("FROM debian:bookworm-slim\n\n# Add base packages here. Devbox installs its runtime and selected harness afterward.\n"), Mode: 0600}
+			files[name] = harness.File{Data: []byte("ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n\n# Runs as the prepared development user. Use sudo for system packages.\n# Devbox installs the selected harness after profile/project customization.\n"), Mode: 0600}
 		case "setup.sh":
 			files[name] = harness.File{Data: []byte("#!/bin/bash\nset -euo pipefail\n\n# Runs once per container as devuser; use sudo for system changes.\n"), Mode: 0700}
-		case "entrypoint.sh":
+		case "before-open.sh":
 			files[name] = harness.File{Data: []byte("#!/bin/bash\nset -euo pipefail\n\n# Runs on each normal open, before attaching the harness.\n"), Mode: 0700}
 		default:
 			return result, fmt.Errorf("unsupported init artifact %q.\nAvailable artifacts: %v", name, InitArtifacts)

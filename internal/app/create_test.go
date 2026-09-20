@@ -19,7 +19,7 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 			e, d, q := fixture(t)
 			if project {
 				q.Profile = ""
-				write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi","inherit_profile":false}`)
+				write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi","inherit":false}`)
 			}
 			ctx := context.Background()
 			_, err := e.Open(ctx, q)
@@ -47,7 +47,7 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if count(d, "create") != 1 || count(d, "build") != 1 || record(t, e, opened.Name).ID != first.ID {
+			if count(d, "create") != 1 || count(d, "build") != 2 || record(t, e, opened.Name).ID != first.ID {
 				t.Fatal("opening an existing session replaced it")
 			}
 		})
@@ -59,7 +59,7 @@ func TestCreatePreparesWithoutOpeningAndLeavesStopped(t *testing.T) {
 	ctx := context.Background()
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi"}`)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/setup.sh"), "echo setup\n")
-	write(t, filepath.Join(e.Store.Home, "profiles/test/entrypoint.sh"), "echo entrypoint\n")
+	write(t, filepath.Join(e.Store.Home, "profiles/test/before-open.sh"), "echo entrypoint\n")
 	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestOpenLaunchOverridesDoNotRecreate(t *testing.T) {
 	}
 	after := record(t, e, created.Name)
 	c, _ := d.Snapshot(created.Name)
-	if count(d, "create") != 1 || count(d, "build") != 1 || c.State.Running || !reflect.DeepEqual(after.Inputs.Container, before.Inputs.Container) || !reflect.DeepEqual(after.Inputs.Image, before.Inputs.Image) {
+	if count(d, "create") != 1 || count(d, "build") != 2 || c.State.Running || !reflect.DeepEqual(after.Inputs.Container, before.Inputs.Container) || !reflect.DeepEqual(after.Inputs.Image, before.Inputs.Image) {
 		t.Fatal("launch overrides changed creation settings or automatic shutdown")
 	}
 	want := []string{"pi", "--tui-mode", "fullscreen", "-c", "--version", "--one-off"}
@@ -162,7 +162,7 @@ func TestExistingSessionRecoveryStillRestoresMissingContainer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if count(d, "create") != 2 || count(d, "build") != 1 || record(t, e, result.Name).ID != first.ID {
+			if count(d, "create") != 2 || count(d, "build") != 2 || record(t, e, result.Name).ID != first.ID {
 				t.Fatal("recorded recovery changed identity or rebuilt the image")
 			}
 		})
@@ -193,7 +193,7 @@ func TestConcurrentCreatePublishesOnlyOneSession(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if successes != 1 || count(d, "create") != 1 || count(d, "build") != 1 {
+	if successes != 1 || count(d, "create") != 1 || count(d, "build") != 2 {
 		t.Fatal("concurrent create was not serialized", errs)
 	}
 }

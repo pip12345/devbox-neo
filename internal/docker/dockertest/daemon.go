@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -175,6 +176,40 @@ func (d *Daemon) run(a []string) (string, error) {
 		d.Sequence++
 		image := docker.Image{ID: fmt.Sprintf("sha256:%064x", d.Sequence)}
 		image.Config.Labels = labels()
+		data, err := os.ReadFile(flag("--file"))
+		if err != nil {
+			return "", err
+		}
+		arguments := map[string]string{}
+		for i, arg := range a {
+			if arg == "--build-arg" {
+				key, value, _ := strings.Cut(a[i+1], "=")
+				arguments[key] = value
+			}
+		}
+		stages := map[string][]string{}
+		for _, line := range strings.Split(string(data), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 || !strings.EqualFold(fields[0], "FROM") {
+				continue
+			}
+			base := fields[1]
+			for key, value := range arguments {
+				base = strings.ReplaceAll(base, "${"+key+"}", value)
+				base = strings.ReplaceAll(base, "$"+key, value)
+			}
+			image.RootFS.Layers = []string{"upstream:" + base}
+			if parent, ok := d.Images[base]; ok {
+				image.RootFS.Layers = slices.Clone(parent.RootFS.Layers)
+			}
+			if parent, ok := stages[strings.ToLower(base)]; ok {
+				image.RootFS.Layers = slices.Clone(parent)
+			}
+			if len(fields) >= 4 && strings.EqualFold(fields[2], "AS") {
+				stages[strings.ToLower(fields[3])] = slices.Clone(image.RootFS.Layers)
+			}
+		}
+		image.RootFS.Layers = append(image.RootFS.Layers, image.ID)
 		d.Images[flag("--tag")] = image
 		d.Images[image.ID] = image
 		return "", nil

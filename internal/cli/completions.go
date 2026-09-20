@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -74,6 +75,31 @@ func completeProfiles(cmd *cobra.Command) []string {
 
 func completeSessions(cmd *cobra.Command) []string {
 	return completionDirectories(cmd, "sessions")
+}
+
+func completeSourceSlots(cmd *cobra.Command) []string {
+	var values []string
+	for _, name := range completeSessions(cmd) {
+		path, err := fsutil.Path(completionHome(cmd), filepath.Join("sessions", name, "session.json"))
+		if err != nil {
+			continue
+		}
+		info, err := os.Stat(path)
+		if err != nil || info.Size() > 8<<20 {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var record struct {
+			Identity environment.Identity `json:"identity"`
+		}
+		if json.Unmarshal(data, &record) == nil && record.Identity.ValidateSlot() == nil {
+			values = append(values, record.Identity.Selector())
+		}
+	}
+	return values
 }
 
 func completeHarnesses(cmd *cobra.Command) []string {
@@ -196,7 +222,9 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 			}
 		case "profile create":
 			cmd.ValidArgsFunction = cobra.NoFileCompletions
-		case "create", "project create", "project init", "project config":
+		case "project config":
+			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
+		case "create", "project create", "project init":
 			cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 				if len(args) == 0 {
 					return nil, cobra.ShellCompDirectiveFilterDirs
@@ -206,7 +234,7 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 		}
 		for flag, source := range map[string]completionSource{
 			"profile": completeProfiles, "from-profile": completeProfiles,
-			"from": slots, "to": slots, "harness": completeHarnesses,
+			"from": func(cmd *cobra.Command) []string { return append(slots(cmd), completeSourceSlots(cmd)...) }, "to": slots, "harness": completeHarnesses,
 			"sort": func(*cobra.Command) []string { return []string{"name", "last-active"} },
 		} {
 			if cmd == root || cmd.Flags().Lookup(flag) == nil {

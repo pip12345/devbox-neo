@@ -24,6 +24,7 @@ type Transfer struct {
 	Phase         string                   `json:"phase"`
 	Source        environment.Identity     `json:"source"`
 	Destination   environment.Identity     `json:"destination"`
+	RequestedTo   string                   `json:"requested_to,omitempty"`
 	SourceID      string                   `json:"source_id"`
 	DestinationID string                   `json:"destination_id"`
 	Running       bool                     `json:"restore_running"`
@@ -42,6 +43,8 @@ type Reservation struct {
 	retry       commanderror.Step
 }
 
+func (p Reservation) RetryStep() commanderror.Step { return p.retry }
+
 // TransferCommand renders the CLI operation for a journal mode. The durable
 // modes also select harness capabilities; they are not CLI command names.
 func TransferCommand(mode string) string {
@@ -59,11 +62,11 @@ func (j Transfer) RetryStep() commanderror.Step {
 		args = append(args, "--move")
 	}
 	if j.Source.Workspace == j.Destination.Workspace {
-		args = append(args, j.Source.Workspace, "--from", j.Source.Selector(), "--to", j.Destination.Selector())
+		args = append(args, j.Source.Workspace, "--from", j.Source.Selector(), "--to", "."+environment.Slot(j.Destination.Profile, j.Destination.Project))
 	} else {
 		args = append(args, j.Source.Name, j.Destination.Workspace)
-		if j.Destination.Slot != j.Source.Slot {
-			args = append(args, "--to", j.Destination.Selector())
+		if j.Destination.Profile != j.Source.Profile || j.Destination.Project != j.Source.Project {
+			args = append(args, "--to", "."+environment.Slot(j.Destination.Profile, j.Destination.Project))
 		}
 	}
 	return commanderror.Next("Resume transfer", args...)
@@ -90,7 +93,16 @@ func (j Transfer) Validate() error {
 			return err
 		}
 	}
-	if j.Source.Workspace != j.Destination.Workspace && j.Mode == "relocate" && j.Source.Slot != j.Destination.Slot {
+	if j.RequestedTo != "" {
+		slot, prefixed := strings.CutPrefix(j.RequestedTo, ".")
+		profile, project, err := environment.ParseSlot(slot)
+		// Inheritance can remove a requested profile, but cannot add one or
+		// change whether the destination uses project configuration.
+		if !prefixed || err != nil || project != j.Destination.Project || (profile != j.Destination.Profile && (!project || j.Destination.Profile != "")) {
+			return fmt.Errorf("invalid requested transfer destination")
+		}
+	}
+	if j.Source.Workspace != j.Destination.Workspace && j.Mode == "relocate" && (j.Source.Profile != j.Destination.Profile || j.Source.Project != j.Destination.Project) {
 		return fmt.Errorf("cross-folder relocation must retain the source combination")
 	}
 	if j.Source.Name == j.Destination.Name {

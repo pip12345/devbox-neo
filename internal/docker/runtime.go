@@ -25,10 +25,12 @@ type Owner struct {
 	Session      string
 	Workspace    string
 	Slot         string
+	Profile      string
+	Project      bool
 }
 
 func (o Owner) Labels() map[string]string {
-	return map[string]string{Namespace + ".managed": "true", Namespace + ".ownership": "1", Namespace + ".installation": o.Installation, Namespace + ".session": o.Session, Namespace + ".workspace": o.Workspace, Namespace + ".slot": o.Slot}
+	return map[string]string{Namespace + ".managed": "true", Namespace + ".ownership": "1", Namespace + ".installation": o.Installation, Namespace + ".session": o.Session, Namespace + ".workspace": o.Workspace, Namespace + ".slot": o.Slot, Namespace + ".profile": o.Profile, Namespace + ".project": fmt.Sprint(o.Project)}
 }
 func ImageLabels(installation string) map[string]string {
 	return map[string]string{Namespace + ".managed": "true", Namespace + ".ownership": "1", Namespace + ".installation": installation}
@@ -81,6 +83,23 @@ type Image struct {
 	Config struct {
 		Labels map[string]string `json:"Labels"`
 	} `json:"Config"`
+	RootFS struct {
+		Layers []string `json:"Layers"`
+	} `json:"RootFS"`
+}
+
+// Image layer ancestry verifies that customization kept its supplied base.
+// This is a build contract check, not a sandbox against malicious Dockerfiles.
+func (i Image) Extends(parent Image) error {
+	if len(parent.RootFS.Layers) == 0 || len(i.RootFS.Layers) < len(parent.RootFS.Layers) {
+		return fmt.Errorf("image does not retain its prepared base layers")
+	}
+	for n, layer := range parent.RootFS.Layers {
+		if i.RootFS.Layers[n] != layer {
+			return fmt.Errorf("image replaced its prepared base")
+		}
+	}
+	return nil
 }
 
 func (i Image) Verify(installation string) error {

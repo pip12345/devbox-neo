@@ -59,7 +59,7 @@ The existing profile-only environment remains available with `--profile basic --
 
 ## Make a project self-contained
 
-To stop inheriting a profile, set the project's `inherit_profile` to `false` and choose its harness explicitly. An explicit `--profile` conflicts with a standalone project; use `--ignore-project` if you want the profile alone.
+To stop inheriting a profile, set the project's `inherit` to `false` and choose its harness explicitly. This excludes preceding profile settings and artifacts even if `--profile` was supplied. Use `--ignore-project` when you want the profile alone.
 
 For a new project configuration, you can start with a one-time copy of a profile:
 
@@ -68,6 +68,30 @@ devbox-neo project create . --from-profile basic
 ```
 
 This requires a folder without an existing `.devbox/` directory. The copied project no longer follows profile changes; global defaults still apply.
+
+## Use project configuration from another directory
+
+When the project config already lives elsewhere, select that directory during creation:
+
+```sh
+devbox-neo create . --project-dir /path/to/project-config
+```
+
+It replaces `.devbox/`, including its Dockerfile, scripts, and harness files. The environment remembers the directory; subsequent access and recreation do not need the flag again. The files stay in that directory and remain editable. Use `project config <session>` to edit an exact environment's project source if a folder has ambiguous overrides.
+
+To switch the existing environment to another directory:
+
+```sh
+devbox-neo recreate . --project-dir /path/to/another-config
+```
+
+To return to the current workspace's normal `.devbox/` configuration:
+
+```sh
+devbox-neo recreate . --project-dir .devbox
+```
+
+Both keep saved session data and apply the selected configuration through normal recreation. If the old config directory is gone, use the exact session name from `list` instead of `.`. The replacement config must keep the environment's profile/project combination; ordinary recreation without the flag keeps its existing source.
 
 ## Pass environment variables
 

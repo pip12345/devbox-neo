@@ -89,7 +89,7 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count(d, "build") != 1 || count(d, "create") != 1 {
+	if count(d, "build") != 2 || count(d, "create") != 1 {
 		t.Fatal("reopen recreated runtime")
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host"}`)
@@ -114,7 +114,7 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 	if second.ID != first.ID || second.ImageID != first.ImageID || second.Creation.Network != "host" {
 		t.Fatal("recreate did not preserve identity/reuse image/apply settings")
 	}
-	if count(d, "build") != 1 || count(d, "create") != 2 {
+	if count(d, "build") != 2 || count(d, "create") != 2 {
 		t.Fatal("unnecessary build or missing recreation")
 	}
 	if b, err := os.ReadFile(state); err != nil || string(b) != "persistent conversation" {
@@ -187,7 +187,7 @@ func TestInvalidConfigBlocksStartupButNotRunningAccess(t *testing.T) {
 	if err = e.Exec(ctx, result.Name, "", []string{"true"}, false); err != nil {
 		t.Fatal(err)
 	}
-	if count(d, "build") != 1 {
+	if count(d, "build") != 2 {
 		t.Fatal("escape commands loaded desired config")
 	}
 }
@@ -212,7 +212,7 @@ func TestRecordedRecoveryUsesOriginalDefinitionAndSettings(t *testing.T) {
 	if first.SetupContainer == second.SetupContainer {
 		t.Fatal("setup not associated with new instance")
 	}
-	if count(d, "build") != 1 {
+	if count(d, "build") != 2 {
 		t.Fatal("recovery rebuilt")
 	}
 	d.Forget(result.Name)
@@ -289,7 +289,7 @@ func TestRuntimeOnlyChangesDoNotClaimFileDeferral(t *testing.T) {
 	}
 	manifest := filepath.Join(e.Store.Home, "sessions", result.Name, "harnesses/pi/managed-config.json")
 	before, _ := os.ReadFile(manifest)
-	write(t, filepath.Join(e.Store.Home, "profiles/test/entrypoint.sh"), "echo runtime")
+	write(t, filepath.Join(e.Store.Home, "profiles/test/before-open.sh"), "echo runtime")
 	result, err = e.Open(ctx, q)
 	if err != nil {
 		t.Fatal(err)
@@ -446,14 +446,14 @@ func TestMissingImageRequiresExplicitRecreate(t *testing.T) {
 	if _, err = e.Start(ctx, result.Name, ""); err == nil {
 		t.Fatal("missing image was implicitly rebuilt")
 	}
-	if count(d, "build") != 1 || count(d, "create") != 1 {
+	if count(d, "build") != 2 || count(d, "create") != 1 {
 		t.Fatal("recovery mutated Docker")
 	}
 	if _, err = e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
 	current := record(t, e, result.Name)
-	if current.ID != old.ID || count(d, "build") != 2 {
+	if current.ID != old.ID || count(d, "build") != 4 {
 		t.Fatal("explicit recreation did not rebuild missing image")
 	}
 }
@@ -566,7 +566,7 @@ func TestRecoverySynchronizesBeforeStartup(t *testing.T) {
 func TestHookFailureStopsNewlyStartedContainer(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	write(t, filepath.Join(e.Store.Home, "profiles/test/entrypoint.sh"), "exit 19")
+	write(t, filepath.Join(e.Store.Home, "profiles/test/before-open.sh"), "exit 19")
 	d.Fail = func(a []string) error {
 		if a[0] == "exec" && a[len(a)-1] == "-s" {
 			return &docker.ExitError{Code: 19, Operation: "exec"}

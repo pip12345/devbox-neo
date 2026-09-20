@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strings"
 
 	"devbox/internal/commanderror"
 )
@@ -27,25 +28,27 @@ type VSCode struct {
 	Extensions []string `json:"extensions,omitempty"`
 }
 type Layer struct {
-	Raw            []byte              `json:"-"`
-	References     map[string][]string `json:"-"`
-	EnvInputs      []EnvInput          `json:"-"`
-	Version        int                 `json:"version"`
-	Shell          *[]string           `json:"shell,omitempty"`
-	Harness        *string             `json:"harness,omitempty"`
-	Network        *string             `json:"network,omitempty"`
-	HarnessArgs    []string            `json:"harness_args,omitempty"`
-	DockerArgs     []string            `json:"docker_args,omitempty"`
-	Mounts         []string            `json:"mounts,omitempty"`
-	Env            []string            `json:"env,omitempty"`
-	Ports          []string            `json:"ports,omitempty"`
-	VSCode         VSCode              `json:"vscode,omitempty"`
-	InheritProfile *bool               `json:"inherit_profile,omitempty"`
+	Raw         []byte              `json:"-"`
+	References  map[string][]string `json:"-"`
+	EnvInputs   []EnvInput          `json:"-"`
+	Version     int                 `json:"version"`
+	Shell       *[]string           `json:"shell,omitempty"`
+	Harness     *string             `json:"harness,omitempty"`
+	Network     *string             `json:"network,omitempty"`
+	HarnessArgs []string            `json:"harness_args,omitempty"`
+	DockerArgs  []string            `json:"docker_args,omitempty"`
+	Mounts      []string            `json:"mounts,omitempty"`
+	Env         []string            `json:"env,omitempty"`
+	Ports       []string            `json:"ports,omitempty"`
+	VSCode      VSCode              `json:"vscode,omitempty"`
+	Inherit     *bool               `json:"inherit,omitempty"`
+	BaseImage   *string             `json:"base_image,omitempty"`
 }
 type Settings struct {
 	EnvInputs   []EnvInput `json:"-"`
 	Shell       []string   `json:"shell"`
 	Harness     string     `json:"harness"`
+	BaseImage   string     `json:"base_image"`
 	Network     string     `json:"network"`
 	HarnessArgs []string   `json:"harness_args"`
 	DockerArgs  []string   `json:"docker_args"`
@@ -56,7 +59,7 @@ type Settings struct {
 }
 
 func Defaults() Settings {
-	return Settings{Shell: []string{"bash"}, Network: "default"}
+	return Settings{Shell: []string{"bash"}, Network: "default", BaseImage: "debian:bookworm-slim"}
 }
 
 var Name = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,47}$`)
@@ -162,18 +165,18 @@ func ReadGlobal(path string, host Host) (g Global, err error) {
 	}
 	return g, nil
 }
-func ReadLayer(path string, project bool, host Host) (Layer, error) {
+func ReadLayer(path string, host Host) (Layer, error) {
 	l := Layer{Version: 1}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return l, err
 	}
-	return ResolveLayer(b, path, project, host)
+	return ResolveLayer(b, path, host)
 }
-func ResolveLayer(b []byte, path string, project bool, host Host) (l Layer, err error) {
+func ResolveLayer(b []byte, path string, host Host) (l Layer, err error) {
 	defer func() { err = configurationError(path, err) }()
 	l = Layer{Version: 1}
-	raw, err := ParseLayer(b, project)
+	raw, err := ParseLayer(b)
 	if err != nil {
 		return l, fmt.Errorf("%s: invalid layer: %w", path, err)
 	}
@@ -181,7 +184,7 @@ func ResolveLayer(b []byte, path string, project bool, host Host) (l Layer, err 
 	if err != nil {
 		return l, err
 	}
-	l, err = ParseLayer(expanded, project)
+	l, err = ParseLayer(expanded)
 	if err != nil {
 		return l, fmt.Errorf("%s: invalid expanded layer: %w", path, err)
 	}
@@ -211,7 +214,7 @@ func configurationError(path string, err error) error {
 
 // Source operations validate shape without resolving values. Copying a profile
 // or editing one field must preserve expressions, not flatten host/global inputs.
-func ParseLayer(b []byte, project bool) (Layer, error) {
+func ParseLayer(b []byte) (Layer, error) {
 	l := Layer{Version: 1, Raw: b}
 	if err := Decode(b, &l); err != nil {
 		return l, err
@@ -219,8 +222,8 @@ func ParseLayer(b []byte, project bool) (Layer, error) {
 	if l.Version != 1 {
 		return l, fmt.Errorf("unsupported version")
 	}
-	if !project && l.InheritProfile != nil {
-		return l, fmt.Errorf("inherit_profile is project-only")
+	if l.BaseImage != nil && !strings.Contains(*l.BaseImage, "${env:") && !ImageReference.MatchString(*l.BaseImage) {
+		return l, fmt.Errorf("invalid base_image reference")
 	}
 	if l.HarnessArgs != nil && (l.Harness == nil || *l.Harness == "") {
 		return l, fmt.Errorf("harness_args requires a harness in the same configuration layer")
@@ -238,6 +241,9 @@ func ParseGlobal(b []byte) (Global, error) {
 	return g, nil
 }
 func (s *Settings) Apply(l Layer) {
+	if l.BaseImage != nil {
+		s.BaseImage = *l.BaseImage
+	}
 	if l.Shell != nil {
 		s.Shell = append([]string(nil), (*l.Shell)...)
 	}
@@ -270,6 +276,9 @@ func (s Settings) ValidateFields() error {
 	}
 	if s.Harness != "" && !Name.MatchString(s.Harness) {
 		return fmt.Errorf("invalid harness name")
+	}
+	if s.BaseImage != "" && !ImageReference.MatchString(s.BaseImage) {
+		return fmt.Errorf("invalid base_image reference")
 	}
 	if !NetworkName.MatchString(s.Network) {
 		return fmt.Errorf("network must be a valid Docker network name")

@@ -19,7 +19,7 @@ Paths below are relative to the selected home.
 | `sessions/<container>/harnesses/<harness>/managed-config.json` | Managed file/key ownership manifest |
 | `sessions/<container>/runtime/ssh/` | Transient shared SSH sockets and generated client config |
 | `state/installation-id` | Installation identity used for Docker ownership |
-| `state/transfers/<source-container>.json` | Pending transfer journal reserving both endpoints |
+| `state/transfers/<source-container>.json` | Pending transfer journal reserving both endpoints and retaining any explicit destination selector as `requested_to` |
 | `state/locks/installation.lock` | Home initialization lock |
 | `state/locks/config/*.lock` | Configuration-owner locks |
 | `state/locks/sessions/*.operation.lock` | Environment-operation locks |
@@ -73,19 +73,19 @@ Documentation and network files are Devbox-managed runtime data. SSH runtime dat
 
 ## Names and ownership
 
-Container and session-directory names use:
+Profile/project selection determines container and session-directory names:
 
 - `devbox-<folder>-<12-hex-hash>.profile-<name>`
 - `devbox-<folder>-<12-hex-hash>.profile-<name>.project`
 - `devbox-<folder>-<12-hex-hash>.project`
 
-The hash covers the canonical workspace path and profile/project combination. Each combination requires separate creation. The saved session and its container share the same name; a missing container does not remove the session. The readable folder portion is lowercase, sanitized, and limited to 32 characters. Symlink aliases resolve to the same workspace identity.
+The hash covers the canonical workspace path and selected slot. Each identity requires separate creation. Inheritance changes never silently rename saved state. The saved session and its container share the same name; a missing container does not remove the session. The readable folder portion is lowercase, sanitized, and limited to 32 characters. Symlink aliases resolve to the same workspace identity.
 
-Names locate resources; labels prove ownership. Containers carry installation, ownership-version, session, workspace, and slot labels under `devbox-rewrite.*`. Images carry installation ownership; final tags are `devbox-rewrite/session:<session-id>`.
+Names locate resources; labels prove ownership. Containers carry installation, ownership-version, session, workspace, slot, profile, and project-participation labels under `devbox-rewrite.*`. Images carry installation ownership; final tags are `devbox-rewrite/session:<session-id>`.
 
 ## Record and recovery contract
 
-Session schema `3` requires complete `inputs.image`, `inputs.container`, and `inputs.runtime` snapshots. Records contain public settings, paths, file hashes/modes, and keyed env hashes—not file contents or env/auth values. `env_sources` identifies exact recoverable source entries.
+Session schema `4` requires complete `inputs.image`, `inputs.container`, and `inputs.runtime` snapshots plus ordered `sources` references. Image inputs contain the base image, generated layers, and ordered Dockerfile/context/ignore snapshots; setup and before-open inputs are ordered arrays. Older development records require a clean reset, not migration. Records contain public settings, paths, file hashes/modes, and keyed env hashes—not file contents or env/auth values. `env_sources` identifies exact recoverable source entries, restricted to the saved config sources or global config. `identity.project_dir` records an explicit project-directory override. `recreate --project-dir` can replace it without changing session identity; selecting the workspace's `.devbox/` clears it and updates the recorded project source. Ordinary recreation keeps the binding.
 
 `open` and `start` restore a missing container using its recorded image, mount layout, verified definition/setup inputs, and recoverable environment sources. They do not replace recorded creation settings with current configuration. Missing inputs require explicit recreation. Existing named external volumes must still exist.
 

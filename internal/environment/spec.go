@@ -29,11 +29,12 @@ import (
 const ContainerPrefix = "devbox-"
 
 type Identity struct {
-	Workspace string `json:"workspace"`
-	Slot      string `json:"slot"`
-	Name      string `json:"name"`
-	Profile   string `json:"profile,omitempty"`
-	Project   bool   `json:"project"`
+	Workspace  string `json:"workspace"`
+	Slot       string `json:"slot"`
+	Name       string `json:"name"`
+	Profile    string `json:"profile,omitempty"`
+	Project    bool   `json:"project"`
+	ProjectDir string `json:"project_dir,omitempty"`
 }
 
 func Identify(workspace, profile string, project bool) (Identity, error) {
@@ -71,7 +72,7 @@ func ContainerName(workspace, slot string) string {
 		folder = "workspace"
 	}
 	sum := sha256.Sum256([]byte(workspace + "\x00" + slot))
-	return ContainerPrefix + folder + "-" + hex.EncodeToString(sum[:6]) + "." + strings.ReplaceAll(slot, ":", "-")
+	return ContainerPrefix + folder + "-" + hex.EncodeToString(sum[:6]) + "." + slot
 }
 
 type Fingerprints struct {
@@ -92,8 +93,9 @@ type Spec struct {
 	Files        map[string]artifact.File
 	Warnings     []string
 	Build        ImageBuildPlan
-	Setup        Hook
-	Entrypoint   Hook
+	Setup        []Hook
+	BeforeOpen   []Hook
+	Sources      []config.Source
 	Fingerprints Fingerprints
 	Inputs       Inputs
 	EnvSources   []config.EnvSource
@@ -108,6 +110,8 @@ type Request struct {
 	Profile       string
 	Overrides     config.Layer
 	IgnoreProject bool
+	ProjectDir    string
+	Sources       []config.Source
 	Recorded      *Identity
 	UID           int
 	GID           int
@@ -132,16 +136,17 @@ func resolve(q Request, project *config.Layer) (Spec, error) {
 	} else {
 		q.Host = maps.Clone(q.Host)
 	}
-	selection := artifact.Selection{Profile: q.Profile, IgnoreProject: q.IgnoreProject}
+	selection := artifact.Selection{Profile: q.Profile, IgnoreProject: q.IgnoreProject, ProjectDir: q.ProjectDir, Sources: q.Sources}
 	if q.Recorded != nil {
-		selection.Recorded = &artifact.Participation{Profile: q.Recorded.Profile, Project: q.Recorded.Project}
+		selection.Recorded = &artifact.Participation{Profile: q.Recorded.Profile, Project: q.Recorded.Project, ProjectDir: q.Recorded.ProjectDir, Sources: q.Sources}
 	}
 	r, err := artifact.PreviewSelection(q.Home, q.Workspace, selection, q.Overrides, project, q.Host)
 	if err != nil {
 		return spec, err
 	}
-	identity, err := Identify(q.Workspace, r.Profile, r.Project)
-	if err != nil {
+	identity := Identity{Workspace: q.Workspace, Profile: r.Profile, Project: r.Project, ProjectDir: r.Selection.ProjectDir, Slot: Slot(r.Profile, r.Project)}
+	identity.Name = ContainerName(identity.Workspace, identity.Slot)
+	if err = identity.ValidateSlot(); err != nil {
 		return spec, err
 	}
 	if q.Recorded != nil && identity != *q.Recorded {
@@ -190,7 +195,7 @@ func resolve(q Request, project *config.Layer) (Spec, error) {
 	if q.UID <= 0 || q.GID <= 0 {
 		return spec, fmt.Errorf("run the development CLI as a non-root user with a non-root primary group")
 	}
-	spec = Spec{Identity: identity, Settings: r.Settings, Harness: h, Trace: r.Trace, Files: files, Warnings: warnings, Host: q.Host}
+	spec = Spec{Identity: identity, Settings: r.Settings, Harness: h, Trace: r.Trace, Files: files, Warnings: warnings, Host: q.Host, Sources: r.Selection.Sources}
 	protected := []string{"/workspace", "/devbox"}
 	for _, store := range h.Definition.Stores {
 		protected = append(protected, store.Target)
@@ -253,15 +258,15 @@ func resolve(q Request, project *config.Layer) (Spec, error) {
 	if err = docker.ValidateEnv(spec.Env()); err != nil {
 		return Spec{}, err
 	}
-	spec.Build, err = PlanImage(r.Trace.Winners, h.Definition, q.UID, q.GID)
+	spec.Build, err = PlanImage(r.Trace.Artifacts["Dockerfile"], r.Settings.BaseImage, h.Definition, q.UID, q.GID)
 	if err != nil {
 		return spec, err
 	}
-	spec.Setup, err = readHook(r.Trace.Winners["setup.sh"])
+	spec.Setup, err = readHooks(r.Trace.Artifacts["setup.sh"])
 	if err != nil {
 		return spec, err
 	}
-	spec.Entrypoint, err = readHook(r.Trace.Winners["entrypoint.sh"])
+	spec.BeforeOpen, err = readHooks(r.Trace.Artifacts["before-open.sh"])
 	if err != nil {
 		return spec, err
 	}
@@ -273,12 +278,16 @@ func resolve(q Request, project *config.Layer) (Spec, error) {
 	spec.Fingerprints = spec.Inputs.Fingerprints()
 	return spec, nil
 }
-func readHook(path string) (Hook, error) {
-	if path == "" {
-		return Hook{}, nil
+func readHooks(paths []string) ([]Hook, error) {
+	var hooks []Hook
+	for _, path := range paths {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		hooks = append(hooks, Hook{Path: path, Hash: Digest(b), Data: b})
 	}
-	b, err := os.ReadFile(path)
-	return Hook{Path: path, Hash: Digest(b), Data: b}, err
+	return hooks, nil
 }
 func Fingerprint(salt string, v any) string {
 	b, err := json.Marshal(v)
@@ -296,23 +305,6 @@ func Digest(v any) string {
 	}
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
-}
-func ImageDockerfile(d harness.Definition, uid, gid int) []byte {
-	// Harness installation runs before its runtime cache/prefix env is applied:
-	// executables stay in the image, not under empty host cache bind mounts.
-	base := fmt.Sprintf("FROM debian:bookworm-slim\nUSER root\nRUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl git sudo procps vim zip unzip jq net-tools iputils-ping openssh-client util-linux && rm -rf /var/lib/apt/lists/*\nRUN echo \"alias ll='ls -alF'\" >> /etc/bash.bashrc && echo \"alias vi='vim'\" >> /etc/bash.bashrc\nRUN (getent group %d >/dev/null || groupadd -g %d devuser) && (id devuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u %d -g %d devuser) && echo 'devuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/devuser && chmod 0440 /etc/sudoers.d/devuser\nUSER devuser\nENV HOME=/home/devuser USER=devuser\nWORKDIR /workspace\n", gid, gid, uid, gid)
-	base += fmt.Sprintf("RUN test \"$(id -u devuser)\" = %d && test \"$(id -g devuser)\" = %d\n", uid, gid)
-	if d.Install.Shell != "" {
-		encoded, _ := json.Marshal([]string{"/bin/bash", "-o", "pipefail", "-c", d.Install.Shell})
-		base += "RUN " + string(encoded) + "\n"
-	}
-	parents, _ := json.Marshal(mountParentCommand(d))
-	base += "RUN " + string(parents) + "\n"
-	paths := append([]string(nil), d.Install.Path...)
-	paths = append(paths, "/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin")
-	encoded, _ := json.Marshal(strings.Join(paths, ":"))
-	base += "ENV PATH=" + string(encoded) + "\n"
-	return []byte(base)
 }
 
 func (s Spec) FingerprintsFor(imageID string) Fingerprints {

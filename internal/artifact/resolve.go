@@ -19,20 +19,21 @@ type Layer struct {
 	Config config.Layer `json:"-"`
 }
 type Trace struct {
-	Layers   []Layer             `json:"layers"`
-	Excluded []string            `json:"excluded"`
-	Winners  map[string]string   `json:"artifact_winners"`
-	Sources  map[string][]string `json:"sources"`
+	Layers    []Layer             `json:"layers"`
+	Excluded  []string            `json:"excluded"`
+	Artifacts map[string][]string `json:"artifacts"`
+	Sources   map[string][]string `json:"sources"`
 	// EntrySources follows the resolved list order, including duplicate values.
 	EntrySources map[string][]string `json:"entry_sources,omitempty"`
 }
 type Resolved struct {
-	Global   config.Global
-	Settings config.Settings
-	Layers   []Layer
-	Trace    Trace
-	Profile  string
-	Project  bool
+	Global    config.Global
+	Settings  config.Settings
+	Layers    []Layer
+	Trace     Trace
+	Profile   string
+	Project   bool
+	Selection Participation
 }
 
 func Resolve(home, workspace, explicit string, override config.Layer) (Resolved, error) {
@@ -66,7 +67,7 @@ func resolve(home, workspace string, selection Selection, override config.Layer,
 			err = commanderror.New("invalid_configuration", "Invalid configuration: "+err.Error(), workspace, err)
 		}
 	}()
-	r = Resolved{Settings: config.Defaults(), Trace: Trace{Winners: map[string]string{}, Sources: map[string][]string{}, EntrySources: map[string][]string{}}}
+	r = Resolved{Settings: config.Defaults(), Trace: Trace{Artifacts: map[string][]string{}, Sources: map[string][]string{}, EntrySources: map[string][]string{}}}
 	for range r.Settings.Shell {
 		r.Trace.EntrySources["shell"] = append(r.Trace.EntrySources["shell"], "built-in default")
 	}
@@ -82,71 +83,41 @@ func resolve(home, workspace string, selection Selection, override config.Layer,
 	if err != nil {
 		return r, err
 	}
-	profile := participation.Profile
-	projectPath := filepath.Join(workspace, ".devbox", "config.json")
-	var project *config.Layer
-	if !participation.Project {
+	r.Selection = participation
+	r.Profile, r.Project = participation.Profile, participation.Project
+	if !r.Project {
 		r.Trace.Excluded = append(r.Trace.Excluded, "project")
-	} else {
-		var l config.Layer
-		var err error
-		if proposed != nil {
-			l = *proposed
-			if l.Raw != nil {
-				l, err = config.ResolveLayer(l.Raw, projectPath, true, host)
+	}
+	if r.Profile == "" {
+		r.Trace.Excluded = append(r.Trace.Excluded, "profile")
+	}
+	for i, source := range participation.Sources {
+		file := filepath.Join(source.Path, "config.json")
+		var layer config.Layer
+		if preview := participation.Preview.layer(source); preview != nil {
+			layer = *preview
+			if layer.Raw != nil {
+				layer, err = config.ResolveLayer(layer.Raw, file, host)
 			}
 		} else {
-			l, err = config.ReadLayer(projectPath, true, host)
-		}
-		if os.IsNotExist(err) {
-			present, probeErr := hasProjectArtifacts(filepath.Dir(projectPath))
-			if probeErr != nil {
-				return r, probeErr
-			}
-			if present {
-				l = config.Layer{Version: 1}
-				err = nil
-			}
-		}
-		if err == nil {
-			project = &l
-			r.Project = true
-			if profile == "" {
-				r.Trace.Excluded = append(r.Trace.Excluded, "profile")
-			}
-		}
-		if err != nil && !os.IsNotExist(err) {
-			return r, err
-		}
-	}
-	if profile != "" {
-		if !config.Name.MatchString(profile) {
-			return r, fmt.Errorf("invalid profile name")
-		}
-		root, err := fsutil.Path(home, filepath.Join("profiles", profile))
-		if err != nil {
-			return r, err
-		}
-		l, err := config.ReadLayer(filepath.Join(root, "config.json"), false, host)
-		if os.IsNotExist(err) {
-			return r, commanderror.New("profile_missing", fmt.Sprintf("Profile %q does not exist.", profile), root, err,
-				commanderror.Next("Create profile", "profile", "create", profile),
-				commanderror.Next("Then select a harness", "profile", "init", profile, "--harness", "<name>"))
+			layer, err = config.ReadLayer(file, host)
 		}
 		if err != nil {
+			var pathErr *os.PathError
+			if participation.Profile != "" && errors.As(err, &pathErr) && os.IsNotExist(pathErr) && pathErr.Path == filepath.Join(home, "profiles", participation.Profile, "config.json") {
+				return r, commanderror.New("profile_missing", fmt.Sprintf("Profile %q does not exist.", participation.Profile), filepath.Dir(pathErr.Path), err,
+					commanderror.Next("Create profile", "profile", "create", participation.Profile),
+					commanderror.Next("Then select a harness", "profile", "init", participation.Profile, "--harness", "<name>"))
+			}
 			return r, err
 		}
-		r.Layers = append(r.Layers, Layer{Name: "profile", Path: root, Config: l})
-		r.Profile = profile
-	}
-	if project != nil {
-		r.Layers = append(r.Layers, Layer{Name: "project", Path: filepath.Dir(projectPath), Config: *project})
-	}
-	if len(r.Layers) == 0 {
-		return r, commanderror.New("configuration_missing", "No profile or project configuration selected.", workspace, nil,
-			commanderror.Next("Create a profile", "profile", "create", "<name>"),
-			commanderror.Next("Use as default (optional)", "profile", "set", "<name>"),
-			commanderror.Next("Or configure this project", "project", "create", workspace))
+		// Selection and full resolution must describe the same source revision.
+		// Otherwise a concurrent cutoff edit could create an unreachable session.
+		header := participation.Headers[i]
+		if header.Checked && (layer.Inherit == nil || *layer.Inherit) != header.Inherit {
+			return r, fmt.Errorf("configuration identity metadata changed during resolution: %s; retry", file)
+		}
+		r.Layers = append(r.Layers, Layer{Name: source.Label, Path: source.Path, Config: layer})
 	}
 	r.Trace.Layers = append(r.Trace.Layers, Layer{Name: "built-in default"}, Layer{Name: "global", Path: filepath.Join(home, "config.json")})
 	selectedHarness := g.DefaultHarness
@@ -169,7 +140,7 @@ func resolve(home, workspace string, selection Selection, override config.Layer,
 		r.Settings.Apply(l.Config)
 		r.Trace.Layers = append(r.Trace.Layers, l)
 		r.Trace.contributions(l.Name, l.Config)
-		for _, name := range SingletonNames {
+		for _, name := range ArtifactNames {
 			p, err := fsutil.Path(l.Path, name)
 			if err != nil {
 				return r, err
@@ -184,7 +155,7 @@ func resolve(home, workspace string, selection Selection, override config.Layer,
 			if !info.Mode().IsRegular() {
 				return r, fmt.Errorf("artifact must be a regular file: %s", p)
 			}
-			r.Trace.Winners[name] = p
+			r.Trace.Artifacts[name] = append(r.Trace.Artifacts[name], p)
 		}
 	}
 	for _, value := range override.Env {
@@ -209,7 +180,7 @@ func resolve(home, workspace string, selection Selection, override config.Layer,
 	return r, nil
 }
 func (t *Trace) contributions(name string, l config.Layer) {
-	for key, set := range map[string]bool{"shell": l.Shell != nil, "harness": l.Harness != nil, "network": l.Network != nil} {
+	for key, set := range map[string]bool{"shell": l.Shell != nil, "harness": l.Harness != nil, "network": l.Network != nil, "base_image": l.BaseImage != nil} {
 		if set {
 			t.Sources[key] = []string{name}
 		}

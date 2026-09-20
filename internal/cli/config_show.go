@@ -18,7 +18,7 @@ func configCommand(factory resourceFactory, scope string) *cobra.Command {
 		args = cobra.ExactArgs(1)
 	}
 	if scope == "project" {
-		use += " <folder>"
+		use += " <folder|session>"
 		args = cobra.ExactArgs(1)
 	}
 	cmd := &cobra.Command{Use: use, Short: "Edit settings or show resolved settings and where they come from", Args: args, RunE: func(cmd *cobra.Command, args []string) error {

@@ -15,13 +15,17 @@ devbox-neo profile init basic
 Choose **Dockerfile** from the optional files. Then edit `~/.devbox-neo/profiles/basic/Dockerfile`. For example:
 
 ```dockerfile
-FROM debian:bookworm-slim
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ripgrep \
-    && rm -rf /var/lib/apt/lists/*
+ARG DEVBOX_BASE
+FROM ${DEVBOX_BASE}
+
+RUN sudo apt-get update \
+    && sudo apt-get install -y --no-install-recommends ripgrep \
+    && sudo rm -rf /var/lib/apt/lists/*
 ```
 
-Use a Debian-compatible base. Devbox adds its runtime tools and your chosen harness on top. Common tools such as Bash, Git, curl, sudo, Vim, jq, zip, and unzip are already included.
+Devbox has already prepared the development user, home, sudo, and runtime tools. Use `sudo` for system packages; user-scoped installers run as the development user. Common tools such as Bash, Git, curl, sudo, Vim, jq, zip, and unzip are already included. Devbox installs your chosen harness after customization.
+
+To choose another Debian/Ubuntu-compatible upstream image, set `base_image` in the profile/project config menu rather than replacing `FROM ${DEVBOX_BASE}`. Bases with conflicting user IDs fail instead of changing unrelated accounts.
 
 Apply the image change to an existing profile environment:
 
@@ -29,7 +33,7 @@ Apply the image change to an existing profile environment:
 devbox-neo recreate . --profile basic
 ```
 
-The Dockerfile's directory is its build context, so `COPY` can use sibling files. Add a `.dockerignore` to keep unrelated files out of the build.
+The profile's Dockerfile builds first, then the project's Dockerfile builds on its result. Each Dockerfile's own directory is its build context, so `COPY` uses sibling files from that directory. Add a `.dockerignore` to keep unrelated files out of each build.
 
 ## Configure your harness
 
@@ -64,16 +68,16 @@ Use `setup.sh` for preparation that needs the mounted workspace, such as install
 devbox-neo profile init basic
 ```
 
-Choose **setup.sh** from the optional files, then edit `~/.devbox-neo/profiles/basic/setup.sh`. It runs inside the container during creation and recreation. Changes to it need `recreate`.
+Choose **setup.sh** from the optional files, then edit `~/.devbox-neo/profiles/basic/setup.sh`. Profile and project setup scripts run in that order inside the container during creation and recreation. A failure stops the chain. Changes to setup need `recreate`; keep tool installation in the Dockerfile so it can be cached.
 
 ## Run a script each time you open
 
-Use `entrypoint.sh` for work that should happen before each harness launch. Open the setup menu:
+Use `before-open.sh` for work that should happen before each harness launch. Open the setup menu:
 
 ```sh
 devbox-neo profile init basic
 ```
 
-Choose **entrypoint.sh** from the optional files, then edit `~/.devbox-neo/profiles/basic/entrypoint.sh`. It runs inside the container on each `open`, not on the host. Keep it quick so opening your environment stays quick.
+Choose **before-open.sh** from the optional files, then edit `~/.devbox-neo/profiles/basic/before-open.sh`. Profile and project scripts run in order inside the container on each `open`, not on the host. Keep it quick so opening your environment stays quick.
 
 See [configuration artifacts](../reference/configuration.md#artifacts) for exact lifecycle rules and [harness definitions](../reference/harnesses.md) if you need to integrate a different harness.

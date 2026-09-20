@@ -32,7 +32,7 @@ func TestSourceReferencesVerifyExpressionAndValue(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
 	original := `{"version":1,"env":["TOKEN=${env:TOKEN}"],"harness":"pi"}`
 	os.WriteFile(p, []byte(original), 0600)
-	l, err := ReadLayer(p, false, Host{"TOKEN": "sentinel-secret"})
+	l, err := ReadLayer(p, Host{"TOKEN": "sentinel-secret"})
 	if err != nil {
 		t.Fatal(err)
 	}

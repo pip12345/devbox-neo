@@ -72,7 +72,7 @@ func TestConfigMenusEditAndResetEachScope(t *testing.T) {
 			if scope == "global" {
 				key, selection, want = "ignore_project", "1", "true"
 			} else if scope == "project" {
-				key, selection, want = "inherit_profile", "2", "false"
+				key, selection, want = "inherit", "2", "false"
 			}
 			n := fieldNumber(t, scope, key)
 			out, err := runMenu(t, s, owner, n+"\n1\n"+selection+"\n0\n")

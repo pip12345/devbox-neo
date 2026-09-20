@@ -43,7 +43,7 @@ func TestEntrySourcesRespectStandaloneProjectsAndDefaults(t *testing.T) {
 	home, work := t.TempDir(), t.TempDir()
 	put(t, filepath.Join(home, "config.json"), `{"version":1,"default_profile":"base","global_env":["GLOBAL=value"]}`)
 	put(t, filepath.Join(home, "profiles/base/config.json"), `{"version":1,"harness":"pi","harness_args":["profile"]}`)
-	put(t, filepath.Join(work, ".devbox/config.json"), `{"version":1,"inherit_profile":false,"harness":"pi","harness_args":["project"]}`)
+	put(t, filepath.Join(work, ".devbox/config.json"), `{"version":1,"inherit":false,"harness":"pi","harness_args":["project"]}`)
 	r, err := Resolve(home, work, "", config.Layer{})
 	if err != nil {
 		t.Fatal(err)

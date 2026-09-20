@@ -22,6 +22,10 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 	for _, kind := range []string{"profile", "project"} {
 		kind := kind
 		group := &cobra.Command{Use: kind, Short: "Manage " + kind + " configuration"}
+		if kind == "project" {
+			group.PersistentFlags().String("project-dir", "", "Edit or initialize this project configuration directory instead of .devbox/")
+			_ = group.MarkPersistentFlagDirname("project-dir")
+		}
 		owner := func(s *resource.Service, name string) (resource.Owner, error) {
 			if kind == "profile" {
 				return s.Profile(name)
@@ -86,7 +90,7 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 			return renderResource(cmd, result, err, initJSON, s.Home)
 		}}
 		init.Flags().StringVar(&selected, "harness", "", harnessHelp)
-		init.Flags().StringSliceVar(&artifacts, "artifact", nil, "Add missing files: harness-config, setup.sh, entrypoint.sh, or Dockerfile (repeatable)")
+		init.Flags().StringSliceVar(&artifacts, "artifact", nil, "Add missing files: harness-config, setup.sh, before-open.sh, or Dockerfile (repeatable)")
 		init.Flags().BoolVar(&initJSON, "json", false, "Print the result and next steps as JSON; never prompt")
 		group.AddCommand(init, configCommand(factory, kind))
 		if kind == "profile" {

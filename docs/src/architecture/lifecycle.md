@@ -24,11 +24,11 @@ flowchart TD
 
 | Scope | Representative inputs | Baseline advances |
 |---|---|---|
-| Image | Dockerfile/context/ignore rules, build args, generated runtime layer, harness definition | Creation/recreation commit |
-| Container | Image dependency, mounts, network, env verification, setup input | Creation/recreation commit |
-| Runtime | Managed files, launch settings, entrypoint, runtime assets | Successful application through `Record.ApplyRuntime` |
+| Image | Base image, ordered Dockerfiles/contexts/ignore rules, build args, generated preparation/boundary/finalization layers, harness definition | Creation/recreation commit |
+| Container | Image dependency, mounts, network, env verification, ordered setup inputs | Creation/recreation commit |
+| Runtime | Managed files, launch settings, ordered before-open inputs, runtime assets | Successful application through `Record.ApplyRuntime` |
 
-Snapshots contain public values and hashes, not file contents or secret values. Schema `3` requires all three and validates their fingerprints. Historical baselines are not inferred from current source files.
+Snapshots contain public values and hashes, not file contents or secret values. Schema `4` requires all three and validates their fingerprints. Historical baselines are not inferred from current source files.
 
 `CompareInputs` emits leaf changes in stable order. Action priority is image over container over runtime. The image-to-container hash dependency does not become a duplicate user-facing reason. Dockerfile and ignore entries also appear only once per physical change even when included in the context.
 
@@ -50,9 +50,11 @@ flowchart TD
     COMMIT --> STOP[Stop prepared container]
 ```
 
-`setup.sh` belongs to the per-container contract. The every-open entrypoint and harness attachment are not part of standalone `create`. Successful creation leaves the environment stopped.
+The ordered `setup.sh` chain belongs to the per-container contract. Before-open scripts and harness attachment are not part of standalone `create`. Successful creation leaves the environment stopped.
 
 The record commits only after startup, declared preparation, setup, and binary-availability checks succeed. If the final stop fails, the committed environment remains usable and the error recommends `stop`; it is not presented as an absent session that can be created again.
+
+Recreation selects saved state and rereads it under the operation lock before resolving desired inputs. An explicit `--project-dir` replaces only the prospective project source reference; selecting the canonical workspace's `.devbox/` normalizes to no override. The existing identity and source list remain authoritative until the new record commits. Exact targets can be rebound without reading an unavailable old source. Changes that would alter profile/project participation are rejected before Docker mutation.
 
 Recreation uses current desired inputs while preserving the session ID and stores. An unchanged available image can be reused; changed image inputs trigger a cached build, and `--image` forces a no-cache build. Running/stopped intent is retained. Container-local state is replaceable, not transferred into the new container.
 
@@ -86,7 +88,7 @@ Invalid participating configuration or malformed live shared JSON blocks startup
 
 Before recovery, synchronization, startup, or entrypoint output, Open emits image/container drift reasons and the recreation command. This is a warning, not authorization to replace the container. Runtime changes remain visible in status without being mislabeled as creation changes.
 
-`entrypoint.sh` runs on each Open before attachment. Existing containers launch their recorded harness; a newly selected definition does not silently change the container's installed capabilities.
+The ordered `before-open.sh` chain runs on each Open before attachment. Each script is a separate process; failure stops the chain and blocks attachment. Existing containers launch their recorded harness; a newly selected definition does not silently change the container's installed capabilities.
 
 ## Missing-container recovery
 
@@ -95,10 +97,10 @@ Recovery materializes the recorded creation contract, not a newly resolved one. 
 - the recorded image and bind inputs;
 - existing named external volumes;
 - the exact recorded definition source and its installation-keyed digest;
-- setup source content;
+- every recorded setup source's content, in order;
 - recoverable environment source entries.
 
-A new user override cannot replace a recorded built-in definition during recovery. Missing durable roots are not recreated as empty state. Environment values are reconstructed from recorded source references; changed or missing values can require explicit recreation with current configuration.
+Recorded `sources` identify exact configuration directories for current desired resolution and sensitive env-source validation, including an external project directory. A new user override cannot replace a recorded built-in definition during recovery. Missing durable roots are not recreated as empty state. Environment values are reconstructed from recorded source references; changed or missing values can require explicit recreation with current configuration.
 
 Compatible desired runtime config can synchronize during ordinary recovery, but image/container settings remain recorded. Transaction rollback and committed-transfer recovery follow their recorded transaction rather than resolving newer desired configuration.
 
@@ -143,7 +145,7 @@ This separates display capabilities from environment configuration: changing ter
 
 `assets` embeds the human docs, development notes, and container agent guidance. The engine stages that bundle with inspected network facts in a private `.runtime-*` directory, then copies it into a verified running container's `/devbox` directory.
 
-The adapter applies root-owned read-only permissions for `devuser`, excluding the live `/devbox/ssh` mount from recursive ownership/permission changes. Host staging is removed on success or failure. Runtime preparation precedes setup, per-open entrypoint hooks, and harness access.
+The adapter applies root-owned read-only permissions for `devuser`, excluding the live `/devbox/ssh` mount from recursive ownership/permission changes. Host staging is removed on success or failure. Runtime preparation precedes setup, before-open hooks, and harness access.
 
 Network commands inspect actual attachments under the operation lock. Secondary-network changes cannot detach the configured primary and do not change creation fingerprints. Managed changes refresh in-container facts while running; external Docker changes appear on the next refresh.
 

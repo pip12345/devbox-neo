@@ -84,7 +84,7 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 		var sessionID string
 		if exists {
 			sessionID = c.Config.Labels[docker.Namespace+".session"]
-			owner := docker.Owner{Installation: s.Installation, Session: sessionID, Workspace: workspace, Slot: spec.Identity.Slot}
+			owner := docker.Owner{Installation: s.Installation, Session: sessionID, Workspace: workspace, Slot: spec.Identity.Slot, Profile: spec.Identity.Profile, Project: spec.Identity.Project}
 			if err = c.Verify(owner); err != nil {
 				t.Error(err)
 				return

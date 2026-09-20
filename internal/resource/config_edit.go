@@ -46,9 +46,9 @@ func ConfigFields(scope string) []ConfigField {
 		{Key: "ports", Kind: "list", Help: "Port forwards added by this config. Inherited forwards are kept. Format: [HOST_IP:]HOST_PORT:CONTAINER_PORT."},
 		{Key: "vscode", Kind: "extensions", Help: "VS Code extension IDs added by this config. Inherited extensions are kept."},
 	}
-	if scope == "project" {
-		fields = append(fields, ConfigField{Key: "inherit_profile", Kind: "bool", Help: "Whether this project includes profile configuration and artifacts; default true."})
-	}
+	fields = append(fields,
+		ConfigField{Key: "inherit", Kind: "bool", Help: "Include preceding configuration sources; false discards them entirely. Default true."},
+		ConfigField{Key: "base_image", Kind: "string", Help: "Debian/Ubuntu-compatible upstream image; Devbox prepares the development user before customization."})
 	return fields
 }
 
@@ -129,7 +129,7 @@ func (s Service) SetConfigField(ctx context.Context, o Owner, key string, expect
 	if o.Kind == "global" {
 		_, err = config.ParseGlobal(data)
 	} else {
-		_, err = config.ParseLayer(data, o.Kind == "project")
+		_, err = config.ParseLayer(data)
 	}
 	if err != nil {
 		return fmt.Errorf("invalid configuration source: %w", err)
@@ -201,8 +201,12 @@ func (s Service) validateConfigField(scope string, field ConfigField, value json
 				return fmt.Errorf("select an existing valid profile or reset to no default")
 			}
 		}
+	case "base_image":
+		if !config.ImageReference.MatchString(text) {
+			return invalid
+		}
 	case "network", "shell":
-		layer, _ := config.ParseLayer(data, scope == "project")
+		layer, _ := config.ParseLayer(data)
 		settings := config.Defaults()
 		settings.Apply(layer)
 		if settings.ValidateFields() != nil {
@@ -238,7 +242,7 @@ func (s Service) ShowOwner(o Owner) (ConfigView, error) {
 	case "profile":
 		return s.ShowProfile(o.Name)
 	case "project":
-		return s.ShowProject(o.Workspace, "")
+		return s.ShowProject(o.Name, "")
 	default:
 		return ConfigView{}, os.ErrInvalid
 	}

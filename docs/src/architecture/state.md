@@ -6,7 +6,9 @@ The saved session is the top-level environment model. Docker inventory supplies 
 
 `environment.ContainerPrefix` defines the `devbox-` lookup convention independently of `docker.Namespace`, which defines `devbox-rewrite.*` labels and image tags.
 
-Identity uses the canonical workspace path and participating profile/project combination. Names contain a readable canonical folder basename, a 12-hex path/combination hash, and `.profile-<name>`, `.profile-<name>.project`, or `.project`. Profile and project participation are recorded explicitly and validated against the slot. All folder-targeted commands calculate that exact identity; none searches for another available profile. Exact names use the saved combination even when defaults change.
+Identity uses the canonical workspace path and retained profile/project selection. The selection frontend produces `.profile-<name>`, `.profile-<name>.project`, or `.project` suffixes. Session names also include a readable folder basename and a 12-hex workspace/slot hash. Saved source directories are recorded explicitly. The generic config merger does not name environments, and source files have no `name` field. Exact names use recorded sources even when defaults change.
+
+Folder targeting uses the selected profile and project metadata. Saved project-directory overrides are matched by workspace/profile; differing matches require an exact target, and unreadable matching project slots prevent guessing. Unrelated profiles and profile-only slots do not participate in override lookup. `--ignore-project` selects profile-only configuration without consulting overrides. Inheritance changes cannot rename recorded state implicitly.
 
 The readable basename is lowercased and bounded to 32 characters from `a-z0-9_.-`; invalid runs become `-`, edge punctuation is trimmed, and an empty result becomes `workspace`. Sanitization and truncation do not change the hash input. Symlink aliases therefore produce the same identity. Records validate against the naming rule.
 
@@ -96,7 +98,7 @@ Selection filters intersect. Age uses recorded activity, and unknown activity is
 
 Both endpoint operation locks are acquired in sorted order. Ordinary `Locked.Load` rejects pending work, while inventory and transfer operations can inspect it. Pending lookup scans unfinished journals; corrupt journals fail mutations closed because endpoint reservations cannot be trusted.
 
-The journal records public endpoint identities, session IDs, transfer mode/phase, intended running state, and destination input fingerprints. Internal modes remain `clone` for `copy` and `relocate` for `copy --move`; JSON transfer results and pending summaries use these mode values too. It is not a second creation record and contains no env/auth values. Destination creation accepts the journal's allocated identity so retry cannot allocate another session.
+The journal records public endpoint identities, the original explicit `--to` selector (`requested_to`), session IDs, transfer mode/phase, intended running state, and destination input fingerprints. Retries accept the original selector or the effective destination suffix, even when an inheritance cutoff removed the requested profile; they do not reload config to reinterpret the selector. Internal modes remain `clone` for `copy` and `relocate` for `copy --move`; JSON transfer results and pending summaries use these mode values too. It is not a second creation record and contains no env/auth values. Destination creation accepts the journal's allocated identity so retry cannot allocate another session.
 
 ```mermaid
 stateDiagram-v2

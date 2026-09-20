@@ -11,7 +11,7 @@ All environment commands must target the selected combination consistently. If i
 Configuration files are the lasting source of settings:
 
 - **Profile:** reusable defaults.
-- **Project `.devbox`:** persistent project-specific settings layered above the selected profile.
+- **Project `.devbox` or its saved `--project-dir` override:** persistent project-specific settings layered above the selected profile.
 - **Global configuration:** defaults and settings shared across environments.
 
 Remove configuration overrides from `create` and `recreate`. Configure first, then create; edit configuration, then recreate. Recreation preserves the environment's identity and saved harness state while applying the current contents of its selected configuration sources.
@@ -25,11 +25,11 @@ Keep configs sparse, preserve straightforward merge rules, and use the existing 
 - `--profile NAME` selects the base profile instead of the configured default. It does not implicitly exclude project settings or artifacts.
 - Add `--ignore-project` to explicitly exclude all project settings and artifacts.
 - Without that exclusion, a participating `.devbox` layer applies above the selected profile.
-- Preserve standalone projects through project `inherit_profile: false`.
+- Preserve standalone projects through generic `inherit: false`, which discards preceding sources before merging.
 - A project's persistent additions apply across its participating profiles. Do not add another configuration layer for individual profile/project combinations.
 - Global project-exclusion configuration and the invocation flag must use the same participation mechanism, not separate artifact-specific rules.
 
-An explicit profile conflicts with participating `inherit_profile: false` and is rejected. `--ignore-project` excludes that project and its inheritance setting, allowing profile-only operation.
+A participating project's `inherit: false` excludes even an explicitly selected profile. `--ignore-project` excludes the project and its inheritance setting, allowing profile-only operation. Config sources share one schema without a `name` field; the selection frontend determines identity. See `config-directory-proposal.md` for the source, image, and hook contracts.
 
 ### 2. Identity includes the participating combination
 

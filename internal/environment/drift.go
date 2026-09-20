@@ -52,12 +52,24 @@ func CompareInputs(before, after Inputs) Report {
 	d := differ{inputChanges: []InputChange{}}
 	d.scope = ImageScope
 	a, b := before.Image, after.Image
-	d.scalar("image_mode", a.Mode, b.Mode)
+	d.scalar("base_image", a.BaseImage, b.BaseImage)
 	d.scalar("harness", a.Harness, b.Harness)
 	d.file("harness_definition", "", a.Definition, b.Definition)
-	d.file("dockerfile", "", a.Dockerfile, b.Dockerfile)
-	d.file("ignore_rules", "", a.Ignore, b.Ignore)
-	d.files("build_context", a.Context, b.Context)
+	for i := 0; i < max(len(a.Stages), len(b.Stages)); i++ {
+		var old, next BuildInputs
+		if i < len(a.Stages) {
+			old = a.Stages[i]
+		}
+		if i < len(b.Stages) {
+			next = b.Stages[i]
+		}
+		key := strconv.Itoa(i + 1)
+		d.file("dockerfile", key, old.Dockerfile, next.Dockerfile)
+		d.file("ignore_rules", key, old.Ignore, next.Ignore)
+		d.files("build_context", old.Context, next.Context)
+	}
+	d.opaque("prepared_layer", a.Prepared, b.Prepared)
+	d.opaque("boundary_layer", a.Boundary, b.Boundary)
 	d.opaque("generated_layer", a.Layer, b.Layer)
 	for _, key := range inputKeys(a.Arguments, b.Arguments) {
 		old, had := a.Arguments[key]
@@ -79,7 +91,7 @@ func CompareInputs(before, after Inputs) Report {
 		d.entry("env", key, old, next, had, has, true)
 	}
 	envChanged := len(d.inputChanges) != envStart
-	d.file("setup", "", c.Setup, n.Setup)
+	d.hooks("setup", c.Setup, n.Setup)
 	d.list("mounts", publicEntries(c.Mounts), publicEntries(n.Mounts))
 	d.list("ports", c.Ports, n.Ports)
 	d.list("docker_args", c.RawArgs, n.RawArgs)
@@ -95,7 +107,7 @@ func CompareInputs(before, after Inputs) Report {
 	r, s := before.Runtime, after.Runtime
 	d.opaque("runtime_assets", r.Assets, s.Assets)
 	d.files("managed_config", r.Files, s.Files)
-	d.file("entrypoint", "", r.Entrypoint, s.Entrypoint)
+	d.hooks("before_open", r.BeforeOpen, s.BeforeOpen)
 	d.list("launch_args", r.Launch.Args, s.Launch.Args)
 	d.list("continue_args", r.Launch.Continue, s.Launch.Continue)
 	d.list("harness_args", r.Args, s.Args)
@@ -190,6 +202,19 @@ func (d *differ) list(field string, before, after []string) {
 	}
 }
 
+func (d *differ) hooks(field string, before, after []FileInput) {
+	for i := 0; i < max(len(before), len(after)); i++ {
+		var old, next FileInput
+		if i < len(before) {
+			old = before[i]
+		}
+		if i < len(after) {
+			next = after[i]
+		}
+		d.file(field, strconv.Itoa(i+1), old, next)
+	}
+}
+
 func (d *differ) file(field, key string, before, after FileInput) {
 	if before.FileState == after.FileState {
 		return
@@ -273,7 +298,7 @@ func (r InputChange) String() string {
 		"harness_stores": "harness stores", "auth_mounts": "auth mounts", "env": "environment variable",
 		"setup": "setup.sh", "mounts": "mounts", "ports": "ports", "docker_args": "Docker arguments",
 		"docker_env": "Docker environment arguments", "metadata": "IDE metadata", "host_alias": "host alias",
-		"runtime_assets": "bundled runtime guidance", "managed_config": "managed config file", "entrypoint": "entrypoint.sh",
+		"runtime_assets": "bundled runtime guidance", "managed_config": "managed config file", "before_open": "before-open.sh",
 		"launch_args": "harness launch arguments", "continue_args": "continuation arguments", "harness_args": "harness arguments",
 		"shell": "shell",
 	}

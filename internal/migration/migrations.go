@@ -344,7 +344,7 @@ func convertLayer(b []byte) (config.Layer, []string, error) {
 		return l, notices, fmt.Errorf("unsupported harness %s; manually review/fix or skip this owner and dependent sessions", strconv.QuoteToASCII(*l.Harness))
 	}
 	// Parse the raw result before host expansion: expressions remain expressions.
-	if _, err := config.ParseLayer(encode(l), false); err != nil {
+	if _, err := config.ParseLayer(encode(l)); err != nil {
 		return l, notices, fmt.Errorf("converted layer does not match Neo's schema: %w", err)
 	}
 	return l, notices, nil

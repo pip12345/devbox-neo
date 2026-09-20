@@ -79,7 +79,7 @@ The rewrite must make these retained rules explicit and give each one a single o
 
 ### Profiles and environment identity
 
-A workspace has separate durable environments for each profile/project combination. Names end in `.profile-NAME`, `.profile-NAME.project`, or `.project`. Each combination requires explicit creation. Folder-targeted commands calculate one exact identity and fail if it is absent; they never substitute another saved profile.
+A workspace has separate durable environments identified by the selected profile/project combination. The frontend generates `.profile-NAME`, `.profile-NAME.project`, or `.project` suffixes; config files have no `name` field. Each identity requires explicit creation. Source references and frontend provenance are recorded separately; names do not encode the locations used for resolution. Folder targeting honors saved project-directory overrides and fails on ambiguity rather than substituting another profile.
 
 Container identity remains a function of:
 
@@ -96,24 +96,24 @@ Keep these profile/project artifacts:
 - `config.json`
 - `Dockerfile`
 - `setup.sh`
-- `entrypoint.sh`
+- `before-open.sh`
 - `<harness>/` configuration directory
 
 Use one layer-selection rule for all profile/project artifacts:
 
-- without explicit `--profile`, the default profile is the base when configured and project artifacts win, unless the participating project sets `inherit_profile: false`;
-- `inherit_profile: false` excludes all profile artifacts, not global defaults; it makes the project standalone with respect to profiles;
-- `ignore_project` or `--ignore-project` excludes all project artifacts, including their `inherit_profile` setting, and uses the applicable profile;
-- explicit `--profile <name>` selects the base beneath the project; it conflicts with participating `inherit_profile: false`; use `--ignore-project` for profile-only operation;
+- without explicit `--profile`, the default profile is the first config source when configured, followed by the project source;
+- `inherit: false` discards all preceding config sources and their settings/artifacts, not the built-in/global baseline;
+- `ignore_project` or `--ignore-project` excludes all project artifacts, including their `inherit` setting, and uses the applicable profile;
+- explicit `--profile <name>` selects the first source; a later `inherit: false` still discards it; use `--ignore-project` for profile-only operation;
 - excluded project artifacts are not read, parsed, validated, merged, or fingerprinted; a malformed project `.devbox/config.json` cannot block startup with `--ignore-project`;
 - global settings and built-in defaults still apply; public creation uses configuration files, not overrides;
 - `config.json` merges participating layers by schema;
-- `Dockerfile`, `setup.sh`, and `entrypoint.sh` use winner-by-existence among participating layers;
-- harness directories overlay recursively in the same base-to-winner order.
+- `Dockerfile`, `setup.sh`, and `before-open.sh` contribute ordered chains from retained sources;
+- harness directories overlay recursively in source order, with later files winning.
 
 This deliberately replaces the current explicit-profile precedence reversal. Invalid participating configuration remains a hard error; exclusion is not an invalid-config fallback.
 
-Read a participating project's sparse config once to determine `inherit_profile` before loading a default profile. An excluded profile is not loaded or validated, so a missing or malformed default profile cannot block a standalone project. Reject `inherit_profile` in global and profile config. Explicit profiles still read participating project inheritance settings. The shared selection stage reads only identity-affecting fields; full desired resolution separately validates participating sources.
+Each source has optional `inherit` metadata. Read relevant metadata from right to left, stopping at the last cutoff before touching discarded sources. Naming belongs to the profile/project frontend, not source contents. Full desired resolution validates retained settings/artifacts. `--project-dir` selects one alternative project directory and records its absolute reference; exact-session access uses saved `sources`, and folder lookup rejects ambiguous overrides. Single-target `recreate --project-dir` replaces the binding under the operation lock and publishes it with the new record; selecting the workspace's `.devbox/` clears it. Exact targets can replace an unavailable old source. No-flag recreation keeps the binding; bulk rebinding and changes to profile/project identity are rejected.
 
 This behavior must exist in one pure resolver with table-driven tests. No other package may reimplement artifact precedence.
 
@@ -310,7 +310,7 @@ Use one canonical spec with three derived fingerprints:
 |---|---|---|
 | Image | Dockerfile, included build context and permissions, ignore rules, generated Devbox image layer, effective harness definition, build arguments | rebuild image and recreate container |
 | Container | image ID, mounts, env, ports, primary network, harness stores/auth, raw Docker args, per-container setup inputs | recreate container |
-| Runtime | every-open entrypoint hook, harness config desired tree, runtime assets, launch defaults | synchronize or run without recreate |
+| Runtime | ordered before-open hooks, harness config desired tree, runtime assets, launch defaults | synchronize or run without recreate |
 
 The resolver produces a typed `ChangePlan`:
 
@@ -332,9 +332,10 @@ Store one durable record at:
 
 It contains:
 
-- schema version `3` (strict current format; older development records require a clean reset, with no compatibility reader or migration);
+- schema version `4` (strict current format; older development records require a clean reset, with no compatibility reader or migration);
 - required image/container/runtime input snapshots, with committed fingerprints validated against them;
 - immutable random session ID;
+- ordered config `sources` independent of composed identity, including any explicit project-directory override;
 - deterministic container name, workspace, slot, and profile;
 - harness name and effective definition origin;
 - created time, last activity time, and last action;
@@ -381,7 +382,7 @@ If these conditions hold, create from the recorded image and settings, preserve 
       config.json
       Dockerfile
       setup.sh
-      entrypoint.sh
+      before-open.sh
       <harness>/
   harnesses/
     <name>/
@@ -469,9 +470,10 @@ Layers remain sparse. Missing fields inherit; present scalar values replace. Lis
 | `env` | string array | `[]` | Append `KEY=VALUE` entries with valid env names |
 | `ports` | string array | `[]` | Append validated published-port declarations |
 | `vscode` | object | `{}` | Contains only the optional `extensions` string array; extensions append |
-| `inherit_profile` | boolean | `true` | Project-only layer-selection setting; `false` excludes all profile artifacts |
+| `inherit` | boolean | `true` | Generic cutoff: discard all preceding directory sources |
+| `base_image` | string | `"debian:bookworm-slim"` | Upstream image prepared by Devbox before user customization |
 
-`inherit_profile` is not a container setting or a merged profile value. Ordinary project creation leaves it absent; creation from a profile writes `false`. Do not deduplicate appended arguments as a substitute for correct layer selection.
+`inherit` is generic participation metadata, not a runtime setting. Source creation seeds only the schema version; project creation from a profile writes `inherit: false`. Do not deduplicate appended arguments as a substitute for correct layer selection.
 
 Remove `proxy`, `host_network`, and `extra_networks` fields rather than accepting them as aliases. Global harness auth-path overrides are not part of this initial schema; managed auth sources follow the harness definition contract.
 
@@ -529,9 +531,9 @@ Without `--show`, each command opens a numbered terminal settings menu. With `--
 
 Menus use canonical line input and shared selection/text controls without a TUI dependency. Config submenus, profile/project init, and profile selection share bold headings, aligned numbered choices, wrapped text, and dim secondary instructions; terminal output checks, `NO_COLOR`, and `TERM=dumb` control styling without changing input rules. Local source values remain separate from effective/redacted display values. Each submitted operation immediately re-reads under the owning configuration lock, rejects a changed edited field, and preserves unrelated concurrent edits and source expressions. Reset removes the local key; list controls edit local contributions only. The overview uses a short scope title and Setting/Value/Source columns, without a full-path or lifecycle banner. It shares its value formatter with human `--show`: scalars and shell commands inline, other list entries below the setting, a source beside each entry, and long values wrapped rather than truncated. Empty values display as `None`. Human nested fields use dotted paths for their source annotations; `--show --json` retains the original structure and complete values. Lists open directly with add/edit/remove actions relevant to their contents and reset only for an existing source key. Each operation saves immediately after validation; there are no drafts, save/discard actions, or additional confirmations. Back only navigates. Invalid or conflicting operations are reported without changing the saved field, and the editor reloads current source before the next operation. Source types and supported literal values are validated before saving, while effective cross-field and host-dependent validation remains with the normal resolver. Resolution errors stay visible without blocking local editing; malformed source schemas still require file repair. Enter submits input. Cancellation/EOF abandons incomplete input and retains completed changes.
 
-For profile config, effective resolution includes built-in defaults, global config, and the selected profile. For project config, it includes exactly the participating layers used by the `open` flow: built-in defaults, global config, the applicable profile, and project overrides when enabled. Explicit `--profile` selects the base beneath the project; `--ignore-project` excludes the project layer and all project artifacts; project `inherit_profile: false` excludes the profile layer and all profile artifacts. `--show` reports excluded layers without loading them.
+For profile config, effective resolution includes built-in defaults, global config, and the selected profile. For project config, it includes exactly the participating layers used by the `open` flow: built-in defaults, global config, the applicable profile, and project overrides when enabled. Explicit `--profile` selects the base beneath the project; `--ignore-project` excludes the project layer and all project artifacts; project `inherit: false` excludes the preceding profile layer and all its artifacts, including when selected explicitly. `--show` reports excluded layers without loading them.
 
-The human provenance display shows participating layers in their actual application order, effective values and their sources, contributions to appended lists, and winning artifact paths. It identifies layers excluded by configuration rather than implying they participated. JSON output exposes the same information. Both render the resolver's source trace; there is no separate visualization resolver or command. Human source labels use `default` or the edited scope name, and `inherited - global` / `inherited - profile` for lower-layer contributions. Non-empty list headings have no aggregate source label. The resolver records per-entry layer names while merging lists; `trace.entry_sources` aligns with resolved values even when entries are identical or environment values are redacted. The overview includes inherited entries, but editors only expose the selected layer's entries. Menu labels follow effective provenance, not whether the edited file contains the key. If resolution fails, known source values retain their owning-scope label while unavailable values are labelled `unknown`.
+The human provenance display shows participating layers in their actual application order, effective values and their sources, contributions to appended lists, and ordered artifact paths. It identifies layers excluded by configuration rather than implying they participated. JSON output exposes the same information. Both render the resolver's source trace; there is no separate visualization resolver or command. Human source labels use `default` or the edited scope name, and `inherited - global` / `inherited - profile` for lower-layer contributions. Non-empty list headings have no aggregate source label. The resolver records per-entry layer names while merging lists; `trace.entry_sources` aligns with resolved values even when entries are identical or environment values are redacted. The overview includes inherited entries, but editors only expose the selected layer's entries. Menu labels follow effective provenance, not whether the edited file contains the key. If resolution fails, known source values retain their owning-scope label while unavailable values are labelled `unknown`.
 
 ## Guided First Run and Contextual Hints
 
@@ -661,7 +663,7 @@ Human errors use `Error: <message>` and separate `Target:` context when known; c
 1. uses an already configured profile harness when present;
 2. otherwise lists effective Pi, OpenCode, and valid user-defined harnesses;
 3. writes the selected harness to profile config;
-4. offers optional `Dockerfile`, `setup.sh`, `entrypoint.sh`, and selected-harness config files;
+4. offers optional `Dockerfile`, `setup.sh`, `before-open.sh`, and selected-harness config files;
 5. creates only selected missing artifacts.
 
 ### Projects
@@ -672,7 +674,7 @@ Human errors use `Error: <message>` and separate `Target:` context when known; c
 
 - copy `config.json`, Dockerfiles, hooks, and harness configuration directories that exist in the source profile;
 - copy source content, not effective values merged with global settings or defaults;
-- preserve source values and variable expressions without expanding them; add project-only `inherit_profile: false` to the copied config;
+- preserve source values and variable expressions without expanding them; set `inherit: false` in the copied config;
 - validate the source and refuse an existing destination `.devbox/` before copying; do not merge into or overwrite an existing project;
 - do not establish a link or synchronize future profile changes;
 - do not change global defaults or the inheritance default for other projects.
@@ -681,7 +683,7 @@ The resulting project is standalone with respect to profiles, so the copied list
 
 `devbox project init <folder> [--harness <name|inherit>]` offers:
 
-- inherit the harness from participating lower layers (global only when `inherit_profile: false`);
+- inherit the harness from participating lower layers (global only when `inherit: false`);
 - select Pi, OpenCode, or a valid user-defined harness explicitly;
 - initialize optional artifacts for the resulting harness.
 
@@ -935,9 +937,9 @@ Devbox does not create or delete user networks. Container creation selects the r
 
 Use one layered `ImageBuildPlan`:
 
-- a user/profile `Dockerfile` may build an intermediate image, then Devbox always applies its runtime layer and selected harness installation;
-- without a user Dockerfile, Devbox uses its standard Debian base;
-- users customize a Debian-compatible base; Devbox owns the user/permissions, required runtime packages, and harness installation on top;
+- resolve one `base_image`, prepare the development user/runtime, build source Dockerfiles in order, restore the build-user contract at each boundary, then install/validate the selected harness;
+- without custom Dockerfiles, skip user customization; the upstream base defaults to Debian;
+- custom Dockerfiles extend the supplied `DEVBOX_BASE` and retain their own captured build contexts/ignore rules; ancestry checks reject replacement bases; preserve custom PATH while finalizing the harness;
 - `Dockerfile.full` is removed: there is no alternate user-owned runtime contract;
 - selected harness definition hash is part of the image fingerprint;
 - changing a user override of Pi/OpenCode therefore becomes pending image drift for each affected session, but does not block opening its existing container;
@@ -1006,7 +1008,7 @@ When an owned container exists, the root flow:
 
 1. resolves current desired configuration;
 2. compares it with the session's recorded container contract;
-3. prints any creation-drift warning and recreation command first, before recovery, synchronization, startup, or entrypoint output, then continues immediately;
+3. prints any creation-drift warning and recreation command first, before recovery, synchronization, startup, or before-open output, then continues immediately;
 4. opens the existing container even when creation-time drift exists;
 5. applies only runtime-safe behavior compatible with the recorded harness;
 6. launches the harness recorded for that container.
@@ -1034,7 +1036,7 @@ The session record contains the non-secret launch contract required to use the s
 Runtime-safe inputs may update without replacement:
 
 - invocation-local terminal environment;
-- current `entrypoint.sh`;
+- current `before-open.sh`;
 - managed harness config resolved specifically for the recorded harness and compatible recorded store layout, synchronized only while stopped or before first startup;
 - runtime assets and docs;
 - one-off harness arguments compatible with the recorded harness.
@@ -1106,7 +1108,7 @@ The lease subsystem belongs to the session store. Application workflows call it;
 
 ### Start and stop
 
-- `create <folder>` creates a new session from current resolved configuration under the external operation lock. Refuse an existing session even if its container is missing; reject corrupt records, pending transfers, and uncommitted state. Use normal image building, managed-config synchronization, startup, preparation, setup, and binary checks, then stop the committed container without running entrypoint or launching a harness. A final-stop failure retains the committed session and points to `stop`.
+- `create <folder>` creates a new session from current resolved configuration under the external operation lock. Refuse an existing session even if its container is missing; reject corrupt records, pending transfers, and uncommitted state. Use normal image building, managed-config synchronization, startup, preparation, setup, and binary checks, then stop the committed container without running before-open scripts or launching a harness. A final-stop failure retains the committed session and points to `stop`.
 - `start <folder|session>` ensures an existing session is running and records manual keep-running intent until stop. Use ordinary stopped-container preparation or recorded recovery. Never create a new session or launch the harness. Docker restarts manually started containers after reboot; it does not resume harness processes or attachments.
 - already-running `start` does not resolve desired config. Stopped-container startup uses the shared preparation boundary; invalid participating config blocks it.
 - `start` replaces the old `open --detach` behavior.
@@ -1168,7 +1170,7 @@ Rules:
 - drift produces a concise warning and `devbox recreate <folder|session>` hint, never a blocking prompt or error;
 - the `open` command never performs destructive recreation;
 - setup runs once per container creation and records completion in the session record, not an opaque home marker;
-- entrypoint hook runs on every open;
+- before-open hooks run in retained-source order on every open;
 - these hooks are the only persisted pre-harness customization points; `open` has no `--init` or `--run` command injection;
 - ad hoc commands use `devbox exec`, including `devbox exec <folder|session> -- bash -s < script.sh` for a host script;
 - managed harness config synchronization occurs while stopped or absent, before startup and in-container preparation; running containers retain their live files and defer managed config changes;
@@ -1235,7 +1237,7 @@ devbox copy ... [--move]
 
 `list` shows saved environment name, harness, profile, last activity, container state, and folder. Default ordering is by name; `--sort last-active` puts newest activity first with names breaking ties and unknown activity last. `--wide` adds exact UTC activity/creation timestamps and last action. Creation time comes from Docker. Stopped/missing rows are dimmed after alignment; diagnostics remain undimmed. Terminal opt-outs retain plain text. Listing never resolves desired configuration or adds per-row Docker calls.
 
-Missing-container sessions and corrupt records remain listed. Unmatched managed containers are warnings below the table. List and bulk status JSON use `sessions` and `unmatched_containers` arrays, including when empty. Profile filtering uses recorded identity, falling back to live slot labels only when recorded identity is unavailable. Unknown-profile broken entries remain in the unfiltered inventory. Cleanup age/orphan filters belong to delete.
+Missing-container sessions and corrupt records remain listed. Unmatched managed containers are warnings below the table. List and bulk status JSON use `sessions` and `unmatched_containers` arrays, including when empty. Profile filtering uses recorded identity, using explicit live profile/project labels only when recorded identity is unavailable. Unknown-profile broken entries remain in the unfiltered inventory. Cleanup age/orphan filters belong to delete.
 
 Deletion examples:
 
@@ -1251,7 +1253,7 @@ Saved state is removed only after verified container absence and idle-session ch
 
 The `open` command accepts `--continue`, `--harness-arg`, and one-off harness arguments after `--`. Creation/recreation accept only selection and operational flags. Harness selection, network, env, mounts, ports, and raw Docker options belong in configuration. Workspace read-only mode and `on_exit` are removed. Because the target follows an explicit command, workspace names do not collide with top-level command names.
 
-The `open` command has no `--detach`, `--recreate-container`, `--recreate-image`, `--init`, or `--run`. `create` owns new stopped environments, `start` owns detached access to existing sessions, `recreate` owns replacement, one-time preparation belongs in `setup.sh`, every-open preparation belongs in `entrypoint.sh`, and ad hoc commands use `devbox exec`.
+The `open` command has no `--detach`, `--recreate-container`, `--recreate-image`, `--init`, or `--run`. `create` owns new stopped environments, `start` owns detached access to existing sessions, `recreate` owns replacement, one-time preparation belongs in `setup.sh`, every-open preparation belongs in `before-open.sh`, and ad hoc commands use `devbox exec`.
 
 Network command semantics:
 
@@ -1302,7 +1304,7 @@ devbox project config <folder> --show [--profile <name>] [--json]
 devbox project init <folder> [--harness <name|inherit>]
 ```
 
-- `create` creates the project's minimal sparse `.devbox/config.json` without forcing a harness selection, or copies a named profile's supported configuration and artifacts with `--from-profile`. The copy writes `inherit_profile: false`, refuses an existing `.devbox/`, and creates no ongoing link. It replaces the current meaning of `project init`.
+- `create` creates the project's minimal sparse `.devbox/config.json` without forcing a harness selection, or copies a named profile's supported configuration and artifacts with `--from-profile`. The copy writes `inherit: false`, refuses an existing `.devbox/`, and creates no ongoing link. It replaces the current meaning of `project init`.
 - `config` opens the interactive project dashboard.
 - `config --show` prints the exact effective built-in/global/profile/project values and provenance used by the `open` flow.
 - `init` chooses an explicit harness or valid inheritance when not already configured, then interactively creates optional project artifacts such as Dockerfiles, hooks, and harness config. It replaces `project seed`.
@@ -1410,10 +1412,10 @@ Build the first complete runtime path before dashboards or exhaustive package im
 ### Phase 3: Complete configuration, artifacts, and image contracts
 
 - implement the full sparse global/profile/project schemas, fresh-home defaults and retained field validation;
-- implement default-profile/project layering, explicit project exclusion, and project-only `inherit_profile: false` in one resolver;
+- implement default-profile/project layering, explicit project exclusion, and generic inheritance metadata in one resolver;
 - implement `${env:NAME}` using one host-environment snapshot, source-expression preservation, secret-source references, and redacted diagnostics;
 - complete every artifact's resolution and source trace, including ordinary overlays and stopped-only managed-config synchronization;
-- complete layered Dockerfile build plans, setup/entrypoint contracts, and embedded runtime assets/docs;
+- complete layered Dockerfile build plans, setup/before-open contracts, and embedded runtime assets/docs;
 - document and test the build-context and fingerprint inputs, normal cache use, forced no-cache builds, shared-image ownership, and targeted rebuild isolation;
 - implement scoped config `--show` and JSON provenance output without requiring an interactive dashboard.
 
@@ -1443,7 +1445,7 @@ Build the first complete runtime path before dashboards or exhaustive package im
 ### Phase 6: Dashboards, initialization, guidance, and docs
 
 - complete resource-first `global config`, `profile create|config|init`, and `project create|config|init`, including interactive dashboards;
-- implement `project create --from-profile` as a one-time supported-artifact copy with `inherit_profile: false`, no destination overwrite, no flattening, and no ongoing synchronization;
+- implement `project create --from-profile` as a one-time supported-artifact copy with `inherit: false`, no destination overwrite, no flattening, and no ongoing synchronization;
 - implement explicit init harness choices, valid inheritance, automation equivalents, and idempotent no-overwrite artifact seeding;
 - implement centralized structured `next_steps`, fresh-home onboarding, creation/empty-state hints, and actionable errors;
 - add shell completion and write guide, reference, and architecture docs together;
@@ -1469,13 +1471,13 @@ Build the first complete runtime path before dashboards or exhaustive package im
 - strict standard-JSON decoding, exact field/default validation, rejection of comments, and whole-argv replacement for `shell`;
 - host environment substitution: embedded and array string references, unset versus empty variables, JSON-safe replacement, non-recursive expansion, source-expression preservation, redacted human/JSON errors and provenance, and fingerprint changes;
 - registry override and origin rules;
-- complete artifact precedence matrix and provenance rendering for layer order, scalar sources, appended-list contributions, winning artifacts, and excluded layers;
+- complete artifact precedence matrix and provenance rendering for layer order, scalar sources, appended-list contributions, ordered artifacts, and excluded sources;
 - explicit project exclusion: malformed project JSON, unset project variable references, and project Dockerfiles/hooks/harness files neither affect resolution nor enter fingerprints;
-- project-only `inherit_profile`: default true, false excludes every profile artifact and missing/invalid default profiles, global project exclusion takes priority, and global/profile schemas reject the field;
+- generic `inherit`: default true, false excludes all preceding settings/artifacts, even explicitly selected profiles; global baseline remains and project exclusion takes priority;
 - immutable spec and deterministic fingerprints;
 - fresh-home empty profile/default state;
 - create/init harness-selection and inheritance rules;
-- project creation from a profile: supported artifacts and source expressions preserved, only `inherit_profile: false` added to config, no double-applied lists, missing/invalid source handling, existing-destination refusal without mutation, and no ongoing synchronization;
+- project creation from a profile: supported artifacts and source expressions preserved, `inherit: false` written to config, no double-applied lists, missing/invalid source handling, existing-destination refusal without mutation, and no ongoing synchronization;
 - structured next-step selection and shell-safe rendering;
 - authoritative ordinary-file replacement/removal at every ordinary startup, without touching unmanaged files/history; running access leaves managed files unchanged;
 - `json-keys` set/update/delete behavior, undeclared-key preservation, invalid JSON conflicts, and declaration validation;
@@ -1500,7 +1502,7 @@ Cover:
 - one custom harness definition;
 - auth and store persistence;
 - default-profile/project precedence and project-excluded startup with malformed excluded project configuration;
-- default-base and custom-base layered Dockerfile builds;
+- prepared bases, ordered customization builds, per-source contexts, user-contract boundaries, and harness finalization;
 - authoritative managed-file synchronization before open/start/shell/exec startup, shared-JSON conflicts, running-container deferral, and application at the next start;
 - Pi `settings.json` owned-key updates while stopped, with undeclared Pi-owned keys unchanged;
 - the same `json-keys` strategy in a custom harness;
@@ -1575,7 +1577,7 @@ The rewrite is complete when:
 - proxy code and behavior do not exist;
 - Pi and OpenCode work through parsed built-in definitions;
 - a user can add or override a harness through `~/.devbox/harnesses/<name>/harness.json` without recompilation;
-- profile slots, default-profile/project layering, explicit project exclusion, and standalone `inherit_profile: false` projects pass a complete resolution matrix;
+- profile slots, default-profile/project layering, explicit project exclusion, and standalone `inherit: false` projects pass a complete resolution matrix;
 - `${env:NAME}` resolves from one host-environment snapshot in participating configuration without rewriting expressions, exposing env/auth values in diagnostics, or persisting secret-bearing values in session records;
 - managed harness config synchronization replaces modified ordinary copies, removes obsolete managed files, preserves unmanaged state and undeclared shared-JSON keys, and runs before ordinary startup, never on running attachment; malformed live shared JSON still blocks synchronization;
 - Pi's declared `settings.json` keys update while all undeclared Pi-owned keys remain intact;
@@ -1584,7 +1586,7 @@ The rewrite is complete when:
 - missing-container recovery uses concrete recorded settings and available verified inputs, never saved secrets or an implicit current-config fallback;
 - Docker destructive operations require lock ownership and installation labels;
 - a fresh home contains no seeded profiles/default selection and guides the first `open` to `profile create` or `project create`;
-- profile/project create commands point to init, profile copying writes `inherit_profile: false` without duplicate list inheritance, init owns harness selection and optional artifact seeding, and repeated init never overwrites existing files;
+- profile/project create commands point to init, profile copying writes `inherit: false` without duplicate list inheritance, init owns harness selection and optional artifact seeding, and repeated init never overwrites existing files;
 - scoped config `--show` explains effective values, exclusions, and provenance; valid drift diagnostics are non-blocking, invalid participating config fails ordinary startup, and running-container start/shell/exec remain config-independent;
 - final image tags are session-scoped but image ownership is installation-scoped, so shared image IDs are valid and targeted no-cache rebuilds never create digest-only drift for another session;
 - Pi and OpenCode pass the same end-to-end create/open/reopen/drift/recreate path before dashboards are implemented;

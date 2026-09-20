@@ -11,7 +11,7 @@ import (
 	"devbox/internal/harness"
 )
 
-var SingletonNames = []string{"Dockerfile", "setup.sh", "entrypoint.sh"}
+var ArtifactNames = []string{"Dockerfile", "setup.sh", "before-open.sh"}
 
 func hasProjectArtifacts(root string) (bool, error) {
 	if _, err := fsutil.Path(root, "."); err != nil {
@@ -25,7 +25,7 @@ func hasProjectArtifacts(root string) (bool, error) {
 		return false, err
 	}
 	for _, entry := range entries {
-		if slices.Contains(SingletonNames, entry.Name()) || (config.Name.MatchString(entry.Name()) && (entry.IsDir() || entry.Type()&os.ModeSymlink != 0)) {
+		if slices.Contains(ArtifactNames, entry.Name()) || (config.Name.MatchString(entry.Name()) && (entry.IsDir() || entry.Type()&os.ModeSymlink != 0)) {
 			return true, nil
 		}
 	}
@@ -68,7 +68,7 @@ func SourceTree(root string, harnessNames map[string]bool) (harness.Tree, error)
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == "config.json" || slices.Contains(SingletonNames, name) {
+		if name == "config.json" || slices.Contains(ArtifactNames, name) {
 			if _, captured := result.Files[name]; captured {
 				continue
 			}
@@ -104,8 +104,9 @@ func SourceTree(root string, harnessNames map[string]bool) (harness.Tree, error)
 	if _, ok := result.Files["config.json"]; !ok {
 		return result, fmt.Errorf("profile config is missing: %s", filepath.Join(root, "config.json"))
 	}
-	if _, err := config.ParseLayer(result.Files["config.json"].Data, false); err != nil {
-		return result, fmt.Errorf("invalid source profile: %w", err)
+	_, err = config.ParseLayer(result.Files["config.json"].Data)
+	if err != nil {
+		return result, fmt.Errorf("invalid source config: %w", err)
 	}
 	return result, nil
 }

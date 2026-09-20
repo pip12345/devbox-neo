@@ -16,6 +16,13 @@ import (
 func (e *Engine) readSession(ctx context.Context, name string) (store.Record, error) {
 	r, err := e.Store.Read(ctx, name)
 	if os.IsNotExist(err) {
+		pending, pendingErr := e.Store.Pending(name)
+		if pendingErr != nil {
+			return r, pendingErr
+		}
+		if pending != nil {
+			return r, commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", name, err, pending.RetryStep())
+		}
 		err = commanderror.New("session_missing", "Session not found.", name, err,
 			commanderror.Next("List sessions", "list"))
 	}
@@ -32,11 +39,19 @@ func (e *Engine) Locate(ctx context.Context, target, profile string) (store.Reco
 		}
 		return r, err
 	}
-	id, err := environment.Select(e.Store.Home, target, profile, e.IgnoreProject, nil)
+	projectDir, err := e.Store.ProjectDirectory(ctx, target, profile, e.IgnoreProject)
 	if err != nil {
 		return store.Record{}, err
 	}
-	return e.readSession(ctx, id.Name)
+	id, err := environment.Select(e.Store.Home, target, profile, e.IgnoreProject, projectDir, nil)
+	if err != nil {
+		return store.Record{}, err
+	}
+	r, err := e.readSession(ctx, id.Name)
+	if err == nil && r.Identity != id {
+		return store.Record{}, commanderror.New("selection_collision", "Selected configuration collides with a different saved source selection. Use the exact session target.", id.Name, nil)
+	}
+	return r, err
 }
 func (e *Engine) Start(ctx context.Context, target, profile string) (result Result, err error) {
 	r, err := e.Locate(ctx, target, profile)

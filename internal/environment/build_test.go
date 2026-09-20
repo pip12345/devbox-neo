@@ -28,22 +28,22 @@ func TestBundledToolsAndAliasesInBothImageModes(t *testing.T) {
 	}
 	source := filepath.Join(t.TempDir(), "Dockerfile")
 	putBuild(t, source, "FROM debian:bookworm-slim\n")
-	for _, winners := range []map[string]string{{}, {"Dockerfile": source}} {
-		plan, err := PlanImage(winners, h.Definition, 1000, 1000)
+	for _, winners := range [][]string{nil, {source}} {
+		plan, err := PlanImage(winners, "debian:bookworm-slim", h.Definition, 1000, 1000)
 		if err != nil {
 			t.Fatal(err)
 		}
-		text := string(plan.FinalDockerfile("devbox-rewrite/build:custom"))
+		text := string(plan.Prepared) + string(plan.Runtime)
 		for _, want := range []string{"vim zip unzip jq net-tools iputils-ping", "echo \"alias ll='ls -alF'\" >> /etc/bash.bashrc", "echo \"alias vi='vim'\" >> /etc/bash.bashrc"} {
 			if !strings.Contains(text, want) {
-				t.Fatalf("image mode %s lacks %q", plan.Mode, want)
+				t.Fatalf("image mode %s lacks %q", plan.BaseImage, want)
 			}
 		}
 		if strings.Contains(text, "tmux") {
 			t.Fatal("unrequested tool installed")
 		}
 		before := plan.inputs(h, "test").fingerprint()
-		plan.Runtime = []byte(strings.Replace(string(plan.Runtime), "vim zip unzip jq net-tools iputils-ping", "vim zip unzip jq", 1))
+		plan.Prepared = []byte(strings.Replace(string(plan.Prepared), "vim zip unzip jq net-tools iputils-ping", "vim zip unzip jq", 1))
 		if before == plan.inputs(h, "test").fingerprint() {
 			t.Fatal("bundled tool changes must invalidate the image fingerprint")
 		}
@@ -61,40 +61,40 @@ func TestImagePlansRespectCapturedContext(t *testing.T) {
 	putBuild(t, filepath.Join(root, "included"), "one")
 	putBuild(t, filepath.Join(root, "ignored"), "private")
 	putBuild(t, filepath.Join(root, ".dockerignore"), "ignored\n")
-	first, err := PlanImage(map[string]string{"Dockerfile": normal}, h.Definition, 1000, 1001)
+	first, err := PlanImage([]string{normal}, "debian:bookworm-slim", h.Definition, 1000, 1001)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Mode != "normal" || first.Arguments["HOST_GID"] != "1001" || !strings.HasPrefix(string(first.FinalDockerfile("devbox-rewrite/build:base")), "FROM devbox-rewrite/build:base\nUSER root\n") {
+	if len(first.Stages) != 1 || first.Arguments["DEVBOX_GID"] != "1001" || !strings.Contains(string(first.Runtime), "FROM ${DEVBOX_BASE}\nUSER root\n") {
 		t.Fatal("incorrect normal plan")
 	}
-	if _, ok := first.Context["ignored"]; ok {
+	if _, ok := first.Stages[0].Context["ignored"]; ok {
 		t.Fatal("ignored file captured")
 	}
 	hash := first.inputs(h, "test").fingerprint()
 	putBuild(t, filepath.Join(root, "ignored"), "changed")
-	second, err := PlanImage(map[string]string{"Dockerfile": normal}, h.Definition, 1000, 1001)
+	second, err := PlanImage([]string{normal}, "debian:bookworm-slim", h.Definition, 1000, 1001)
 	if err != nil || second.inputs(h, "test").fingerprint() != hash {
 		t.Fatal("excluded file caused drift", err)
 	}
 	putBuild(t, filepath.Join(root, "included"), "two")
-	second, err = PlanImage(map[string]string{"Dockerfile": normal}, h.Definition, 1000, 1001)
+	second, err = PlanImage([]string{normal}, "debian:bookworm-slim", h.Definition, 1000, 1001)
 	if err != nil || second.inputs(h, "test").fingerprint() == hash {
 		t.Fatal("context change missed", err)
 	}
-	if string(first.Context["included"].Data) != "one" {
+	if string(first.Stages[0].Context["included"].Data) != "one" {
 		t.Fatal("captured plan reread source")
 	}
 	putBuild(t, normal+".dockerignore", "ignored\nincluded\n")
-	plan, err := PlanImage(map[string]string{"Dockerfile": normal}, h.Definition, 1000, 1001)
+	plan, err := PlanImage([]string{normal}, "debian:bookworm-slim", h.Definition, 1000, 1001)
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(plan.FinalDockerfile("devbox-rewrite/build:base"))
+	text := string(plan.Runtime)
 	if !strings.Contains(text, "pi.dev/install") || !strings.Contains(text, "USER devuser") {
 		t.Fatal("Devbox must always install its runtime and harness")
 	}
-	if _, ok := plan.Context["included"]; ok {
+	if _, ok := plan.Stages[0].Context["included"]; ok {
 		t.Fatal("Dockerfile-specific ignore did not win")
 	}
 }
@@ -106,20 +106,20 @@ func TestBuildContextNegationsAndUnsafeInputs(t *testing.T) {
 	putBuild(t, filepath.Join(root, "folder/keep"), "yes")
 	putBuild(t, filepath.Join(root, "folder/drop"), "no")
 	putBuild(t, filepath.Join(root, ".dockerignore"), "folder\n!folder/keep\n")
-	plan, err := PlanImage(map[string]string{"Dockerfile": file}, h.Definition, 1000, 1000)
+	plan, err := PlanImage([]string{file}, "debian:bookworm-slim", h.Definition, 1000, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(plan.Context["folder/keep"].Data) != "yes" {
+	if string(plan.Stages[0].Context["folder/keep"].Data) != "yes" {
 		t.Fatal("negated child missing")
 	}
-	if _, ok := plan.Context["folder/drop"]; ok {
+	if _, ok := plan.Stages[0].Context["folder/drop"]; ok {
 		t.Fatal("excluded child included")
 	}
 	if err = os.Symlink("Dockerfile", filepath.Join(root, "link")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = PlanImage(map[string]string{"Dockerfile": file}, h.Definition, 1000, 1000); err == nil {
+	if _, err = PlanImage([]string{file}, "debian:bookworm-slim", h.Definition, 1000, 1000); err == nil {
 		t.Fatal("unsafe context accepted")
 	}
 }
@@ -143,12 +143,12 @@ func TestRuntimeMountParentsArePreparedAsUserInBothBuildModes(t *testing.T) {
 	instruction := "RUN " + string(encoded) + "\n"
 	source := filepath.Join(t.TempDir(), "Dockerfile")
 	putBuild(t, source, "FROM debian:bookworm-slim\n")
-	for _, winners := range []map[string]string{{}, {"Dockerfile": source}} {
-		plan, err := PlanImage(winners, h.Definition, 1000, 1000)
+	for _, winners := range [][]string{nil, {source}} {
+		plan, err := PlanImage(winners, "debian:bookworm-slim", h.Definition, 1000, 1000)
 		if err != nil {
 			t.Fatal(err)
 		}
-		text := string(plan.FinalDockerfile("devbox-rewrite/build:custom"))
+		text := string(plan.Runtime)
 		user := strings.Index(text, "USER devuser\n")
 		parents := strings.Index(text, instruction)
 		if user < 0 || parents < user || strings.Contains(text[user:], "USER root\n") {
@@ -206,7 +206,11 @@ func TestMountParentCommandRejectsUnwritableImageParents(t *testing.T) {
 }
 func TestRuntimeLayerHonorsHostIDs(t *testing.T) {
 	h, _ := harness.Load(t.TempDir(), "opencode")
-	text := string(ImageDockerfile(h.Definition, 1234, 5678))
+	plan, err := PlanImage(nil, "debian:bookworm-slim", h.Definition, 1234, 5678)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(plan.Prepared) + string(plan.Runtime)
 	for _, want := range []string{"-u 1234", "-g 5678", "opencode.ai/install", "USER devuser"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("template missing %s", want)

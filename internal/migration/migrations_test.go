@@ -61,7 +61,7 @@ func fixture(t *testing.T) (Paths, string) {
 	put(t, filepath.Join(p.Source, "state/installation-id"), strings.Repeat("a", 32)+"\n")
 	put(t, filepath.Join(p.Source, "global.json"), fixtureFile(t, "global-v2.json"))
 	put(t, filepath.Join(p.Source, "profiles/work/config.json"), fixtureFile(t, "layer-v1.json"))
-	put(t, filepath.Join(p.Source, "profiles/work/Dockerfile"), "FROM debian:bookworm-slim\nCOPY inputs /inputs\n")
+	put(t, filepath.Join(p.Source, "profiles/work/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\nCOPY inputs /inputs\n")
 	put(t, filepath.Join(p.Source, "profiles/work/inputs/build.txt"), "build context")
 	script := filepath.Join(p.Source, "profiles/work/setup.sh")
 	put(t, script, "#!/bin/bash\ntrue\n")
@@ -175,7 +175,7 @@ func TestInventoryIsReadOnlyAndReportRedactsValues(t *testing.T) {
 			t.Fatalf("report missing %s", text)
 		}
 	}
-	if item := v.item("session:" + name); item == nil || item.SessionID != strings.Repeat("b", 32) || item.Target != environment.ContainerName(item.Workspace, "profile:work") {
+	if item := v.item("session:" + name); item == nil || item.SessionID != strings.Repeat("b", 32) || item.Target != environment.ContainerName(item.Workspace, "profile-work") {
 		t.Fatalf("bad session: %+v", item)
 	}
 }
@@ -195,7 +195,7 @@ func TestStageConvertsAndCopiesWithoutTouchingExistingNeo(t *testing.T) {
 	if config.Decode([]byte(read(t, filepath.Join(root, "config.json"))), &global) != nil || global.Version != 1 {
 		t.Fatal("global not converted")
 	}
-	layer, err := config.ParseLayer([]byte(read(t, filepath.Join(root, "profiles/work/config.json"))), false)
+	layer, err := config.ParseLayer([]byte(read(t, filepath.Join(root, "profiles/work/config.json"))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestProjectSlotIncludesItsInheritedProfile(t *testing.T) {
 	before := treeSnapshot(t, workspace)
 	v := inventory(t, p)
 	item := v.item("session:" + name)
-	if item.Profile != "" || item.SourceProfile != "work" || item.Target != environment.ContainerName(workspace, "profile:work.project") {
+	if item.Profile != "" || item.SourceProfile != "work" || item.Target != environment.ContainerName(workspace, "profile-work.project") {
 		t.Fatalf("wrong slot: %+v", item)
 	}
 	mustStage(t, v)

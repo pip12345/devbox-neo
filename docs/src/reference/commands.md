@@ -40,6 +40,7 @@ Configure container settings through `profile config <profile>` or `project conf
 
 | Option | Commands | Meaning |
 |---|---|---|
+| `--project-dir PATH` | create, recreate | Select a project config directory; recreation changes the saved binding without deleting session data. Selecting the workspace's `.devbox/` clears the override. Requires a non-empty path; recreation requires one project-enabled target, not `--all` |
 | `--harness-arg ARG` | open | One-off harness argument; repeatable |
 | `--continue`, `-c` | open | Append the harness's continuation arguments |
 | `-- <args...>` | open | One-off harness arguments, appended last |
@@ -70,7 +71,7 @@ These commands edit configuration, not containers.
 |---|---|
 | `profile create <name> [--json]` | Create sparse profile configuration |
 | `project create <folder> [--json]` | Create sparse `.devbox/config.json`; folder must exist |
-| `project create <folder> --from-profile NAME [--json]` | Copy profile source artifacts once; set `inherit_profile: false`; require an unused destination |
+| `project create <folder> --from-profile NAME [--json]` | Copy profile source artifacts once; set `inherit: false`; require an unused destination |
 | `profile init <name> [--harness NAME] [--artifact NAME,...] [--json]` | Select a harness and seed missing artifacts |
 | `project init <folder> [--harness NAME\|inherit] [--artifact NAME,...] [--json]` | Initialize project artifacts; `inherit` validates the profile/global harness selection |
 | `profile list [--json]` | Sorted profiles, default marker, and invalid-config diagnostics |
@@ -79,9 +80,11 @@ These commands edit configuration, not containers.
 | `profile delete <name> [--force] [--json]` | Delete profile files only; `--force` skips confirmation |
 | `global config` | Edit global settings |
 | `profile config <profile>` | Edit profile settings |
-| `project config <folder>` | Edit project settings |
+| `project config <folder\|session>` | Edit the selected environment's project source, including saved directory overrides |
 
-`create` selects no harness or default profile. `init` preserves existing files; artifacts are `harness-config`, `setup.sh`, `entrypoint.sh`, and `Dockerfile`. Interactive init offers missing choices. Non-interactive init needs an existing harness selection or `--harness`; `--json` never prompts. Profile deletion retains global defaults and existing environments.
+Config-owner `create` seeds only `version`, without choosing a harness or default profile. `init` preserves existing files; artifacts are `harness-config`, `setup.sh`, `before-open.sh`, and `Dockerfile`. Interactive init offers missing choices. Non-interactive init needs an existing harness selection or `--harness`; `--json` never prompts. Profile deletion retains global defaults and existing environments.
+
+Project source commands also accept `--project-dir PATH` to create, initialize, or edit one explicitly selected directory. Without that flag, they honor an unambiguous saved override for the folder/profile. Use an exact session target for project config when saved overrides are ambiguous.
 
 Config commands accept `--show [--json]` for effective values without a menu. `project config --show` also accepts `--profile NAME`. Editing requires a terminal; each valid operation saves immediately. See [configuration editing](configuration.md#editing-and-inspection).
 
@@ -128,7 +131,7 @@ Network exports include `DEVBOX_HOST`, `DEVBOX_NETWORK`, `DEVBOX_PRIMARY_NETWORK
 | `copy <folder\|session> <destination-folder> --move` | Move saved state, preserve ID and running/stopped intent, then remove source |
 | `copy <folder> --from SLOT --to SLOT [--move]` | Transfer between same-folder slots: `.profile-NAME`, `.profile-NAME.project`, or `.project` |
 
-`copy` accepts `--dry-run` and `--json`, with or without `--move`. Folder sources use the common selection rules; `--profile` selects the source profile. `--from SLOT` explicitly selects the source combination and cannot be combined with `--profile`. Without a destination folder, `--to SLOT` is required. Cross-folder copies retain the source combination unless `--to SLOT` is supplied; with `--move`, cross-folder transfers must retain the source combination. Destination profiles must exist; project destinations must be initialized. Same-folder examples use suffix selectors such as `--from .profile-basic --to .profile-basic.project`.
+`copy` accepts `--dry-run` and `--json`, with or without `--move`. Folder sources use the common selection rules; `--profile` selects the source profile. `--from SLOT` selects the source's actual dot-prefixed name suffix and cannot be combined with `--profile`. `--to SLOT` uses profile/project selection notation (`.profile-NAME`, `.profile-NAME.project`, or `.project`); the retained profile/project selection determines its name. Without a destination folder, `--to SLOT` is required. Cross-folder copies retain the source combination unless `--to SLOT` is supplied; with `--move`, cross-folder transfers must retain the source combination. Destination profiles must exist; project destinations must be initialized. A normal project source uses the destination's `.devbox/`; an explicit project-directory override retains its absolute reference, without rebinding or copying the directory. Same-folder examples use suffix selectors such as `--from .profile-basic --to .profile-basic.project`.
 
 JSON transfer results and pending summaries report `mode: "clone"` for `copy` and `mode: "relocate"` for `copy --move`.
 

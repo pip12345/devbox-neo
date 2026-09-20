@@ -68,9 +68,9 @@ func TestLayerParticipation(t *testing.T) {
 		{name: "project wins", global: `{"version":1,"default_profile":"base"}`, profile: `{"version":1,"harness":"pi","harness_args":["profile"]}`, project: `{"harness":"pi","version":1,"harness_args":["project"]}`, wantProfile: "base", wantArgs: []string{"profile", "project"}},
 		{name: "explicit includes invalid project", fail: true, profile: `{"version":1,"harness":"pi","harness_args":["profile"]}`, project: `invalid`, explicit: "base", wantProfile: "base", wantArgs: []string{"profile"}},
 		{name: "explicit includes env references", fail: true, profile: `{"version":1,"harness":"pi"}`, project: `{"version":1,"network":"${env:MISSING}"}`, explicit: "base", wantProfile: "base"},
-		{name: "standalone ignores missing default", global: `{"version":1,"default_profile":"missing"}`, project: `{"version":1,"inherit_profile":false,"harness":"pi"}`},
-		{name: "standalone ignores corrupt default", global: `{"version":1,"default_profile":"base"}`, profile: `invalid`, project: `{"version":1,"inherit_profile":false,"harness":"pi"}`},
-		{name: "global excludes project inheritance", global: `{"version":1,"default_profile":"base","ignore_project":true}`, profile: `{"version":1,"harness":"pi"}`, project: `{"version":1,"inherit_profile":false}`, wantProfile: "base"},
+		{name: "standalone ignores missing default", global: `{"version":1,"default_profile":"missing"}`, project: `{"version":1,"inherit":false,"harness":"pi"}`},
+		{name: "standalone ignores corrupt default", global: `{"version":1,"default_profile":"base"}`, profile: `invalid`, project: `{"version":1,"inherit":false,"harness":"pi"}`},
+		{name: "global excludes project inheritance", global: `{"version":1,"default_profile":"base","ignore_project":true}`, profile: `{"version":1,"harness":"pi"}`, project: `{"version":1,"inherit":false}`, wantProfile: "base"},
 		{name: "invalid contributing project fails", global: `{"version":1,"default_profile":"base"}`, profile: `{"version":1,"harness":"pi"}`, project: `invalid`, fail: true},
 		{name: "missing selected profile", explicit: "base", fail: true},
 	}
@@ -127,7 +127,7 @@ func TestArtifactsFollowTheSameSelectedLayers(t *testing.T) {
 		if tree["settings.json"].Layer != wanted {
 			t.Fatal("config tree precedence drift")
 		}
-		b, _ := os.ReadFile(r.Trace.Winners["Dockerfile"])
+		b, _ := os.ReadFile(r.Trace.Artifacts["Dockerfile"][len(r.Trace.Artifacts["Dockerfile"])-1])
 		if string(b) != wanted {
 			t.Fatal("Dockerfile precedence drift")
 		}

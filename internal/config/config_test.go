@@ -33,13 +33,16 @@ func TestSparseMerge(t *testing.T) {
 		t.Fatal("shared mutable argv")
 	}
 }
-func TestInheritanceFieldScope(t *testing.T) {
+func TestGenericSourceMetadata(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	os.WriteFile(path, []byte(`{"version":1,"inherit_profile":false}`), 0600)
-	if _, err := ReadLayer(path, false, Host{}); err == nil {
-		t.Fatal("profile accepted inheritance flag")
+	os.WriteFile(path, []byte(`{"version":1,"inherit":false}`), 0600)
+	layer, err := ReadLayer(path, Host{})
+	if err != nil || layer.Inherit == nil || *layer.Inherit {
+		t.Fatal(layer, err)
 	}
-	if _, err := ReadLayer(path, true, Host{}); err != nil {
-		t.Fatal(err)
+	for _, data := range []string{`{"inherit_profile":false}`, `{"name":".unused"}`} {
+		if _, err := ParseLayer([]byte(data)); err == nil {
+			t.Fatal("accepted removed source field", data)
+		}
 	}
 }

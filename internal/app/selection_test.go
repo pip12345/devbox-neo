@@ -55,7 +55,7 @@ func TestCompoundSessionsRequireSeparateCreationAndPinSources(t *testing.T) {
 	}
 	write(t, filepath.Join(e.Store.Home, "config.json"), `{"default_profile":"other","ignore_project":true}`)
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"ports":["9090:90"]}`)
-	pinned := Request{Workspace: a.Identity.Workspace, Recorded: &a.Identity}
+	pinned := Request{Workspace: a.Identity.Workspace, Recorded: &a.Identity, Sources: a.Sources}
 	if _, err = e.Recreate(ctx, pinned, false); err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +101,43 @@ func TestDirectLookupIgnoresUnrelatedCorruptionAndRejectsConflictingSelectors(t 
 	}
 	if _, err = e.Locate(ctx, q.Workspace, ""); err == nil {
 		t.Fatal("ignored corrupt target")
+	}
+}
+
+func TestProjectBindingLookupOnlyReadsMatchingSlots(t *testing.T) {
+	for _, tt := range []struct {
+		slot string
+		fail bool
+	}{
+		{"profile-other", false},
+		{"profile-other.project", false},
+		{"profile-test", false},
+		{"profile-test.project", true},
+		{"project", true},
+	} {
+		t.Run(tt.slot, func(t *testing.T) {
+			e, _, q := fixture(t)
+			ctx := context.Background()
+			write(t, filepath.Join(e.Store.Home, "config.json"), `{"default_profile":"test"}`)
+			q.ProjectDir = t.TempDir()
+			write(t, filepath.Join(q.ProjectDir, "config.json"), `{}`)
+			made, err := e.Create(ctx, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			broken := environment.ContainerName(q.Workspace, tt.slot)
+			write(t, filepath.Join(e.Store.Home, "sessions", broken, "session.json"), "broken")
+			for _, profile := range []string{"", q.Profile} {
+				r, err := e.Locate(ctx, q.Workspace, profile)
+				if tt.fail {
+					if err == nil || !strings.Contains(err.Error(), "unreadable") {
+						t.Fatal("unreadable relevant binding was ignored", err)
+					}
+				} else if err != nil || r.Identity.Name != made.Name {
+					t.Fatal("unrelated slot blocked lookup", r.Identity, err)
+				}
+			}
+		})
 	}
 }
 

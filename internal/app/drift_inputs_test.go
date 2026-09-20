@@ -134,7 +134,7 @@ func TestFailedRecreationPreservesImageBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 	initial := record(t, e, result.Name)
-	write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "FROM debian:bookworm-slim\n")
+	write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 	view, err := e.Status(ctx, result.Name, "")
 	if err != nil || view.Desired != environment.RebuildAndRecreate {
 		t.Fatal(view, err)

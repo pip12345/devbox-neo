@@ -4,6 +4,7 @@ An independent, Linux-only Go scratch rewrite. **In development, not ready for c
 
 - [Design and delivery phases](docs/dev/rewrite-plan.md)
 - [Environment identity and configuration model](docs/dev/environment-model-plan.md)
+- [Generic sources beneath profile/project customization](docs/dev/config-directory-proposal.md)
 - [Separate migration plan](docs/dev/migration-plan.md)
 - [Implementation progress](docs/dev/progress.md)
 - [Try the initial runtime](docs/src/guides/getting-started.md)
@@ -17,6 +18,8 @@ bin/devbox-neo --help
 Saved environments are the top-level model: use `list`, `status <folder|session>`, `status --all`, and `copy` (add `--move` to remove the source after copying). Single-target status combines saved session details, active commands, container state, and pending configuration changes. There is no `session` command group. List/status retain environments without containers and warn separately about unmatched managed containers.
 
 `delete <folder|session>` asks about container deletion, then saved data. Explicit `--container` deletes runtime only; `--session` deletes the whole environment, without prompts. Filter cleanup with `--older-than`, `--orphaned`, `--stopped`, or `--all`; preview with `--dry-run` and an explicit scope. `--force` never expands scope. There is no separate `prune` command.
+
+Config sources share a generic `inherit` cutoff; environment naming stays in profile/project selection. Profiles/projects remain the public interface; `create --project-dir PATH` saves one alternative project source. Dockerfiles and setup/before-open scripts chain in source order. Devbox prepares the development user before custom Dockerfiles extend `DEVBOX_BASE`, then installs the harness last. Session schema 4 requires a clean development-state reset; there are no old-record readers.
 
 Managed profile/project files are reapplied before any stopped-container `open`, `start`, `shell`, `exec`, or `ssh`, and during creation/recreation. Running access does not synchronize. Ordinary managed files overwrite local copies; Pi's shared JSON preserves undeclared keys. Unmanaged state/history remains intact. Invalid config blocks startup; no `reset` command is needed to restore managed files.
 

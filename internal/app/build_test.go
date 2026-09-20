@@ -16,7 +16,7 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 	e, d, q := fixture(t)
 	root := filepath.Join(e.Store.Home, "profiles/test")
 	file := "Dockerfile"
-	write(t, filepath.Join(root, file), "FROM debian:bookworm-slim\nCOPY asset /opt/asset\n")
+	write(t, filepath.Join(root, file), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\nCOPY asset /opt/asset\n")
 	write(t, filepath.Join(root, "asset"), "context data")
 	var built, tags []string
 	d.Fail = func(args []string) error {
@@ -31,6 +31,12 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 		built = append(built, string(body))
 		tags = append(tags, args[slices.Index(args, "--tag")+1])
 		contextDir := args[len(args)-1]
+		if !strings.Contains(string(body), "COPY asset") {
+			if _, err := os.Stat(filepath.Join(contextDir, "asset")); !os.IsNotExist(err) {
+				t.Fatal("runtime stage inherited a user context")
+			}
+			return nil
+		}
 		data, err := os.ReadFile(filepath.Join(contextDir, "asset"))
 		if err != nil {
 			return err
@@ -44,12 +50,22 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := 2
+	want := 3
 	if len(built) != want {
 		t.Fatal("wrong stage count", len(built))
 	}
-	if !strings.HasPrefix(tags[0], docker.Namespace+"/build:") || !strings.HasPrefix(built[1], "FROM "+tags[0]+"\n") {
-		t.Fatal("runtime did not use the unique intermediate tag", built[1])
+	if !strings.HasPrefix(tags[0], docker.Namespace+"/build:") || !strings.Contains(built[1], "FROM ${DEVBOX_BASE}\n") {
+		t.Fatal("custom stage does not extend the prepared base", built)
+	}
+	stage := 0
+	for _, args := range d.History() {
+		if args[0] != "build" {
+			continue
+		}
+		if stage > 0 && !slices.Contains(args, "DEVBOX_BASE="+tags[stage-1]) {
+			t.Fatal("build chain lost predecessor", args)
+		}
+		stage++
 	}
 	if !slices.ContainsFunc(d.History(), func(args []string) bool {
 		return slices.Equal(args, []string{"image", "rm", tags[0]})
@@ -79,7 +95,7 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 }
 func TestLayeredBuildCleansBaseTagAfterRuntimeFailure(t *testing.T) {
 	e, d, q := fixture(t)
-	write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "FROM debian:bookworm-slim\n")
+	write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 	failure := errors.New("runtime build failed")
 	var baseTag string
 	d.Fail = func(args []string) error {
@@ -111,12 +127,12 @@ func TestSeedingHigherPriorityDockerfileWarnsWithoutReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(q.Workspace, ".devbox/Dockerfile"), "FROM debian:bookworm-slim\n")
+	write(t, filepath.Join(q.Workspace, ".devbox/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 	result, err := e.Open(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Name != result.Name || count(d, "create") != 1 || count(d, "build") != 1 || len(result.Diagnostics) == 0 {
+	if first.Name != result.Name || count(d, "create") != 1 || count(d, "build") != 2 || len(result.Diagnostics) == 0 {
 		t.Fatal("Dockerfile seeding did not remain non-destructive drift")
 	}
 }

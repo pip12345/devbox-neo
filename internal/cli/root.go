@@ -15,7 +15,7 @@ import (
 var Version = "dev"
 
 func New() *cobra.Command {
-	var home, profile string
+	var home, profile, projectDir string
 	var ignoreProject bool
 	root := &cobra.Command{Use: "devbox-neo", Short: "Persistent development environments", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().StringVar(&home, "home", "", "Devbox home (default ~/.devbox-neo; DEVBOX_HOME overrides)")
@@ -44,13 +44,18 @@ func New() *cobra.Command {
 		return &app.Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(), TTY: tty}, TerminalEnv: app.TerminalEnv(os.LookupEnv), IgnoreProject: ignoreProject, UID: os.Getuid(), GID: os.Getgid()}, nil
 	}
 	create := &cobra.Command{Use: "create <folder>", Short: "Create a new environment", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if cmd.Flags().Changed("project-dir") && projectDir == "" {
+			return fmt.Errorf("--project-dir requires a directory path")
+		}
 		e, err := engine(cmd)
 		if err != nil {
 			return err
 		}
-		_, err = e.Create(cmd.Context(), app.Request{Workspace: args[0], Profile: profile})
+		_, err = e.Create(cmd.Context(), app.Request{Workspace: args[0], Profile: profile, ProjectDir: projectDir})
 		return err
 	}}
+	create.Flags().StringVar(&projectDir, "project-dir", "", "Use this project configuration directory instead of .devbox/; saved with the environment")
+	_ = create.MarkFlagDirname("project-dir")
 	root.AddCommand(create)
 	var resume bool
 	var harnessArgs []string
@@ -105,33 +110,7 @@ func New() *cobra.Command {
 		}
 		return e.Exec(cmd.Context(), args[0], profile, args[1:], false)
 	}})
-	var image, recreateAll bool
-	recreate := &cobra.Command{Use: "recreate [folder|session]", Short: "Recreate the container with current settings, keeping session data", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		e, err := engine(cmd)
-		if err != nil {
-			return err
-		}
-		if recreateAll {
-			if len(args) > 0 {
-				return fmt.Errorf("--all does not accept an exact target")
-			}
-			_, err = e.RecreateAll(cmd.Context(), image, app.Request{Profile: profile})
-			return err
-		}
-		if len(args) != 1 {
-			return fmt.Errorf("provide a target or --all")
-		}
-		r, err := e.Locate(cmd.Context(), args[0], profile)
-		if err != nil {
-			return err
-		}
-		q := app.Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Recorded: &r.Identity}
-		_, err = e.Recreate(cmd.Context(), q, image)
-		return err
-	}}
-	recreate.Flags().BoolVar(&image, "image", false, "Rebuild the image without using the build cache")
-	recreate.Flags().BoolVar(&recreateAll, "all", false, "Recreate all Devbox containers, add --profile NAME to recreate all belonging to one profile")
-	root.AddCommand(recreate)
+	root.AddCommand(recreateCommand(engine, &profile))
 	root.AddCommand(sshCommand(engine, &profile))
 	root.AddCommand(containerCommands(engine, &profile)...)
 	root.AddCommand(sessionCommands(engine, &profile)...)
@@ -140,7 +119,11 @@ func New() *cobra.Command {
 		if err != nil {
 			return nil, err
 		}
-		return &resource.Service{Home: state.Home, IgnoreProject: ignoreProject}, nil
+		s := &resource.Service{Home: state.Home, IgnoreProject: ignoreProject, SelectedProfile: profile}
+		if flag := cmd.Flag("project-dir"); flag != nil {
+			s.ProjectDir = flag.Value.String()
+		}
+		return s, nil
 	})...)
 	bindCompletionScripts(root)
 	bindCompletions(root, docker.Runtime{Runner: docker.ExecRunner{}})

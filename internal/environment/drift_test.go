@@ -22,7 +22,7 @@ func driftFixture(t *testing.T) (Spec, Request) {
 	putBuild(t, filepath.Join(root, "data"), "old data")
 	putBuild(t, filepath.Join(root, "pi/custom.json"), `{"private":"file-secret"}`)
 	putBuild(t, filepath.Join(root, "setup.sh"), "echo setup")
-	putBuild(t, filepath.Join(root, "entrypoint.sh"), "echo entrypoint")
+	putBuild(t, filepath.Join(root, "before-open.sh"), "echo entrypoint")
 	q := Request{Home: home, Workspace: workspace, Profile: "test", UID: 1000, GID: 1000, Salt: "test-installation"}
 	s, err := Resolve(q)
 	if err != nil {
@@ -64,18 +64,34 @@ func TestDetailedComparisonCoversFingerprintInputs(t *testing.T) {
 		change            Change
 		edit              func(*Inputs)
 	}{
-		{"image mode", "image_mode", "value_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Mode = "default" }},
+		{"base image", "base_image", "value_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.BaseImage = "ubuntu:24.04" }},
 		{"harness", "harness", "value_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Harness = "opencode" }},
 		{"definition", "harness_definition", "file_content_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Definition.Hash = newHash }},
-		{"Dockerfile", "dockerfile", "file_content_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Dockerfile.Hash = newHash }},
-		{"ignore rules", "ignore_rules", "file_content_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Ignore.Hash = newHash }},
-		{"context content", "build_context", "file_content_changed", RebuildAndRecreate, func(i *Inputs) { f := i.Image.Context["data"]; f.Hash = newHash; i.Image.Context["data"] = f }},
-		{"context permissions", "build_context", "file_mode_changed", RebuildAndRecreate, func(i *Inputs) { f := i.Image.Context["data"]; f.Mode = 0755; i.Image.Context["data"] = f }},
-		{"context kind", "build_context", "file_kind_changed", RebuildAndRecreate, func(i *Inputs) { f := i.Image.Context["data"]; f.Directory = true; i.Image.Context["data"] = f }},
-		{"context added", "build_context", "file_added", RebuildAndRecreate, func(i *Inputs) { f := i.Image.Context["data"]; f.Source += "-new"; i.Image.Context["new"] = f }},
-		{"context removed", "build_context", "file_removed", RebuildAndRecreate, func(i *Inputs) { delete(i.Image.Context, "data") }},
+		{"Dockerfile", "dockerfile", "file_content_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Stages[0].Dockerfile.Hash = newHash }},
+		{"ignore rules", "ignore_rules", "file_content_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Stages[0].Ignore.Hash = newHash }},
+		{"context content", "build_context", "file_content_changed", RebuildAndRecreate, func(i *Inputs) {
+			f := i.Image.Stages[0].Context["data"]
+			f.Hash = newHash
+			i.Image.Stages[0].Context["data"] = f
+		}},
+		{"context permissions", "build_context", "file_mode_changed", RebuildAndRecreate, func(i *Inputs) {
+			f := i.Image.Stages[0].Context["data"]
+			f.Mode = 0755
+			i.Image.Stages[0].Context["data"] = f
+		}},
+		{"context kind", "build_context", "file_kind_changed", RebuildAndRecreate, func(i *Inputs) {
+			f := i.Image.Stages[0].Context["data"]
+			f.Directory = true
+			i.Image.Stages[0].Context["data"] = f
+		}},
+		{"context added", "build_context", "file_added", RebuildAndRecreate, func(i *Inputs) {
+			f := i.Image.Stages[0].Context["data"]
+			f.Source += "-new"
+			i.Image.Stages[0].Context["new"] = f
+		}},
+		{"context removed", "build_context", "file_removed", RebuildAndRecreate, func(i *Inputs) { delete(i.Image.Stages[0].Context, "data") }},
 		{"generated image layer", "generated_layer", "input_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Layer = newHash }},
-		{"build arguments", "build_argument", "value_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Arguments["HOST_UID"] = "1001" }},
+		{"build arguments", "build_argument", "value_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Arguments["DEVBOX_UID"] = "1001" }},
 		{"workspace", "workspace", "value_changed", Recreate, func(i *Inputs) { i.Container.Identity.Workspace += "-new" }},
 		{"slot", "slot", "value_changed", Recreate, func(i *Inputs) { i.Container.Identity.Slot = "project" }},
 		{"network", "network", "value_changed", Recreate, func(i *Inputs) { i.Container.Network = "host" }},
@@ -86,8 +102,8 @@ func TestDetailedComparisonCoversFingerprintInputs(t *testing.T) {
 		{"env changed", "env", "value_changed", Recreate, func(i *Inputs) { i.Container.Env["TOKEN"] = newHash }},
 		{"env added", "env", "entry_added", Recreate, func(i *Inputs) { i.Container.Env["NEW_TOKEN"] = newHash }},
 		{"env removed", "env", "entry_removed", Recreate, func(i *Inputs) { delete(i.Container.Env, "TOKEN") }},
-		{"setup", "setup", "file_content_changed", Recreate, func(i *Inputs) { i.Container.Setup.Hash = newHash }},
-		{"setup removed", "setup", "file_removed", Recreate, func(i *Inputs) { i.Container.Setup = FileInput{} }},
+		{"setup", "setup", "file_content_changed", Recreate, func(i *Inputs) { i.Container.Setup[0].Hash = newHash }},
+		{"setup removed", "setup", "file_removed", Recreate, func(i *Inputs) { i.Container.Setup = nil }},
 		{"mounts", "mounts", "entry_added", Recreate, func(i *Inputs) {
 			i.Container.Mounts = []docker.Mount{{Source: "/public/source", Target: "/public/target", ReadOnly: true}}
 		}},
@@ -111,8 +127,8 @@ func TestDetailedComparisonCoversFingerprintInputs(t *testing.T) {
 			i.Runtime.Files["custom.json"] = f
 		}},
 		{"config removed", "managed_config", "file_removed", RuntimeSync, func(i *Inputs) { delete(i.Runtime.Files, "custom.json") }},
-		{"entrypoint", "entrypoint", "file_content_changed", RuntimeSync, func(i *Inputs) { i.Runtime.Entrypoint.Hash = newHash }},
-		{"entrypoint removed", "entrypoint", "file_removed", RuntimeSync, func(i *Inputs) { i.Runtime.Entrypoint = FileInput{} }},
+		{"before open", "before_open", "file_content_changed", RuntimeSync, func(i *Inputs) { i.Runtime.BeforeOpen[0].Hash = newHash }},
+		{"before open removed", "before_open", "file_removed", RuntimeSync, func(i *Inputs) { i.Runtime.BeforeOpen = nil }},
 		{"launch args", "launch_args", "entry_added", RuntimeSync, func(i *Inputs) { i.Runtime.Launch.Args = append(i.Runtime.Launch.Args, "--new") }},
 		{"continue args", "continue_args", "entry_added", RuntimeSync, func(i *Inputs) { i.Runtime.Launch.Continue = append(i.Runtime.Launch.Continue, "--new") }},
 		{"harness args", "harness_args", "entry_added", RuntimeSync, func(i *Inputs) { i.Runtime.Args = append(i.Runtime.Args, "--new") }},
@@ -142,14 +158,14 @@ func TestDetailedComparisonRoundTripProvenanceAndDeduplication(t *testing.T) {
 	if report := CompareInputs(s.Inputs, next); report.Change != NoChange || len(report.PendingInputChanges) != 0 {
 		t.Fatal(report)
 	}
-	next.Image.Dockerfile.Source = "/different/Dockerfile"
-	next.Image.Ignore.Source = "/different/.dockerignore"
+	next.Image.Stages[0].Dockerfile.Source = "/different/Dockerfile"
+	next.Image.Stages[0].Ignore.Source = "/different/.dockerignore"
 	next.Image.Definition.Source = "/different/harness.json"
-	next.Container.Setup.Source = "/different/setup.sh"
-	next.Runtime.Entrypoint.Source = "/different/entrypoint.sh"
-	for name, f := range next.Image.Context {
+	next.Container.Setup[0].Source = "/different/setup.sh"
+	next.Runtime.BeforeOpen[0].Source = "/different/before-open.sh"
+	for name, f := range next.Image.Stages[0].Context {
 		f.Source = filepath.Join("/different", name)
-		next.Image.Context[name] = f
+		next.Image.Stages[0].Context[name] = f
 	}
 	for name, f := range next.Runtime.Files {
 		f.Source = filepath.Join("/different", name)
@@ -159,10 +175,10 @@ func TestDetailedComparisonRoundTripProvenanceAndDeduplication(t *testing.T) {
 		t.Fatal("source-only move caused drift", report)
 	}
 	next = cloneInputs(t, s.Inputs)
-	next.Image.Dockerfile.Hash = Fingerprint("test", "new")
-	file := next.Image.Context["Dockerfile"]
-	file.Hash = next.Image.Dockerfile.Hash
-	next.Image.Context["Dockerfile"] = file
+	next.Image.Stages[0].Dockerfile.Hash = Fingerprint("test", "new")
+	file := next.Image.Stages[0].Context["Dockerfile"]
+	file.Hash = next.Image.Stages[0].Dockerfile.Hash
+	next.Image.Stages[0].Context["Dockerfile"] = file
 	next.Container.Network = "host"
 	next.Runtime.Launch.Continue = append(next.Runtime.Launch.Continue, "--new")
 	report := CompareInputs(s.Inputs, next)

@@ -63,7 +63,7 @@ func TestMenuSourcesFollowEffectiveLayersRatherThanLocalKeyPresence(t *testing.T
 	out := check(map[string]string{
 		"harness": "pi inherited - profile", "network": "host project",
 		"shell": "bash default", "harness_args": "Harness arguments", "mounts": "Mounts",
-		"env": "Environment variables", "vscode": "VS Code extensions", "inherit_profile": "Yes default",
+		"env": "Environment variables", "vscode": "VS Code extensions", "inherit": "Yes default",
 	})
 	for _, item := range []string{"• --base inherited - profile", "• /base:/base inherited - profile", "• /project:/project project", "• GLOBAL=<redacted> inherited - global", "• PROFILE=<redacted> inherited - profile", "• PROJECT=<redacted> project", "• base.ext inherited - profile", "• project.ext project"} {
 		if !strings.Contains(strings.Join(strings.Fields(out), " "), item) {
@@ -73,10 +73,10 @@ func TestMenuSourcesFollowEffectiveLayersRatherThanLocalKeyPresence(t *testing.T
 	put(filepath.Join(s.Home, "config.json"), `{"version":1,"default_profile":"base","default_harness":"pi","ignore_project":true}`)
 	check(map[string]string{"network": "default default", "mounts": "Mounts", "vscode": "VS Code extensions", "env": "Environment variables"})
 	put(filepath.Join(s.Home, "config.json"), `{"version":1,"default_profile":"base","default_harness":"pi"}`)
-	put(filepath.Join(project.Root, "config.json"), `{"version":1,"inherit_profile":false,"mounts":["/project:/project"]}`)
-	check(map[string]string{"harness": "pi inherited - global", "mounts": "Mounts", "inherit_profile": "No project"})
-	put(filepath.Join(project.Root, "config.json"), `{"version":1,"inherit_profile":null}`)
-	check(map[string]string{"harness": "pi inherited - profile", "inherit_profile": "Yes default"})
+	put(filepath.Join(project.Root, "config.json"), `{"version":1,"inherit":false,"mounts":["/project:/project"]}`)
+	check(map[string]string{"harness": "pi inherited - global", "mounts": "Mounts", "inherit": "No project"})
+	put(filepath.Join(project.Root, "config.json"), `{"version":1,"inherit":null}`)
+	check(map[string]string{"harness": "pi inherited - profile", "inherit": "Yes default"})
 }
 
 func TestMenuSourcesDoNotGuessWhenResolutionFails(t *testing.T) {

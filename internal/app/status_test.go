@@ -130,9 +130,9 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 		}
 		names[profile] = result.Name
 	}
-	write(t, filepath.Join(e.Store.Home, "profiles/runtime/entrypoint.sh"), "echo updated")
+	write(t, filepath.Join(e.Store.Home, "profiles/runtime/before-open.sh"), "echo updated")
 	write(t, filepath.Join(e.Store.Home, "profiles/container/config.json"), `{"version":1,"harness":"pi","network":"host"}`)
-	write(t, filepath.Join(e.Store.Home, "profiles/image/Dockerfile"), "FROM debian:bookworm-slim\nRUN echo updated\n")
+	write(t, filepath.Join(e.Store.Home, "profiles/image/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\nRUN echo updated\n")
 	write(t, filepath.Join(e.Store.Home, "profiles/invalid/config.json"), "broken")
 	corrupt, _ := e.Store.RecordPath(names["corrupt"])
 	write(t, corrupt, "broken")

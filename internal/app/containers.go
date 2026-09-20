@@ -100,7 +100,7 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 }
 
 func (e *Engine) desiredStatus(view *View, r store.Record) {
-	desired, err := e.Resolve(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Recorded: &r.Identity})
+	desired, err := e.Resolve(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Recorded: &r.Identity, Sources: r.Sources})
 	if err != nil {
 		view.ConfigError = err.Error()
 	} else {
@@ -142,11 +142,10 @@ func (e *Engine) selectContainers(ctx context.Context, selection Selection) ([]s
 			return nil, err
 		}
 		for _, c := range containers {
-			_, project, _ := environment.ParseSlot(c.Config.Labels[docker.Namespace+".slot"])
-			if e.IgnoreProject && project {
+			if e.IgnoreProject && c.Config.Labels[docker.Namespace+".project"] == "true" {
 				continue
 			}
-			if selection.Profile != "" && !environment.SlotHasProfile(c.Config.Labels[docker.Namespace+".slot"], selection.Profile) {
+			if selection.Profile != "" && c.Config.Labels[docker.Namespace+".profile"] != selection.Profile {
 				continue
 			}
 			if !selection.Stopped || !c.State.Running {
@@ -226,11 +225,10 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection
 		if !exists {
 			continue
 		}
-		_, project, _ := environment.ParseSlot(owner.Slot)
-		if e.IgnoreProject && project {
+		if e.IgnoreProject && owner.Project {
 			return nil, fmt.Errorf("project selection does not match the selected session")
 		}
-		if selection.Profile != "" && !environment.SlotHasProfile(owner.Slot, selection.Profile) {
+		if selection.Profile != "" && owner.Profile != selection.Profile {
 			return nil, fmt.Errorf("profile does not match the selected container")
 		}
 		if selection.Stopped && c.State.Running {
@@ -268,7 +266,7 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection
 // clean up a fully labelled owned container without modifying retained state.
 func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 	labels := c.Config.Labels
-	owner := docker.Owner{Installation: e.Store.Installation, Session: labels[docker.Namespace+".session"], Workspace: labels[docker.Namespace+".workspace"], Slot: labels[docker.Namespace+".slot"]}
+	owner := docker.Owner{Installation: e.Store.Installation, Session: labels[docker.Namespace+".session"], Workspace: labels[docker.Namespace+".workspace"], Slot: labels[docker.Namespace+".slot"], Profile: labels[docker.Namespace+".profile"], Project: labels[docker.Namespace+".project"] == "true"}
 	id, err := hex.DecodeString(owner.Session)
 	if err != nil || len(id) != 16 || hex.EncodeToString(id) != owner.Session {
 		return owner, fmt.Errorf("invalid container session ownership")
@@ -276,7 +274,7 @@ func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 	if !filepath.IsAbs(owner.Workspace) || filepath.Clean(owner.Workspace) != owner.Workspace {
 		return owner, fmt.Errorf("invalid container workspace ownership")
 	}
-	if _, _, err := environment.ParseSlot(owner.Slot); err != nil {
+	if err := (environment.Identity{Slot: owner.Slot, Profile: owner.Profile, Project: owner.Project}).ValidateSlot(); err != nil {
 		return owner, err
 	}
 	if strings.TrimPrefix(c.Name, "/") != environment.ContainerName(owner.Workspace, owner.Slot) {
@@ -286,6 +284,9 @@ func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 }
 
 func (e *Engine) RecreateAll(ctx context.Context, force bool, options Request) ([]string, error) {
+	if options.ProjectDir != "" {
+		return nil, fmt.Errorf("--project-dir requires a single target; it cannot be used with --all")
+	}
 	if options.Host == nil {
 		options.Host = config.Snapshot()
 	}
@@ -324,6 +325,7 @@ func (e *Engine) RecreateAll(ctx context.Context, force bool, options Request) (
 		request.Workspace = r.Identity.Workspace
 		request.Profile = r.Identity.Profile
 		request.Recorded = &r.Identity
+		request.Sources = r.Sources
 		spec, err := e.Resolve(request)
 		if err != nil {
 			return nil, err

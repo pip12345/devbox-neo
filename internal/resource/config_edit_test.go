@@ -115,7 +115,7 @@ func TestConfigFieldControlsCoverSchema(t *testing.T) {
 		want := map[string]bool{}
 		for i := 0; i < typ.NumField(); i++ {
 			key := strings.Split(typ.Field(i).Tag.Get("json"), ",")[0]
-			if key == "-" || key == "version" || key == "inherit_profile" && scope != "project" {
+			if key == "-" || key == "version" {
 				continue
 			}
 			want[key] = true

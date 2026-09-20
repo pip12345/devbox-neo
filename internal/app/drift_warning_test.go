@@ -23,13 +23,13 @@ func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			e, d, q := fixture(t)
 			ctx := context.Background()
-			write(t, filepath.Join(e.Store.Home, "profiles/test/entrypoint.sh"), "echo entrypoint-marker")
+			write(t, filepath.Join(e.Store.Home, "profiles/test/before-open.sh"), "echo entrypoint-marker")
 			result, err := createAndOpen(ctx, e, q)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if mode == "image" {
-				write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "FROM debian:bookworm-slim\n")
+				write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 				write(t, filepath.Join(e.Store.Home, "profiles/test/.dockerignore"), "pi/\n")
 			} else {
 				write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host"}`)
@@ -142,7 +142,7 @@ func TestOpenWithoutCreationDriftDiagnostics(t *testing.T) {
 	for _, change := range []string{"unchanged", "runtime-only", "runtime-deferred"} {
 		switch change {
 		case "runtime-only":
-			write(t, filepath.Join(e.Store.Home, "profiles/test/entrypoint.sh"), "echo runtime-only")
+			write(t, filepath.Join(e.Store.Home, "profiles/test/before-open.sh"), "echo runtime-only")
 		case "runtime-deferred":
 			write(t, filepath.Join(e.Store.Home, "profiles/test/pi/new-file"), "deferred config")
 		}

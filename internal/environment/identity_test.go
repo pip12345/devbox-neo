@@ -11,7 +11,7 @@ import (
 )
 
 func TestContainerNameUsesFolderAndTwelveHexCharacterHash(t *testing.T) {
-	for _, slot := range []string{"project", "profile:pi-basic", "profile:pi-basic.project"} {
+	for _, slot := range []string{"project", "profile-pi-basic", "profile-pi-basic.project"} {
 		workspace := "/workspace/example"
 		sum := sha256.Sum256([]byte(workspace + "\x00" + slot))
 		want := "devbox-example-" + hex.EncodeToString(sum[:6]) + "." + strings.ReplaceAll(slot, ":", "-")
@@ -22,7 +22,7 @@ func TestContainerNameUsesFolderAndTwelveHexCharacterHash(t *testing.T) {
 	if ContainerName("/one/example", "project") == ContainerName("/two/example", "project") {
 		t.Fatal("different workspace paths share a name")
 	}
-	if ContainerName("/workspace/example", "project") == ContainerName("/workspace/example", "profile:project") {
+	if ContainerName("/workspace/example", "project") == ContainerName("/workspace/example", "profile-project") {
 		t.Fatal("project and profile slots share a name")
 	}
 }

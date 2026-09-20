@@ -95,15 +95,39 @@ container commands; it never expands scope or bypasses saved-state idle checks.
 Ordinary recreate builds changed image inputs automatically. Open prints creation
 drift reasons first, before startup, then continues immediately. Status and open
 share detailed setting/file changes; env reasons show variable names, never values.
-Session record schema 3 requires a complete applied-input snapshot. Older development
+Session record schema 4 requires a complete applied-input snapshot and saved config sources. Older development
 records require a clean reset with the previous build; there is no automatic migration.
 
 The built-in Pi launch defaults to --tui-mode fullscreen (upstream experimental).
 A later --tui-mode regular in harness_args or one-off harness arguments overrides it.
 Configured harness_args must name their harness in the same config file; arguments
 from layers naming a different harness are ignored. Configuration fields use mounts,
-ports, env, shell, and ignore_project. Keep project configuration sparse: absent fields
-inherit, additive lists append, and overlapping mount targets fail.
+ports, env, shell, and ignore_project. Config files have no name field; the
+profile/project selection determines environment names. Source creation is sparse.
+inherit: false discards preceding config sources, including explicitly selected
+profiles and all their artifacts; built-in/global settings remain. Other absent
+settings inherit, additive lists append, and overlapping mount targets fail.
+create --project-dir selects one alternative project config directory and saves
+its absolute reference. Later access, status, and recreation reuse that source.
+recreate <session> --project-dir PATH changes the saved binding without deleting
+history; selecting the workspace's .devbox/ clears the override. Use an exact
+session target if the old directory is unavailable. Rebinding requires one
+project-enabled target, preserves its profile/project identity, and commits with
+the recreated record; omitting the flag keeps the existing binding.
+Project config menus honor the saved directory; use an exact session target when
+folder overrides are ambiguous. Missing sources never fall back to .devbox/.
+
+base_image chooses the upstream Debian/Ubuntu-compatible image. Devbox prepares
+the development user/runtime before custom Dockerfiles build in source order.
+Each Dockerfile extends DEVBOX_BASE and keeps its own context and ignore rules;
+use sudo for system installation and normal devuser execution for user tools.
+DEVBOX_USER, DEVBOX_USER_HOME, DEVBOX_WORKSPACE, DEVBOX_UID and DEVBOX_GID are
+available build arguments. Conflicting base accounts fail without being changed.
+Devbox restores the build-user contract between stages, preserves custom PATH,
+and installs the harness last. Keep tool installation in cached image builds.
+setup.sh scripts run in source order per container creation/recreation;
+before-open.sh scripts run in source order before each harness launch through
+open. Each is a separate process in /workspace; a failure stops the chain.
 Existing recorded environments require recreation to adopt changed harness defaults.
 Host CLI failures show short messages, target context, and labeled next commands.
 Suggestions do not run automatically; Then marks a sequence and Or an alternative.

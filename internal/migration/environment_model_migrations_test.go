@@ -27,7 +27,7 @@ func TestConversionUsesCurrentConfigNamesAndReportsRemovedPolicy(t *testing.T) {
 	if !strings.Contains(strings.Join(notices, " "), "Removed on_exit") {
 		t.Fatal(notices)
 	}
-	if _, err = config.ParseLayer([]byte(data), false); err != nil {
+	if _, err = config.ParseLayer([]byte(data)); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err = convertLayer([]byte(`{"harness_args":["--unowned"]}`)); err == nil {

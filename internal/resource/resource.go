@@ -14,13 +14,18 @@ import (
 	"devbox/internal/artifact"
 	"devbox/internal/commanderror"
 	"devbox/internal/config"
+	"devbox/internal/environment"
 	"devbox/internal/fsutil"
 	"devbox/internal/harness"
+	"devbox/internal/store"
+	"strings"
 )
 
 type Service struct {
-	Home          string
-	IgnoreProject bool
+	Home            string
+	IgnoreProject   bool
+	SelectedProfile string
+	ProjectDir      string
 }
 
 // For projects, Name retains the entered folder for command hints; Root and
@@ -48,6 +53,22 @@ func (s Service) Profile(name string) (Owner, error) {
 	return Owner{Kind: "profile", Name: name, Root: root}, err
 }
 func (s Service) Project(folder string) (Owner, error) {
+	state := &store.Store{Home: s.Home}
+	if strings.HasPrefix(folder, environment.ContainerPrefix) && !strings.ContainsAny(folder, "/\\") {
+		if s.ProjectDir != "" {
+			return Owner{}, fmt.Errorf("--project-dir cannot override an exact session target's saved source")
+		}
+		r, err := state.Read(context.Background(), folder)
+		if err != nil {
+			return Owner{}, err
+		}
+		for _, source := range r.Sources {
+			if source.Label == "project" {
+				return Owner{Kind: "project", Name: folder, Root: source.Path, Workspace: r.Identity.Workspace}, nil
+			}
+		}
+		return Owner{}, fmt.Errorf("session does not use project configuration")
+	}
 	absolute, err := filepath.Abs(folder)
 	if err != nil {
 		return Owner{}, err
@@ -63,7 +84,21 @@ func (s Service) Project(folder string) (Owner, error) {
 	if !info.IsDir() {
 		return Owner{}, fmt.Errorf("project folder must be a directory")
 	}
-	root, err := fsutil.Path(workspace, ".devbox")
+	root := s.ProjectDir
+	if root == "" {
+		root, err = state.ProjectDirectory(context.Background(), workspace, s.SelectedProfile, s.IgnoreProject)
+		if err != nil {
+			return Owner{}, err
+		}
+	}
+	if root == "" {
+		root = filepath.Join(workspace, ".devbox")
+	}
+	root, err = filepath.Abs(root)
+	if err != nil {
+		return Owner{}, err
+	}
+	root, err = fsutil.Path(root, ".")
 	return Owner{Kind: "project", Name: folder, Root: root, Workspace: workspace}, err
 }
 func (s Service) lock(ctx context.Context, root string) (*os.File, error) {
@@ -86,7 +121,7 @@ func readLayer(o Owner) ([]byte, config.Layer, error) {
 	if err != nil {
 		return nil, config.Layer{}, err
 	}
-	l, err := config.ParseLayer(b, o.Kind == "project")
+	l, err := config.ParseLayer(b)
 	if err != nil {
 		err = fmt.Errorf("%s: %w", p, err)
 	}
@@ -161,7 +196,7 @@ func (s Service) Create(ctx context.Context, o Owner, fromProfile string) (Resul
 			return result, err
 		}
 		files = tree.Files
-		data, err := patch(files["config.json"].Data, "inherit_profile", false, false)
+		data, err := patch(files["config.json"].Data, "inherit", false, false)
 		if err != nil {
 			return result, err
 		}

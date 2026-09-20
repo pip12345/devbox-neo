@@ -20,20 +20,20 @@ flowchart TD
 `artifact.Select` owns participation; the full resolver and direct session lookup share it:
 
 - Explicit profile selection replaces the default base profile, without excluding project artifacts.
-- Project `inherit_profile: false` removes the default profile before reading it; an explicit profile conflicts and fails.
+- Selected directories are generic sources with optional `inherit` metadata. An `inherit: false` cutoff removes all preceding sources, even an explicitly selected profile, before their settings or artifacts are read.
 - Global or invocation project exclusion removes the project and its inheritance choice.
-- Recorded participation pins a saved session's sources independently of changed defaults.
+- Recorded source references pin a saved session independently of changed defaults. A single `--project-dir` override changes the project location, not its schema.
 - An empty resolved harness falls back to the global default.
 
-Target selection reads only identity-affecting settings, without expanding unrelated env references or loading harness/build inputs. Full resolution validates participating sources before runtime preparation. Configured `harness_args` requires a harness in the same file; only layers naming the final selected harness contribute arguments and argument provenance. Invocation arguments are appended at launch and never saved as desired configuration.
+Target selection reads only identity-affecting settings, without expanding unrelated env references or loading harness/build inputs. `RetainSources` walks backwards and stops at the last inheritance cutoff, so excluded directories need not be available. The frontend determines environment identity from retained profile/project participation; the generic merger has no config-name field or naming rules. Full resolution validates participating sources before runtime preparation. Configured `harness_args` requires a harness in the same file; only layers naming the final selected harness contribute arguments and argument provenance. Invocation arguments are appended at launch and never saved as desired configuration.
 
 This ordering makes excluded broken/missing layers irrelevant instead of reading them and then trying to suppress their errors. Project-init inheritance previews use the same resolver with a proposed layer.
 
-Singleton artifacts (`Dockerfile`, `setup.sh`, `entrypoint.sh`) choose the highest participating source. Harness configuration instead overlays files by relative path: definition defaults, profile, then project. Scalars replace and declared lists append; shell argv replaces as a unit.
+Dockerfiles, `setup.sh`, and `before-open.sh` contribute ordered chains. Harness configuration overlays files by relative path: definition defaults, profile, then project. Scalars replace and declared lists append; shell argv replaces as a unit.
 
 ### Provenance is resolution data
 
-`artifact.Trace` records layers, exclusions, singleton winners, aggregate contributors, and `EntrySources`. Each list contribution adds source labels at merge time in the same order as values. Duplicates remain distinct; excluded layers add nothing; shell replacement replaces its sources too. Global env passthrough filters absent host variables before provenance is counted.
+`artifact.Trace` records layers, exclusions, ordered artifact paths, aggregate contributors, and `EntrySources`. Each list contribution adds source labels at merge time in the same order as values. Duplicates remain distinct; excluded layers add nothing; shell replacement replaces its sources too. Global env passthrough filters absent host variables before provenance is counted.
 
 Menus and `--show` consume this trace rather than guessing ownership from matching values or local key presence. Human output uses dotted paths for nested fields; JSON preserves value structure and exposes `entry_sources`. Display rows never feed configuration saves.
 
@@ -53,7 +53,7 @@ The Docker adapter renders creation env through a private `0600` temporary file.
 
 Creation stages a complete source tree beside the destination, then publishes it with Linux `RENAME_NOREPLACE`. Even an existing empty directory is preserved. Interrupted staging is not adopted as a configuration owner. Init validates requested artifacts, writes missing files with no-replace publication, and commits harness selection after seeding. Existing files are not refreshed.
 
-Profile-to-project copying uses `artifact.SourceTree`, not the effective runtime tree. It copies supported profile sources and active build-context inputs, preserves permissions and expressions, and writes `inherit_profile: false`. Global values and harness defaults are not flattened into the project.
+Profile-to-project copying uses `artifact.SourceTree`, not the effective runtime tree. It copies supported profile sources and active build-context inputs, preserves permissions and expressions, and writes `inherit: false`. Global values and harness defaults are not flattened into the project.
 
 ### Immediate field edits
 
@@ -79,26 +79,25 @@ Store/auth declarations constrain targets to clean paths beneath the container u
 
 ## Layered image compilation
 
-`artifact.ReadBuildContext` captures the selected Dockerfile, effective ignore rules, regular files, directory entries, and permissions. Ignored paths are excluded before unsupported entries are rejected. This captured tree supplies both build execution and image fingerprints.
+`artifact.ReadBuildContext` captures each contributing Dockerfile, its effective ignore rules, regular files, directory entries, and permissions. Ignored paths are excluded before unsupported entries are rejected. Each captured tree supplies its own build execution and fingerprint inputs; contexts are never overlaid.
 
-`environment.ImageBuildPlan` contains an optional user-base stage and a mandatory runtime/harness stage:
+`environment.ImageBuildPlan` contains the upstream image reference, generated preparation/boundary/finalization layers, and ordered captured user stages:
 
 ```mermaid
 flowchart TD
-    CUSTOM{Custom Dockerfile?}
-    CUSTOM -->|yes| BASE[Build captured user context]
-    CUSTOM -->|no| DEFAULT[debian:bookworm-slim]
-    BASE --> TAG[Unique intermediate tag]
-    TAG --> RUNTIME[Generated Devbox runtime layer]
-    DEFAULT --> RUNTIME
-    RUNTIME --> HARNESS[Install declared harness]
-    HARNESS --> PARENTS[Prepare image-owned mount parents]
-    PARENTS --> FINAL[Session image]
+    BASE[Selected upstream image] --> PREP[Devbox user and runtime]
+    PREP --> PROFILE[Profile Dockerfile, if present]
+    PROFILE --> BOUNDARY[Restore build user contract]
+    BOUNDARY --> PROJECT[Project Dockerfile, if present]
+    PROJECT --> FINAL[Restore contract and install harness]
+    FINAL --> PARENTS[Prepare mount parents and validate]
 ```
 
-The runtime layer supplies the user/runtime contract, bundled tools, and system-wide Bash aliases. Its generated bytes are image inputs, so changes trigger an ordinary rebuild. `--image` independently disables cache for both controlled stages.
+Preparation validates a Debian/Ubuntu base, installs runtime tools, and creates the requested development UID/GID. Conflicting accounts fail without being renamed or recursively changing ownership. Boundary layers restore the development USER, HOME, shell, and working directory while retaining user PATH additions. Finalization installs the harness without runtime cache/prefix overrides, prepends its required paths, and verifies binary availability.
 
-Execution stages captured bytes and supplies `HOST_UID`/`HOST_GID`. The optional base result receives a unique temporary tag used in the final Dockerfile's `FROM`; bare IDs are unsuitable because BuildKit can interpret them as registry names. Cleanup verifies both the intermediate image ID and installation ownership before removing the tag, including on final-stage failure.
+Execution supplies `DEVBOX_BASE`, `DEVBOX_USER`, `DEVBOX_USER_HOME`, `DEVBOX_WORKSPACE`, `DEVBOX_UID`, and `DEVBOX_GID`. Each custom stage receives the preceding image's unique temporary tag. Docker image layer ancestry verifies that customization retained the supplied base; this is a runtime contract check, not a security sandbox. Captured stage inputs and generated layer bytes are fingerprinted in order. `--image` disables cache across every controlled stage.
+
+Each stage is staged in a separate directory. Cleanup verifies image identity and installation ownership before removing all intermediate tags, on success or failure. Source directory permissions are restored in staging and owner access is restored before cleanup. Unchanged image inputs can reuse Docker's build cache across environments; container-only settings do not independently invalidate image installation.
 
 ### Mount-parent ownership
 

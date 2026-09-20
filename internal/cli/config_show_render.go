@@ -63,13 +63,15 @@ func printConfigView(out io.Writer, view resource.ConfigView) error {
 		return err
 	}
 	keys = nil
-	for key := range view.Trace.Winners {
+	for key := range view.Trace.Artifacts {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		if err := writeConfigLine(out, displayCell(key)+": ", displayCell(view.Trace.Winners[key]), "  ", width); err != nil {
-			return err
+		for _, path := range view.Trace.Artifacts[key] {
+			if err := writeConfigLine(out, displayCell(key)+": ", displayCell(path), "  ", width); err != nil {
+				return err
+			}
 		}
 	}
 	if view.Harness != nil {

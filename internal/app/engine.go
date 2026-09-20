@@ -38,6 +38,8 @@ type Request struct {
 	Profile       string
 	Overrides     config.Layer
 	IgnoreProject bool
+	ProjectDir    string
+	Sources       []config.Source
 	Recorded      *environment.Identity
 	Continue      bool
 	Args          []string
@@ -56,7 +58,7 @@ type Result struct {
 }
 
 func (e *Engine) resolveSpec(q Request) (environment.Spec, error) {
-	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, Overrides: q.Overrides, IgnoreProject: q.IgnoreProject || e.IgnoreProject, Recorded: q.Recorded, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
+	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, Overrides: q.Overrides, IgnoreProject: q.IgnoreProject || e.IgnoreProject, ProjectDir: q.ProjectDir, Sources: q.Sources, Recorded: q.Recorded, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
 }
 func (e *Engine) Resolve(q Request) (environment.Spec, error) {
 	spec, err := e.resolveSpec(q)
@@ -89,7 +91,7 @@ func (e *Engine) diagnose(result *Result, diagnostic Diagnostic) {
 	}
 }
 func (e *Engine) owner(r store.Record) docker.Owner {
-	return docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot}
+	return docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot, Profile: r.Identity.Profile, Project: r.Identity.Project}
 }
 func (e *Engine) inspect(ctx context.Context, r store.Record) (docker.Container, bool, error) {
 	c, exists, err := e.Docker.Inspect(ctx, r.Identity.Name)
@@ -150,21 +152,21 @@ func creationRequired(workspace, profile string, cause error) error {
 func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error) {
 	invocationArgs := append([]string(nil), q.Overrides.HarnessArgs...)
 	q.Overrides = config.Layer{}
-	if strings.HasPrefix(q.Workspace, environment.ContainerPrefix) && !strings.ContainsAny(q.Workspace, "/\\") {
-		r, loadErr := e.readSession(ctx, q.Workspace)
-		if loadErr != nil {
-			return result, loadErr
+	lookup := *e
+	lookup.IgnoreProject = e.IgnoreProject || q.IgnoreProject
+	r, loadErr := lookup.Locate(ctx, q.Workspace, q.Profile)
+	if loadErr != nil {
+		var missing *commanderror.Error
+		if errors.As(loadErr, &missing) && missing.Code == "session_missing" && !strings.HasPrefix(q.Workspace, environment.ContainerPrefix) {
+			spec, resolveErr := e.resolveSpec(q)
+			if resolveErr != nil {
+				return result, resolveErr
+			}
+			return result, creationRequired(q.Workspace, spec.Identity.Profile, loadErr)
 		}
-		if q.Profile != "" && q.Profile != r.Identity.Profile {
-			return result, fmt.Errorf("profile does not match the recorded target")
-		}
-		q.Workspace = r.Identity.Workspace
-		q.Profile = r.Identity.Profile
-		if (e.IgnoreProject || q.IgnoreProject) && r.Identity.Project {
-			return result, fmt.Errorf("project selection does not match the recorded target")
-		}
-		q.Recorded = &r.Identity
+		return result, loadErr
 	}
+	q.Workspace, q.Profile, q.Recorded, q.Sources = r.Identity.Workspace, r.Identity.Profile, &r.Identity, r.Sources
 	// Defer resolution warnings so creation drift is visible before any other
 	// open output, especially before entrypoint or harness output can scroll it away.
 	spec, err := e.resolveSpec(q)
@@ -229,7 +231,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 	if err = e.installRuntime(ctx, record); err != nil {
 		return result, err
 	}
-	if err = e.runHook(ctx, c, record, spec.Entrypoint); err != nil {
+	if err = e.runHooks(ctx, c, record, spec.BeforeOpen); err != nil {
 		return result, err
 	}
 	record.Activity = time.Now().UTC()
@@ -337,95 +339,6 @@ func (e *Engine) mountPlan(l *store.Locked, s environment.Spec) ([]docker.Mount,
 		mounts = append(mounts, docker.Mount{Source: source, Target: auth.Target})
 	}
 	return append(mounts, s.ExtraMounts...), nil
-}
-func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force bool) (image docker.Image, err error) {
-	dir, err := os.MkdirTemp(e.Store.Home, ".build-*")
-	if err != nil {
-		return image, err
-	}
-	defer os.RemoveAll(dir)
-	contextDir, err := fsutil.Dir(dir, "context", 0700)
-	if err != nil {
-		return image, err
-	}
-	names := make([]string, 0, len(s.Build.Context))
-	for name := range s.Build.Context {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	// Restore owner access before removing staging directories whose source
-	// permissions were read-only. Their original modes belong in the build.
-	defer func() {
-		for _, name := range names {
-			if s.Build.Context[name].Directory {
-				p, pathErr := fsutil.Path(contextDir, name)
-				if pathErr == nil {
-					_ = os.Chmod(p, 0700)
-				}
-			}
-		}
-	}()
-	for _, name := range names {
-		if err = ctx.Err(); err != nil {
-			return image, err
-		}
-		file := s.Build.Context[name]
-		if file.Directory {
-			if _, err = fsutil.Dir(contextDir, name, 0700); err != nil {
-				return image, err
-			}
-			continue
-		}
-		if _, err = fsutil.Dir(contextDir, filepath.Dir(name), 0700); err != nil {
-			return image, err
-		}
-		p, pathErr := fsutil.Path(contextDir, name)
-		if pathErr != nil {
-			return image, pathErr
-		}
-		if err = fsutil.Write(p, file.Data, file.Mode); err != nil {
-			return image, err
-		}
-	}
-	for i := len(names) - 1; i >= 0; i-- {
-		name := names[i]
-		file := s.Build.Context[name]
-		if file.Directory {
-			if err = os.Chmod(filepath.Join(contextDir, name), file.Mode); err != nil {
-				return image, err
-			}
-		}
-	}
-	build := func(name, tag string, data []byte, arguments map[string]string) (docker.Image, error) {
-		path := filepath.Join(dir, name)
-		if err := fsutil.Write(path, data, 0600); err != nil {
-			return docker.Image{}, err
-		}
-		if err := fsutil.Write(path+".dockerignore", s.Build.Ignore, 0600); err != nil {
-			return docker.Image{}, err
-		}
-		return e.Docker.Build(ctx, docker.BuildPlan{Directory: contextDir, Dockerfile: path, Tag: tag, NoCache: force, Installation: e.Store.Installation, Arguments: arguments}, e.Streams.Err)
-	}
-	baseRef := ""
-	if s.Build.Mode == "normal" {
-		nonce, idErr := fsutil.ID()
-		if idErr != nil {
-			return image, idErr
-		}
-		tag := docker.Namespace + "/build:" + nonce
-		base, buildErr := build("base.Dockerfile", tag, s.Build.Dockerfile, s.Build.Arguments)
-		if buildErr != nil {
-			return image, buildErr
-		}
-		// BuildKit needs an image reference in FROM; a bare ID is parsed as a registry name.
-		baseRef = tag
-		defer func() {
-			cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-			err = errors.Join(err, e.Docker.Untag(cleanup, tag, base.ID, e.Store.Installation))
-		}()
-	}
-	return build("runtime.Dockerfile", docker.Namespace+"/session:"+id, s.Build.FinalDockerfile(baseRef), s.Build.Arguments)
 }
 func (e *Engine) create(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool) (store.Record, docker.Container, error) {
 	return e.createAs(ctx, l, s, previous, force, CreationIdentity{})
@@ -541,7 +454,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		}
 		removed = true
 	}
-	record = store.Record{Version: store.RecordVersion, ID: id, Identity: s.Identity, Created: created, Activity: time.Now().UTC(), Action: "create", Applied: s.FingerprintsFor(image.ID), Inputs: s.Inputs, ImageTag: docker.Namespace + "/session:" + id, ImageID: image.ID, Creation: docker.CreatePlan{Name: s.Identity.Name, Image: image.ID, Network: s.Settings.Network, Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports, RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata}, EnvSources: s.EnvSources, Definition: store.DefinitionInput{Name: s.Harness.Definition.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash}, Stores: s.Harness.Definition.Stores, Auth: s.Harness.Definition.Auth, Config: s.Harness.Definition.Config, Merge: s.Harness.Definition.Merge, Prepare: s.Harness.Definition.Prepare, Launch: store.Launch{Binary: s.Harness.Definition.Binary, Args: append(append([]string(nil), s.Harness.Definition.Launch.Args...), s.Settings.HarnessArgs...), Continue: s.Harness.Definition.Launch.Continue, Shell: s.Settings.Shell}, Setup: s.Setup, Ownership: 1, ManifestVersion: 1}
+	record = store.Record{Version: store.RecordVersion, ID: id, Identity: s.Identity, Sources: s.Sources, Created: created, Activity: time.Now().UTC(), Action: "create", Applied: s.FingerprintsFor(image.ID), Inputs: s.Inputs, ImageTag: docker.Namespace + "/session:" + id, ImageID: image.ID, Creation: docker.CreatePlan{Name: s.Identity.Name, Image: image.ID, Network: s.Settings.Network, Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports, RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata}, EnvSources: s.EnvSources, Definition: store.DefinitionInput{Name: s.Harness.Definition.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash}, Stores: s.Harness.Definition.Stores, Auth: s.Harness.Definition.Auth, Config: s.Harness.Definition.Config, Merge: s.Harness.Definition.Merge, Prepare: s.Harness.Definition.Prepare, Launch: store.Launch{Binary: s.Harness.Definition.Binary, Args: append(append([]string(nil), s.Harness.Definition.Launch.Args...), s.Settings.HarnessArgs...), Continue: s.Harness.Definition.Launch.Continue, Shell: s.Settings.Shell}, Setup: s.Setup, Ownership: 1, ManifestVersion: 1}
 	record.ManualStart = seed.ManualStart
 	if previous != nil {
 		record.ManualStart = previous.ManualStart
@@ -625,7 +538,7 @@ func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker
 			return c, err
 		}
 	}
-	if err = e.runHook(ctx, c, record, record.Setup); err != nil {
+	if err = e.runHooks(ctx, c, record, record.Setup); err != nil {
 		return c, err
 	}
 	if err = e.Docker.Exec(ctx, c, e.owner(record), []string{"sh", "-c", `command -v "$1" >/dev/null`, "--", record.Launch.Binary}, nil, docker.Streams{Err: e.Streams.Err}); err != nil {
@@ -634,11 +547,13 @@ func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker
 	ok = true
 	return c, nil
 }
-func (e *Engine) runHook(ctx context.Context, c docker.Container, r store.Record, hook environment.Hook) error {
-	if hook.Path == "" {
-		return nil
+func (e *Engine) runHooks(ctx context.Context, c docker.Container, r store.Record, hooks []environment.Hook) error {
+	for _, hook := range hooks {
+		if err := e.Docker.Exec(ctx, c, e.owner(r), []string{"bash", "-s"}, nil, docker.Streams{In: bytes.NewReader(hook.Data), Out: e.Streams.Out, Err: e.Streams.Err}); err != nil {
+			return fmt.Errorf("hook %s: %w", hook.Path, err)
+		}
 	}
-	return e.Docker.Exec(ctx, c, e.owner(r), []string{"bash", "-s"}, nil, docker.Streams{In: bytes.NewReader(hook.Data), Out: e.Streams.Out, Err: e.Streams.Err})
+	return nil
 }
 func (e *Engine) stopUnattached(l *store.Locked, r store.Record) error {
 	if r.ID == "" || r.ManualStart {
@@ -700,11 +615,21 @@ func (e *Engine) attachRun(l *store.Locked, r store.Record, action string, run f
 	return run()
 }
 func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, error) {
-	s, err := e.Resolve(q)
-	if err != nil {
-		return Result{}, err
+	// Select saved state before resolving desired inputs. In particular, an
+	// exact target can replace a source directory which no longer exists.
+	target := ""
+	if q.Recorded != nil {
+		target = q.Recorded.Name
+	} else {
+		lookup := *e
+		lookup.IgnoreProject = lookup.IgnoreProject || q.IgnoreProject
+		r, err := lookup.Locate(ctx, q.Workspace, q.Profile)
+		if err != nil {
+			return Result{}, err
+		}
+		target = r.Identity.Name
 	}
-	l, err := e.Store.Lock(ctx, s.Identity.Name)
+	l, err := e.Store.Lock(ctx, target)
 	if err != nil {
 		return Result{}, err
 	}
@@ -713,7 +638,14 @@ func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, e
 	if err != nil {
 		return Result{}, err
 	}
+	if q.Recorded != nil && old.Identity != *q.Recorded {
+		return Result{}, fmt.Errorf("session source selection changed; retry recreation")
+	}
 	if err = l.RequireIdle(); err != nil {
+		return Result{}, err
+	}
+	s, err := e.recreationSpec(old, q)
+	if err != nil {
 		return Result{}, err
 	}
 	container, exists, err := e.inspect(ctx, old)
@@ -823,12 +755,12 @@ func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, 
 		}
 		r.Creation.Env = append(r.Creation.Env, value)
 	}
-	if r.Setup.Path != "" {
-		data, err := os.ReadFile(r.Setup.Path)
-		if err != nil || environment.Digest(data) != r.Setup.Hash {
-			return unavailable("recorded setup input is missing or changed", err)
+	for i, hook := range r.Setup {
+		data, err := os.ReadFile(hook.Path)
+		if err != nil || environment.Digest(data) != hook.Hash {
+			return unavailable("recorded setup input is missing or changed: "+hook.Path, err)
 		}
-		r.Setup.Data = data
+		r.Setup[i].Data = data
 	}
 	if desired != nil {
 		if err = e.syncRecordedConfig(l, r, *desired); err != nil {

@@ -679,7 +679,7 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 			// Destination defaults must not silently select a different combination.
 			identity, e = environment.Identify(i.Workspace, profile, true)
 		} else {
-			identity, e = environment.Select(preview, i.Workspace, profile, false, m.host())
+			identity, e = environment.Select(preview, i.Workspace, profile, false, "", m.host())
 		}
 		if e != nil {
 			plan.block(i.Key, i.Key, "Workspace is unavailable or noncanonical.")
@@ -726,13 +726,13 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 			if e != nil {
 				return plan, e
 			}
-			l, e := config.ParseLayer(data, true)
+			l, e := config.ParseLayer(data)
 			if e != nil {
 				return plan, e
 			}
 			proposed = &l
 		}
-		q := environment.Request{Home: preview, Workspace: i.Workspace, Profile: profile, Salt: id, UID: m.UID, GID: m.GID, Host: m.host(), Recorded: &identity}
+		q := environment.Request{Home: preview, Workspace: i.Workspace, Profile: profile, Salt: id, UID: m.UID, GID: m.GID, Host: m.host(), Sources: environment.SelectionSources(preview, identity), Recorded: &identity}
 		spec, e := environment.Preview(q, proposed)
 		if e != nil {
 			plan.block("config:"+i.Key, i.Key, "Final configuration cannot be resolved; review participating profiles/projects and required host environment variables.")
@@ -1403,7 +1403,7 @@ func (m Merger) destinationIdle(ctx context.Context, st *store.Store, j *Journal
 			allowed := false
 			for _, job := range j.Merge.Plan.Sessions {
 				if a := j.Merge.Attempts[job.Item]; a != nil && a.Phase != "done" && strings.TrimPrefix(containers[0].Name, "/") == job.Identity.Name {
-					owner := docker.Owner{Installation: st.Installation, Session: job.ID, Workspace: job.Identity.Workspace, Slot: job.Identity.Slot}
+					owner := docker.Owner{Installation: st.Installation, Session: job.ID, Workspace: job.Identity.Workspace, Slot: job.Identity.Slot, Profile: job.Identity.Profile, Project: job.Identity.Project}
 					if err := containers[0].Verify(owner); err != nil {
 						return err
 					}
@@ -1580,7 +1580,7 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 		if !exists {
 			return fmt.Errorf("committed container is missing; recover it through Neo before completing the import")
 		}
-		owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot}
+		owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot, Profile: r.Identity.Profile, Project: r.Identity.Project}
 		if err = c.Verify(owner); err != nil {
 			return err
 		}
@@ -1622,7 +1622,7 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 			return err
 		}
 	}
-	spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, Profile: job.Identity.Profile, Recorded: &job.Identity, Host: m.host()})
+	spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, Profile: job.Identity.Profile, Sources: environment.SelectionSources(e.Store.Home, job.Identity), Host: m.host()})
 	if err != nil {
 		return publicFailure("Final configuration no longer resolves.", job.Identity.Name, err)
 	}
@@ -1639,7 +1639,7 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 			return err
 		}
 		if exists {
-			owner := docker.Owner{Installation: e.Store.Installation, Session: job.ID, Workspace: job.Identity.Workspace, Slot: job.Identity.Slot}
+			owner := docker.Owner{Installation: e.Store.Installation, Session: job.ID, Workspace: job.Identity.Workspace, Slot: job.Identity.Slot, Profile: job.Identity.Profile, Project: job.Identity.Project}
 			if err = c.Verify(owner); err != nil {
 				return err
 			}
@@ -1718,7 +1718,7 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 	if err = m.fault("record-committed:" + job.Item); err != nil {
 		return err
 	}
-	owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot}
+	owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot, Profile: r.Identity.Profile, Project: r.Identity.Project}
 	if err = m.Docker.Stop(ctx, c, owner); err != nil {
 		return err
 	}

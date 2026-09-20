@@ -54,16 +54,16 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 				origin = configSourceForScope(owner.Kind, configSourceLabel(view.Trace.Sources[key]))
 				entrySources = view.Trace.EntrySources[key]
 				effective := view.Values[field.Key]
-				if field.Key == "inherit_profile" {
-					// This project participation switch is not a runtime Settings
-					// value. Its displayed value comes from project source or true.
+				if field.Key == "inherit" {
+					// Participation metadata belongs to the selected source, not
+					// the merged runtime settings.
 					var configured *bool
 					if raw := source[field.Key]; raw != nil {
 						_ = json.Unmarshal(raw, &configured)
 					}
 					effective, origin = true, "default"
 					if configured != nil {
-						effective, origin = *configured, "project"
+						effective, origin = *configured, owner.Kind
 					}
 				}
 				value, _ = json.Marshal(effective)

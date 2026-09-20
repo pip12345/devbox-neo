@@ -26,7 +26,7 @@ func (e *Engine) startAccess(ctx context.Context, lock *store.Locked, c docker.C
 		return c, false, err
 	}
 	if desired == nil {
-		spec, err := e.resolveSpec(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Recorded: &r.Identity})
+		spec, err := e.resolveSpec(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Recorded: &r.Identity, Sources: r.Sources})
 		if err != nil {
 			e.resolutionWarnings(spec)
 			return c, false, err

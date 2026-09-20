@@ -37,6 +37,7 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 	for _, tt := range []struct{ command, flag, description string }{
 		{"open", "harness-arg", "Pass an argument to the harness (repeatable)"},
 		{"recreate", "image", "Rebuild the image without using the build cache"},
+		{"recreate", "project-dir", "Change the saved project config directory; use the workspace's .devbox/ to clear the override"},
 		{"recreate", "all", "Recreate all Devbox containers, add --profile NAME to recreate all belonging to one profile"},
 		{"open", "profile", "Select the base profile"},
 		{"stop", "force", "Stop even if commands are still running"},
@@ -48,8 +49,8 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 		{"project config", "profile", "With --show, select the base profile beneath project configuration"},
 		{"profile init", "harness", "Choose a harness by name"},
 		{"project init", "harness", "Choose a harness by name, or inherit to use the profile/global setting"},
-		{"copy", "from", "Source slot: .profile-NAME, .profile-NAME.project, or .project"},
-		{"copy", "to", "Destination slot: .profile-NAME, .profile-NAME.project, or .project"},
+		{"copy", "from", "Source session suffix, e.g. .profile-work.project"},
+		{"copy", "to", "Destination config selection: .profile-NAME, .profile-NAME.project, or .project"},
 		{"copy", "move", "Remove the source after the destination is ready"},
 		{"delete", "older-than", "Select environments inactive longer than this duration, e.g. 720h; rechecked while locked"},
 	} {

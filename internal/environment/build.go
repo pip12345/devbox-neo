@@ -1,22 +1,22 @@
 package environment
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"devbox/internal/artifact"
+	"devbox/internal/config"
 	"devbox/internal/harness"
 )
 
-// The final runtime layer runs this as devuser, before Docker can create
-// root-owned mount ancestors. Existing incompatible base-image permissions
-// fail at build time; preparation never recursively changes user content.
+// Image-only mount ancestors must be writable before Docker binds deeper paths.
 func mountParentCommand(d harness.Definition) []string {
 	args := []string{"/bin/sh", "-eu", "-c", `for dir do
  mkdir -p -- "$dir"
  if [ ! -w "$dir" ] || [ ! -x "$dir" ]; then
-  printf 'mount parent is not writable/searchable by devuser: %s\n' "$dir" >&2
+  printf 'mount parent is not writable/searchable by devuser: %s\n' "$dir"
   exit 1
  fi
 done`, "mount-parents"}
@@ -28,43 +28,90 @@ done`, "mount-parents"}
 	return args
 }
 
-type ImageBuildPlan struct {
-	Mode         string
+type ImageStage struct {
 	Source       string
 	Dockerfile   []byte
 	Context      map[string]artifact.ContextFile
-	Runtime      []byte
-	Arguments    map[string]string
 	Ignore       []byte
 	IgnoreSource string
 }
 
-func PlanImage(winners map[string]string, d harness.Definition, uid, gid int) (ImageBuildPlan, error) {
-	plan := ImageBuildPlan{Mode: "default", Runtime: ImageDockerfile(d, uid, gid)}
-	source := winners["Dockerfile"]
-	if source != "" {
-		plan.Mode = "normal"
+type ImageBuildPlan struct {
+	BaseImage string
+	Prepared  []byte
+	Stages    []ImageStage
+	Boundary  []byte
+	Runtime   []byte
+	Arguments map[string]string
+}
+
+func PlanImage(paths []string, base string, d harness.Definition, uid, gid int) (ImageBuildPlan, error) {
+	if !config.ImageReference.MatchString(base) {
+		return ImageBuildPlan{}, fmt.Errorf("invalid base_image reference")
 	}
-	if source == "" {
-		return plan, nil
+	plan := ImageBuildPlan{BaseImage: base, Prepared: preparedDockerfile(base, uid, gid), Boundary: boundaryDockerfile(uid, gid), Runtime: runtimeDockerfile(d, uid, gid),
+		Arguments: map[string]string{"DEVBOX_USER": "devuser", "DEVBOX_USER_HOME": "/home/devuser", "DEVBOX_WORKSPACE": "/workspace", "DEVBOX_UID": fmt.Sprint(uid), "DEVBOX_GID": fmt.Sprint(gid)}}
+	for _, source := range paths {
+		captured, err := artifact.ReadBuildContext(source)
+		if err != nil {
+			return plan, err
+		}
+		stage := ImageStage{Source: source, Dockerfile: captured.Dockerfile, Context: captured.Files, Ignore: captured.Ignore}
+		if captured.IgnoreName != "" {
+			stage.IgnoreSource = filepath.Join(filepath.Dir(source), captured.IgnoreName)
+		}
+		plan.Stages = append(plan.Stages, stage)
 	}
-	plan.Source = source
-	captured, err := artifact.ReadBuildContext(source)
-	if err != nil {
-		return plan, err
-	}
-	plan.Dockerfile = captured.Dockerfile
-	plan.Context = captured.Files
-	plan.Ignore = captured.Ignore
-	if captured.IgnoreName != "" {
-		plan.IgnoreSource = filepath.Join(filepath.Dir(source), captured.IgnoreName)
-	}
-	plan.Arguments = map[string]string{"HOST_UID": fmt.Sprint(uid), "HOST_GID": fmt.Sprint(gid)}
 	return plan, nil
 }
-func (p ImageBuildPlan) FinalDockerfile(base string) []byte {
-	if p.Mode == "normal" {
-		return []byte(strings.Replace(string(p.Runtime), "FROM debian:bookworm-slim\n", "FROM "+base+"\n", 1))
+
+func preparedDockerfile(base string, uid, gid int) []byte {
+	return []byte(fmt.Sprintf(`FROM %s
+USER root
+SHELL ["/bin/sh", "-c"]
+RUN . /etc/os-release && case "$ID" in debian|ubuntu) ;; *) echo "Devbox requires a Debian/Ubuntu-compatible base" >&2; exit 1 ;; esac
+RUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl git sudo procps vim zip unzip jq net-tools iputils-ping openssh-client util-linux && rm -rf /var/lib/apt/lists/*
+RUN echo "alias ll='ls -alF'" >> /etc/bash.bashrc && echo "alias vi='vim'" >> /etc/bash.bashrc
+RUN if id devuser >/dev/null 2>&1; then test "$(id -u devuser)" = %d && test "$(id -g devuser)" = %d && test "$(getent passwd devuser | cut -d: -f6)" = /home/devuser; else if getent passwd %d >/dev/null; then echo "Base image already owns the requested development UID; supply a compatible base without that account" >&2; exit 1; fi; (getent group %d >/dev/null || groupadd -g %d devuser) && useradd -m -s /bin/bash -u %d -g %d devuser; fi
+RUN echo 'devuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/devuser && chmod 0440 /etc/sudoers.d/devuser
+USER devuser
+ENV HOME=/home/devuser USER=devuser PATH="/home/devuser/.local/bin:${PATH}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+WORKDIR /workspace
+RUN test -w "$HOME" && sudo -n true
+`, base, uid, gid, uid, gid, gid, uid, gid))
+}
+
+// A user Dockerfile may temporarily switch USER or WORKDIR. Restore the shared
+// build contract between sources without replacing its PATH or filesystem edits.
+func boundaryDockerfile(uid, gid int) []byte {
+	return []byte(fmt.Sprintf(`ARG DEVBOX_BASE
+FROM ${DEVBOX_BASE}
+USER root
+SHELL ["/bin/sh", "-c"]
+RUN test "$(id -u devuser)" = %d && test "$(id -g devuser)" = %d && test "$(getent passwd devuser | cut -d: -f6)" = /home/devuser
+USER devuser
+ENV HOME=/home/devuser USER=devuser
+WORKDIR /workspace
+RUN test -w "$HOME" && sudo -n true && command -v bash && command -v flock && command -v ssh
+`, uid, gid))
+}
+
+func runtimeDockerfile(d harness.Definition, uid, gid int) []byte {
+	text := string(boundaryDockerfile(uid, gid))
+	// Installation must not inherit runtime cache/prefix overrides pointing at
+	// bind mounts; executables belong to the image rather than empty state roots.
+	if d.Install.Shell != "" {
+		encoded, _ := json.Marshal([]string{"/bin/bash", "-o", "pipefail", "-c", d.Install.Shell})
+		text += "RUN " + string(encoded) + "\n"
 	}
-	return append([]byte(nil), p.Runtime...)
+	parents, _ := json.Marshal(mountParentCommand(d))
+	text += "RUN " + string(parents) + "\n"
+	if len(d.Install.Path) > 0 {
+		// Preserve additions made by every user image stage.
+		encoded, _ := json.Marshal(strings.Join(d.Install.Path, ":") + ":${PATH}")
+		text += "ENV PATH=" + string(encoded) + "\n"
+	}
+	check, _ := json.Marshal([]string{"/bin/sh", "-eu", "-c", `command -v "$1" >/dev/null`, "check-harness", d.Binary})
+	text += "RUN " + string(check) + "\n"
+	return []byte(text)
 }

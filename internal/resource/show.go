@@ -1,8 +1,12 @@
 package resource
 
 import (
+	"context"
+	"devbox/internal/store"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
+	"strings"
 
 	"devbox/internal/artifact"
 	"devbox/internal/config"
@@ -67,15 +71,32 @@ func (s Service) ShowProfile(name string) (ConfigView, error) {
 	return s.configView("profile", filepath.Join(owner.Root, "config.json"), resolved)
 }
 func (s Service) ShowProject(folder, profile string) (ConfigView, error) {
-	identity, err := environment.Identify(folder, "", true)
+	if profile != "" {
+		s.SelectedProfile = profile
+	}
+	owner, err := s.Project(folder)
 	if err != nil {
 		return ConfigView{}, err
 	}
-	resolved, err := artifact.PreviewSelection(s.Home, identity.Workspace, artifact.Selection{Profile: profile, IgnoreProject: s.IgnoreProject}, config.Layer{}, nil, config.Snapshot())
+	selection := artifact.Selection{Profile: s.SelectedProfile, IgnoreProject: s.IgnoreProject}
+	if owner.Root != filepath.Join(owner.Workspace, ".devbox") {
+		selection.ProjectDir = owner.Root
+	}
+	if strings.HasPrefix(folder, environment.ContainerPrefix) && !strings.ContainsAny(folder, "/\\") {
+		r, err := (&store.Store{Home: s.Home}).Read(context.Background(), folder)
+		if err != nil {
+			return ConfigView{}, err
+		}
+		if s.SelectedProfile != "" && s.SelectedProfile != r.Identity.Profile {
+			return ConfigView{}, fmt.Errorf("profile does not match the recorded session")
+		}
+		selection.Recorded = &artifact.Participation{Profile: r.Identity.Profile, Project: r.Identity.Project, ProjectDir: r.Identity.ProjectDir, Sources: r.Sources}
+	}
+	resolved, err := artifact.PreviewSelection(s.Home, owner.Workspace, selection, config.Layer{}, nil, config.Snapshot())
 	if err != nil {
 		return ConfigView{}, err
 	}
-	return s.configView("project", filepath.Join(identity.Workspace, ".devbox/config.json"), resolved)
+	return s.configView("project", filepath.Join(owner.Root, "config.json"), resolved)
 }
 func (s Service) configView(scope, path string, r artifact.Resolved) (ConfigView, error) {
 	values, err := fields(r.Settings)
@@ -83,6 +104,11 @@ func (s Service) configView(scope, path string, r artifact.Resolved) (ConfigView
 		return ConfigView{}, err
 	}
 	values["env"] = config.RedactEnv(r.Settings.Env)
+	for _, layer := range r.Layers {
+		if filepath.Join(layer.Path, "config.json") == path {
+			values["inherit"] = layer.Config.Inherit == nil || *layer.Config.Inherit
+		}
+	}
 	result := ConfigView{Scope: scope, Path: path, Values: values, Trace: r.Trace, References: map[string]map[string][]string{filepath.Join(s.Home, "config.json"): r.Global.References}}
 	for _, layer := range r.Layers {
 		if len(layer.Config.References) > 0 {

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"devbox/internal/docker"
-	"devbox/internal/environment"
 	"devbox/internal/store"
 )
 
@@ -53,11 +52,8 @@ func (e *Engine) sessionInventory(entries []store.Entry, live []docker.Container
 		// Labels retain filtering for corrupt records; they never authorize mutations.
 		name := strings.TrimPrefix(c.Name, "/")
 		if _, recorded := profiles[name]; !recorded {
-			p, project, err := environment.ParseSlot(c.Config.Labels[docker.Namespace+".slot"])
-			if err == nil {
-				profiles[name] = p
-				projects[name] = project
-			}
+			profiles[name] = c.Config.Labels[docker.Namespace+".profile"]
+			projects[name] = c.Config.Labels[docker.Namespace+".project"] == "true"
 		}
 	}
 	for _, view := range e.inventoryViews(entries, live, true) {

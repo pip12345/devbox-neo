@@ -40,6 +40,7 @@ type Record struct {
 	ManualStart     bool                     `json:"manual_start"`
 	ID              string                   `json:"id"`
 	Identity        environment.Identity     `json:"identity"`
+	Sources         []config.Source          `json:"sources"`
 	Created         time.Time                `json:"created_at"`
 	Activity        time.Time                `json:"last_activity"`
 	Action          string                   `json:"last_action"`
@@ -56,13 +57,13 @@ type Record struct {
 	Merge           []harness.Merge          `json:"config_merge"`
 	Prepare         [][]string               `json:"prepare"`
 	Launch          Launch                   `json:"launch"`
-	Setup           environment.Hook         `json:"setup"`
+	Setup           []environment.Hook       `json:"setup"`
 	SetupContainer  string                   `json:"setup_container"`
 	Ownership       int                      `json:"ownership_version"`
 	ManifestVersion int                      `json:"manifest_version"`
 }
 
-const RecordVersion = 3
+const RecordVersion = 4
 
 // Runtime synchronization must advance its explanation baseline together with
 // its fingerprint. Image/container inputs remain committed until recreation.
@@ -108,8 +109,22 @@ func (r Record) Validate(name string) error {
 	if r.Definition.Origin != "builtin" && !filepath.IsAbs(r.Definition.Origin) {
 		return fmt.Errorf("invalid recorded definition source")
 	}
-	if (r.Setup.Path != "" && (!filepath.IsAbs(r.Setup.Path) || !hashPattern.MatchString(r.Setup.Hash))) || (r.Setup.Path == "" && r.Setup.Hash != "") {
-		return fmt.Errorf("invalid recorded setup input")
+	if len(r.Sources) == 0 {
+		return fmt.Errorf("recorded configuration sources are missing")
+	}
+	for _, source := range r.Sources {
+		if err := source.Validate(); err != nil {
+			return err
+		}
+	}
+	if len(r.Setup) != len(r.Inputs.Container.Setup) {
+		return fmt.Errorf("recorded setup chain differs from applied inputs")
+	}
+	for i, hook := range r.Setup {
+		input := r.Inputs.Container.Setup[i]
+		if !filepath.IsAbs(hook.Path) || !hashPattern.MatchString(hook.Hash) || hook.Path != input.Source || hook.Hash != input.Hash || input.Directory || input.Mode != 0 {
+			return fmt.Errorf("invalid recorded setup input")
+		}
 	}
 	for _, source := range r.EnvSources {
 		if !hashPattern.MatchString(source.RawHash) || !hashPattern.MatchString(source.ValueHash) {
