@@ -74,7 +74,7 @@ func transferCommand(factory engineFactory, profile *string) *cobra.Command {
 		_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s %s: %s -> %s\n", action, store.TransferCommand(result.Mode), result.Source, result.Destination)
 		return err
 	}}
-	cmd.Flags().BoolVar(&move, "move", false, "Remove the source after the destination is ready, preserving session identity and running intent")
+	cmd.Flags().BoolVar(&move, "move", false, "Remove the source after the destination is ready")
 	cmd.Flags().StringVar(&options.From, "from", "", "Source slot: .profile-NAME, .profile-NAME.project, or .project")
 	cmd.Flags().StringVar(&options.To, "to", "", "Destination slot: .profile-NAME, .profile-NAME.project, or .project")
 	cmd.Flags().BoolVar(&options.DryRun, "dry-run", false, "Preview without copying session data")

@@ -50,7 +50,7 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 		{"project init", "harness", "Choose a harness by name, or inherit to use the profile/global setting"},
 		{"copy", "from", "Source slot: .profile-NAME, .profile-NAME.project, or .project"},
 		{"copy", "to", "Destination slot: .profile-NAME, .profile-NAME.project, or .project"},
-		{"copy", "move", "Remove the source after the destination is ready, preserving session identity and running intent"},
+		{"copy", "move", "Remove the source after the destination is ready"},
 		{"delete", "older-than", "Select environments inactive longer than this duration, e.g. 720h; rechecked while locked"},
 	} {
 		cmd, _, err := New().Find(strings.Fields(tt.command))
