@@ -8,7 +8,7 @@ The saved session is the top-level environment model. Docker inventory supplies 
 
 Identity uses the canonical workspace path and retained profile/project selection. The selection frontend produces `.profile-<name>`, `.profile-<name>.project`, or `.project` suffixes. Session names also include a readable folder basename and a 12-hex workspace/slot hash. Saved source directories are recorded explicitly. The generic config merger does not name environments, and source files have no `name` field. Exact names use recorded sources even when defaults change.
 
-Folder targeting uses the selected profile and project metadata. Saved project-directory overrides are matched by workspace/profile; differing matches require an exact target, and unreadable matching project slots prevent guessing. Unrelated profiles and profile-only slots do not participate in override lookup. `--ignore-project` selects profile-only configuration without consulting overrides. Inheritance changes cannot rename recorded state implicitly.
+Folder targeting uses the selected profile and the workspace's `.devbox/` metadata to locate one session, without scanning other saved sessions. `--ignore-project` selects profile-only configuration. Inheritance changes cannot rename recorded state implicitly.
 
 The readable basename is lowercased and bounded to 32 characters from `a-z0-9_.-`; invalid runs become `-`, edge punctuation is trimmed, and an empty result becomes `workspace`. Sanitization and truncation do not change the hash input. Symlink aliases therefore produce the same identity. Records validate against the naming rule.
 

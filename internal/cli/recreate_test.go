@@ -5,7 +5,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"devbox/internal/app"
@@ -16,7 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestRecreateProjectDirectoryCLI(t *testing.T) {
+func TestRecreateUsesRecordedProjectSelection(t *testing.T) {
 	ctx := context.Background()
 	state, err := store.Open(ctx, t.TempDir())
 	if err != nil {
@@ -33,12 +32,16 @@ func TestRecreateProjectDirectoryCLI(t *testing.T) {
 	if _, err = resources.Init(ctx, owner, resource.InitOptions{Harness: "pi"}); err != nil {
 		t.Fatal(err)
 	}
-	workspace, oldDir := t.TempDir(), t.TempDir()
-	if err = os.WriteFile(filepath.Join(oldDir, "config.json"), []byte(`{}`), 0600); err != nil {
+	workspace := t.TempDir()
+	projectDir := filepath.Join(workspace, ".devbox")
+	if err = os.Mkdir(projectDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(projectDir, "config.json"), []byte(`{}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: &dockertest.Daemon{}}, UID: 1000, GID: 1000}
-	made, err := engine.Create(ctx, app.Request{Workspace: workspace, Profile: "test", ProjectDir: oldDir})
+	made, err := engine.Create(ctx, app.Request{Workspace: workspace, Profile: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,14 +49,7 @@ func TestRecreateProjectDirectoryCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.RemoveAll(oldDir); err != nil {
-		t.Fatal(err)
-	}
-	defaultDir := filepath.Join(workspace, ".devbox")
-	if err = os.Mkdir(defaultDir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(defaultDir, "config.json"), []byte(`{}`), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(projectDir, "config.json"), []byte(`{"ports":["8080:80"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	profile := ""
@@ -61,20 +57,20 @@ func TestRecreateProjectDirectoryCLI(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{made.Name, "--project-dir", defaultDir})
+	cmd.SetArgs([]string{made.Name})
 	if err = cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}
 	after, err := state.Read(ctx, made.Name)
-	if err != nil || after.ID != before.ID || after.Identity.ProjectDir != "" || after.Sources[1].Path != defaultDir {
+	if err != nil || after.ID != before.ID || after.Identity != before.Identity || after.Sources[1].Path != projectDir || len(after.Creation.Ports) != 1 || after.Creation.Ports[0] != "8080:80" {
 		t.Fatal(after.Identity, after.Sources, err)
 	}
 }
 
-func TestRecreateRejectsInvalidProjectDirectoryFlagsBeforeInitialization(t *testing.T) {
+func TestRecreateRejectsInvalidTargetsBeforeInitialization(t *testing.T) {
 	for _, args := range [][]string{
-		{"target", "--project-dir="},
-		{"--all", "--project-dir", "/config"},
+		{},
+		{"--all", "target"},
 	} {
 		profile := ""
 		cmd := recreateCommand(func(*cobra.Command) (*app.Engine, error) {
@@ -84,7 +80,7 @@ func TestRecreateRejectsInvalidProjectDirectoryFlagsBeforeInitialization(t *test
 		cmd.SilenceErrors = true
 		cmd.SilenceUsage = true
 		cmd.SetArgs(args)
-		if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--project-dir") {
+		if err := cmd.Execute(); err == nil {
 			t.Fatal(args, err)
 		}
 	}

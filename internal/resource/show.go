@@ -79,9 +79,6 @@ func (s Service) ShowProject(folder, profile string) (ConfigView, error) {
 		return ConfigView{}, err
 	}
 	selection := artifact.Selection{Profile: s.SelectedProfile, IgnoreProject: s.IgnoreProject}
-	if owner.Root != filepath.Join(owner.Workspace, ".devbox") {
-		selection.ProjectDir = owner.Root
-	}
 	if strings.HasPrefix(folder, environment.ContainerPrefix) && !strings.ContainsAny(folder, "/\\") {
 		r, err := (&store.Store{Home: s.Home}).Read(context.Background(), folder)
 		if err != nil {
@@ -90,7 +87,7 @@ func (s Service) ShowProject(folder, profile string) (ConfigView, error) {
 		if s.SelectedProfile != "" && s.SelectedProfile != r.Identity.Profile {
 			return ConfigView{}, fmt.Errorf("profile does not match the recorded session")
 		}
-		selection.Recorded = &artifact.Participation{Profile: r.Identity.Profile, Project: r.Identity.Project, ProjectDir: r.Identity.ProjectDir, Sources: r.Sources}
+		selection.Recorded = &artifact.Participation{Profile: r.Identity.Profile, Project: r.Identity.Project, Sources: r.Sources}
 	}
 	resolved, err := artifact.PreviewSelection(s.Home, owner.Workspace, selection, config.Layer{}, nil, config.Snapshot())
 	if err != nil {

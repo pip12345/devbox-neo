@@ -15,7 +15,7 @@ import (
 var Version = "dev"
 
 func New() *cobra.Command {
-	var home, profile, projectDir string
+	var home, profile string
 	var ignoreProject bool
 	root := &cobra.Command{Use: "devbox-neo", Short: "Persistent development environments", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().StringVar(&home, "home", "", "Devbox home (default ~/.devbox-neo; DEVBOX_HOME overrides)")
@@ -44,18 +44,13 @@ func New() *cobra.Command {
 		return &app.Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(), TTY: tty}, TerminalEnv: app.TerminalEnv(os.LookupEnv), IgnoreProject: ignoreProject, UID: os.Getuid(), GID: os.Getgid()}, nil
 	}
 	create := &cobra.Command{Use: "create <folder>", Short: "Create a new environment", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if cmd.Flags().Changed("project-dir") && projectDir == "" {
-			return fmt.Errorf("--project-dir requires a directory path")
-		}
 		e, err := engine(cmd)
 		if err != nil {
 			return err
 		}
-		_, err = e.Create(cmd.Context(), app.Request{Workspace: args[0], Profile: profile, ProjectDir: projectDir})
+		_, err = e.Create(cmd.Context(), app.Request{Workspace: args[0], Profile: profile})
 		return err
 	}}
-	create.Flags().StringVar(&projectDir, "project-dir", "", "Use this project configuration directory instead of .devbox/; saved with the environment")
-	_ = create.MarkFlagDirname("project-dir")
 	root.AddCommand(create)
 	var resume bool
 	var harnessArgs []string
@@ -119,11 +114,7 @@ func New() *cobra.Command {
 		if err != nil {
 			return nil, err
 		}
-		s := &resource.Service{Home: state.Home, IgnoreProject: ignoreProject, SelectedProfile: profile}
-		if flag := cmd.Flag("project-dir"); flag != nil {
-			s.ProjectDir = flag.Value.String()
-		}
-		return s, nil
+		return &resource.Service{Home: state.Home, IgnoreProject: ignoreProject, SelectedProfile: profile}, nil
 	})...)
 	bindCompletionScripts(root)
 	bindCompletions(root, docker.Runtime{Runner: docker.ExecRunner{}})

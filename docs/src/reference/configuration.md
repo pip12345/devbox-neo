@@ -6,7 +6,7 @@
 |---|---|
 | Global | `<home>/config.json` |
 | Profile | `<home>/profiles/<name>/config.json` |
-| Project | `<workspace>/.devbox/config.json`, or the directory selected with `--project-dir` |
+| Project | `<workspace>/.devbox/config.json` |
 
 Home selection is `--home` → `DEVBOX_HOME` → `~/.devbox-neo`. The path `~/.devbox` and its descendants are reserved and rejected.
 
@@ -42,7 +42,7 @@ Files use strict JSON: unknown fields, duplicate keys, comments, trailing commas
 ## Selection and precedence
 
 1. `--profile` selects the base profile; otherwise `default_profile` supplies it.
-2. Project settings and artifacts apply above the base profile. `create --project-dir PATH` selects one alternative directory instead of `.devbox/` and records it with the environment.
+2. Project settings and artifacts in `<workspace>/.devbox/` apply above the base profile.
 3. Apply `inherit` cutoffs before reading excluded sources' settings or artifacts. Project `inherit: false` excludes the preceding profile even when selected explicitly; missing or invalid excluded profile files are irrelevant.
 4. `--ignore-project` or global `ignore_project` excludes the project and its inheritance setting.
 5. An empty resolved harness falls back to `default_harness`.
@@ -51,11 +51,7 @@ Creation and recreation use configuration files, not container-setting flags. A 
 
 Profile/project selection determines the environment's name suffix. Config files have no `name` field. Source creation seeds only `version`; each selected directory supplies `config.json` plus optional artifacts.
 
-Relative `--project-dir` paths resolve against the invoking host working directory and are saved as absolute references, not copied. Creation rejects project exclusion combined with this flag. Subsequent access, status, and recreation keep the saved directory unless explicitly changed.
-
-Use `recreate <target> --project-dir PATH` to replace a saved project source without deleting session data. Selecting `<workspace>/.devbox` clears the override and restores normal project-directory behavior, including for future transfers. The flag requires one project-enabled target, cannot be used with `--all`, and cannot change its profile/project identity. The new binding commits with the replacement record; validation or preparation failure retains the old saved binding. With no flag, recreation keeps the current source. If the old directory is missing, use the exact session name so target lookup does not need its config. The replacement directory must exist and contain valid config.
-
-A required missing source is otherwise an error; multiple saved overrides for the same folder/profile require an exact session target.
+A required missing source is an error.
 
 At least one profile or project layer must participate. Excluded layers contribute neither settings nor artifacts. Scalar and list merges follow the field table above.
 
@@ -71,7 +67,7 @@ Use `global config`, `profile config <profile>`, or `project config <folder|sess
 | `0` / `q` | Go back or exit |
 | `:back` | Cancel text entry |
 
-Completed edits remain saved on exit or cancellation. Saves preserve expressions and unrelated fields; conflicting edits to the same field fail without replacing it. Effective-resolution errors remain visible while local settings can still be edited. Env values are redacted in displays, but typed input is visible. Project commands honor saved directory overrides; `project ... --project-dir PATH` explicitly selects a directory for source creation, initialization, or editing. The editor shows that actual source path.
+Completed edits remain saved on exit or cancellation. Saves preserve expressions and unrelated fields; conflicting edits to the same field fail without replacing it. Effective-resolution errors remain visible while local settings can still be edited. Env values are redacted in displays, but typed input is visible. Project commands edit the workspace's `.devbox/` configuration.
 
 ## Substitution, environment, and creation options
 

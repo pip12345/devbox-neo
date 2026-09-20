@@ -284,9 +284,6 @@ func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 }
 
 func (e *Engine) RecreateAll(ctx context.Context, force bool, options Request) ([]string, error) {
-	if options.ProjectDir != "" {
-		return nil, fmt.Errorf("--project-dir requires a single target; it cannot be used with --all")
-	}
 	if options.Host == nil {
 		options.Host = config.Snapshot()
 	}

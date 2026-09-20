@@ -54,7 +54,7 @@ The ordered `setup.sh` chain belongs to the per-container contract. Before-open 
 
 The record commits only after startup, declared preparation, setup, and binary-availability checks succeed. If the final stop fails, the committed environment remains usable and the error recommends `stop`; it is not presented as an absent session that can be created again.
 
-Recreation selects saved state and rereads it under the operation lock before resolving desired inputs. An explicit `--project-dir` replaces only the prospective project source reference; selecting the canonical workspace's `.devbox/` normalizes to no override. The existing identity and source list remain authoritative until the new record commits. Exact targets can be rebound without reading an unavailable old source. Changes that would alter profile/project participation are rejected before Docker mutation.
+Recreation selects saved state and rereads it under the operation lock before resolving desired inputs. It retains the recorded profile/project sources independently of changed defaults. Changes that would alter profile/project participation are rejected before Docker mutation.
 
 Recreation uses current desired inputs while preserving the session ID and stores. An unchanged available image can be reused; changed image inputs trigger a cached build, and `--image` forces a no-cache build. Running/stopped intent is retained. Container-local state is replaceable, not transferred into the new container.
 
@@ -100,7 +100,7 @@ Recovery materializes the recorded creation contract, not a newly resolved one. 
 - every recorded setup source's content, in order;
 - recoverable environment source entries.
 
-Recorded `sources` identify exact configuration directories for current desired resolution and sensitive env-source validation, including an external project directory. A new user override cannot replace a recorded built-in definition during recovery. Missing durable roots are not recreated as empty state. Environment values are reconstructed from recorded source references; changed or missing values can require explicit recreation with current configuration.
+Recorded `sources` identify the profile and workspace `.devbox/` directories for current desired resolution and sensitive env-source validation. A new user override cannot replace a recorded built-in definition during recovery. Missing durable roots are not recreated as empty state. Environment values are reconstructed from recorded source references; changed or missing values can require explicit recreation with current configuration.
 
 Compatible desired runtime config can synchronize during ordinary recovery, but image/container settings remain recorded. Transaction rollback and committed-transfer recovery follow their recorded transaction rather than resolving newer desired configuration.
 

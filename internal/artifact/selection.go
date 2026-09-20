@@ -29,38 +29,18 @@ func (p *SourcePreview) layer(source config.Source) *config.Layer {
 }
 
 type Participation struct {
-	Profile    string          `json:"profile,omitempty"`
-	Project    bool            `json:"project"`
-	ProjectDir string          `json:"project_dir,omitempty"`
-	Sources    []config.Source `json:"sources"`
-	Headers    []SourceHeader  `json:"-"`
-	Preview    *SourcePreview  `json:"-"`
+	Profile string          `json:"profile,omitempty"`
+	Project bool            `json:"project"`
+	Sources []config.Source `json:"sources"`
+	Headers []SourceHeader  `json:"-"`
+	Preview *SourcePreview  `json:"-"`
 }
 
 type Selection struct {
 	Profile       string
 	IgnoreProject bool
-	ProjectDir    string
 	Sources       []config.Source
 	Recorded      *Participation
-}
-
-// ProjectLocation resolves a project source and its optional saved override.
-// The conventional workspace directory is always represented without an override,
-// including when it was selected explicitly, so later transfers use their own workspace.
-func ProjectLocation(workspace, directory string) (root, override string, err error) {
-	root = filepath.Join(workspace, ".devbox")
-	if directory == "" {
-		return root, "", nil
-	}
-	selected, err := filepath.Abs(directory)
-	if err != nil {
-		return "", "", err
-	}
-	if selected == root {
-		return root, "", nil
-	}
-	return selected, selected, nil
 }
 
 // Select owns the profile/project convenience frontend. RetainSources owns the
@@ -75,7 +55,7 @@ func Select(home, workspace string, q Selection, proposed *config.Layer, host co
 			return p, fmt.Errorf("recorded configuration sources are missing; a clean development session reset is required")
 		}
 	} else if q.Sources != nil {
-		p.Profile, p.ProjectDir = q.Profile, q.ProjectDir
+		p.Profile = q.Profile
 		sources = append([]config.Source(nil), q.Sources...)
 	} else {
 		profile, ignore, err := config.SelectionDefaults(home, q.Profile, q.IgnoreProject, host)
@@ -83,9 +63,6 @@ func Select(home, workspace string, q Selection, proposed *config.Layer, host co
 			return p, err
 		}
 		p.Profile = profile
-		if q.ProjectDir != "" && ignore {
-			return p, fmt.Errorf("--project-dir conflicts with project exclusion")
-		}
 		if p.Profile != "" {
 			if !config.Name.MatchString(p.Profile) {
 				return p, fmt.Errorf("invalid profile name")
@@ -93,16 +70,12 @@ func Select(home, workspace string, q Selection, proposed *config.Layer, host co
 			sources = append(sources, config.Source{Label: "profile", Path: filepath.Join(home, "profiles", p.Profile)})
 		}
 		if workspace != "" && !ignore {
-			root, override, err := ProjectLocation(workspace, q.ProjectDir)
-			if err != nil {
-				return p, err
-			}
-			p.ProjectDir = override
+			root := filepath.Join(workspace, ".devbox")
 			_, statErr := os.Stat(filepath.Join(root, "config.json"))
 			if statErr != nil && !os.IsNotExist(statErr) {
 				return p, statErr
 			}
-			if proposed != nil || statErr == nil || q.ProjectDir != "" {
+			if proposed != nil || statErr == nil {
 				p.Project = true
 				sources = append(sources, config.Source{Label: "project", Path: root})
 			} else {
@@ -144,9 +117,6 @@ func Select(home, workspace string, q Selection, proposed *config.Layer, host co
 	}
 	if !profile {
 		p.Profile = ""
-	}
-	if !p.Project {
-		p.ProjectDir = ""
 	}
 	if q.Recorded != nil && (p.Profile != q.Recorded.Profile || p.Project != q.Recorded.Project || len(p.Sources) != len(q.Recorded.Sources)) {
 		return p, fmt.Errorf("inheritance changed the recorded source selection; create a new environment instead of renaming saved state")

@@ -37,7 +37,6 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 	for _, tt := range []struct{ command, flag, description string }{
 		{"open", "harness-arg", "Pass an argument to the harness (repeatable)"},
 		{"recreate", "image", "Rebuild the image without using the build cache"},
-		{"recreate", "project-dir", "Change the saved project config directory; use the workspace's .devbox/ to clear the override"},
 		{"recreate", "all", "Recreate all Devbox containers, add --profile NAME to recreate all belonging to one profile"},
 		{"open", "profile", "Select the base profile"},
 		{"stop", "force", "Stop even if commands are still running"},

@@ -22,7 +22,7 @@ flowchart TD
 - Explicit profile selection replaces the default base profile, without excluding project artifacts.
 - Selected directories are generic sources with optional `inherit` metadata. An `inherit: false` cutoff removes all preceding sources, even an explicitly selected profile, before their settings or artifacts are read.
 - Global or invocation project exclusion removes the project and its inheritance choice.
-- Recorded source references pin a saved session independently of changed defaults. A single `--project-dir` override changes the project location, not its schema.
+- Recorded source references pin a saved session independently of changed defaults. Project configuration lives in the workspace's `.devbox/` directory.
 - An empty resolved harness falls back to the global default.
 
 Target selection reads only identity-affecting settings, without expanding unrelated env references or loading harness/build inputs. `RetainSources` walks backwards and stops at the last inheritance cutoff, so excluded directories need not be available. The frontend determines environment identity from retained profile/project participation; the generic merger has no config-name field or naming rules. Full resolution validates participating sources before runtime preparation. Configured `harness_args` requires a harness in the same file; only layers naming the final selected harness contribute arguments and argument provenance. Invocation arguments are appended at launch and never saved as desired configuration.

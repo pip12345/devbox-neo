@@ -54,7 +54,7 @@ Resolve relative config paths against the invoking host working directory and sa
 
 Creation saves the workspace, name, and source order. It refuses an already-used environment name; it does not overwrite another environment. Subsequent commands use the saved selection without repeating creation flags.
 
-There is no implicit `.devbox/` discovery, default profile, `--profile`, `--project-dir`, or `--no-default-config` mode in this alternative. A directory named `.devbox` can still be passed explicitly; its location gives it no special semantics. Built-in runtime defaults and installation-level settings remain separate from source selection and must not inject undisclosed config directories.
+There is no implicit `.devbox/` discovery, default profile, `--profile`, or `--no-default-config` mode in this alternative. A directory named `.devbox` can still be passed explicitly; its location gives it no special semantics. Built-in runtime defaults and installation-level settings remain separate from source selection and must not inject undisclosed config directories.
 
 ## Names and targeting
 

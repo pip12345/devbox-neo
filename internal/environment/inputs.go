@@ -163,8 +163,6 @@ func (i Inputs) Fingerprints() Fingerprints {
 	for n := range container.Setup {
 		container.Setup[n].Source = ""
 	}
-	// The project source location is provenance, not a container runtime input.
-	container.Identity.ProjectDir = ""
 	return Fingerprints{Image: image, Container: Digest(struct {
 		Image  string
 		Inputs ContainerInputs

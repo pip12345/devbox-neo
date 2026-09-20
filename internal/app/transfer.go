@@ -93,14 +93,11 @@ func (e *Engine) transferDestination(q TransferOptions, source environment.Ident
 	if err != nil {
 		return id, err
 	}
-	if project {
-		id.ProjectDir = source.ProjectDir
-	}
-	selected, err := artifact.Select(e.Store.Home, id.Workspace, artifact.Selection{Profile: profile, ProjectDir: id.ProjectDir, Sources: environment.SelectionSources(e.Store.Home, id)}, nil, config.Snapshot())
+	selected, err := artifact.Select(e.Store.Home, id.Workspace, artifact.Selection{Profile: profile, Sources: environment.SelectionSources(e.Store.Home, id)}, nil, config.Snapshot())
 	if err != nil {
 		return id, err
 	}
-	id.Profile, id.Project, id.ProjectDir = selected.Profile, selected.Project, selected.ProjectDir
+	id.Profile, id.Project = selected.Profile, selected.Project
 	id.Slot = environment.Slot(id.Profile, id.Project)
 	id.Name = environment.ContainerName(id.Workspace, id.Slot)
 	return id, nil
@@ -307,11 +304,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		}
 	}
 	if destinationIdentity.Project {
-		root := destinationIdentity.ProjectDir
-		if root == "" {
-			root = filepath.Join(destinationIdentity.Workspace, ".devbox")
-		}
-		p, pathErr := fsutil.Path(root, "config.json")
+		p, pathErr := fsutil.Path(destinationIdentity.Workspace, ".devbox/config.json")
 		if pathErr != nil {
 			return result, pathErr
 		}
@@ -319,7 +312,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, fmt.Errorf("project destination must be initialized: %w", pathErr)
 		}
 	}
-	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, Profile: destinationIdentity.Profile, ProjectDir: destinationIdentity.ProjectDir, Sources: environment.SelectionSources(e.Store.Home, destinationIdentity)})
+	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, Profile: destinationIdentity.Profile, Sources: environment.SelectionSources(e.Store.Home, destinationIdentity)})
 	if err != nil {
 		return result, err
 	}

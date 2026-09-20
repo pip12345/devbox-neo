@@ -16,21 +16,19 @@ import (
 	"devbox/internal/resource"
 )
 
-func TestProjectDirectoryIsSavedAndUsedByEveryAccessPath(t *testing.T) {
+func TestWorkspaceProjectSourceIsUsedByEveryAccessPath(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	dir := t.TempDir()
+	dir := filepath.Join(q.Workspace, ".devbox")
 	write(t, filepath.Join(dir, "config.json"), `{"env":["TOKEN=value"],"ports":["8080:80"]}`)
-	q.ProjectDir = dir
 	made, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := record(t, e, made.Name)
-	if r.Identity.ProjectDir != dir || !strings.HasSuffix(made.Name, ".profile-test.project") || len(r.Sources) != 2 || r.Sources[1].Path != dir {
+	if !strings.HasSuffix(made.Name, ".profile-test.project") || len(r.Sources) != 2 || r.Sources[1].Path != dir {
 		t.Fatal(r.Identity, r.Sources)
 	}
-	q.ProjectDir = ""
 	if got, err := e.Open(ctx, q); err != nil || got.Name != made.Name {
 		t.Fatal(got, err)
 	}
@@ -46,8 +44,7 @@ func TestProjectDirectoryIsSavedAndUsedByEveryAccessPath(t *testing.T) {
 	if err != nil || view.Path != filepath.Join(dir, "config.json") {
 		t.Fatal(view, err)
 	}
-	// Recovery restores env through the saved external source rather than
-	// assuming every project setting lives inside the workspace.
+	// Missing-container recovery restores env from the workspace's project config.
 	d.Forget(made.Name)
 	if _, err = e.Start(ctx, q.Workspace, q.Profile); err != nil {
 		t.Fatal(err)
@@ -58,8 +55,8 @@ func TestProjectDirectoryIsSavedAndUsedByEveryAccessPath(t *testing.T) {
 	if err = os.Remove(filepath.Join(dir, "config.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Open(ctx, q); err == nil {
-		t.Fatal("missing override fell back to .devbox")
+	if _, err = e.Open(ctx, Request{Workspace: made.Name}); err == nil {
+		t.Fatal("missing recorded project source was ignored")
 	}
 }
 
@@ -146,16 +143,14 @@ func TestProfileAndProjectScriptsRunInOrderAndStopOnFailure(t *testing.T) {
 	}
 }
 
-func TestProjectOverrideAndProfileOnlyRemainDistinct(t *testing.T) {
+func TestProjectAndProfileOnlyRemainDistinct(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
 	plain, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
-	write(t, filepath.Join(dir, "config.json"), `{}`)
-	q.ProjectDir = dir
+	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{}`)
 	combined, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
@@ -170,26 +165,23 @@ func TestProjectOverrideAndProfileOnlyRemainDistinct(t *testing.T) {
 	if r, err := e.Locate(ctx, q.Workspace, q.Profile); err != nil || r.Identity.Name != plain.Name {
 		t.Fatal(r.Identity, err)
 	}
-	if _, err := e.Create(ctx, q); err == nil {
-		t.Fatal("project override accepted with project exclusion")
-	}
 }
 
-func TestTransferRetainsExplicitExternalProjectDirectory(t *testing.T) {
+func TestTransferUsesDestinationWorkspaceProject(t *testing.T) {
 	e, _, q := fixture(t)
-	dir := t.TempDir()
-	write(t, filepath.Join(dir, "config.json"), `{}`)
-	q.ProjectDir = dir
+	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"ports":["8080:80"]}`)
+	destination := t.TempDir()
+	write(t, filepath.Join(destination, ".devbox/config.json"), `{"ports":["9090:90"]}`)
 	made, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	copied, err := e.Transfer(context.Background(), TransferOptions{Mode: "clone", Source: made.Name, Destination: t.TempDir()})
+	copied, err := e.Transfer(context.Background(), TransferOptions{Mode: "clone", Source: made.Name, Destination: destination})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := record(t, e, copied.Destination)
-	if r.Identity.ProjectDir != dir || r.Sources[1].Path != dir {
-		t.Fatal(r.Identity, r.Sources)
+	if r.Sources[1].Path != filepath.Join(destination, ".devbox") || !slices.Equal(r.Creation.Ports, []string{"9090:90"}) {
+		t.Fatal(r.Identity, r.Sources, r.Creation.Ports)
 	}
 }

@@ -48,11 +48,7 @@ func SelectionSources(home string, id Identity) []config.Source {
 		sources = append(sources, config.Source{Label: "profile", Path: filepath.Join(home, "profiles", id.Profile)})
 	}
 	if id.Project {
-		root := id.ProjectDir
-		if root == "" {
-			root = filepath.Join(id.Workspace, ".devbox")
-		}
-		sources = append(sources, config.Source{Label: "project", Path: root})
+		sources = append(sources, config.Source{Label: "project", Path: filepath.Join(id.Workspace, ".devbox")})
 	}
 	return sources
 }
@@ -64,13 +60,10 @@ func (id Identity) ValidateSlot() error {
 	if id.Profile != "" && !config.Name.MatchString(id.Profile) {
 		return fmt.Errorf("invalid recorded profile selection")
 	}
-	if id.ProjectDir != "" && (!id.Project || !filepath.IsAbs(id.ProjectDir) || filepath.Clean(id.ProjectDir) != id.ProjectDir) {
-		return fmt.Errorf("invalid recorded project directory")
-	}
 	return nil
 }
 
-func Select(home, workspace, profile string, ignoreProject bool, projectDir string, host config.Host) (Identity, error) {
+func Select(home, workspace, profile string, ignoreProject bool, host config.Host) (Identity, error) {
 	canonical, err := Identify(workspace, "", true)
 	if err != nil {
 		return Identity{}, commanderror.New("workspace_unavailable", "Cannot access workspace: "+err.Error(), workspace, err)
@@ -78,7 +71,7 @@ func Select(home, workspace, profile string, ignoreProject bool, projectDir stri
 	if host == nil {
 		host = config.Snapshot()
 	}
-	selected, err := artifact.Select(home, canonical.Workspace, artifact.Selection{Profile: profile, IgnoreProject: ignoreProject, ProjectDir: projectDir}, nil, host)
+	selected, err := artifact.Select(home, canonical.Workspace, artifact.Selection{Profile: profile, IgnoreProject: ignoreProject}, nil, host)
 	if err != nil {
 		var actionable *commanderror.Error
 		if !errors.As(err, &actionable) {
@@ -86,13 +79,7 @@ func Select(home, workspace, profile string, ignoreProject bool, projectDir stri
 		}
 		return Identity{}, err
 	}
-	id, err := Identify(canonical.Workspace, selected.Profile, selected.Project)
-	if err != nil {
-		return id, err
-	}
-	id.ProjectDir = selected.ProjectDir
-	id.Name = ContainerName(id.Workspace, id.Slot)
-	return id, nil
+	return Identify(canonical.Workspace, selected.Profile, selected.Project)
 }
 
 func (id Identity) Selector() string { return "." + id.Slot }

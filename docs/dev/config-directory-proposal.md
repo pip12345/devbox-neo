@@ -7,7 +7,7 @@ Status: implemented development design. Configs have no `name` field, per the fi
 Keep the existing profile/project model and environment selection. Simplify image customization and make profile/project artifacts compose without duplication.
 
 - Profiles supply reusable defaults across projects.
-- Project configuration supplies customization for one codebase, normally from `.devbox/`, with one optional `--project-dir PATH` override.
+- Project configuration supplies customization for one codebase from its `.devbox/` directory.
 - Both use the same generic config schema and composition code, with an optional `inherit` control. Environment naming belongs to profile/project selection, not config contents.
 - Their Dockerfiles and lifecycle scripts chain in profile-then-project order.
 - Devbox prepares the development user and runtime before custom Dockerfiles run.
@@ -16,7 +16,7 @@ Keep the existing profile/project model and environment selection. Simplify imag
 
 Keep the familiar profile/project interface over a generic config engine. The frontend locates directories and determines environment identity. The engine composes the selected sources and applies inheritance without interpreting their roles. Configs have no `name` field; a future generic frontend could supply environment identity separately.
 
-There is no additional public custom-config system or list of extra sources in this proposal. `--project-dir` changes the location of the project source, not its format. No separate `--name` flag, source-list editor, or new targeting syntax is needed.
+There is no additional public custom-config system, project-directory override, or list of extra sources in this proposal. No separate `--name` flag, source-list editor, or new targeting syntax is needed.
 
 ## Familiar selection stays available
 
@@ -32,7 +32,7 @@ devbox-neo recreate . --profile work
 Keep profile/project source discovery and convenience flags:
 
 - `--profile` selects the first source; otherwise the global default profile supplies it.
-- The selected project directory supplies the next source.
+- The workspace's `.devbox/` directory supplies the next source.
 - `--ignore-project` or global project exclusion removes the project source before composition.
 - Apply the generic `inherit` rule to the ordered sources before merging settings or artifacts.
 - At least one config source must participate.
@@ -47,48 +47,13 @@ Built-in/global baseline
 → participating project
 ```
 
-Multiple environments in the same folder and existing folder/profile/exact-session targeting remain available. The frontend derives the familiar `.profile-NAME`, `.profile-NAME.project`, and `.project` suffixes from the retained profile/project selection; config files do not supply names. Folder lookup must account for a saved project-directory override without guessing between different existing environments.
+Multiple environments in the same folder and existing folder/profile/exact-session targeting remain available. The frontend derives the familiar `.profile-NAME`, `.profile-NAME.project`, and `.project` suffixes from the retained profile/project selection; config files do not supply names. Folder lookup selects the corresponding identity without scanning other saved environments.
 
-Saved sessions retain their selected sources, environment identity, and any explicit project-directory override. Exact-target resolution and recreation use the recorded source selection independently of changed defaults. Source contents remain editable; this does not introduce frozen config snapshots or automatic renaming of existing environments.
-
-### Optional project-directory override
-
-Supply one alternative project configuration directory at creation:
-
-```sh
-devbox-neo create . --project-dir ~/configs/custom
-```
-
-- The workspace remains `.`; only the project configuration location changes.
-- The supplied directory replaces `<workspace>/.devbox/`; it does not merge with that default directory.
-- It contains the same `config.json`, Dockerfile, scripts, and native harness files as an ordinary project directory.
-- Profile-then-project source order applies. The selected directory's `inherit` setting uses the same cutoff rule as any other config source.
-- Save the override with the environment so access, status, and recreation use it without repeating the flag.
-- Resolve a relative override path against the invoking host working directory and save an absolute reference. Do not copy or snapshot the directory.
-- A required saved directory becoming unavailable is an error, not a reason to fall back to `.devbox/`.
-- The path is not an identity component. Different paths do not create extra variants of the same profile/project slot. Creation still refuses an occupied identity.
-
-Change a saved binding through recreation, without deleting session data:
-
-```sh
-devbox-neo recreate <session> --project-dir /another/config
-```
-
-Select the workspace's normal directory to clear the override:
-
-```sh
-devbox-neo recreate <session> --project-dir /path/to/workspace/.devbox
-```
-
-Selecting that conventional path normalizes to no override, including when explicitly supplied during creation. Future transfers then use their destination workspace's `.devbox/` rather than retaining the old absolute path. Omitting the flag keeps the current binding.
-
-Recreation locks and rereads the saved record, validates a prospective source replacement, and publishes it only with the replacement record. Validation/build/setup failure retains the old saved binding and session data; arbitrary setup effects are not rolled back. An exact session target works when the old source has disappeared. The target must already use project configuration; the replacement cannot change its profile/project identity, and the flag cannot be combined with `--all`.
-
-`--project-dir` accepts a single directory, not a repeatable list. There is no separate `--config`, `--no-default-config`, or naming scheme. Without an override, normal `.devbox/` selection remains unchanged.
+Saved sessions retain their selected profile/project sources and environment identity. Exact-target resolution and recreation use the recorded source selection independently of changed defaults. Source contents remain editable; this does not introduce frozen config snapshots or automatic renaming of existing environments.
 
 ## Familiar configuration directories
 
-Profiles live under `<home>/profiles/<name>/`; project configuration lives under `<workspace>/.devbox/` unless an explicit `--project-dir` selects another directory.
+Profiles live under `<home>/profiles/<name>/`; project configuration lives under `<workspace>/.devbox/`.
 
 Both use the familiar artifact layout, with the every-open hook renamed for its actual event:
 
@@ -284,7 +249,7 @@ This deliberately changes today's singleton-script selection and renames `entryp
 
 ## Applying and inspecting configuration
 
-Continue editing profile/project sources through their existing menus or files. Environment-aware inspection and editing must identify and use the actual project directory, including a saved override, rather than silently reading or modifying `.devbox/`.
+Continue editing profile/project sources through their existing menus or files. Project inspection and editing use the workspace's `.devbox/` directory.
 
 - Source edits change desired configuration.
 - `status` explains differences from the applied environment.
@@ -292,19 +257,19 @@ Continue editing profile/project sources through their existing menus or files. 
 - Existing stopped-start synchronization applies compatible harness configuration changes.
 - Configuration-source failures remain errors when those sources are required; they do not cause silent fallback.
 
-Keep one saved source-selection authority, populated by the profile/project frontend, including the optional project-directory override. Record environment identity and source references separately; the generic merger does not derive either from config name fields. Existing applied snapshots describe what was used successfully; do not introduce a second source registry or configuration snapshot system.
+Keep one saved source-selection authority, populated by the profile/project frontend. Record environment identity and source references separately; the generic merger does not derive either from config name fields. Existing applied snapshots describe what was used successfully; do not introduce a second source registry or configuration snapshot system.
 
 Inspection should show the selected sources, any sources excluded by `inherit`, setting provenance, each Dockerfile with its own build context, and the ordered scripts for each event. Keep the existing configuration inspection frontend rather than introducing a new source-management command.
 
-Copy/move operations retain their profile/project slot-selection semantics. Normal project sources resolve under the destination workspace. An explicitly saved project-directory override keeps its absolute reference; transfers neither copy that directory nor silently rebind it.
+Copy/move operations retain their profile/project slot-selection semantics. Project sources resolve under the destination workspace's `.devbox/`; transfers do not copy project configuration.
 
 ## Implementation contracts and acceptance
 
-- Folder lookup matches saved overrides by workspace/profile, including when `.devbox/` is absent. Ambiguous bindings or unreadable relevant records require an exact target. `--ignore-project` selects the profile-only path without inspecting project bindings.
-- Creation rejects `--project-dir` when project configuration is excluded. Single-target recreation can replace or clear a saved binding while preserving recorded participation. Project source-editing commands honor saved overrides; redirecting an exact session's binding belongs to `recreate`, not the source editor.
+- Folder lookup uses profile/project participation to select one session; unrelated records do not affect lookup. `--ignore-project` selects the profile-only path without inspecting project configuration.
+- Recreation rereads the saved record under the operation lock and preserves recorded participation.
 - Prepared images must identify as Debian or Ubuntu and provide the supported package environment. An existing `devuser` must have the requested UID/GID and home; a different account already owning the requested UID fails clearly, without being renamed or deleted.
 - Source boundaries restore USER, HOME, shell, and working directory. Preparation retains upstream PATH entries; finalization preserves user additions and prepends harness paths before validating the binary and managed mount parents.
-- Session schema 4 stores ordered source/build/hook inputs. Recovery verifies all recorded setup inputs and uses exact recorded env-source references, including external project directories. No runtime migration, aliases, or old-format readers were added.
+- Session schema 4 stores ordered source/build/hook inputs. Recovery verifies all recorded setup inputs and uses exact recorded env-source references. No runtime migration, aliases, or old-format readers were added.
 
 Unit/fake-Docker checks do not establish live image compatibility or cache performance. Real Debian/Ubuntu builds, user-tool installation, and live recovery remain acceptance gates until run with Docker.
 
@@ -312,18 +277,18 @@ Unit/fake-Docker checks do not establish live image compatibility or cache perfo
 
 Reuse existing owners:
 
-- `internal/artifact/selection.go`: keep the profile/project discovery frontend, including saved directory overrides; apply generic `inherit` metadata to determine retained sources.
+- `internal/artifact/selection.go`: keep the profile/project discovery frontend; apply generic `inherit` metadata to determine retained sources.
 - `internal/config/`: use one config-source schema with generic `inherit`, no config-level name, and no role-dependent parsing. Runtime-setting merge rules remain unchanged.
 - `internal/artifact/resolve.go`: merge settings from retained sources, collect ordered Dockerfiles and scripts, and retain harness-file merging without role-specific composition branches.
 - `internal/artifact/context.go`: capture each contributing Dockerfile's separate context.
 - `internal/artifact/source.go`: retain complete profile source copying, including build inputs.
 - `internal/environment/build.go` and `spec.go`: prepare the user/runtime first, build the Dockerfile chain, then install/validate the harness. Extend input snapshots to describe the ordered build.
-- Session records, identity validation, and lifecycle execution: record sources separately from the frontend-generated environment identity, persist the single optional project-directory override, and track/execute ordered setup/before-open scripts. Profile/project naming remains in the selection frontend, not in the source schema or artifact merger.
+- Session records, identity validation, and lifecycle execution: record sources separately from the frontend-generated environment identity, and track/execute ordered setup/before-open scripts. Profile/project naming remains in the selection frontend, not in the source schema or artifact merger.
 
 Update profile/project initialization templates, schema/help, seeded guidance, docs, and tests together when implementing. Keep configs unnamed, replace `inherit_profile` with generic `inherit`, and update Dockerfile/hook templates. Source creation remains sparse; the templates must not contradict the new contract.
 
 ## Recommendation
 
-**Keep profiles for reusable defaults and projects for local customization, with one optional `--project-dir PATH`. The frontend owns environment naming. Underneath, unnamed generic configs apply `inherit` cutoffs, merge settings, and chain Dockerfiles/scripts. Devbox owns the prepared user/runtime. Preserve familiar targeting without putting naming rules in the config schema or composition engine.**
+**Keep profiles for reusable defaults and workspace `.devbox/` directories for project customization. The frontend owns environment naming. Underneath, unnamed generic configs apply `inherit` cutoffs, merge settings, and chain Dockerfiles/scripts. Devbox owns the prepared user/runtime. Preserve familiar targeting without putting naming rules in the config schema or composition engine.**
 
 The implemented scope is this bounded profile/project design. `generic-config-alternative.md` remains a separate, unimplemented alternative.

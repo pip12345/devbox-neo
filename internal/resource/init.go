@@ -84,11 +84,7 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 		if err != nil {
 			return result, err
 		}
-		projectDir := ""
-		if o.Root != filepath.Join(o.Workspace, ".devbox") {
-			projectDir = o.Root
-		}
-		resolved, err := artifact.PreviewSelection(s.Home, o.Workspace, artifact.Selection{Profile: s.SelectedProfile, ProjectDir: projectDir, IgnoreProject: s.IgnoreProject}, config.Layer{}, &proposed, host)
+		resolved, err := artifact.PreviewSelection(s.Home, o.Workspace, artifact.Selection{Profile: s.SelectedProfile, IgnoreProject: s.IgnoreProject}, config.Layer{}, &proposed, host)
 		if err != nil {
 			return result, fmt.Errorf("harness inheritance is unavailable: %w\nInitialize a lower configuration layer or select a harness with --harness NAME.", err)
 		}

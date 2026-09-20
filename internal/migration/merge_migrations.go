@@ -679,7 +679,7 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 			// Destination defaults must not silently select a different combination.
 			identity, e = environment.Identify(i.Workspace, profile, true)
 		} else {
-			identity, e = environment.Select(preview, i.Workspace, profile, false, "", m.host())
+			identity, e = environment.Select(preview, i.Workspace, profile, false, m.host())
 		}
 		if e != nil {
 			plan.block(i.Key, i.Key, "Workspace is unavailable or noncanonical.")

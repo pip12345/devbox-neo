@@ -79,7 +79,7 @@ The rewrite must make these retained rules explicit and give each one a single o
 
 ### Profiles and environment identity
 
-A workspace has separate durable environments identified by the selected profile/project combination. The frontend generates `.profile-NAME`, `.profile-NAME.project`, or `.project` suffixes; config files have no `name` field. Each identity requires explicit creation. Source references and frontend provenance are recorded separately; names do not encode the locations used for resolution. Folder targeting honors saved project-directory overrides and fails on ambiguity rather than substituting another profile.
+A workspace has separate durable environments identified by the selected profile/project combination. The frontend generates `.profile-NAME`, `.profile-NAME.project`, or `.project` suffixes; config files have no `name` field. Each identity requires explicit creation. Source references and frontend provenance are recorded separately; names do not encode the locations used for resolution. Folder targeting selects one profile/project identity from conventional source locations rather than scanning saved sessions or substituting another profile.
 
 Container identity remains a function of:
 
@@ -113,7 +113,7 @@ Use one layer-selection rule for all profile/project artifacts:
 
 This deliberately replaces the current explicit-profile precedence reversal. Invalid participating configuration remains a hard error; exclusion is not an invalid-config fallback.
 
-Each source has optional `inherit` metadata. Read relevant metadata from right to left, stopping at the last cutoff before touching discarded sources. Naming belongs to the profile/project frontend, not source contents. Full desired resolution validates retained settings/artifacts. `--project-dir` selects one alternative project directory and records its absolute reference; exact-session access uses saved `sources`, and folder lookup rejects ambiguous overrides. Single-target `recreate --project-dir` replaces the binding under the operation lock and publishes it with the new record; selecting the workspace's `.devbox/` clears it. Exact targets can replace an unavailable old source. No-flag recreation keeps the binding; bulk rebinding and changes to profile/project identity are rejected.
+Each source has optional `inherit` metadata. Read relevant metadata from right to left, stopping at the last cutoff before touching discarded sources. Naming belongs to the profile/project frontend, not source contents. Full desired resolution validates retained settings/artifacts. Profiles live under `<home>/profiles/<name>/` and projects under `<workspace>/.devbox/`. Exact-session access uses saved `sources`. Recreation resolves them from the reread record under the operation lock and rejects changes to profile/project participation.
 
 This behavior must exist in one pure resolver with table-driven tests. No other package may reimplement artifact precedence.
 
@@ -335,7 +335,7 @@ It contains:
 - schema version `4` (strict current format; older development records require a clean reset, with no compatibility reader or migration);
 - required image/container/runtime input snapshots, with committed fingerprints validated against them;
 - immutable random session ID;
-- ordered config `sources` independent of composed identity, including any explicit project-directory override;
+- ordered profile/project config `sources` independent of composed identity;
 - deterministic container name, workspace, slot, and profile;
 - harness name and effective definition origin;
 - created time, last activity time, and last action;

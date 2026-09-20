@@ -107,15 +107,9 @@ profile/project selection determines environment names. Source creation is spars
 inherit: false discards preceding config sources, including explicitly selected
 profiles and all their artifacts; built-in/global settings remain. Other absent
 settings inherit, additive lists append, and overlapping mount targets fail.
-create --project-dir selects one alternative project config directory and saves
-its absolute reference. Later access, status, and recreation reuse that source.
-recreate <session> --project-dir PATH changes the saved binding without deleting
-history; selecting the workspace's .devbox/ clears the override. Use an exact
-session target if the old directory is unavailable. Rebinding requires one
-project-enabled target, preserves its profile/project identity, and commits with
-the recreated record; omitting the flag keeps the existing binding.
-Project config menus honor the saved directory; use an exact session target when
-folder overrides are ambiguous. Missing sources never fall back to .devbox/.
+Project configuration lives in the workspace's .devbox/ directory. Exact-session
+access and recreation retain recorded profile/project participation independently
+of changed defaults. Missing required sources are errors.
 
 base_image chooses the upstream Debian/Ubuntu-compatible image. Devbox prepares
 the development user/runtime before custom Dockerfiles build in source order.

@@ -104,7 +104,7 @@ func TestDirectLookupIgnoresUnrelatedCorruptionAndRejectsConflictingSelectors(t 
 	}
 }
 
-func TestProjectBindingLookupOnlyReadsMatchingSlots(t *testing.T) {
+func TestFolderLookupOnlyReadsSelectedSession(t *testing.T) {
 	for _, tt := range []struct {
 		slot string
 		fail bool
@@ -113,14 +113,13 @@ func TestProjectBindingLookupOnlyReadsMatchingSlots(t *testing.T) {
 		{"profile-other.project", false},
 		{"profile-test", false},
 		{"profile-test.project", true},
-		{"project", true},
+		{"project", false},
 	} {
 		t.Run(tt.slot, func(t *testing.T) {
 			e, _, q := fixture(t)
 			ctx := context.Background()
 			write(t, filepath.Join(e.Store.Home, "config.json"), `{"default_profile":"test"}`)
-			q.ProjectDir = t.TempDir()
-			write(t, filepath.Join(q.ProjectDir, "config.json"), `{}`)
+			write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{}`)
 			made, err := e.Create(ctx, q)
 			if err != nil {
 				t.Fatal(err)
@@ -130,8 +129,8 @@ func TestProjectBindingLookupOnlyReadsMatchingSlots(t *testing.T) {
 			for _, profile := range []string{"", q.Profile} {
 				r, err := e.Locate(ctx, q.Workspace, profile)
 				if tt.fail {
-					if err == nil || !strings.Contains(err.Error(), "unreadable") {
-						t.Fatal("unreadable relevant binding was ignored", err)
+					if err == nil {
+						t.Fatal("unreadable selected session was ignored", err)
 					}
 				} else if err != nil || r.Identity.Name != made.Name {
 					t.Fatal("unrelated slot blocked lookup", r.Identity, err)

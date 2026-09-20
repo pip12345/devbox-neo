@@ -11,7 +11,7 @@ All environment commands must target the selected combination consistently. If i
 Configuration files are the lasting source of settings:
 
 - **Profile:** reusable defaults.
-- **Project `.devbox` or its saved `--project-dir` override:** persistent project-specific settings layered above the selected profile.
+- **Project `.devbox`:** persistent project-specific settings layered above the selected profile.
 - **Global configuration:** defaults and settings shared across environments.
 
 Remove configuration overrides from `create` and `recreate`. Configure first, then create; edit configuration, then recreate. Recreation preserves the environment's identity and saved harness state while applying the current contents of its selected configuration sources.

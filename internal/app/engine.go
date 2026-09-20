@@ -38,7 +38,6 @@ type Request struct {
 	Profile       string
 	Overrides     config.Layer
 	IgnoreProject bool
-	ProjectDir    string
 	Sources       []config.Source
 	Recorded      *environment.Identity
 	Continue      bool
@@ -58,7 +57,7 @@ type Result struct {
 }
 
 func (e *Engine) resolveSpec(q Request) (environment.Spec, error) {
-	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, Overrides: q.Overrides, IgnoreProject: q.IgnoreProject || e.IgnoreProject, ProjectDir: q.ProjectDir, Sources: q.Sources, Recorded: q.Recorded, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
+	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, Overrides: q.Overrides, IgnoreProject: q.IgnoreProject || e.IgnoreProject, Sources: q.Sources, Recorded: q.Recorded, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
 }
 func (e *Engine) Resolve(q Request) (environment.Spec, error) {
 	spec, err := e.resolveSpec(q)
@@ -615,8 +614,8 @@ func (e *Engine) attachRun(l *store.Locked, r store.Record, action string, run f
 	return run()
 }
 func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, error) {
-	// Select saved state before resolving desired inputs. In particular, an
-	// exact target can replace a source directory which no longer exists.
+	// Resolve from the locked record so recreation cannot switch to today's
+	// default profile or a source selection read before another mutation.
 	target := ""
 	if q.Recorded != nil {
 		target = q.Recorded.Name
@@ -644,7 +643,14 @@ func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, e
 	if err = l.RequireIdle(); err != nil {
 		return Result{}, err
 	}
-	s, err := e.recreationSpec(old, q)
+	if q.Recorded != nil && q.Profile != "" && q.Profile != old.Identity.Profile {
+		return Result{}, fmt.Errorf("profile does not match the recorded session")
+	}
+	if (e.IgnoreProject || q.IgnoreProject) && old.Identity.Project {
+		return Result{}, fmt.Errorf("project exclusion does not match the recorded session")
+	}
+	q.Workspace, q.Profile, q.Recorded, q.Sources = old.Identity.Workspace, old.Identity.Profile, &old.Identity, old.Sources
+	s, err := e.Resolve(q)
 	if err != nil {
 		return Result{}, err
 	}

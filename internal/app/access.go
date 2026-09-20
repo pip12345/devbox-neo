@@ -39,19 +39,11 @@ func (e *Engine) Locate(ctx context.Context, target, profile string) (store.Reco
 		}
 		return r, err
 	}
-	projectDir, err := e.Store.ProjectDirectory(ctx, target, profile, e.IgnoreProject)
+	id, err := environment.Select(e.Store.Home, target, profile, e.IgnoreProject, nil)
 	if err != nil {
 		return store.Record{}, err
 	}
-	id, err := environment.Select(e.Store.Home, target, profile, e.IgnoreProject, projectDir, nil)
-	if err != nil {
-		return store.Record{}, err
-	}
-	r, err := e.readSession(ctx, id.Name)
-	if err == nil && r.Identity != id {
-		return store.Record{}, commanderror.New("selection_collision", "Selected configuration collides with a different saved source selection. Use the exact session target.", id.Name, nil)
-	}
-	return r, err
+	return e.readSession(ctx, id.Name)
 }
 func (e *Engine) Start(ctx context.Context, target, profile string) (result Result, err error) {
 	r, err := e.Locate(ctx, target, profile)

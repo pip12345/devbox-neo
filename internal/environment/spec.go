@@ -29,12 +29,11 @@ import (
 const ContainerPrefix = "devbox-"
 
 type Identity struct {
-	Workspace  string `json:"workspace"`
-	Slot       string `json:"slot"`
-	Name       string `json:"name"`
-	Profile    string `json:"profile,omitempty"`
-	Project    bool   `json:"project"`
-	ProjectDir string `json:"project_dir,omitempty"`
+	Workspace string `json:"workspace"`
+	Slot      string `json:"slot"`
+	Name      string `json:"name"`
+	Profile   string `json:"profile,omitempty"`
+	Project   bool   `json:"project"`
 }
 
 func Identify(workspace, profile string, project bool) (Identity, error) {
@@ -110,7 +109,6 @@ type Request struct {
 	Profile       string
 	Overrides     config.Layer
 	IgnoreProject bool
-	ProjectDir    string
 	Sources       []config.Source
 	Recorded      *Identity
 	UID           int
@@ -136,15 +134,15 @@ func resolve(q Request, project *config.Layer) (Spec, error) {
 	} else {
 		q.Host = maps.Clone(q.Host)
 	}
-	selection := artifact.Selection{Profile: q.Profile, IgnoreProject: q.IgnoreProject, ProjectDir: q.ProjectDir, Sources: q.Sources}
+	selection := artifact.Selection{Profile: q.Profile, IgnoreProject: q.IgnoreProject, Sources: q.Sources}
 	if q.Recorded != nil {
-		selection.Recorded = &artifact.Participation{Profile: q.Recorded.Profile, Project: q.Recorded.Project, ProjectDir: q.Recorded.ProjectDir, Sources: q.Sources}
+		selection.Recorded = &artifact.Participation{Profile: q.Recorded.Profile, Project: q.Recorded.Project, Sources: q.Sources}
 	}
 	r, err := artifact.PreviewSelection(q.Home, q.Workspace, selection, q.Overrides, project, q.Host)
 	if err != nil {
 		return spec, err
 	}
-	identity := Identity{Workspace: q.Workspace, Profile: r.Profile, Project: r.Project, ProjectDir: r.Selection.ProjectDir, Slot: Slot(r.Profile, r.Project)}
+	identity := Identity{Workspace: q.Workspace, Profile: r.Profile, Project: r.Project, Slot: Slot(r.Profile, r.Project)}
 	identity.Name = ContainerName(identity.Workspace, identity.Slot)
 	if err = identity.ValidateSlot(); err != nil {
 		return spec, err

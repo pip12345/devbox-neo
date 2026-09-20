@@ -22,10 +22,6 @@ func resourceCommands(factory resourceFactory) []*cobra.Command {
 	for _, kind := range []string{"profile", "project"} {
 		kind := kind
 		group := &cobra.Command{Use: kind, Short: "Manage " + kind + " configuration"}
-		if kind == "project" {
-			group.PersistentFlags().String("project-dir", "", "Edit or initialize this project configuration directory instead of .devbox/")
-			_ = group.MarkPersistentFlagDirname("project-dir")
-		}
 		owner := func(s *resource.Service, name string) (resource.Owner, error) {
 			if kind == "profile" {
 				return s.Profile(name)
