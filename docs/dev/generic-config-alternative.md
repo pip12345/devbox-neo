@@ -21,6 +21,8 @@ Remove the global configuration layer and its editing commands. There is no glob
 
 ## First use and command entry points
 
+Commands below use the proposal's `devbox` spelling; the development executable remains `devbox-neo`. `<home>` means the selected Devbox home: `--home` takes precedence over `DEVBOX_HOME`, then the binary's default. The rewrite's default remains `~/.devbox-neo`, with its existing rejection of the old `~/.devbox` home. Named configs live in `<home>/configs`, including when a custom home is selected; no config lookup bypasses that selection.
+
 After installing the CLI and Docker, a first-time user runs these commands from their workspace:
 
 ```sh
@@ -37,7 +39,7 @@ Each interactive workflow has one command entry point:
 | Command | Responsibility |
 |---|---|
 | `config create <reference>` | Create a config directory and offer its initial setup |
-| `config edit <reference>` | Edit an existing config directory directly |
+| `config edit <reference>` | Edit an existing config directory and add missing optional files |
 | `create <folder>` | Name a session and select existing config sources |
 | `config sources <folder|session>` | Manage a session's source chain and inspect combined configuration |
 | `set <folder|session>` | Select or clear a folder's default session |
@@ -75,7 +77,7 @@ Config references resolve as follows:
 
 | Reference | Meaning |
 |---|---|
-| `blah` | `~/.devbox/configs/blah` |
+| `blah` | `<home>/configs/blah` |
 | `./myconfig` | `myconfig` relative to the invoking working directory |
 | `configs/local` | `configs/local` relative to the invoking working directory |
 | `../shared` | A relative filesystem path |
@@ -83,9 +85,9 @@ Config references resolve as follows:
 | `/abs/path/to/config/` | An absolute filesystem path |
 | `.` or `..` | The current or parent directory |
 
-A reference containing `/` is a path. Bare config names cannot contain `/`; they identify directories under `~/.devbox/configs/`. The special directory references `.` and `..` are paths too. There is no local-then-global search or fallback.
+A reference containing `/` is a path. Bare config names cannot contain `/`; they identify directories under `<home>/configs/`. The special directory references `.` and `..` are paths too. There is no local-then-global search or fallback.
 
-`~/.devbox/configs/` is a convenience location, not a registry or a different kind of config. Use `./blah` to select a local directory named `blah` instead of the shorthand location.
+`<home>/configs/` is a convenience location, not a registry or a different kind of config. Under the rewrite's default home, `base` resolves to `~/.devbox-neo/configs/base`. Under `--home /srv/devbox`, it resolves to `/srv/devbox/configs/base`. Creation, editing, source selection, and config pickers all use this same rule. Use `./blah` to select a local directory named `blah` instead of the shorthand location. Explicit filesystem references such as `~/coolconfig` remain ordinary paths and do not depend on the selected Devbox home.
 
 The workspace and configs are independent inputs. Relative config paths initially resolve against the invoking working directory, not against the workspace argument. Save each reference in its selected order using one of two forms:
 
@@ -118,7 +120,7 @@ devbox create . --name main                         # choose config sources
 devbox create . --config base --config ./devconfig  # enter the local name
 ```
 
-The source picker offers existing configs under `~/.devbox/configs/` and an option to enter the path of an existing config directory. It does not create or edit directories, select their harness, or initialize their artifacts. If no reusable configs are listed, explain how to create one with `devbox config create base`; the user can still supply an existing directory path.
+The source picker offers existing configs under `<home>/configs/` and an option to enter the path of an existing config directory. It does not create or edit directories, select their harness, or initialize their artifacts. If no reusable configs are listed, explain how to create one with `devbox config create base`; the user can still supply an existing directory path.
 
 Name entry uses `Session name (:back cancels): ` with no prefilled text. The picker shows the ordered chain and supports adding, replacing, removing, and reordering sources before session creation. This example shows the summary after the user has entered `Main` and selected two sources; the name is not a default:
 
@@ -128,7 +130,7 @@ Create session · Main
 Folder: /work/api
 
 Config sources, in order:
-   1. base         fixed       ~/.devbox/configs/base
+   1. base         fixed       ~/.devbox-neo/configs/base
    2. devconfig    relative    /work/api/devconfig
 
 What would you like to do?
@@ -316,13 +318,25 @@ devbox config create base
 devbox config create ./devconfig
 ```
 
-Use the same config-reference rules as `--config`. This command owns the config-creation workflow: create missing config files, offer harness/artifact setup, and preserve existing files. Reuse the existing creation and initialization mechanisms rather than introducing a second implementation or a separate `config init` command. Do not open the existing-directory editor as another step of creation. Without a terminal, do not prompt or guess a harness; create the minimal config and accept explicit setup options.
+Use the same config-reference rules as `--config`. This command creates a new `config.json` and offers initial harness/artifact setup. An existing directory without `config.json` is allowed; preserve its existing files. If `config.json` already exists, fail before prompting or changing anything, even if that file is empty or invalid. Do not rerun setup or switch into the editor:
+
+```text
+Error: Config already exists.
+Target: base
+
+Edit the existing config:
+  devbox config edit base
+```
+
+Use the entered reference in the repair command. Check for an existing `config.json` before prompting, then recheck under the config-directory owner lock before writing. Claim `config.json` using the existing no-replace publication helper before adding optional artifacts, so concurrent creation cannot overwrite or modify the winning creator's config.
+
+Reuse the existing creation and initialization mechanisms rather than introducing a second implementation or a separate `config init` command. Do not open the existing-directory editor as another step of creation. Without a terminal, do not prompt or guess a harness; use the explicit setup options defined below, or create the minimal config when none are supplied.
 
 Config creation neither creates a session nor selects a default. A newly created config only joins a session's source chain when the user selects it. Dedicated config copy, rename, and delete commands are outside this proposal; config directories remain ordinary filesystem directories.
 
 ### Config creation menus
 
-Harness selection uses the shared numbered menu. A fresh config starts unset; an existing harness choice is shown when present. The unset option permits reusable overlays that do not choose a harness themselves:
+Harness selection uses the shared numbered menu. A new config starts unset; returning from the optional-files step shows the pending harness choice. This is not a setup menu for an existing config. The unset option permits reusable overlays that do not choose a harness themselves:
 
 ```text
 Select a harness
@@ -345,9 +359,9 @@ Select optional files one number at a time. Each submitted number toggles that i
 ```text
 Choose optional files
 
-Current selection: Harness config files, before-open.sh
+Current selection: Harness config files (pi), before-open.sh
 
-   [1]  ✓ Harness config files
+   [1]  ✓ Harness config files (pi)
    [2]    setup.sh
    [3]  ✓ before-open.sh
    [4]    Dockerfile
@@ -359,9 +373,11 @@ Current selection: Harness config files, before-open.sh
    Choose a number >
 ```
 
-Keep item numbers stable while toggling. Selected names are emphasized and checkmarks are green; deselection removes the emphasis and checkmark. An empty selection is valid and displays `Current selection: None`. Offer Harness config files only when a harness has been selected.
+Keep item numbers stable while toggling. Selected names are emphasized and checkmarks are green; deselection removes the emphasis and checkmark. An empty selection is valid and displays `Current selection: None`.
 
-Continue accepts the choices and performs config creation/setup, preserving existing files. Back returns to harness selection with pending choices retained; toggling does not write files. Cancel from the first step creates nothing. After completion, print the created/kept file report and exit, without opening the settings editor or session creation.
+Harness config files are available even when this config leaves its Harness setting unset. Turning that item on opens a numbered `Choose which harness's config files to add` picker. Show the pending/configured harness as the initial file-generation target when available, but allow choosing any available harness. Back cancels that unfinished selection. The chosen target appears beside the artifact item and in the selection summary; it controls only the generated directory and files, not the config's Harness setting. An overlay can therefore contain `pi/` files without selecting Pi for every session that uses it. Choosing another file-generation target does not change the persistent harness choice. Use the same artifact-target picker from Add optional files in `config edit`, not a second harness-settings editor.
+
+Continue accepts the choices, creates the new config, and adds missing selected artifacts without replacing existing files. Back returns to harness selection with pending choices retained; toggling does not write files. Cancel from the first step creates nothing. After completion, print the created/kept file report and exit, without opening the settings editor or session creation. If artifact setup fails after `config.json` was created, report that the config now exists and direct the user to `config edit` to finish adding files; do not suggest repeating `config create`.
 
 ### Edit a config directory
 
@@ -372,7 +388,7 @@ devbox config edit base
 devbox config edit ./.devbox
 ```
 
-This command uses the same config-reference rules as `config create` and `--config`. It edits only the selected directory, not a session's source list or merged configuration. It does not create a missing directory; point the user to `config create` when creation is needed.
+This command uses the same config-reference rules as `config create` and `--config`. It edits settings and adds missing optional files only in the selected directory, not a session's source list or merged configuration. It requires an existing `config.json`; point the user to `config create` when the directory or config file is missing. Invalid existing configuration is a repair error, not permission to recreate or overwrite it.
 
 Show the directory's actual path and other saved sessions referencing it before editing, separately from the compact settings dashboard. Resolve references against each session's workspace when finding shared use; do not compare reference text alone. Reuse the existing settings editor and its immediate-save behavior. Back only navigates within the editor or exits it. Source-selection menus must not provide another route into this editor.
 
@@ -394,6 +410,8 @@ Config · base
    [8]  Port forwards          None                  default
    [9]  VS Code extensions     None                  default
    [10] Base image             debian:bookworm-slim   default
+
+   [11] Add optional files
 
    [0]  Done
 
@@ -421,6 +439,35 @@ What would you like to do?
 ```
 
 An absent list shows `No mounts configured here.` and only Add mount and Back. Show Remove this setting only when the source key exists. Text entry retains `New mount (:back cancels): `; successful edits print `Saved Mounts.` and return to the list. Do not add draft or confirmation stages.
+
+Add optional files uses the shared toggle-selection control for harness config files, `setup.sh`, `before-open.sh`, and `Dockerfile`. It is an operation in the directory editor, not a route back into `config create` or its harness-selection workflow. Harness files use the separate file-generation target described above; do not require or change the directory's Harness setting just to add them. Continue adds only missing selected files under the existing config-directory owner lock, reports created/kept paths, and returns to the dashboard. Back cancels the pending file selection and returns without adding files. Existing files and settings are never overwritten by artifact setup; deselecting an item does not delete anything.
+
+### Non-interactive config setup
+
+Keep setup automation available on the same create/edit commands rather than requiring menus or retaining a separate `init` command:
+
+| Flag on `config create` / `config edit` | Meaning |
+|---|---|
+| `--harness NAME` | Explicitly set the config's persistent `harness` field |
+| `--artifact NAME` | Add missing files for the requested artifact; repeatable, retaining the existing comma-separated flag syntax too |
+| `--artifact-harness NAME` | Choose which harness's files to generate, without setting or changing the config's `harness` field |
+| `--json` | Print the operation result as JSON and never prompt |
+
+Artifact names remain `harness-config`, `setup.sh`, `before-open.sh`, and `Dockerfile`. `--artifact-harness` requires `--artifact harness-config`. For harness-config generation, an explicit `--artifact-harness` takes precedence; otherwise use the config's own harness after applying an explicit `--harness`, if supplied. If neither provides a target, fail before changes with a hint to supply `--artifact-harness`. Do not infer it from a referencing session or a global default. Non-harness artifacts do not require a selected harness.
+
+Supplying `--harness` or `--artifact` requests a direct operation even in a terminal: perform only the requested changes and do not open menus for omitted optional choices. With neither, interactive create/edit use their normal menus. Without a terminal or with `--json`, `config create` with no setup options creates only the minimal versioned config; `config edit` requires at least one explicit operation and otherwise returns an actionable error. `--json` is an output option, not an edit by itself.
+
+Examples:
+
+```sh
+devbox config create base --harness pi --artifact Dockerfile --json
+devbox config create ./overlay --artifact harness-config --artifact-harness pi
+devbox config edit base --artifact setup.sh --artifact before-open.sh --json
+devbox config edit ./overlay --artifact harness-config --artifact-harness opencode
+devbox config edit base --harness opencode
+```
+
+The overlay creation example leaves `harness` unset. Adding OpenCode files later also leaves it unchanged; both harness file trees can coexist. Only the explicit `--harness` option changes that setting. Existing-file preservation, owner locks, validation, and conflict checks are the same for menus and flags. Validate requested options and artifact targets before mutation. Results retain created/kept paths, warnings, and next-step guidance, using JSON rather than human menu text when requested. Partial failures report completed changes rather than claiming rollback. These operations neither create sessions nor apply container changes.
 
 ### Folder overview
 
@@ -461,7 +508,7 @@ Session: Main
 Folder:  /work/api
 
 Sources, in order:
-   1. base         fixed       ~/.devbox/configs/base
+   1. base         fixed       ~/.devbox-neo/configs/base
    2. devconfig    relative    /work/api/devconfig
    3. personal     fixed       ~/personal
 
@@ -605,12 +652,27 @@ Centralize default clearing in the saved-session removal path rather than only t
 
 ## Copy and move
 
+Keep `copy` and `copy --move`, with explicit source and destination naming:
+
+```sh
+devbox copy . --name Main --as Experiment
+devbox copy . /work/api-copy --name Main
+devbox copy . /work/api-copy --name Main --as Review
+devbox copy . --name Main --as Renamed --move
+```
+
+The command shape is `copy <folder|session> [destination-folder]`. Source selection follows the normal exact-target / folder-plus-`--name` / folder-default rules. `--as NAME` supplies the destination's folder-local name and uses the same validation as creation. Without it, preserve the source's local name. Without a destination folder, use the source's recorded workspace, not the invoking working directory; this supports same-folder copies and moves under another name. An identical source/destination identity is an error with a hint to choose `--as` or another destination folder.
+
+A copy creates independent session identity and keeps the source. A move preserves durable session identity and removes the source only after the destination is committed, following existing transfer semantics. Same-folder moves with `--as` change the local/full name through that transfer path, not by editing a live record in place. Destination-name collisions fail; never overwrite an existing session or invent another name. Retain `--dry-run` and `--json` and the existing idle-state, running-intent, and recovery rules.
+
+The source `--name` and destination `--as` selectors replace the old profile/project `--from` and `--to` slot selectors; do not retain those as aliases. The transfer journal pins both endpoint identities, including the chosen destination local name, so retries do not rediscover a different default or lose an explicit `--as`. Default-selection behavior is the same for same-folder and cross-folder transfers: copy leaves defaults alone; move clears a matching source default without selecting the destination.
+
 Copy and move preserve each source reference's form and order:
 
 - Workspace-relative references resolve against the destination workspace. A saved `devconfig` reference follows the workspace; a saved `../shared` reference follows the destination's relationship to its parent.
 - Fixed references continue to use the same absolute directory. Do not automatically rebase a fixed path just because it was inside the original workspace.
 
-This changes references, not the filesystem contract of copy/move: it does not implicitly copy or move config directories. The user is responsible for making the referenced directories available at the destination. Preserve the local session name and fail on a destination name collision rather than silently renaming or replacing an existing session. Show the destination's resolved sources and their forms clearly.
+This changes references, not the filesystem contract of copy/move: it does not implicitly copy or move workspace files or config directories. The user is responsible for making the referenced directories available at the destination. Show the destination's local/full name and resolved sources with their forms clearly, including in dry-run output.
 
 Validate required destination sources before materializing its container. If a source later goes missing, opening also fails with its saved reference, resolved missing path, and a repair hint. For example:
 
@@ -640,7 +702,7 @@ Implementation tests should cover these observable behaviors:
 6. Source edits, replacement, and reordering never rename the session. Incomplete intermediate edits can be saved and repaired, but cannot be used to open or recreate until valid.
 7. Editing a shared source affects every referencing session. Managed runtime files synchronize before starting a stopped container, including new files and removal of obsolete managed files, without erasing unmanaged files/history. Opening into an already-running container does not synchronize again; a stop/start applies pending file changes without recreation. Image/container changes remain visible as unapplied until recreation.
 8. Failed recreation retains desired edits without advancing the applied inputs for failed changes. Existing recovery and script-side-effect contracts remain intact.
-9. Copy/move rebases workspace-relative references, preserves fixed references, and fails clearly on missing required sources or local-name collisions. Initial relative arguments resolve against the invoking directory even when it differs from the workspace.
+9. Copy/move rebases workspace-relative references, preserves fixed references, and fails clearly on missing required sources or local-name collisions. `--as` permits same-folder copies/moves and explicitly named cross-folder destinations; omitted destination folders use the source workspace. Names are preserved when `--as` is absent, and identical source/destination identities fail rather than overwriting. Retried transfers retain the pinned source and destination, including an explicit destination name. Initial relative config arguments resolve against the invoking directory even when it differs from the workspace.
 10. Concurrent default selection, source-chain edits, deletion, and move cleanup respect the session-before-workspace lock order. Deletion clears a matching default before removing state; container-only deletion, cancellation, and dry runs leave it unchanged. A stale default never selects a newly created session with a reused name. A stale source editor rejects changed sources/session identity rather than overwriting another completed edit; unrelated activity updates are preserved. Lifecycle operations resolve sources from the locked record, not a pre-lock snapshot.
 11. Global environment and harness defaults no longer contribute to resolution. The explicit source chain and built-in defaults account for the effective environment.
 12. First-time use works through `config create`, `create`, `set`, and `open`. The session-name prompt starts blank and requires user input. Empty config pickers provide a creation command without opening a nested wizard, while still allowing selection of an existing directory path.
@@ -649,6 +711,10 @@ Implementation tests should cover these observable behaviors:
 15. Optional artifacts toggle individually with stable numbers, visible selection updates, Continue, and Back. Back retains pending creation choices without writing files. Text input still uses `:back`; no raw-terminal or Escape controls are introduced. Completed settings/source-chain edits survive Back and EOF, while incomplete input is abandoned.
 16. The folder source-management entry screen clearly selects a session; the next screen manages that session's sources. Back returns to that picker, while directly targeted source editing ends with Done. Directory editors show only their own contributions over built-in defaults and never present another session's merged values as editable local settings.
 17. An absent workspace-state file means no default without seeding one during reads. Corrupt default state is reported without hiding sessions or blocking exact session lookup. Failure after default clearing but before state removal leaves a recoverable session with no default, not a dangling selection. Copy/move retries preserve the specified source/destination default behavior.
+18. Repeating `config create` for a directory with `config.json` fails before prompting or mutation and points to `config edit`, including for empty or invalid existing files. An existing directory without `config.json` is accepted without overwriting its files. Concurrent creators cannot replace one another's config or add artifacts after losing the creation race. Existing configs gain missing optional files through `config edit`; cancellation and deselection do not delete files, and completed additions preserve existing content and settings.
+19. Harness-file generation works with an unset or different persistent harness. Its target picker and `--artifact-harness` generate the requested harness tree without altering `harness`. Only an explicit Harness edit or `--harness` changes that setting. General artifacts need no harness, and existing files survive repeated additions.
+20. `config create` and `config edit` preserve scripted setup through `--harness`, repeatable/comma-separated `--artifact`, and `--json`, with a separate `--artifact-harness` target when needed. Explicit operations never open menus; missing required artifact targets fail before mutation. JSON contains the operation result without menu output. Minimal non-interactive creation is supported, while an edit with no operation fails clearly.
+21. Bare config names and config pickers use `<selected-home>/configs` consistently for create, edit, and session source selection. Test the development default, `DEVBOX_HOME`, and overriding `--home`; no lookup falls back to the old `~/.devbox` home or another installation. Explicit filesystem references remain independent of the selected home.
 
 ## Scope
 
