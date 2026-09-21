@@ -1,6 +1,6 @@
 # Proposal: folder-local sessions with explicit configs
 
-Status: replacement proposal, not an implementation contract. This replaces the previous generic-config alternative. It does not authorize runtime changes or migration work.
+Status: approved for implementation, in progress. This replaces the previous generic-config alternative and the profile/project selection model. Implementation checkpoints and unpassed acceptance gates are tracked in [progress.md](progress.md). The separately approved `devbox-migrate` adaptation targets this model; ordinary runtime loading gains no migration or compatibility path.
 
 ## The whole model
 
@@ -720,4 +720,4 @@ Implementation tests should cover these observable behaviors:
 
 This is a replacement for profile/project-derived session selection, not another mode layered over it. Reuse existing lifecycle, locking, config editing, and ownership mechanisms where their contracts fit. The naming, persistence, and locking decisions above are part of this proposal, not unresolved user-facing choices.
 
-No migration, old-format readers, or compatibility layer is included in this proposal.
+No runtime migration, old-format readers, or compatibility layer is included. The existing standalone `devbox-migrate` utility is separately approved for adaptation to emit explicit configs and named sessions. Keep its old-installation parsing and conversion in the migration package; normal config/session loading reads only the new schema.

@@ -1,6 +1,13 @@
 # Implementation progress
 
-The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md). The migration utility remains a separate delivery described in [migration-plan.md](migration-plan.md).
+The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). The migration utility remains separate from runtime loading; adapting its destination model to named sessions and explicit configs is also approved.
+
+## Folder-local sessions and explicit configs — implementation in progress
+
+- First checkpoint adds explicit config-reference capture/expansion and folder-default persistence. Relative arguments resolve against the invoking directory and remain workspace-relative; fixed references retain their absolute target. Named references use the selected Devbox home. Runtime resolution rejects duplicate canonical directories, including symlink aliases, while saved-reference validation does not require accessible sources.
+- Folder defaults use a path-keyed state record and stable external workspace lock. Selection pins full name plus durable ID; matching-default cleanup works from a saved identity even after the source record or workspace disappears. Absent reads/clears do not seed a default record, and malformed state fails without replacement.
+- These primitives are not yet connected to session creation, lifecycle lookup, or the CLI. Profile/project behavior still exists at this checkpoint. Schema replacement, lifecycle/default integration, transfers, interactive workflows, completion, importer adaptation, and user/runtime documentation remain pending; this is not a feature-complete release.
+- Validation passed: `make test`, focused config/store race tests, and `git diff --check`. Tests use temporary directories and no Docker resources. Named-session live Docker and manual terminal acceptance remain unrun.
 
 ## Behavior-preserving cleanup — implemented, live Docker acceptance pending
 
