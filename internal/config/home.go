@@ -26,11 +26,11 @@ func Home(explicit, environment, userHome string) (string, error) {
 	} else if strings.HasPrefix(selected, "~/") {
 		selected = filepath.Join(userHome, selected[2:])
 	}
-	absolute, err := canonicalHomePath(selected)
+	absolute, err := CanonicalPath(selected)
 	if err != nil {
 		return "", err
 	}
-	old, err := canonicalHomePath(filepath.Join(userHome, ".devbox"))
+	old, err := CanonicalPath(filepath.Join(userHome, ".devbox"))
 	if err != nil {
 		return "", err
 	}
@@ -40,9 +40,10 @@ func Home(explicit, environment, userHome string) (string, error) {
 	return absolute, nil
 }
 
-// Resolve existing ancestors so a fresh home can be created without trusting
-// symlink aliases. An existing but unresolvable link is an error, not absence.
-func canonicalHomePath(selected string) (string, error) {
+// CanonicalPath resolves existing ancestors so a new home or config directory
+// can be created under its canonical owner lock. An existing but unresolvable
+// link is an error, not absence.
+func CanonicalPath(selected string) (string, error) {
 	current, err := filepath.Abs(selected)
 	if err != nil {
 		return "", err

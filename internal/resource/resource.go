@@ -34,6 +34,7 @@ type Result struct {
 	Path     string              `json:"path"`
 	Harness  string              `json:"harness,omitempty"`
 	Created  []string            `json:"created,omitempty"`
+	Updated  []string            `json:"updated,omitempty"`
 	Skipped  []string            `json:"skipped,omitempty"`
 	Warnings []string            `json:"warnings,omitempty"`
 	Next     []commanderror.Step `json:"next_steps,omitempty"`

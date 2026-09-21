@@ -3,21 +3,16 @@ package resource
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"devbox/internal/artifact"
 	"devbox/internal/commanderror"
 	"devbox/internal/config"
-	"devbox/internal/filesync"
 	"devbox/internal/fsutil"
 	"devbox/internal/harness"
 )
-
-var InitArtifacts = []string{"harness-config", "setup.sh", "before-open.sh", "Dockerfile"}
 
 type InitOptions struct {
 	Harness         string
@@ -108,76 +103,21 @@ func (s Service) Init(ctx context.Context, o Owner, options InitOptions) (Result
 	result.Harness = selected
 	requested := options.Artifacts
 	if options.ChooseArtifacts != nil {
-		requested, err = options.ChooseArtifacts(append([]string(nil), InitArtifacts...))
+		requested, err = options.ChooseArtifacts(append([]string(nil), SetupArtifacts...))
 		if err != nil {
 			return result, err
 		}
 	}
-	files := map[string]harness.File{}
-	for _, name := range requested {
-		switch name {
-		case "harness-config":
-			result.Warnings = append(result.Warnings, h.Warnings...)
-			desiredFiles := map[string]artifact.File{}
-			for p, f := range h.Defaults {
-				desiredFiles[p] = artifact.File{Data: f.Data, Mode: f.Mode}
-				// Keep Devbox guidance inherited unless the user explicitly supplies an override.
-				if p == "skills/devbox/SKILL.md" {
-					continue
-				}
-				files[filepath.Join(selected, p)] = f
-			}
-			if err = filesync.Validate(desiredFiles, h.Definition.Merge); err != nil {
-				return result, err
-			}
-		case "Dockerfile":
-			files[name] = harness.File{Data: []byte("ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n\n# Runs as the prepared development user. Use sudo for system packages.\n# Devbox installs the selected harness after profile/project customization.\n"), Mode: 0600}
-		case "setup.sh":
-			files[name] = harness.File{Data: []byte("#!/bin/bash\nset -euo pipefail\n\n# Runs once per container as devuser; use sudo for system changes.\n"), Mode: 0700}
-		case "before-open.sh":
-			files[name] = harness.File{Data: []byte("#!/bin/bash\nset -euo pipefail\n\n# Runs on each normal open, before attaching the harness.\n"), Mode: 0700}
-		default:
-			return result, fmt.Errorf("unsupported init artifact %q.\nAvailable artifacts: %v", name, InitArtifacts)
-		}
+	seeds, err := planArtifacts(&h, requested)
+	result.Warnings = append(result.Warnings, seeds.warnings...)
+	if err != nil {
+		return result, err
 	}
-	names := make([]string, 0, len(files))
-	for name := range files {
-		names = append(names, name)
+	if err = seeds.preflight(o.Root); err != nil {
+		return result, err
 	}
-	sort.Strings(names)
-	// Preflight all paths before making changes. Existing regular artifacts are
-	// user-owned source files; initialization never refreshes or overwrites them.
-	for _, name := range names {
-		p, err := fsutil.Path(o.Root, name)
-		if err != nil {
-			return result, err
-		}
-		info, err := os.Lstat(p)
-		if err != nil && !os.IsNotExist(err) {
-			return result, err
-		}
-		if err == nil && !info.Mode().IsRegular() {
-			return result, fmt.Errorf("existing artifact is not a regular file: %s", p)
-		}
-	}
-	for _, name := range names {
-		if err = ctx.Err(); err != nil {
-			return result, err
-		}
-		if _, err = fsutil.Dir(o.Root, filepath.Dir(name), 0700); err != nil {
-			return result, err
-		}
-		p := filepath.Join(o.Root, name)
-		f := files[name]
-		err = fsutil.WriteNew(p, f.Data, privateMode(f.Mode))
-		if os.IsExist(err) {
-			result.Skipped = append(result.Skipped, p)
-			continue
-		}
-		if err != nil {
-			return result, err
-		}
-		result.Created = append(result.Created, p)
+	if err = seeds.publish(ctx, o.Root, &result); err != nil {
+		return result, err
 	}
 	if err = ctx.Err(); err != nil {
 		return result, err
