@@ -57,6 +57,7 @@ func TestDockerSSHMastersThroughProxyJump(t *testing.T) {
 	write(t, filepath.Join(state.Home, "profiles/test/config.json"), `{"version":1,"harness":"third"}`)
 	output := new(sshTestOutput)
 	e := &Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{Out: output, Err: output}, UID: os.Getuid(), GID: os.Getgid()}
+	e.OnDiagnostic = func(d Diagnostic) { t.Logf("diagnostic: %+v", d) }
 	result, err := e.Create(ctx, Request{Workspace: t.TempDir(), Profile: "test"})
 	if err != nil {
 		t.Fatalf("create: %v\n%s", err, output.String())

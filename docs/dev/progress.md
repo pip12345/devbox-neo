@@ -2,6 +2,13 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md). The migration utility remains a separate delivery described in [migration-plan.md](migration-plan.md).
 
+## Behavior-preserving cleanup — implemented, live Docker acceptance pending
+
+- Split `app/engine.go` into same-package opening, creation, mount-planning, recovery, and attachment owners. Moved function bodies remain unchanged except the planned record-construction and diagnostic-delivery extractions; lifecycle sequencing, locks, cleanup, and Docker calls remain intact.
+- Extracted side-effect-free creation-record assembly with explicit clock inputs. Added pre-extraction parity coverage for ordinary creation, recreation, prepared destinations, and saved JSON, retaining failed-commit and recovery tests.
+- Typed diagnostics now use synchronous `Engine.OnDiagnostic` delivery and CLI-owned rendering. Resolution warnings and child streams remain unchanged. Tests retain immediate-delivery/cancellation coverage and verify exact text, stream routing, ordering, nil callbacks, and root CLI wiring. Migration callers remain intentionally silent; Docker integration tests explicitly log structured diagnostics.
+- Validation passed: `make test`, `make test-race`, `go vet ./...`, `make build build-migrate`, integration-tag compilation with `go test -tags integration -run '^$' ./...`, and `git diff --check`. The Docker CLI is unavailable here; live Docker lifecycle, recovery, and transfer acceptance remain unrun. Compilation is not live acceptance.
+
 ## Config sources and image/hook chains — implemented, live Docker acceptance pending
 
 - Profiles/projects remain the public interface over shared source composition. Configs have no `name` field. Generic `inherit: false` replaces `inherit_profile` and cuts preceding sources before reading their settings/artifacts, including explicitly selected profiles.

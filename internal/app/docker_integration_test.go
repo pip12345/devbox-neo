@@ -60,6 +60,7 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	}
 	var output bytes.Buffer
 	e := &Engine{Store: s, Docker: docker.Runtime{Runner: runner}, Streams: docker.Streams{Out: &output, Err: &output}, UID: os.Getuid(), GID: os.Getgid()}
+	e.OnDiagnostic = func(d Diagnostic) { t.Logf("diagnostic: %+v", d) }
 	q := Request{Workspace: workspace, Profile: "test", Args: []string{"--version"}}
 	spec, err := e.Resolve(q)
 	if err != nil {

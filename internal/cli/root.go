@@ -41,7 +41,7 @@ func New() *cobra.Command {
 		if f, ok := cmd.InOrStdin().(*os.File); ok {
 			tty = terminal(f)
 		}
-		return &app.Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(), TTY: tty}, TerminalEnv: app.TerminalEnv(os.LookupEnv), IgnoreProject: ignoreProject, UID: os.Getuid(), GID: os.Getgid()}, nil
+		return &app.Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(), TTY: tty}, OnDiagnostic: diagnosticRenderer(cmd.ErrOrStderr()), TerminalEnv: app.TerminalEnv(os.LookupEnv), IgnoreProject: ignoreProject, UID: os.Getuid(), GID: os.Getgid()}, nil
 	}
 	create := &cobra.Command{Use: "create <folder>", Short: "Create a new environment", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)

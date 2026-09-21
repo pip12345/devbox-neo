@@ -41,6 +41,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		factory := func(cmd *cobra.Command) (*app.Engine, error) {
 			engine.Streams.Out = cmd.OutOrStdout()
 			engine.Streams.Err = cmd.ErrOrStderr()
+			engine.OnDiagnostic = diagnosticRenderer(cmd.ErrOrStderr())
 			return engine, nil
 		}
 		root.AddCommand(containerCommands(factory, &profile)...)

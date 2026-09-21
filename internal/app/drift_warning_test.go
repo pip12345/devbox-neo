@@ -7,16 +7,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"devbox/internal/docker"
 )
-
-type warningWriter func([]byte) (int, error)
-
-func (w warningWriter) Write(p []byte) (int, error) { return w(p) }
 
 func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 	for _, mode := range []string{"container", "image", "recovery"} {
@@ -45,8 +42,10 @@ func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 			var output bytes.Buffer
 			warned := false
 			before := len(d.History())
-			writer := warningWriter(func(p []byte) (int, error) {
-				if strings.Contains(string(p), "this container differs from current configuration") {
+			var emitted []Diagnostic
+			e.OnDiagnostic = func(diagnostic Diagnostic) {
+				emitted = append(emitted, diagnostic)
+				if diagnostic.Code == "creation_drift" {
 					if output.Len() != 0 || len(d.History()) != before {
 						t.Fatal("creation warning was not first", output.String())
 					}
@@ -55,9 +54,8 @@ func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 					}
 					warned = true
 				}
-				return output.Write(p)
-			})
-			e.Streams.Out, e.Streams.Err = writer, writer
+			}
+			e.Streams.Out, e.Streams.Err = &output, &output
 			d.Fail = func([]string) error {
 				if !warned {
 					return errors.New("Docker reached before warning")
@@ -86,7 +84,7 @@ func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 			if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "creation_drift" {
 				t.Fatal("typed warning missing", result)
 			}
-			if strings.Count(output.String(), "this container differs from current configuration") != 1 || !strings.Contains(output.String(), "skipping non-regular") || !strings.Contains(output.String(), "entrypoint output") {
+			if len(emitted) != 1 || !reflect.DeepEqual(emitted, result.Diagnostics) || !strings.Contains(output.String(), "skipping non-regular") || !strings.Contains(output.String(), "entrypoint output") {
 				t.Fatal("warning duplicated or subsequent output lost", output.String())
 			}
 			if string(getFile(t, liveFile)) != "new config" {
@@ -108,12 +106,11 @@ func TestOpenCancelledAfterCreationWarningDoesNotMutate(t *testing.T) {
 	beforeCalls := len(d.History())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	e.Streams.Err = warningWriter(func(p []byte) (int, error) {
-		if strings.Contains(string(p), "this container differs from current configuration") {
+	e.OnDiagnostic = func(diagnostic Diagnostic) {
+		if diagnostic.Code == "creation_drift" {
 			cancel()
 		}
-		return len(p), nil
-	})
+	}
 	result, err = e.Open(ctx, q)
 	if !errors.Is(err, context.Canceled) || len(result.Diagnostics) != 1 {
 		t.Fatal("open ignored cancellation", result, err)

@@ -63,13 +63,17 @@ func TestDriftBaselineTracksAppliedNotMerelyDesiredInputs(t *testing.T) {
 					t.Fatal("applied runtime input remained pending", inputChange)
 				}
 			}
-			var output bytes.Buffer
-			e.Streams.Err = &output
+			var emitted []Diagnostic
+			e.OnDiagnostic = func(diagnostic Diagnostic) { emitted = append(emitted, diagnostic) }
 			if _, err := e.Open(ctx, q); err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(output.String(), "network: default -> host") || !strings.Contains(output.String(), "environment variable TOKEN added") || strings.Contains(output.String(), "never-display-me") {
-				t.Fatal("unclear or unsafe warning", output.String())
+			if len(emitted) != 1 || !reflect.DeepEqual(emitted[0].PendingInputChanges, want) {
+				t.Fatal("callback lost creation reasons", emitted)
+			}
+			encoded, err := json.Marshal(emitted)
+			if err != nil || bytes.Contains(encoded, []byte("never-display-me")) {
+				t.Fatal("unsafe diagnostic", string(encoded), err)
 			}
 			if _, err := e.Recreate(ctx, q, false); err != nil {
 				t.Fatal(err)

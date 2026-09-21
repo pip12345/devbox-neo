@@ -2,6 +2,20 @@
 
 `app.Engine` owns environment transitions. It resolves desired inputs before executing them, validates the recorded environment under an operation lock, and commits state only at defined application points. Docker execution consumes the captured plan rather than rereading source files.
 
+The lifecycle code stays in one `app` package, with files organized by responsibility:
+
+| File | Ownership |
+|---|---|
+| `engine.go` | Dependencies, request/result types, resolution, and ownership checks |
+| `open.go` | Open sequencing and harness launch |
+| `create.go`, `creation_record.go` | Creation/recreation, record assembly, materialization, and commit cleanup |
+| `mount_plan.go`, `mounts.go` | Store/auth mount planning, managed-config synchronization, and recorded mount-parent preparation |
+| `startup.go` | Ordinary stopped-to-running preparation |
+| `recovery.go` | Missing-container recovery from the recorded contract |
+| `attach.go` | Attachment leases and last-command cleanup |
+
+Command-specific orchestration remains explicit; sharing preparation does not make creation, ordinary access, recovery, and transfer rollback interchangeable.
+
 ## Desired specification versus recorded contract
 
 `environment.Spec` is the captured desired environment for an operation. It includes resolved configuration, harness definition, source files, image plan, and `environment.Inputs`.
@@ -52,6 +66,8 @@ flowchart TD
 
 The ordered `setup.sh` chain belongs to the per-container contract. Before-open scripts and harness attachment are not part of standalone `create`. Successful creation leaves the environment stopped.
 
+`createAs` prepares resources before passing explicit inputs to the side-effect-free `creationRecord` helper. The caller owns ID allocation and clock reads; the helper assembles fields and applies the existing activity/action/manual-start rules for new sessions, recreation, and prepared destinations. Materialization supplies the setup-container ID before publication.
+
 The record commits only after startup, declared preparation, setup, and binary-availability checks succeed. If the final stop fails, the committed environment remains usable and the error recommends `stop`; it is not presented as an absent session that can be created again.
 
 Recreation selects saved state and rereads it under the operation lock before resolving desired inputs. It retains the recorded profile/project sources independently of changed defaults. Changes that would alter profile/project participation are rejected before Docker mutation.
@@ -87,6 +103,8 @@ Invalid participating configuration or malformed live shared JSON blocks startup
 `open` still resolves desired settings and reports creation drift. It does not write managed files while running. If the existing ownership manifest already matches the desired files, runtime-only hook/launch changes can advance the runtime baseline. Otherwise it reports deferral without advancing the file manifest or claiming the files were applied.
 
 Before recovery, synchronization, startup, or before-open hook output, `open` emits image/container drift reasons and the recreation command. This is a warning, not authorization to replace the container. Runtime changes remain visible in status without being mislabeled as creation changes.
+
+The engine appends each typed diagnostic to `Result.Diagnostics`, then calls `Engine.OnDiagnostic` synchronously at that reporting point. The CLI supplies the renderer in `cli/diagnostics.go`; it writes immediately to stderr, rather than waiting for the operation to return. A nil callback suppresses delivery but retains diagnostic collection. Callbacks may run under the operation lock and must not reenter session operations or mutate diagnostic slices. Resolution warnings still render directly in `app`, and child-process streams remain separate from typed diagnostic delivery.
 
 The ordered `before-open.sh` chain runs on each Open before attachment. Each script is a separate process; failure stops the chain and blocks attachment. Existing containers launch their recorded harness; a newly selected definition does not silently change the container's installed capabilities.
 
