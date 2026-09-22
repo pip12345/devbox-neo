@@ -123,6 +123,55 @@ func TestBuildContextNegationsAndUnsafeInputs(t *testing.T) {
 		t.Fatal("unsafe context accepted")
 	}
 }
+func TestGeneratedStagesSuppressOnlyMissingDefaultBuildArgWarning(t *testing.T) {
+	h, err := harness.Load(t.TempDir(), "pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := PlanImage(nil, "debian:bookworm-slim", h.Definition, 1000, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range [][]byte{plan.Boundary, plan.Runtime} {
+		if !strings.HasPrefix(string(stage), "# check=skip=InvalidDefaultArgInFrom\nARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n") || strings.Contains(string(stage), "ARG DEVBOX_BASE=") {
+			t.Fatal("generated stage lost its supplied-base contract", string(stage))
+		}
+	}
+	if strings.Contains(string(plan.Prepared), "check=skip=") {
+		t.Fatal("unrelated build stage disabled a Docker check")
+	}
+}
+
+func TestPiInstallDoesNotHideUnderRuntimeMounts(t *testing.T) {
+	h, err := harness.Load(t.TempDir(), "pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const imageDir = "/home/devuser/.pi/image"
+	install := h.Definition.Install.Shell
+	if !strings.Contains(install, "curl -fsSL https://pi.dev/install.sh | PI_CODING_AGENT_DIR="+imageDir+" PATH="+imageDir+"/bin:$PATH sh") ||
+		strings.Contains(install, "https://pi.dev/install.sh | sudo") ||
+		!strings.Contains(install, "&& test -x "+imageDir+"/bin/pi") ||
+		!slices.Equal(h.Definition.Install.Path, []string{imageDir + "/bin"}) {
+		t.Fatal("Pi must install as devuser in an image-only location", install, h.Definition.Install.Path)
+	}
+	for _, store := range h.Definition.Stores {
+		if strings.HasPrefix(imageDir, store.Target+"/") || imageDir == store.Target {
+			t.Fatal("a runtime store would hide Pi's installed executable", store)
+		}
+	}
+	if !slices.Contains(mountParentCommand(h.Definition), "/home/devuser/.pi") {
+		t.Fatal("Pi's config mount parent is no longer checked")
+	}
+	plan, err := PlanImage(nil, "debian:bookworm-slim", h.Definition, 1000, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(plan.Runtime), "ENV PATH=\""+imageDir+"/bin:${PATH}\"") {
+		t.Fatal("Pi's image-only executable is not on the runtime PATH")
+	}
+}
+
 func TestRuntimeMountParentsArePreparedAsUserInBothBuildModes(t *testing.T) {
 	h, err := harness.Load(t.TempDir(), "opencode")
 	if err != nil {

@@ -48,6 +48,24 @@ func inventoryCLI(t *testing.T) (*app.Engine, *dockertest.Daemon, string, func()
 	return engine, daemon, created.Name, root
 }
 
+func TestFolderListStartsWithItsHeading(t *testing.T) {
+	engine, _, name, root := inventoryCLI(t)
+	record, err := engine.Store.Read(context.Background(), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := root()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"list", record.Identity.Workspace})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasPrefix(out.String(), "\n") || strings.Contains(out.String(), "\n\n") || !strings.Contains(strings.ReplaceAll(out.String(), "\n", ""), record.Identity.Workspace) || !strings.Contains(out.String(), "\nNAME") {
+		t.Fatal("folder list has extra blank lines", out.String())
+	}
+}
+
 func TestListAndStatusWarnWithoutInventingSessionRows(t *testing.T) {
 	engine, _, name, root := inventoryCLI(t)
 	p, _ := engine.Store.RecordPath(name)
@@ -62,7 +80,7 @@ func TestListAndStatusWarnWithoutInventingSessionRows(t *testing.T) {
 		if err := cmd.Execute(); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(out.String(), "Warning: managed containers with no session record:") || strings.Count(out.String(), name) != 1 || !strings.Contains(out.String(), "(stopped)") {
+		if !strings.Contains(out.String(), "Warning: managed containers with no session record:") || strings.Count(out.String(), name) != 1 || !strings.Contains(out.String(), "(stopped)") || strings.Contains(out.String(), "\n\n") {
 			t.Fatal("missing warning or invented row", out.String())
 		}
 		cmd = root()

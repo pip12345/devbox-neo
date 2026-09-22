@@ -60,7 +60,7 @@ Directory menus show only their own settings over built-in defaults, using gener
 
 ## Deletion results
 
-Deletion JSON contains `containers`, `sessions`, `retained_sessions`, `dry_run`, and `cancelled`. Explicit `--container` or `--session` scope is required with `--json`.
+Session deletion JSON contains `containers`, `sessions`, `retained_sessions`, `dry_run`, and `cancelled`. Explicit `--container` or `--session` scope is required with `--json`. `config delete <name> --force --json` returns the deleted config directory in `path` and `deleted`; `--force` only skips the confirmation prompt. If saved sessions block deletion, the error's `next_steps` names every known user once with a `status` command. A partial inventory blocks deletion and adds an inventory-inspection step.
 
 ## Errors and next steps
 
@@ -77,7 +77,7 @@ Commands supporting `--json` emit one error object on stdout and exit nonzero:
 | `next_steps` | Suggested commands as structured argv and reasons |
 | `related_errors` | Additional joined failures |
 
-Common codes include `invalid_configuration`, `configuration_unavailable`, `harness_required`, `config_missing`, `config_exists`, `session_missing`, `session_exists`, `sessions_missing`, `default_missing`, `default_unavailable`, `sources_changed`, `session_changed`, `container_missing`, `session_busy`, `ownership_mismatch`, `container_mismatch`, `managed_config_conflict`, `recovery_unavailable`, `pending_transfer`, `transfer_failed`, and `docker_unavailable`.
+Common codes include `invalid_configuration`, `configuration_unavailable`, `harness_required`, `config_missing`, `config_exists`, `config_in_use`, `config_usage_unknown`, `session_missing`, `session_exists`, `sessions_missing`, `default_missing`, `default_unavailable`, `sources_changed`, `session_changed`, `container_missing`, `session_busy`, `ownership_mismatch`, `container_mismatch`, `managed_config_conflict`, `recovery_unavailable`, `pending_transfer`, `transfer_failed`, and `docker_unavailable`.
 
 Child output is passed through. `open`, `shell`, `exec`, and `ssh` do not provide JSON wrappers. Child/Docker exit status is preserved even if cleanup also fails; cancellation and deadlines remain nonzero. Flag errors do not echo rejected values.
 

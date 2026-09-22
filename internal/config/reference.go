@@ -83,6 +83,16 @@ func CaptureReference(home, workspace, cwd, userHome, input string) (Reference, 
 	if !cleanAbsolute(workspace) {
 		return Reference{}, fmt.Errorf("workspace must be a clean absolute path")
 	}
+	// Resolve an aliased invoking directory against the same physical workspace
+	// identity used by sessions, but keep symlinks in the entered suffix so a
+	// workspace-relative source can still follow its link after a transfer.
+	if relativeReference(input) && cleanAbsolute(cwd) {
+		var err error
+		cwd, err = CanonicalPath(cwd)
+		if err != nil {
+			return Reference{}, err
+		}
+	}
 	path, err := ConfigPath(home, cwd, userHome, input)
 	if err != nil {
 		return Reference{}, err

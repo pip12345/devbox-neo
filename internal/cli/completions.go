@@ -217,7 +217,7 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
 		case "network connect", "network disconnect":
 			cmd.ValidArgsFunction = completeTarget(completeSessions, 1, false)
-		case "config create", "config edit":
+		case "config create", "config edit", "config delete":
 			cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
 				if len(args) != 0 {
 					return nil, cobra.ShellCompDirectiveNoFileComp

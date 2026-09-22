@@ -38,7 +38,7 @@ func sessionCommands(factory engineFactory, name *string) []*cobra.Command {
 		if len(report.Sessions) == 0 {
 			cmd.Println("No saved sessions. Use create <folder> to create one.")
 		} else if folder != "" {
-			if err := writeMenuTitle(cmd.OutOrStdout(), displayCell(report.Sessions[0].Workspace)); err != nil {
+			if err := writeListTitle(cmd.OutOrStdout(), displayCell(report.Sessions[0].Workspace)); err != nil {
 				return err
 			}
 			if err := printSessionTable(cmd.OutOrStdout(), report.Sessions, wide, time.Now(), true); err != nil {

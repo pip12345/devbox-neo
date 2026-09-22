@@ -3,8 +3,8 @@
   "name": "pi",
   "binary": "pi",
   "install": {
-    "shell": "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs && sudo rm -rf /var/lib/apt/lists/* && curl -fsSL https://pi.dev/install.sh | sudo -E sh",
-    "path": ["/home/${user}/.local/bin"]
+    "shell": "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs && sudo rm -rf /var/lib/apt/lists/* && curl -fsSL https://pi.dev/install.sh | PI_CODING_AGENT_DIR=/home/${user}/.pi/image PATH=/home/${user}/.pi/image/bin:$PATH sh && test -x /home/${user}/.pi/image/bin/pi",
+    "path": ["/home/${user}/.pi/image/bin"]
   },
   "launch": {"args": ["--tui-mode", "fullscreen"], "continue_args": ["-c"]},
   "env": {

@@ -80,6 +80,9 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	if strings.Contains(out.String(), "\x1b") {
 		t.Fatal("non-terminal output contains styling")
 	}
+	if !strings.HasPrefix(out.String(), "Sessions with invalid state\nNAME") || strings.Contains(out.String(), "\n\n") {
+		t.Fatal("list added blank lines around folder groups", out.String())
+	}
 }
 
 func TestListTimesAndUnsafeCells(t *testing.T) {
@@ -97,14 +100,14 @@ func TestListTimesAndUnsafeCells(t *testing.T) {
 	if err := printSessionList(&out, views, true, now); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 4 {
+	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 3 {
 		t.Fatal("unsafe path changed table structure", out.String())
 	}
 	out.Reset()
 	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 4 {
+	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 3 {
 		t.Fatal("unsafe session fields changed table structure", out.String())
 	}
 }

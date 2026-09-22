@@ -20,6 +20,8 @@ Pi's shared JSON ownership is:
 
 The whole `providers` object follows the selected desired file; providers are not deep-merged. Other top-level keys remain under Pi's control. OpenCode declares no shared-JSON key merges.
 
+Pi's managed executable is installed in the image under `/home/devuser/.pi/image/`, separate from the persistent config mount at `/home/devuser/.pi/agent/`. Recreating an image does not move Pi's session configuration.
+
 See [state mappings](state-and-sessions.md#built-in-storage-mappings) for stores, caches, and authentication targets.
 
 ## Definition location and selection

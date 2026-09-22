@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"text/tabwriter"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/resource"
 	"github.com/spf13/cobra"
 )
@@ -15,8 +18,49 @@ type resourceFactory func(*cobra.Command) (*resource.Service, error)
 
 func configCommands(engine engineFactory, factory resourceFactory, localName *string) *cobra.Command {
 	group := &cobra.Command{Use: "config", Short: "Create and edit config directories or manage a session's config sources"}
-	group.AddCommand(directoryCommand(factory, true), directoryCommand(factory, false), sourcesCommand(engine, localName))
+	group.AddCommand(directoryCommand(factory, true), directoryCommand(factory, false), configListCommand(factory), configDeleteCommand(factory), sourcesCommand(engine, localName))
 	return group
+}
+
+func configListCommand(factory resourceFactory) *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{Use: "list", Short: "List named configs in the selected home, including invalid ones", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		service, err := factory(cmd)
+		if err != nil {
+			return err
+		}
+		configs, err := service.ListConfigs()
+		if err != nil {
+			return err
+		}
+		if asJSON {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(configs)
+		}
+		if err := writeListTitle(cmd.OutOrStdout(), displayCell(filepath.Join(service.Home, "configs"))); err != nil {
+			return err
+		}
+		if len(configs) == 0 {
+			cmd.Println("No named configs.")
+			cmd.Print(stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Create a config", "config", "create", "base")}, service.Home)))
+			return nil
+		}
+		table := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+		fmt.Fprintln(table, "NAME\tHARNESS\tPATH")
+		for _, item := range configs {
+			fmt.Fprintf(table, "%s\t%s\t%s\n", displayCell(item.Name), displayCell(item.Harness), displayCell(item.Path))
+		}
+		if err := table.Flush(); err != nil {
+			return err
+		}
+		for _, item := range configs {
+			if item.Error != "" {
+				cmd.Printf("! %s: %s\n", displayCell(item.Name), displayCell(item.Error))
+			}
+		}
+		return nil
+	}}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Print named config entries as JSON")
+	return cmd
 }
 
 func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
@@ -73,11 +117,11 @@ func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
 				return err
 			}
 			writeMenuHint(cmd.OutOrStdout(), "Directory: "+displayCell(owner.Root))
-			names, reportErr := service.ReferencingSessions(cmd.Context(), owner)
-			if len(names) > 0 {
-				writeMenuHint(cmd.OutOrStdout(), "Referenced by saved sessions:")
-				for _, name := range names {
-					writeMenuHint(cmd.OutOrStdout(), "  "+displayCell(name))
+			users, reportErr := service.ConfigUsers(cmd.Context(), owner)
+			if len(users) > 0 {
+				writeMenuHint(cmd.OutOrStdout(), "Used by saved sessions:")
+				for _, user := range users {
+					writeMenuHint(cmd.OutOrStdout(), "  "+displayCell(user.Session))
 				}
 			}
 			if reportErr != nil {

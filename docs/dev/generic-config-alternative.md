@@ -40,6 +40,8 @@ Each interactive workflow has one command entry point:
 |---|---|
 | `config create <reference>` | Create a config directory and offer its initial setup |
 | `config edit <reference>` | Edit an existing config directory and add missing optional files |
+| `config list [--json]` | List named configs under the selected home's `configs/`, including invalid or incomplete entries; path-based configs are not registered here |
+| `config delete <name>` | Remove an unreferenced named config under the selected home's `configs/` after confirmation; refuse desired or committed session users and list every known user |
 | `create <folder>` | Name a session and select existing config sources |
 | `config sources <folder|session>` | Manage a session's source chain and inspect combined configuration |
 | `set <folder|session>` | Select or clear a folder's default session |

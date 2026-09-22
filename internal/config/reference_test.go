@@ -49,6 +49,39 @@ func TestConfigReferencePathsAndPortability(t *testing.T) {
 	}
 }
 
+func TestRelativeReferenceFromSymlinkedCWDRebasesWithWorkspace(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "real", "project")
+	if err := os.MkdirAll(workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(workspace, alias); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(root, "outside")
+	if err := os.Mkdir(outside, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(workspace, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ input, saved string }{
+		{"./.devbox", ".devbox"},
+		{"./missing/config", "missing/config"},
+		{"./linked", "linked"},
+	} {
+		r, err := CaptureReference(filepath.Join(root, "home"), workspace, alias, root, tc.input)
+		if err != nil || r.Kind != ReferenceRelative || r.Path != tc.saved {
+			t.Fatalf("capture %q: %+v, %v", tc.input, r, err)
+		}
+		moved, err := r.Expand(filepath.Join(root, "destination"))
+		if err != nil || moved.Path != filepath.Join(root, "destination", tc.saved) {
+			t.Fatalf("rebase %q: %+v, %v", tc.input, moved, err)
+		}
+	}
+}
+
 func TestConfigReferenceUsesSelectedHome(t *testing.T) {
 	for _, home := range []string{"/users/dev/.devbox-neo", "/custom/installation"} {
 		path, err := ConfigPath(home, "/cwd", "/users/dev", "base")

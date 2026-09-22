@@ -67,6 +67,12 @@ func exactTime(at time.Time) string {
 	return at.UTC().Format(time.RFC3339)
 }
 
+// List headings start at the first output line; menu headings deliberately
+// insert a blank line because they follow another screen or prompt.
+func writeListTitle(out io.Writer, title string) error {
+	return writeStyledConfigLine(out, "", title, "", configDisplayWidth(out), terminalColors(out).strong)
+}
+
 func printSessionList(out io.Writer, views []app.View, wide bool, now time.Time) error {
 	groups := map[string][]app.View{}
 	for _, view := range views {
@@ -82,7 +88,7 @@ func printSessionList(out io.Writer, views []app.View, wide bool, now time.Time)
 		if folder == "" {
 			title = "Sessions with invalid state"
 		}
-		if err := writeMenuTitle(out, title); err != nil {
+		if err := writeListTitle(out, title); err != nil {
 			return err
 		}
 		if err := printSessionTable(out, groups[folder], wide, now, false); err != nil {
@@ -150,7 +156,7 @@ func printUnmatchedContainers(out io.Writer, views []app.View) error {
 	if len(views) == 0 {
 		return nil
 	}
-	if _, err := fmt.Fprintln(out, "\nWarning: managed containers with no session record:"); err != nil {
+	if _, err := fmt.Fprintln(out, "Warning: managed containers with no session record:"); err != nil {
 		return err
 	}
 	for _, view := range views {

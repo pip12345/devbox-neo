@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"devbox/internal/app"
+	"devbox/internal/docker/dockertest"
 	"devbox/internal/environment"
 	"github.com/spf13/cobra"
 )
@@ -50,6 +51,12 @@ func TestExplicitCreateAndSetAreSeparateWorkflows(t *testing.T) {
 	name := ""
 	create := createCommand(factory, &name)
 	var out bytes.Buffer
+	e.Docker.Runner.(*dockertest.Daemon).Fail = func(args []string) error {
+		if len(args) > 0 && args[0] == "build" {
+			out.WriteString("Docker output without newline")
+		}
+		return nil
+	}
 	create.SetOut(&out)
 	create.SetErr(&out)
 	create.SetIn(strings.NewReader(""))
@@ -57,7 +64,7 @@ func TestExplicitCreateAndSetAreSeparateWorkflows(t *testing.T) {
 	if err := create.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(out.String(), err)
 	}
-	if !strings.Contains(out.String(), "Created session Second") || strings.Contains(out.String(), "Choose a number") {
+	if !strings.Contains(out.String(), "Docker output without newline\nCreated session Second") || strings.Contains(out.String(), "Choose a number") || !strings.Contains(out.String(), "set "+shellQuote(q.Workspace)+" --name Second") {
 		t.Fatal(out.String())
 	}
 	if selected, err := e.Store.ReadDefault(context.Background(), q.Workspace); err != nil || selected != nil {
@@ -106,7 +113,7 @@ func TestInteractiveCreationStartsWithBlankNameAndOnlySelectsConfigs(t *testing.
 			t.Fatal("session creation entered another workflow or suggested a name", text)
 		}
 	}
-	if !strings.HasPrefix(text, "Session name (:back cancels): ") || !strings.Contains(text, "Created session Fresh") {
+	if !strings.HasPrefix(text, "Session name (:back cancels): ") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "set "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
 		t.Fatal(text)
 	}
 	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {

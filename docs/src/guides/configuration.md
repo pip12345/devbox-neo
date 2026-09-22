@@ -2,7 +2,7 @@
 
 A **config directory** contains settings and optional Dockerfiles, scripts, and harness files. Several sessions can share it. Each session explicitly selects an ordered list of config directories; files are not discovered automatically in your workspace.
 
-Named configs live under `~/.devbox-neo/configs/`. You can also keep configs anywhere on the host, including beside your project files.
+Named configs live under `~/.devbox-neo/configs/`. You can also keep configs anywhere on the host, including beside your project files. To see the named configs in your selected Devbox home, including their directory paths and ones that need repair, run `devbox-neo config list`. Configs stored elsewhere appear in a session's source chain, not in this list.
 
 ## Edit a config
 
@@ -12,11 +12,13 @@ Open the directory editor:
 devbox-neo config edit base
 ```
 
-The editor shows the directory's path and saved sessions that reference it. Choose a setting and enter its value. Each valid edit saves immediately. Use `0` or `q` to go back or exit, and `:back` to cancel text entry.
+The editor shows the directory's path and every saved session using it. Choose a setting and enter its value. Each valid edit saves immediately. Use `0` or `q` to go back or exit, and `:back` to cancel text entry.
 
 **Remove this setting** removes the key from this config. It does not write a built-in or another source's value into the file. The dashboard shows only this directory over built-in defaults; its list editors change only entries stored here.
 
 Use **Add optional files** to add missing customization files without overwriting existing ones. Adding harness files does not force a harness selection: an overlay can supply Pi files while leaving its Harness setting unset.
+
+To remove an unused named config and all its files, run `devbox-neo config delete base` and confirm. Devbox refuses while saved sessions still select it or need its committed files, and lists every affected session. Replace their sources and recreate them (or delete the sessions) first. This command does not remove configs at arbitrary paths outside the selected home's `configs/` directory.
 
 ## Add workspace-specific settings
 

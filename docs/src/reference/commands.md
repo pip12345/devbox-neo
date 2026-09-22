@@ -66,6 +66,8 @@ See [output and errors](output.md) for columns, change classifications, and JSON
 |---|---|
 | `config create <reference>` | Create a config and offer initial setup; reject an existing `config.json` |
 | `config edit <reference>` | Edit an existing directory or add missing optional files |
+| `config list [--json]` | Show named configs under the selected home's `configs/` with harness and directory path; report invalid or incomplete entries; no Docker required |
+| `config delete <name> [--force] [--json]` | Delete an unreferenced named config and its files; confirm in a terminal, or use `--force` to skip confirmation (required with `--json`) |
 | `config sources <folder>` | Pick a session, then manage its ordered source chain |
 | `config sources <folder> --name NAME` | Manage that session's sources directly |
 | `config sources <full-name>` | Manage an exact session's sources |

@@ -84,7 +84,10 @@ RUN test -w "$HOME" && sudo -n true
 // A user Dockerfile may temporarily switch USER or WORKDIR. Restore the shared
 // build contract between sources without replacing its PATH or filesystem edits.
 func boundaryDockerfile(uid, gid int) []byte {
-	return []byte(fmt.Sprintf(`ARG DEVBOX_BASE
+	// Every boundary and final stage receives the preceding image as a build arg.
+	// Docker's default-only check cannot see the value supplied by the builder.
+	return []byte(fmt.Sprintf(`# check=skip=InvalidDefaultArgInFrom
+ARG DEVBOX_BASE
 FROM ${DEVBOX_BASE}
 USER root
 SHELL ["/bin/sh", "-c"]
