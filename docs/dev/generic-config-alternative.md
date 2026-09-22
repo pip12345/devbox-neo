@@ -1,6 +1,6 @@
 # Proposal: folder-local sessions with explicit configs
 
-Status: approved for implementation, in progress. This replaces the previous generic-config alternative and the profile/project selection model. Implementation checkpoints and unpassed acceptance gates are tracked in [progress.md](progress.md). The separately approved `devbox-migrate` adaptation targets this model; ordinary runtime loading gains no migration or compatibility path.
+Status: implemented; live acceptance pending. This replaces the previous generic-config alternative and the profile/project selection model. Implementation checkpoints, automated validation, and unpassed acceptance gates are tracked in [progress.md](progress.md). The separately approved `devbox-migrate` adaptation targets this model; ordinary runtime loading gains no migration or compatibility path.
 
 ## The whole model
 
@@ -541,7 +541,7 @@ Do not present the merged result as an editable config, create hidden private co
 
 Allow incomplete configuration while editing. Validate the structure of each edit, but do not require every intermediate state to produce a runnable environment. The user may temporarily remove all sources or leave the combined configuration without a harness. Keep diagnostics visible and allow further repairs. `open`, creation, and recreation reject missing or invalid required configuration with a repair hint; `open` must not bypass this check just because the container is already running.
 
-Retain the existing non-interactive inspection convention:
+Non-interactive `--show` uses an exact full session name or a folder with explicit `--name`; it does not choose a folder session implicitly:
 
 ```sh
 devbox config sources . --name main --show
@@ -623,7 +623,7 @@ Use the existing `store` package for saved session state and locks, and `resourc
 
 Create the workspace state record on the first default change, not during listing or config discovery. `set --clear` writes `default_session: null` when a record exists and is a no-op when none exists. Do not store a duplicate list of sessions in this file. The name locates the selected record; the ID prevents a deleted-and-recreated session from inheriting a stale default merely because it reused the same name.
 
-Keep the ordered desired source references in the session record's `sources` field. Each saved reference has a diagnostic `label`, a `kind` of `relative` or `fixed`, and a `path`. Relative paths are clean paths relative to the recorded workspace, including `.` or `..` where appropriate; fixed paths are clean absolute paths. Labels do not determine identity or resolution. Expand references to absolute source directories at the resolver boundary, so composition and build code retain their existing absolute-source contract. Applied inputs stay separate from these editable references.
+Keep the ordered desired source references in the session record's `sources` field. Each saved reference has a diagnostic `label`, a `kind` of `relative` or `fixed`, and a `path`. Relative paths are clean paths relative to the recorded workspace, including `.` or `..` where appropriate; fixed paths are clean absolute paths. Labels do not determine identity or resolution. Expand references to absolute source directories at the resolver boundary, so composition and build code retain their existing absolute-source contract. Applied inputs stay separate from these editable references. Session schema 5 also captures committed absolute source directories in `inputs.sources`; environment recovery validates against those directories rather than the mutable desired chain.
 
 Record loading validates reference structure without requiring source directories to exist or contain valid config. An empty desired source list is valid saved state for repair, but cannot create, open, or recreate an environment. Do not persist a second mutable copy of the source chain in workspace state.
 

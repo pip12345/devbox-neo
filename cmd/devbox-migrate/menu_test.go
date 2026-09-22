@@ -319,8 +319,8 @@ func TestMergeOwnerMenusUseBracketedChoicesAndZeroBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ key, choice string }{
-		{"global:config", "Keep existing Neo global settings"},
-		{"profile:work", "Rename imported profile"},
+		{"global:config", "Keep the existing imported-global config"},
+		{"profile:work", "Choose a different destination config name"},
 		{"auth:pi", "Keep existing auth"},
 	} {
 		n := 0

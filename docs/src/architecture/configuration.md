@@ -1,14 +1,13 @@
 # Configuration and images
 
-Configuration has three distinct owners: `resource` edits source files, `artifact` decides which layers participate, and `environment` compiles their resolved values into an executable plan. Keeping those jobs separate prevents editors, lifecycle commands, and status output from implementing different precedence rules.
+Configuration has three distinct owners: `resource` edits source files, `artifact` composes explicitly selected sources, and `environment` compiles their resolved values into an executable plan. Keeping those jobs separate prevents editors, lifecycle commands, and status output from implementing different precedence rules.
 
 ## Resolution pipeline
 
 ```mermaid
 flowchart TD
-    HOST[Capture host environment] --> GLOBAL[Read global config]
-    GLOBAL --> LAYERS[Select config sources]
-    LAYERS --> READ[Decode and expand retained configs]
+    HOST[Capture host environment] --> REFS[Expand saved references]
+    REFS --> READ[Decode every selected config]
     READ --> MERGE[Merge settings and trace sources]
     MERGE --> HAR[Load selected harness]
     HAR --> FILES[Overlay defaults and config files]
@@ -20,21 +19,23 @@ flowchart TD
 
 ### Selecting sources
 
-`artifact.Select` is shared by full resolution and folder lookup. It chooses profile/project directories from flags and global defaults, or uses a saved session's recorded sources for exact-name access. The [selection rules](../reference/configuration.md#selection-and-precedence) apply before settings and artifacts are loaded.
+`app.Locate` selects saved session identity using an exact full name, a folder-local name, or a folder's saved default. It never resolves config to find a session. This keeps broken sources from blocking lookup and repair.
 
-`RetainSources` walks backwards through the directories and stops at the last `inherit: false`. Earlier sources are discarded without reading them, so an excluded broken profile cannot block resolution. Folder lookup reads only selection metadata; it does not expand unrelated env references or load harness/build inputs.
+`config.Reference` preserves relative/fixed intent. CLI capture resolves relative arguments against the invoking cwd, then records them relative to the canonical workspace. `ResolveReferences` expands the saved chain at the runtime boundary, requires its directories, and rejects duplicate canonical paths. Composition receives absolute `config.Source` inputs. There is no discovery, global baseline, or inheritance cutoff.
+
+Source-chain edits validate structure and duplicates without requiring complete runnable settings. They compare the displayed session ID and source list under the operation lock, preserve unrelated latest fields, and save only desired references. Startup/recreation resolve from the reread locked record, not a pre-lock source snapshot.
 
 ### Merging settings and artifacts
 
-The full resolver expands and validates the retained configs. Scalars replace earlier values, declared lists append, and shell argv replaces as a unit. An empty harness selection falls back to the global default.
+The full resolver starts with built-in defaults and expands every explicit source in order. Scalars replace earlier values, declared lists append, and shell argv replaces as a unit. Runnable operations require a nonempty final harness selection.
 
 Harness selection precedes argument merging. A configured `harness_args` list must name its harness in the same file; only lists matching the final harness contribute arguments and provenance. One-off launch arguments are appended later and are not saved.
 
-Dockerfiles, `setup.sh`, and `before-open.sh` form ordered chains. Harness files overlay by relative path: definition defaults, profile, then project. Project-init previews use this same resolver, replacing only the proposed project's settings.
+Dockerfiles, `setup.sh`, and `before-open.sh` form ordered chains. Harness files overlay by relative path: definition defaults followed by the source chain. Import previews use the same resolver, binding proposed settings to one source directory without changing participation.
 
 ### Provenance is resolution data
 
-`artifact.Trace` records layers, exclusions, ordered artifact paths, aggregate contributors, and `EntrySources`. Each list contribution adds source labels at merge time in the same order as values. Duplicates remain distinct; excluded layers add nothing; shell replacement replaces its sources too. Global env passthrough filters absent host variables before provenance is counted.
+`artifact.Trace` records sources, ordered artifact paths, aggregate contributors, and `EntrySources`. Each list contribution adds labels in the same order as values. Duplicate entries remain distinct; shell replacement replaces its sources too. Trace labels are diagnostic, not session identity.
 
 Menus and `--show` consume this trace rather than guessing ownership from matching values or local key presence. Human output uses dotted paths for nested fields; JSON preserves value structure and exposes `entry_sources`. Display rows never feed configuration saves.
 
@@ -50,11 +51,11 @@ The Docker adapter renders creation env through a private `0600` temporary file.
 
 ## Source mutation and initialization
 
-`resource` owns profile/project creation, init, default selection, and setting changes. Configuration-owner locks live outside the directories being edited.
+`resource` owns directory creation, setting edits, and optional-artifact setup. Canonical directory paths key external configuration-owner locks. Folder defaults belong to `store`, not config files.
 
-Creation stages a complete source tree beside the destination, then publishes it with Linux `RENAME_NOREPLACE`. Even an existing empty directory is preserved. Interrupted staging is not adopted as a configuration owner. Init validates requested artifacts, writes missing files with no-replace publication, and commits harness selection after seeding. Existing files are not refreshed.
+Creation checks for `config.json` before prompts, repeats the check under the owner lock, validates setup, and claims the config file with no-replace publication before adding artifacts. Existing directories are allowed, but an existing config file is never replaced. Optional-file planning/publication is shared with editing and adds only missing files. A generation target may differ from, or exist without, the persistent harness setting.
 
-Profile-to-project copying uses `artifact.SourceTree`, not the effective runtime tree. It copies supported profile sources and active build-context inputs, preserves permissions and expressions, and writes `inherit: false`. Global values and harness defaults are not flattened into the project.
+Prompts hold no owner locks. Back/cancellation retain only pending creation choices. Once creation publishes its config, an artifact failure is reported as partial setup and repaired through `config edit`, not repeated creation. The standalone importer uses `artifact.SourceTree` to capture source artifacts/build contexts without flattening effective defaults.
 
 ### Immediate field edits
 
@@ -63,7 +64,7 @@ The CLI keeps raw local JSON separate from effective/redacted display data. Each
 1. Acquire the owner lock and reread current source.
 2. Compare the edited field against the value the editor loaded.
 3. Reject a same-field conflict; preserve unrelated concurrent changes.
-4. Patch only that field, or remove its source key for reset.
+4. Patch only that field, or remove its source key.
 5. Validate source shape/literal constraints and save.
 
 List editors reload before operations and after failures. Rejected edits are not retained as a draft or retried implicitly. Effective-resolution failures do not disable local repair; cross-field and runtime-resource constraints remain the resolver/runtime's responsibility.
@@ -87,10 +88,8 @@ Store/auth declarations constrain targets to clean paths beneath the container u
 ```mermaid
 flowchart TD
     BASE[Selected upstream image] --> PREP[Devbox user and runtime]
-    PREP --> PROFILE[Profile Dockerfile, if present]
-    PROFILE --> BOUNDARY[Restore build user contract]
-    BOUNDARY --> PROJECT[Project Dockerfile, if present]
-    PROJECT --> FINAL[Restore contract and install harness]
+    PREP --> CUSTOM[Ordered source Dockerfiles]
+    CUSTOM --> FINAL[Restore contract and install harness]
     FINAL --> PARENTS[Prepare mount parents and validate]
 ```
 

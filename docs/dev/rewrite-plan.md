@@ -2,6 +2,8 @@
 
 ## Status
 
+The implemented [folder-local sessions and explicit configs](generic-config-alternative.md) contract supersedes this document's profile/project selection, global configuration, naming, menu entry points, source-reference schema, and transfer-selector sections. Those older sections are historical design context, not alternate runtime behavior. Session records are now schema 5; the lifecycle, ownership, image, synchronization, and SSH contracts remain unless that replacement explicitly updates them.
+
 This document defines the intended rewrite. The normal runtime starts with no old-code or old-state compatibility layer. An explicitly invoked, removable migration utility is planned separately in [migration-plan.md](migration-plan.md); it converts the current Go home's data into normal new-format state.
 
 The plan is based on an inspection of the existing Go code, tests, human documentation, bundled assets, configuration model, proxy lifecycle, harness registry, session subsystem, and Docker integration.

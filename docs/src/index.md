@@ -8,7 +8,7 @@ Start with the basics, then add what your work needs:
 
 1. [Getting started](guides/getting-started.md) — create an environment and launch your harness.
 2. [Everyday use](guides/everyday-use.md) — return to work, open a shell, and run commands.
-3. [Profiles and project settings](guides/configuration.md) — share defaults and customize individual projects.
+3. [Config directories and session sources](guides/configuration.md) — share settings and choose each session's configuration.
 4. [Customize your environment](guides/customization.md) — add tools, harness configuration, and startup scripts.
 5. [Networking](guides/networking.md) — expose a development server and connect to other services.
 6. [Share SSH access](guides/ssh.md) — authenticate once and let your agent use the connection.

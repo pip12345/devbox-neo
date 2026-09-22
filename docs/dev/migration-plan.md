@@ -14,6 +14,13 @@ Build fresh containers instead of adopting old containers. The normal rewrite re
 
 ## Current Implementation
 
+The destination now follows [folder-local sessions and explicit configs](generic-config-alternative.md), superseding older destination-profile/global/slot wording below:
+
+- Converted old profiles publish as ordinary `<home>/configs/<name>/` directories. Existing config collisions still require explicit reuse, rename, or exclusion.
+- Old globals become `<home>/configs/imported-global/config.json`, selected explicitly by imported sessions. Only settings such as harness and env contribute; old discovery controls determine the reviewed source list, not destination defaults. Bare env passthrough names become required `${env:NAME}` assignments and are reported for acceptance.
+- A source profile-slot session proposes `profile-<mapped-profile>` as its initial local name; a source project-slot session proposes `project`. These names are shown for acceptance, obey current name validation, and are separate from subsequent config edits. Imported sessions select fixed home-config references and, when participating, a workspace-relative `.devbox` reference. No folder default is selected.
+- Session records use schema 5. The importer's own journal is schema 2; earlier staged runs require fresh preparation in a separate work directory, not an old-journal reader. Runtime loading has no migration path.
+
 Build the standalone tool with `make build-migrate`; normal `make build` still builds only Neo. The merge implementation follows the separately delivered staging checkpoint. Nothing runs automatically on Neo startup.
 
 Run `bin/devbox-migrate` in a terminal for a compact menu showing source/destination paths:

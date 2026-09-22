@@ -30,9 +30,9 @@ All package paths below are under `internal/`.
 |---|---|---|
 | `cli` | Cobra commands, input, tables, menus, JSON/error rendering | Translates requests; does not implement lifecycle policy |
 | `app` | Create, access, recreate, delete, inventory, transfer orchestration | Orders resolution, locks, validation, and external effects |
-| `resource` | Profile/project publication, init, default selection, setting edits | Mutates configuration sources, not Docker environments |
+| `resource` | Config-directory publication, optional artifacts, setting edits | Mutates source files, not sessions or folder defaults |
 | `config` | Strict schemas, host substitution, field validation and merges | Does not choose which artifacts participate |
-| `artifact` | Layer participation, provenance, artifact winners, captured source trees | Single authority for profile/project precedence |
+| `artifact` | Ordered composition, provenance, artifact overlays, captured source trees | Consumes explicit absolute sources without discovery |
 | `environment` | Identity, desired spec, image plan, input snapshots and comparison | Compiles resolved data before execution |
 | `harness` | Definitions, registry, defaults, mount-parent derivation | Declares capabilities without owning transitions |
 | `store` | Durable records, external locks, leases, transfer journals and copying | Distinguishes absent, corrupt, and reserved state |
@@ -73,7 +73,7 @@ File absence remains a filesystem error until the application owns enough contex
 
 Guidance has two target contracts:
 
-- A missing environment or project-owner hint retains the folder spelling the user entered, such as `.`. Generic creation guidance uses normal selection rather than replaying unrelated flags.
+- Missing-session and config-owner hints retain the target spelling the user entered, such as `.` or `./devconfig`. Generic creation guidance uses normal selection rather than replaying unrelated flags.
 - A recorded session or transfer retry retains its exact identity and endpoint selectors, independent of current defaults.
 
 Project owners therefore keep the entered folder in `Name` while `Workspace` and `Root` remain canonical for filesystem operations. Explicit home selection is carried into next steps.
@@ -84,7 +84,7 @@ Command groups validate unknown commands before Cobra flattens suggestions into 
 
 Menus use canonical terminal input rather than a raw/fullscreen interface. The common formatter keeps scalars and shell argv inline, renders other lists below their field, and wraps within the terminal width. Source provenance comes from the resolver, not comparisons against displayed values. `terminalColors` centralizes TTY, `NO_COLOR`, and `TERM=dumb` handling.
 
-Completion bypasses application/store initialization and locking record readers. Existing profile/session directories provide lookup hints, including names whose records are corrupt. Harness enumeration exposes only valid effective definitions. Live container completion uses a bounded installation-filtered inventory and quietly omits unavailable sources. Tab must not initialize a home, create locks, resolve a complete environment, or mutate Docker.
+Completion bypasses application/store initialization and locking record readers. Existing config/session directories provide lookup hints, including exact names whose records are corrupt. Local-name suggestions read identity metadata and are scoped to the supplied folder. Harness enumeration exposes only valid effective definitions. Live container completion uses a bounded installation-filtered inventory and quietly omits unavailable sources. Tab must not initialize a home, create locks, resolve a complete environment, or mutate Docker.
 
 Shell generators register `devbox-neo` and an existing `dbx` shortcut against the same handlers. They do not define the shortcut. Invoking the typed shortcut preserves its own executable and flags; Zsh's autoload header advertises both command names.
 

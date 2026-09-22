@@ -1,6 +1,6 @@
 # Proposal: simpler profile/project customization
 
-Status: implemented development design. Configs have no `name` field, per the final scope decision. Session schema 4 requires a clean development-state reset; no migration or compatibility reader is provided. Validation and unpassed real-Docker gates are tracked in `progress.md`.
+Status: historical milestone. [Folder-local sessions and explicit configs](generic-config-alternative.md) supersedes its profile/project frontend, inheritance cutoff, and schema. Generic source contents, ordered image/hook composition, and the Devbox-owned build-user contract remain. Current validation and unpassed live-Docker gates are tracked in `progress.md`.
 
 ## Goal
 

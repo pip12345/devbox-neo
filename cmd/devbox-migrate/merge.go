@@ -167,8 +167,8 @@ func mergeDecisions(ui menu, j *migration.Journal, c *migration.MergeChoices) er
 		switch item.Kind {
 		case "profile":
 			answer, err = ui.choose("What would you like to do?", []string{
-				"Rename imported profile",
-				"Reuse existing profile after review",
+				"Choose a different destination config name",
+				"Reuse existing config after review",
 				"Skip owner and dependents",
 				"Compare configuration fields",
 			}, "Back")
@@ -177,7 +177,7 @@ func mergeDecisions(ui menu, j *migration.Journal, c *migration.MergeChoices) er
 			}
 			switch answer {
 			case "1":
-				name, e := ui.line("New profile name: ")
+				name, e := ui.line("Destination config name: ")
 				if e != nil {
 					return e
 				}
@@ -247,8 +247,8 @@ func mergeDecisions(ui menu, j *migration.Journal, c *migration.MergeChoices) er
 				}
 			}
 			answer, err = ui.choose("What would you like to do?", []string{
-				"Keep existing Neo global settings",
-				"Import staged settings (affects existing environments)",
+				"Keep the existing imported-global config",
+				"Import staged settings into imported-global",
 			}, "Back")
 			if err != nil {
 				return err

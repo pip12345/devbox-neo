@@ -1,77 +1,68 @@
-# Profiles and project settings
+# Config directories and session sources
 
-Use a **profile** for settings you reuse across projects. Use **project settings** for choices that belong with one codebase. Global settings choose defaults for your machine.
+A **config directory** contains settings and optional Dockerfiles, scripts, and harness files. Several sessions can share it. Each session explicitly selects an ordered list of config directories; files are not discovered automatically in your workspace.
 
-Devbox stores profiles under `~/.devbox-neo/profiles/` and project settings in the project's `.devbox/` directory.
+Named configs live under `~/.devbox-neo/configs/`. You can also keep configs anywhere on the host, including beside your project files.
 
-## Edit your profile
+## Edit a config
 
-Open the configuration menu:
-
-```sh
-devbox-neo profile config basic
-```
-
-Choose a setting, then enter its new value. For example, add a mount or published port. Leave settings absent when you want to inherit them rather than copying defaults into the file.
-
-Each valid edit saves immediately. Use `0` to go back or exit, and `:back` to cancel text entry. Resetting a setting removes your local choice so its inherited value applies again.
-
-To inspect settings without editing:
+Open the directory editor:
 
 ```sh
-devbox-neo profile config basic --show
+devbox-neo config edit base
 ```
 
-The source beside each value tells you where it came from. Lists can include inherited entries; the editor changes only entries in the profile you're editing.
+The editor shows the directory's path and saved sessions that reference it. Choose a setting and enter its value. Each valid edit saves immediately. Use `0` or `q` to go back or exit, and `:back` to cancel text entry.
 
-## Add project-specific settings
+**Remove this setting** removes the key from this config. It does not write a built-in or another source's value into the file. The dashboard shows only this directory over built-in defaults; its list editors change only entries stored here.
 
-From your project folder, create its configuration:
+Use **Add optional files** to add missing customization files without overwriting existing ones. Adding harness files does not force a harness selection: an overlay can supply Pi files while leaving its Harness setting unset.
+
+## Add workspace-specific settings
+
+Create an ordinary config directory in your workspace:
 
 ```sh
-devbox-neo project create .
+devbox-neo config create ./devconfig
 ```
 
-Open the setup menu:
+Choose **Leave unset** if another source already selects your harness, then **Continue**. Edit the directory when you need settings such as extra mounts or ports:
 
 ```sh
-devbox-neo project init .
+devbox-neo config edit ./devconfig
 ```
 
-Choose **inherit** to use the harness from your profile or global defaults, or select Pi or OpenCode for this project. Press Enter to skip optional files for now.
+This directory does not affect any session until you select it as a source.
 
-Then open the project settings menu:
+## Change a session's sources
+
+From the workspace, open the session picker:
 
 ```sh
-devbox-neo project config .
+devbox-neo config sources .
 ```
 
-Project settings build on your selected profile. For example, the project can choose a different harness or add ports to those in the profile. Leave a setting absent to keep the profile's value. See the [configuration reference](../reference/configuration.md#profile-and-project-fields) for each setting's merge rules.
+Select a session, choose **Add source**, and enter `./devconfig`. Keep `base` before it if you want the workspace config's explicit scalar values to override the shared config. Lists generally append; [the reference](../reference/configuration.md#config-fields) describes field-specific rules.
 
-Each profile/project combination selects a separate environment for that folder. If you've only created a profile environment so far, create the project environment before opening it:
+Adding, replacing, removing, or reordering sources saves immediately. It changes this session only, without renaming it or copying the directories. Editing a shared directory instead affects every session that uses it.
+
+Choose **Show combined configuration** to see effective values and their sources. For non-interactive inspection, provide the local name explicitly:
 
 ```sh
-devbox-neo create .
-devbox-neo open .
+devbox-neo config sources . --name Main --show
 ```
 
-The existing profile-only environment remains available with `--profile basic --ignore-project`. Plain `--profile basic` includes project settings. Another profile plus the same project requires its own `create`.
+Missing sources remain visible so you can replace or remove them. You can save an incomplete chain during repair, but opening or recreating requires at least one source and a valid combined configuration, including a harness.
 
-## Make a project self-contained
+## Choose portable or fixed references
 
-To stop inheriting a profile, set the project's `inherit` to `false` and choose its harness explicitly. This excludes preceding profile settings and artifacts even if `--profile` was supplied. Use `--ignore-project` when you want the profile alone.
+Relative arguments initially resolve against the directory where you run the command. They are then stored relative to the session's workspace. For example, `./devconfig` follows the workspace when you copy or move the session.
 
-For a new project configuration, you can start with a one-time copy of a profile:
-
-```sh
-devbox-neo project create . --from-profile basic
-```
-
-This requires a folder without an existing `.devbox/` directory. The copied project no longer follows profile changes; global defaults still apply.
+Bare names such as `base`, absolute paths, and home-relative paths such as `~/configs/personal` are fixed references. They keep using the same absolute directory after a transfer. Devbox does not copy config directories for you.
 
 ## Pass environment variables
 
-You can edit `.devbox/config.json` directly. This example passes a token from the host without storing it in the file:
+You can edit a directory's `config.json` directly. This example passes a token from the host without storing its value in the file:
 
 ```json
 {
@@ -80,22 +71,22 @@ You can edit `.devbox/config.json` directly. This example passes a token from th
 }
 ```
 
-Set `WORK_TOKEN` in your host environment before running Devbox. An unset reference is an error. Use environment references for credentials: menu input is visible, and ordinary settings such as command arguments and paths are not secret fields.
+Set `WORK_TOKEN` in your host environment before running Devbox. An unset reference is an error. Prefer environment references for credentials: menu input is visible, and ordinary settings such as argv and paths are not secret fields.
 
-## Apply your changes
+## Apply changes
 
-Saving configuration does not replace an existing container. Check what needs applying:
+Saving config does not replace an existing container. Check its pending changes:
 
 ```sh
 devbox-neo status .
 ```
 
-Harness configuration files synchronize when a stopped container starts. Container settings, such as environment variables or mounts, need `recreate`:
+Managed harness files synchronize before a stopped container starts. Stop/start applies those file changes without recreation. Container settings, image inputs, and setup changes require:
 
 ```sh
 devbox-neo recreate .
 ```
 
-See [managing environments](managing-environments.md#apply-configuration-changes) before recreating a container with tools or files you added inside it.
+Container-local files and tools are lost during recreation. See [managing environments](managing-environments.md#apply-configuration-changes) before replacing a customized container.
 
-**Next:** [Customize your environment](customization.md). For all fields and selection rules, use the [configuration reference](../reference/configuration.md).
+**Next:** [Customize your environment](customization.md).

@@ -8,8 +8,7 @@ Paths below are relative to the selected home.
 
 | Path | Purpose |
 |---|---|
-| `config.json` | Global defaults |
-| `profiles/<name>/` | Profile configuration and artifacts |
+| `configs/<name>/` | Convenient location for named config directories |
 | `harnesses/<name>/` | User harness definition and optional defaults |
 | `auth/<harness>/` | Persistent managed authentication |
 | `cache/harnesses/<harness>/<store>/` | Shared harness caches |
@@ -19,13 +18,17 @@ Paths below are relative to the selected home.
 | `sessions/<container>/harnesses/<harness>/managed-config.json` | Managed file/key ownership manifest |
 | `sessions/<container>/runtime/ssh/` | Transient shared SSH sockets and generated client config |
 | `state/installation-id` | Installation identity used for Docker ownership |
+| `state/workspaces/<workspace-key>.json` | Folder default: full session name plus durable ID, or null |
 | `state/transfers/<source-container>.json` | Pending transfer journal; keeps both environments reserved until completion |
 | `state/locks/installation.lock` | Home initialization lock |
-| `state/locks/config/*.lock` | Configuration-owner locks |
+| `state/locks/config/*.lock` | Canonical-path-keyed config-directory locks |
+| `state/locks/workspaces/<workspace-key>.lock` | Stable folder-default locks |
 | `state/locks/sessions/*.operation.lock` | Environment-operation locks |
 | `state/locks/sessions/*.record.lock` | Short session-record locks |
 
-Temporary work uses `.build-*` and `.runtime-*` under the home, `.devbox-create-*` beside configuration destinations, and private creation-env files in the OS temporary directory. These are not saved configuration.
+`<workspace-key>` is the full SHA-256 digest of the canonical absolute workspace path's bytes. Default records contain `version: 1`, `workspace`, and `default_session` (`name` and `id`, or null). Missing records mean no default; malformed records are errors. Reading or clearing an absent default does not create its state record.
+
+Temporary work uses `.build-*` and `.runtime-*` under the home, private same-directory publication files, and private creation-env files in the OS temporary directory. These are not saved configuration.
 
 ## What survives
 
@@ -39,7 +42,7 @@ Temporary work uses `.build-*` and `.runtime-*` under the home, `.devbox-create-
 | Container-local files/tools | Retained | Lost | Not copied |
 | Live SSH connections | End when controller/container stops | Not retained | Not copied |
 
-`delete --container` retains saved session data and image tags. `delete --session` also removes saved data/history and the verified session image tag. Neither deletes workspace files, configuration, auth, or shared caches. See [deletion](commands.md#deletion).
+`delete --container` retains saved session data, image tags, and the folder's default selection. `delete --session` also removes saved data/history and the verified session image tag, clearing a matching default without selecting a replacement. Neither deletes workspace files, configuration, auth, or shared caches. See [deletion](commands.md#deletion).
 
 ## Built-in storage mappings
 
@@ -73,23 +76,21 @@ Documentation and network files are Devbox-managed runtime data. SSH runtime dat
 
 ## Names and ownership
 
-Profile/project selection determines container and session-directory names:
+A session is identified by its canonical workspace and explicit folder-local name. Names match `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`: 1–64 ASCII characters, beginning with a letter or digit. Case is preserved; `Main` and `main` differ. Names are never truncated or normalized.
 
-- `devbox-<folder>-<12-hex-hash>.profile-<name>`
-- `devbox-<folder>-<12-hex-hash>.profile-<name>.project`
-- `devbox-<folder>-<12-hex-hash>.project`
+The full session/container name is `devbox-<folder>-<12-hex-hash>.<local-name>`. The hash is the first 12 lowercase hex characters of SHA-256 over the canonical absolute workspace path, a NUL separator, and the exact local name. The readable folder hint is lowercased, sanitized, and capped at 32 characters; the full name is at most 117 characters. Symlink aliases of a workspace share identity.
 
-The hash covers the canonical workspace path and selected slot. Each identity requires separate creation. Inheritance changes never silently rename saved state. The saved session and its container share the same name; a missing container does not remove the session. The readable folder portion is lowercase, sanitized, and limited to 32 characters. Symlink aliases resolve to the same workspace identity.
+Config sources do not determine identity. Each local name needs explicit creation; a missing container does not remove the saved session. Folder-only targeting requires a default selected with `set`, even for a sole session. Defaults pin the durable ID so reusing a deleted local name cannot silently inherit an old selection.
 
-Names locate resources; labels prove ownership. Containers carry installation, ownership-version, session, workspace, slot, profile, and project-participation labels under `devbox-rewrite.*`. Images carry installation ownership; final tags are `devbox-rewrite/session:<session-id>`.
+Names locate resources; labels prove ownership. Containers carry installation, ownership-version, session, workspace, and local-name labels under `devbox-rewrite.*`. Images retain installation ownership and `devbox-rewrite/session:<session-id>` tags.
 
 ## Record and recovery contract
 
-Session records track the configuration used to create the container and locate its saved harness state. They do not store env/auth values. Unsupported session formats require a clean development-state reset; there is no automatic migration.
+Session schema 5 stores identity, editable desired `sources`, and the complete applied image/container/runtime snapshot. Each desired reference has `label`, `kind` (`relative` or `fixed`), and `path`. Relative paths resolve against the recorded workspace; fixed paths are absolute. Empty desired chains are valid for repair but not startup. Applied inputs separately retain the committed absolute source directories for environment recovery. They do not store env/auth values. Unsupported session formats require a clean development-state reset; there is no automatic migration.
 
 `open` and `start` restore a missing container using its recorded image, mount layout, verified definition/setup inputs, and recoverable environment sources. They do not replace recorded creation settings with current configuration. Missing inputs require explicit recreation. Existing named external volumes must still exist.
 
-Recreation keeps the session ID and profile/project combination while applying current configuration. It also keeps your choice to leave the container running with `start`. `copy` creates a new ID and leaves the destination stopped; `copy --move` preserves the ID and running/stopped behavior. See [lifecycle commands](commands.md#environment-lifecycle) for start/stop behavior across attachments and reboot.
+Recreation keeps the session ID, local/full name, and harness state while applying the current saved source chain. It also keeps your choice to leave the container running with `start`. `copy` creates a new ID and leaves the destination stopped; `copy --move` preserves the ID and running/stopped behavior. See [lifecycle commands](commands.md#environment-lifecycle) for start/stop behavior across attachments and reboot.
 
 `last_activity` and `last_action` describe recorded Devbox operations, not filesystem activity. List output's container creation time comes from Docker. Corrupt records remain diagnostics rather than being treated as missing state.
 

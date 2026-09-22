@@ -55,18 +55,24 @@ Devbox does not copy credentials or force forwarding off. Consult
 /devbox/docs/guides/ssh.md for the workflow. Connection access does not authorize
 unrelated remote changes or use of host/network services.
 
-Do not modify /devbox: it is Devbox-owned runtime data. Do not add a project
-Dockerfile to make an ad-hoc tool installation persistent without user approval.
+Do not modify /devbox: it is Devbox-owned runtime data. Do not add a Dockerfile
+to a selected config directory to persist an ad-hoc installation without approval.
 Devbox does not enforce network egress restrictions or provide an offline mode.
-On the host, devbox-neo create <folder> prepares a new environment and leaves it
-stopped without launching a harness. Open/start require an existing session and
-never create new sessions. They still recover a missing container for retained
-session state. Container settings belong in profile/project configuration, not
-creation flags. Open accepts continuation and invocation-only harness arguments.
-A session records its profile/project combination. --profile selects the base
-without excluding project overrides; --ignore-project explicitly excludes them.
-Each combination requires its own create; folder commands never substitute another
-profile's session. Exact session names retain their recorded combination.
+On the host, config create <reference> creates a config directory; config edit
+edits that directory or adds missing optional files. Bare config names use the
+selected home (normally ~/.devbox-neo/configs/); directories elsewhere are ordinary
+explicit sources too. Creation rejects existing config.json; artifact setup never
+overwrites existing files. Harness-file generation does not force harness selection.
+Devbox-neo create <folder> asks for an explicit local session name and existing
+config sources, then prepares a stopped container. Scripts supply --name NAME and
+repeated --config REF. Creation never selects a default. Use set <folder> to choose
+one, open <folder> --name NAME for an explicit local name, or a full session name
+from list for exact targeting anywhere. Even a sole session needs an explicit
+folder default. Config sources <folder|session> manages saved source references;
+it does not open directory editors. Config edits do not rename sessions.
+Open/start require existing sessions, with recorded missing-container recovery.
+Lasting settings belong in config directories; open accepts continuation and
+invocation-only harness arguments.
 Manual start keeps a container running until stop, including automatic restart
 when Docker starts after reboot. Without manual start, the last attached Devbox
 command stops it. Open never changes this intent. Reboot restarts the container,
@@ -79,7 +85,7 @@ combines saved session details, active commands, container state, and pending ch
 invalid current config does not hide saved details. Copy is also a top-level command;
 add --move to remove the source after the destination is ready. There is no separate
 show command or session command group.
-Managed profile/project files are authoritative: local edits to their live copies
+Managed config-source files are authoritative: local edits to their live copies
 are overwritten at the next startup. Open/start/shell/exec/ssh synchronize before
 starting stopped containers, never merely when attaching to running ones.
 Invalid participating config blocks startup. Pi's shared JSON preserves keys not
@@ -95,21 +101,25 @@ container commands; it never expands scope or bypasses saved-state idle checks.
 Ordinary recreate builds changed image inputs automatically. Open prints creation
 drift reasons first, before startup, then continues immediately. Status and open
 share detailed setting/file changes; env reasons show variable names, never values.
-Session record schema 4 requires a complete applied-input snapshot and saved config sources. Older development
-records require a clean reset with the previous build; there is no automatic migration.
+Session record schema 5 stores desired relative/fixed source references separately
+from complete applied inputs and committed source directories. Older development
+records require a clean reset with the previous build; runtime has no migration reader.
+Copy --as NAME chooses a destination local name, including in the same folder.
+Relative source references follow the destination workspace; fixed references stay
+absolute. Config directories are not copied. Whole-session deletion and move cleanup
+clear a matching source default without selecting a replacement. Container-only
+deletion leaves defaults intact. Session lookup and source-chain repair do not require working config directories.
 
 The built-in Pi launch defaults to --tui-mode fullscreen (upstream experimental).
 A later --tui-mode regular in harness_args or one-off harness arguments overrides it.
 Configured harness_args must name their harness in the same config file; arguments
-from layers naming a different harness are ignored. Configuration fields use mounts,
-ports, env, shell, and ignore_project. Config files have no name field; the
-profile/project selection determines environment names. Source creation is sparse.
-inherit: false discards preceding config sources, including explicitly selected
-profiles and all their artifacts; built-in/global settings remain. Other absent
-settings inherit, additive lists append, and overlapping mount targets fail.
-Project configuration lives in the workspace's .devbox/ directory. Exact-session
-access and recreation retain recorded profile/project participation independently
-of changed defaults. Missing required sources are errors.
+from layers naming a different harness are ignored. Configuration fields include
+mounts, ports, env, shell, network, and base_image. Built-in defaults are followed
+by every explicitly selected config source in order. Scalars replace, most lists
+append, shell argv replaces as a unit, and overlapping mount targets fail. No global
+settings, profile/project discovery, or inheritance cutoff participates. Source edits
+can save incomplete chains for repair; creation, open (even while running), and
+recreation require at least one valid source and a final harness selection.
 
 base_image chooses the upstream Debian/Ubuntu-compatible image. Devbox prepares
 the development user/runtime before custom Dockerfiles build in source order.
@@ -125,9 +135,9 @@ open. Each is a separate process in /workspace; a failure stops the chain.
 Existing recorded environments require recreation to adopt changed harness defaults.
 Host CLI failures show short messages, target context, and labeled next commands.
 Suggestions do not run automatically; Then marks a sequence and Or an alternative.
-Generic creation hints show only create, without profile flags.
-Missing-environment hints retain the folder you entered.
-They use normal configuration selection, not a replay of prior flags.
+Missing-session hints retain the folder you entered. No suggestion runs another
+command's menu automatically. Full session names are lookup keys, not Docker
+ownership proof.
 Existing --json commands retain error codes, operation names, and structured failures.
 
 Attached shell, harness, and exec commands receive the invoking terminal's TERM,

@@ -3,8 +3,7 @@
 An independent, Linux-only Go scratch rewrite. **In development, not ready for cutover.**
 
 - [Design and delivery phases](docs/dev/rewrite-plan.md)
-- [Environment identity and configuration model](docs/dev/environment-model-plan.md)
-- [Generic sources beneath profile/project customization](docs/dev/config-directory-proposal.md)
+- [Folder-local sessions and explicit configs](docs/dev/generic-config-alternative.md)
 - [Separate migration plan](docs/dev/migration-plan.md)
 - [Implementation progress](docs/dev/progress.md)
 - [Try the initial runtime](docs/src/guides/getting-started.md)
@@ -19,9 +18,9 @@ Saved environments are the top-level model: use `list`, `status <folder|session>
 
 `delete <folder|session>` asks about container deletion, then saved data. Explicit `--container` deletes runtime only; `--session` deletes the whole environment, without prompts. Filter cleanup with `--older-than`, `--orphaned`, `--stopped`, or `--all`; preview with `--dry-run` and an explicit scope. `--force` never expands scope. There is no separate `prune` command.
 
-Config sources share a generic `inherit` cutoff; environment naming stays in profile/project selection. Profiles/projects remain the public interface, with project configuration in the workspace's `.devbox/` directory. Dockerfiles and setup/before-open scripts chain in source order. Devbox prepares the development user before custom Dockerfiles extend `DEVBOX_BASE`, then installs the harness last. Session schema 4 requires a clean development-state reset; there are no old-record readers.
+Sessions have explicit folder-local names, independent of their ordered config directories. First use is `config create base` → `create .` → `set .` → `open .`. Folder-only access requires an explicitly saved default, even for a sole session; `--name` or a full session name targets another session. Configs have no global layer, discovery, or inheritance cutoff. Use `config edit` for source files and `config sources` for a session's desired chain. Dockerfiles and hooks compose in source order. Session schema 5 requires a clean development-state reset; there are no old-record readers.
 
-Managed profile/project files are reapplied before any stopped-container `open`, `start`, `shell`, `exec`, or `ssh`, and during creation/recreation. Running access does not synchronize. Ordinary managed files overwrite local copies; Pi's shared JSON preserves undeclared keys. Unmanaged state/history remains intact. Invalid config blocks startup; no `reset` command is needed to restore managed files.
+Managed source files are reapplied before any stopped-container `open`, `start`, `shell`, `exec`, or `ssh`, and during creation/recreation. Running access does not synchronize. Ordinary managed files overwrite local copies; Pi's shared JSON preserves undeclared keys. Unmanaged state/history remains intact. Invalid config blocks startup; no `reset` command is needed to restore managed files.
 
 `ssh <folder|session> <destination>` lets you authenticate in a host terminal and share the connection with the agent. The master runs inside the container by default; explicit `--host-master` uses host SSH configuration and prints a host/network-access warning. Keep the terminal open; Ctrl-C disconnects. No keys are copied. See the [SSH guide](docs/src/guides/ssh.md).
 
@@ -31,7 +30,7 @@ The development home defaults to `~/.devbox-neo`. `--home` overrides `DEVBOX_HOM
 
 ## Migration utility
 
-`make build-migrate` builds the separate `bin/devbox-migrate` utility. Run `bin/devbox-migrate` in a terminal to choose:
+`make build-migrate` builds the separate `bin/devbox-migrate` utility. It converts old profiles to ordinary named configs, old globals to an explicit `imported-global` config, and sessions to reviewed local names/source chains without selecting defaults. Its journal is schema 2; older staged runs require fresh preparation. Normal runtime loading never reads old installation formats. Run `bin/devbox-migrate` in a terminal to choose:
 
 - `[1]` **Preview migration (read-only)** — the same metadata preview as `--dry-run`, without copying files or creating staging.
 - `[2]` **Prepare staged copy** — prepare a separate copy without changing either installation's data.

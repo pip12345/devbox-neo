@@ -86,6 +86,6 @@ Auth can overlay a path inside a store, but cannot obscure a declared store. Tar
 
 Definition path fields must remain inside their declared owner. Absolute paths must be clean; relative paths cannot escape their root. Paths containing NUL or line breaks are invalid.
 
-The `${user}` template expands to `devuser` in executable/install/launch strings, env values, store targets, config path, auth paths, and preparation argv. Host `${env:NAME}` substitution belongs to profile/project/global configuration, not harness definitions.
+The `${user}` template expands to `devuser` in executable/install/launch strings, env values, store targets, config path, auth paths, and preparation argv. Host `${env:NAME}` substitution belongs to config directories, not harness definitions.
 
-Default config trees follow the same [regular-file and overlay rules](configuration.md#managed-harness-configuration) as profile/project harness config. Use auth or environment inputs for secrets, not installation arguments or ordinary config fields.
+Default config trees follow the same [regular-file and overlay rules](configuration.md#managed-harness-configuration) as harness files in selected config directories. Use auth or environment inputs for secrets, not installation arguments or ordinary config fields.

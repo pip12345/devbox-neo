@@ -1,6 +1,6 @@
 # Environment identity and configuration simplification
 
-Status: implemented; final validation and review tracked in `progress.md`. This document records the agreed model and acceptance coverage. Existing development sessions require a clean reset; no automatic migration or compatibility readers are provided.
+Status: historical milestone. Its profile/project-derived identity and selection are superseded by [folder-local sessions and explicit configs](generic-config-alternative.md). Manual-start intent and the other lifecycle invariants remain. Current validation is tracked in `progress.md`; session schema 5 requires a clean development reset, not a runtime compatibility reader.
 
 ## Overview
 

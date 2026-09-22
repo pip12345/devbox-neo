@@ -34,7 +34,7 @@ flowchart TD
 
 ### One input model
 
-`environment.Inputs` has image, container, and runtime snapshots. Aggregate fingerprints and detailed changes both derive from it. There is no second settings registry or diagnostic file scan that can disagree with lifecycle decisions.
+`environment.Inputs` has committed absolute source directories plus image, container, and runtime snapshots. Aggregate fingerprints and detailed changes both derive from it. There is no second settings registry or diagnostic file scan that can disagree with lifecycle decisions.
 
 | Scope | Representative inputs | Baseline advances |
 |---|---|---|
@@ -42,7 +42,7 @@ flowchart TD
 | Container | Image dependency, mounts, network, env verification, ordered setup inputs | Creation/recreation commit |
 | Runtime | Managed files, launch settings, ordered before-open inputs, runtime assets | Successful application through `Record.ApplyRuntime` |
 
-Snapshots contain public values and hashes, not file contents or secret values. Schema `4` requires all three and validates their fingerprints. Historical baselines are not inferred from current source files.
+Snapshots contain public values and hashes, not file contents or secret values. Schema `5` requires these snapshots and validates their fingerprints. Committed source directories authorize environment recovery independently of the editable desired reference chain. Historical baselines are not inferred from current source files.
 
 `CompareInputs` emits leaf changes in stable order. Action priority is image over container over runtime. The image-to-container hash dependency does not become a duplicate user-facing reason. Dockerfile and ignore entries also appear only once per physical change even when included in the context.
 
@@ -50,12 +50,14 @@ Source paths explain changes but do not themselves change fingerprints when effe
 
 ## New-session creation
 
-`Engine.Create` resolves the spec, locks the target, and rejects existing records, pending transfers, unmatched containers, or uncommitted session contents. It then enters the shared creation pipeline.
+`Engine.Create` computes identity from workspace and local name, acquires its operation lock, rejects an existing record or pending transfer, resolves the explicit sources, and verifies that no unmatched container or uncommitted state occupies the target. It then enters the shared creation pipeline. Creation never changes a folder default.
 
 ```mermaid
 flowchart TD
-    R[Resolve and capture inputs] --> L[Lock and require new target]
-    L --> B[Build or select image]
+    I[Identify named target] --> L[Lock and reject existing state]
+    L --> R[Resolve and capture inputs]
+    R --> NEW[Verify unused runtime]
+    NEW --> B[Build or select image]
     B --> P[Prepare stores and managed config]
     P --> C[Create and start container]
     C --> S[Install runtime and run preparation]
@@ -70,7 +72,7 @@ The ordered `setup.sh` chain belongs to the per-container contract. Before-open 
 
 The record commits only after startup, declared preparation, setup, and binary-availability checks succeed. If the final stop fails, the committed environment remains usable and the error recommends `stop`; it is not presented as an absent session that can be created again.
 
-Recreation selects saved state and rereads it under the operation lock before resolving desired inputs. It retains the recorded profile/project sources independently of changed defaults. Changes that would alter profile/project participation are rejected before Docker mutation.
+Recreation selects saved identity and rereads it under the operation lock before resolving its current desired references. A later default change cannot retarget the invocation. Source edits do not rename the session; a replaced durable ID fails rather than being adopted.
 
 Recreation uses current desired inputs while preserving the session ID and stores. An unchanged available image can be reused; changed image inputs trigger a cached build, and `--image` forces a no-cache build. Running/stopped intent is retained. Container-local state is replaceable, not transferred into the new container.
 
@@ -118,7 +120,7 @@ Recovery materializes the recorded creation contract, not a newly resolved one. 
 - every recorded setup source's content, in order;
 - recoverable environment source entries.
 
-Recorded `sources` identify the profile and workspace `.devbox/` directories for current desired resolution and sensitive env-source validation. A new user override cannot replace a recorded built-in definition during recovery. Missing durable roots are not recreated as empty state. Environment values are reconstructed from recorded source references; changed or missing values can require explicit recreation with current configuration.
+Desired `sources` retain relative/fixed references for current resolution. Committed `inputs.sources` directories separately authorize the recorded sensitive env-source paths; changing desired references does not alter recovery authority. A new user override cannot replace a recorded built-in definition during recovery. Missing durable roots are not recreated as empty state. Environment values are reconstructed from recorded source references; changed or missing values can require explicit recreation with current configuration.
 
 Compatible desired runtime config can synchronize during ordinary recovery, but image/container settings remain recorded. Transaction rollback and committed-transfer recovery follow their recorded transaction rather than resolving newer desired configuration.
 
@@ -179,4 +181,4 @@ The adapter applies root-owned read-only permissions for `devuser`, excluding th
 
 Network commands inspect actual attachments under the operation lock. Secondary-network changes cannot detach the configured primary and do not change creation fingerprints. Managed changes refresh in-container facts while running; external Docker changes appear on the next refresh.
 
-Pi/OpenCode inherit the `devbox` skill through harness defaults. Init leaves it inherited, while explicit profile/project overrides use normal tree resolution. The asset content hash is a runtime input, not an image input, so updated guidance does not itself require an image rebuild.
+Pi/OpenCode inherit the `devbox` skill through harness defaults. Artifact setup leaves it inherited, while explicit config-directory overrides use normal tree resolution. The asset content hash is a runtime input, not an image input, so updated guidance does not itself require an image rebuild.

@@ -24,7 +24,7 @@ Use `status` when you want more detail:
 devbox-neo status .
 ```
 
-Folder commands select the current profile plus participating project settings. Use `--profile NAME` to select another base profile, or an exact session name from `list`. If the selected combination has not been created, the command fails rather than using another environment.
+Folder commands use the default you selected with `devbox-neo set .`. Use `--name NAME` to select another session in that folder, or a full session name from `list` to target it from anywhere. `list .` shows just this folder's sessions. Missing selections fail; opening never creates a session or chooses a default.
 
 ## Open an interactive shell
 
@@ -82,7 +82,7 @@ Put one-off harness arguments after `--`. For example, to launch Pi in regular t
 devbox-neo open . -- --tui-mode regular
 ```
 
-For options you use every time, set `harness_args` and its matching `harness` in the same [profile or project configuration](configuration.md).
+For options you use every time, set `harness_args` and its matching `harness` in the same [config directory](configuration.md).
 
 ## Enable completion
 
@@ -98,4 +98,4 @@ Add that line to your shell startup file to load completion in new terminals. De
 
 Use `devbox-neo <command> --help` for command options. Inside the container, the same documentation is available at `/devbox/docs/index.md`; `/devbox/AGENTS.md` gives the agent its container guidance.
 
-**Next:** [Profiles and project settings](configuration.md).
+**Next:** [Config directories and session sources](configuration.md).

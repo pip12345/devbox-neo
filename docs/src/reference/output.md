@@ -2,12 +2,12 @@
 
 ## Environment listings
 
-`list` shows `NAME`, `HARNESS`, `PROFILE`, `LAST ACTIVE`, `CONTAINER`, and `FOLDER`. `--wide` adds the last action and exact UTC activity/container-creation timestamps.
+`list` groups sessions by workspace and shows full names. `list <folder>` uses local names. Tables contain `NAME`, `DEFAULT`, `HARNESS`, `LAST ACTIVE`, `CONTAINER`, and ordered `CONFIGS`. `--wide` adds the last action and exact UTC activity/creation timestamps.
 
 - `--sort name` is the default.
 - `--sort last-active` is newest first, then name; unknown activity sorts last.
-- `!` marks an error; `*` marks a pending transfer.
-- Stopped/missing rows are dimmed where supported; diagnostics remain readable.
+- `*` in `DEFAULT` marks the selected session. In `CONTAINER`, `!` marks an error and `*` marks a pending transfer.
+- Stopped/missing rows are dimmed; default markers remain prominent and diagnostics readable. Human sorting is within workspace groups.
 
 Both `list` and `status --all` report installation-managed containers without session records separately. Corrupt records remain session rows with diagnostics. Listings do not adopt, delete, or repair resources.
 
@@ -35,7 +35,7 @@ Single-target status includes saved session ID, harness, image, active-command c
 | `status --all --json` | Same inventory shape, enriched with desired-change diagnostics |
 | `status <folder\|session> --json` | One status object, plus `record` and `active` details |
 
-Bulk arrays are present even when empty. List session order follows `--sort`. Status fields include `desired_change`, `pending_input_changes`, `config_error`, `error`, and `pending_transfer` where applicable. Bulk rows omit full records and leases.
+Bulk arrays are present even when empty. Optional `default_errors` maps workspaces to default-state diagnostics without hiding sessions. Rows include `local_name`, `default`, and desired `sources`. List session order follows `--sort`. Status fields include `desired_change`, `pending_input_changes`, `config_error`, `error`, and `pending_transfer` where applicable. Bulk rows omit full records and leases.
 
 An exact pending-transfer endpoint remains inspectable without a session record: `record` is omitted and `active` is empty. Pending transfers skip desired-config comparison. Per-row diagnostics do not fail bulk status; unavailable inventory/Docker does.
 
@@ -52,11 +52,11 @@ Public scalar changes may show before/after values. Environment changes show var
 
 ## Configuration output
 
-`config --show` reports effective settings, participating/excluded layers, artifact winners, and harness origin. Lists show per-entry sources; nested fields use dotted names such as `vscode.extensions`. Human output wraps at up to 80 columns or the narrower terminal width.
+`config sources <full-name> --show` (or a folder with `--name`) reports combined settings, participating sources, ordered artifacts, and harness origin. Lists show per-entry sources; nested fields use dotted names such as `vscode.extensions`. Human output wraps at up to 80 columns or the narrower terminal width.
 
 JSON preserves structured values. `trace.entry_sources` gives layer names in resolved-list order, including duplicates. Env values are redacted; variable references are reported separately. A sparse configuration can be inspected before selecting a harness.
 
-Config menus label sources as `default`, the edited layer, or `inherited - global` / `inherited - profile`. Their overview includes inherited values; editors change only the selected layer.
+Directory menus show only their own settings over built-in defaults, using generic source labels. Combined configuration is read-only. Selected choices have a current-selection summary and readable `(selected)` markers or checkmarks; color is not required to identify them.
 
 ## Deletion results
 
@@ -77,7 +77,7 @@ Commands supporting `--json` emit one error object on stdout and exit nonzero:
 | `next_steps` | Suggested commands as structured argv and reasons |
 | `related_errors` | Additional joined failures |
 
-Common codes include `invalid_configuration`, `configuration_unavailable`, `harness_required`, `profile_missing`, `session_missing`, `session_exists`, `ambiguous_target`, `container_missing`, `session_busy`, `ownership_mismatch`, `container_mismatch`, `managed_config_conflict`, `recovery_unavailable`, `pending_transfer`, `transfer_failed`, and `docker_unavailable`.
+Common codes include `invalid_configuration`, `configuration_unavailable`, `harness_required`, `config_missing`, `config_exists`, `session_missing`, `session_exists`, `sessions_missing`, `default_missing`, `default_unavailable`, `sources_changed`, `session_changed`, `container_missing`, `session_busy`, `ownership_mismatch`, `container_mismatch`, `managed_config_conflict`, `recovery_unavailable`, `pending_transfer`, `transfer_failed`, and `docker_unavailable`.
 
 Child output is passed through. `open`, `shell`, `exec`, and `ssh` do not provide JSON wrappers. Child/Docker exit status is preserved even if cleanup also fails; cancellation and deadlines remain nonzero. Flag errors do not echo rejected values.
 

@@ -32,22 +32,15 @@ devbox-neo version
 
 ## 2. Choose your harness
 
-A **harness** is the coding tool Devbox launches, such as Pi or OpenCode. A **profile** is a reusable set of environment settings, including your harness choice.
+A **harness** is the coding tool Devbox launches, such as Pi or OpenCode. A **config directory** supplies reusable settings and optional customization files.
 
-Create a profile named `basic` and open its setup menu:
-
-```sh
-devbox-neo profile create basic
-devbox-neo profile init basic
-```
-
-Choose your harness when prompted. Press Enter to skip the optional files for now; you can add them later.
-
-Then select `basic` in the default-profile menu:
+Create a config named `base`:
 
 ```sh
-devbox-neo profile set
+devbox-neo config create base
 ```
+
+Choose your harness, then choose **Continue** to skip optional files for now. You can add them later through `config edit base`. This config lives in `~/.devbox-neo/configs/base/`; creating it does not create a session.
 
 ## 3. Create an environment
 
@@ -63,13 +56,23 @@ Then create its environment:
 devbox-neo create .
 ```
 
+Enter a session name in the blank prompt. Choose **Add source**, select `base`, then choose **Create session**. The name belongs to this workspace; other workspaces can use the same name.
+
 You can also use a path directly, such as `devbox-neo create /path/to/your/project`, without changing folders.
 
 Devbox builds the image, installs the selected harness, and prepares the container. The first build can take a while. When creation finishes, the environment is ready but stopped.
 
 Your project folder appears at `/workspace` inside the container. Changes made there are changes to your real project files.
 
-## 4. Open it
+## 4. Select a default and open it
+
+Choose the session to use when you address this folder without a name:
+
+```sh
+devbox-neo set .
+```
+
+Select the session you just created. Even a folder with only one session needs an explicit default. Then open it:
 
 ```sh
 devbox-neo open .

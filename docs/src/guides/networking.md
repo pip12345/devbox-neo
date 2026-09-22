@@ -14,7 +14,7 @@ Start your server inside the container, listening on `0.0.0.0:8080`. Then open `
 
 The first address and port belong to the host; the last port belongs to the container. Binding the host side to `127.0.0.1` keeps it local to your machine.
 
-For an existing environment, add the mapping to `ports` in its profile or project configuration and run `recreate`. Publishing ports is a container setting; stopping and starting does not change it.
+For an existing environment, add the mapping to `ports` in one of its selected config directories and run `recreate`. Publishing ports is a container setting; stopping and starting does not change it.
 
 ## Reach a service on your host
 

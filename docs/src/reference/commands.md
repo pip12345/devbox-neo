@@ -7,18 +7,16 @@ Executable: `devbox-neo`. Use `<command> --help` for command-specific help.
 | Option | Meaning |
 |---|---|
 | `--home PATH` | Select the Devbox home; overrides `DEVBOX_HOME`, then `~/.devbox-neo` |
-| `--profile NAME`, `-p NAME` | Select the base profile; retain participating project configuration |
-| `--ignore-project` | Exclude project configuration and artifacts; on bulk commands, exclude project-participating sessions |
 
-`<folder|session>` accepts a workspace folder or an exact saved session name from `list`. Every folder-targeted command selects the current profile/project combination and fails if that session does not exist; it never substitutes another profile. Exact names retain their recorded combination even when defaults change, and conflicting explicit selection flags fail. The session and its replaceable container share a name; there is no separate container selector.
+`<folder|session>` accepts a workspace folder or the full saved session/container name from `list`. For single-session operations, a folder plus `--name NAME` selects that local name; a folder alone requires its saved default. Exact full names work from any folder. There is no sole-session fallback or implicit creation. A local name by itself is not a session target.
 
-Profile/project configuration commands work without an existing environment. `project config` also accepts a session name to select its workspace.
+`config create` and `config edit` address independent config directories, not environments. Bare references use `<home>/configs/`; path references follow the [config reference rules](configuration.md#locations-and-references).
 
 ## Environment lifecycle
 
 | Command | Effect |
 |---|---|
-| `create <folder>` | Build and prepare a new environment; leave it stopped; refuse an existing session |
+| `create <folder> [--name NAME] [--config REF ...]` | Name a session and select existing sources; build and leave it stopped without selecting a default |
 | `open <folder\|session> [-- harness-args...]` | Launch the recorded harness in an existing environment |
 | `start <folder\|session>` | Keep running until explicit `stop`, including automatic restart when Docker starts after reboot |
 | `stop <folder\|session> [--force]` | Stop and clear manual keep-running intent; `--force` permits interrupting attached commands |
@@ -26,7 +24,7 @@ Profile/project configuration commands work without an existing environment. `pr
 | `exec <folder\|session> -- <argv...>` | Run exact arguments, without implicit shell interpretation |
 | `logs <folder\|session> [-f] [--tail N\|all]` | Read Docker logs; default tail `100`; `-f`/`--follow` streams |
 | `recreate <folder\|session> [--image]` | Replace the container using current configuration; preserve session identity and stores |
-| `recreate --all [--image]` | Preflight and recreate all selected containers; optional profile filter |
+| `recreate --all [--image]` | Preflight and recreate all Devbox containers |
 
 `open` and `start` can restore a missing container from retained session state when recorded inputs remain available. `shell`, `exec`, and `ssh` require the container to exist. None of these commands creates a new session.
 
@@ -36,7 +34,7 @@ Before a stopped container starts, access commands resolve participating configu
 
 ### Creation and launch options
 
-Configure container settings through `profile config <profile>` or `project config <folder>` before creation/recreation. Selection flags identify the session; `recreate --image` controls rebuilding.
+Configure container settings through `config edit <reference>` before creation/recreation. A terminal prompts for missing creation inputs; otherwise `create` requires `--name` and at least one repeated `--config`. A fully specified create does not prompt. Session names are explicit and case-sensitive; the prompt starts blank.
 
 | Option | Commands | Meaning |
 |---|---|---|
@@ -54,38 +52,48 @@ Mount, environment, port, and raw Docker validation rules are in [configuration]
 
 | Command | Output |
 |---|---|
-| `list [--sort name\|last-active] [--wide] [--json]` | Saved environments, including those without containers; default sort `name` |
+| `list [folder] [--sort name\|last-active] [--wide] [--json]` | Saved sessions, including missing containers; folder view uses local names, global view groups by workspace |
 | `status <folder\|session> [--json]` | Saved details, live commands, container state, and pending configuration changes |
 | `status --all [--json]` | Container state and configuration health for all saved environments |
 
-`--profile` filters list and bulk status. `status --all` cannot be combined with a target. Checks compare local inputs, not upstream releases. Invalid desired configuration does not hide saved session details. Unmatched managed containers are reported separately.
+`status --all` cannot be combined with a target or `--name`. Checks compare local inputs, not upstream releases. Invalid desired configuration does not hide saved session details. Unmatched managed containers are reported separately.
 
 See [output and errors](output.md) for columns, change classifications, and JSON fields.
 
 ## Configuration commands
 
-These commands edit configuration, not containers.
+| Command | Effect |
+|---|---|
+| `config create <reference>` | Create a config and offer initial setup; reject an existing `config.json` |
+| `config edit <reference>` | Edit an existing directory or add missing optional files |
+| `config sources <folder>` | Pick a session, then manage its ordered source chain |
+| `config sources <folder> --name NAME` | Manage that session's sources directly |
+| `config sources <full-name>` | Manage an exact session's sources |
+| `config sources <target> --show [--json]` | Inspect combined configuration; folder targets require `--name` |
+
+Creation and source menus select existing directories; they never open another command's editor. Completed settings/source edits save immediately. See [editing controls](configuration.md#editing-and-inspection).
+
+Both directory commands accept setup flags:
+
+| Flag | Meaning |
+|---|---|
+| `--harness NAME` | Set the persistent Harness setting |
+| `--artifact NAME` | Add missing `harness-config`, `setup.sh`, `before-open.sh`, or `Dockerfile`; repeatable or comma-separated |
+| `--artifact-harness NAME` | Select the file-generation target without changing Harness; requires `harness-config` |
+| `--json` | Print the operation result and never prompt |
+
+Explicit setup flags run directly, even in a terminal. Without flags, interactive create/edit open their own menus. Non-interactive creation can create the minimal config; non-interactive editing requires an explicit operation. Harness-file generation uses `--artifact-harness`, otherwise the config's own selection, and fails if neither supplies a target. Other artifacts need no harness. Existing files are preserved.
+
+## Folder defaults
 
 | Command | Effect |
 |---|---|
-| `profile create <name> [--json]` | Create sparse profile configuration |
-| `project create <folder> [--json]` | Create sparse `.devbox/config.json`; folder must exist |
-| `project create <folder> --from-profile NAME [--json]` | Copy profile source artifacts once; set `inherit: false`; require an unused destination |
-| `profile init <name> [--harness NAME] [--artifact NAME,...] [--json]` | Select a harness and seed missing artifacts |
-| `project init <folder> [--harness NAME\|inherit] [--artifact NAME,...] [--json]` | Initialize project artifacts; `inherit` validates the profile/global harness selection |
-| `profile list [--json]` | Sorted profiles, default marker, and invalid-config diagnostics |
-| `profile set [name]` | Set the default profile; omitted name prompts |
-| `profile set --clear` | Clear the default profile |
-| `profile delete <name> [--force] [--json]` | Delete profile files only; `--force` skips confirmation |
-| `global config` | Edit global settings |
-| `profile config <profile>` | Edit profile settings |
-| `project config <folder\|session>` | Edit the workspace's `.devbox/` configuration |
+| `set <folder>` | Choose a saved session or No default in a terminal |
+| `set <folder> --name NAME` | Select directly |
+| `set <full-name>` | Select that session for its recorded workspace |
+| `set <folder\|session> --clear` | Clear the workspace's default without selecting another |
 
-`profile create` and `project create` create minimal configuration without choosing a harness or default profile. `profile delete` removes its files but leaves the default-profile setting and existing environments unchanged.
-
-`init` preserves existing files. Available artifacts are `harness-config`, `setup.sh`, `before-open.sh`, and `Dockerfile`. Interactive init offers missing files to add. Non-interactive init needs an existing harness selection or `--harness`; `--json` never prompts.
-
-Config commands accept `--show [--json]` for effective values without a menu. `project config --show` also accepts `--profile NAME`. Editing requires a terminal; each valid operation saves immediately. See [configuration editing](configuration.md#editing-and-inspection).
+Without a terminal, provide `--name`, `--clear`, or an exact session name. `--clear` and `--name` are mutually exclusive. Selection never starts a container. Opening does not change the default.
 
 ## SSH sharing
 
@@ -126,22 +134,21 @@ Network exports include `DEVBOX_HOST`, `DEVBOX_NETWORK`, `DEVBOX_PRIMARY_NETWORK
 
 | Command | Effect |
 |---|---|
-| `copy <folder\|session> <destination-folder> [--to SLOT]` | Copy saved harness state with a new session ID; source must be stopped/absent; destination stays stopped |
-| `copy <folder\|session> <destination-folder> --move` | Move saved state, preserve ID and running/stopped intent, then remove source |
-| `copy <folder> --from SLOT --to SLOT [--move]` | Transfer between same-folder slots: `.profile-NAME`, `.profile-NAME.project`, or `.project` |
+| `copy <folder\|session> <destination-folder> [--as NAME]` | Copy state with a new session ID; source must be stopped/absent; destination stays stopped |
+| `copy <folder\|session> <destination-folder> --move [--as NAME]` | Preserve ID and running intent, then remove source |
+| `copy <folder\|session> --as NAME [--move]` | Copy or move to another name in the source workspace |
 
 | Option | Meaning |
 |---|---|
-| `--profile NAME` | Select the source's base profile |
-| `--from SLOT` | Select the source by its exact name suffix, such as `.profile-basic`; conflicts with `--profile` |
-| `--to SLOT` | Select destination configuration: `.profile-NAME`, `.profile-NAME.project`, or `.project`; destination `inherit` rules apply |
+| `--name NAME` | Select a source local name within a folder target |
+| `--as NAME` | Choose the destination local name; otherwise preserve the source name |
 | `--move` | Remove the source after the destination is ready |
 | `--dry-run` | Preview without copying state |
 | `--json` | Print the result as JSON |
 
-Without a destination folder, `--to` is required. Cross-folder copies keep the source's profile/project combination unless `--to` selects another; cross-folder moves must keep that combination.
+An omitted destination folder means the source's recorded workspace, not the invoking directory. Source and destination identities must differ; collisions fail without replacement. Required destination config directories must already be available.
 
-Any selected destination profile must exist. If project configuration is selected, initialize the destination's `.devbox/` first. Transfers do not copy project configuration.
+References keep their form and order: workspace-relative references rebase to the destination, while fixed references keep their absolute paths. Config directories are not copied. Copy leaves defaults untouched; move clears a matching source default without selecting the destination.
 
 JSON transfer results and pending summaries report `mode: "clone"` for `copy` and `mode: "relocate"` for `copy --move`.
 
@@ -172,7 +179,7 @@ Without a scope flag, interactive deletion asks about containers first, then sav
 
 `--container` and `--session` are mutually exclusive. Workspace files, configuration, managed auth, and shared caches are outside both scopes.
 
-Exact targets cannot be combined with selection filters. Without targets, provide at least one selector; `--profile` alone is not enough. Filters intersect, so `--stopped --orphaned` selects nothing. Unknown activity prevents age-filtered deletion rather than counting as old.
+Exact targets cannot be combined with selection filters. Without targets, provide at least one selection filter. `--name` requires an explicit folder target and cannot be combined with bulk filters. Filters intersect, so `--stopped --orphaned` selects nothing. Unknown activity prevents age-filtered deletion rather than counting as old.
 
 Devbox preflights the complete selection and rechecks activity, container absence, and active commands under lock. Container removal must succeed before saved data can be deleted. Failure or cancellation retains remaining saved state but does not restore containers already removed.
 
@@ -184,7 +191,7 @@ Devbox preflights the complete selection and rechecks activity, container absenc
 source <(devbox-neo completion bash)
 ```
 
-Scripts complete commands, flags, profiles, harnesses, environment targets, and fixed values. They also register an existing `dbx` shortcut without defining or changing it. For command-name-based Bash/Fish autoloading, install the script under the shortcut's completion filename too, or source it at startup. Zsh's autoload header covers both names.
+Scripts complete commands, flags, config names/paths, harnesses, full session targets, folder-scoped local names, and fixed values. They also register an existing `dbx` shortcut without defining or changing it. For command-name-based Bash/Fish autoloading, install the script under the shortcut's completion filename too, or source it at startup. Zsh's autoload header covers both names.
 
 Suggestions honor the selected home. Completion is read-only and tolerates unavailable Docker or state sources. Reload generated scripts after updating the CLI.
 
