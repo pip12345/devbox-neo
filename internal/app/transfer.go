@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"devbox/internal/commanderror"
@@ -39,42 +38,41 @@ type TransferResult struct {
 	ResolvedSources []config.Source    `json:"resolved_sources"`
 }
 
-func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string, error) {
+func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (name, id string, err error) {
 	if q.LocalName != "" {
 		if err := environment.ValidateLocalName(q.LocalName); err != nil {
-			return "", err
+			return "", "", err
 		}
 	}
-	if strings.HasPrefix(q.Source, environment.ContainerPrefix) && !strings.ContainsAny(q.Source, "/\\") {
-		return q.Source, nil
+	if environment.IsSessionTarget(q.Source) {
+		return q.Source, "", nil
 	}
 	// A journal pins source identity even after source deletion or config edits.
-	// Retry selection must not reload desired configuration.
+	// Folder/default lookup must retain the ID too, not adopt a reused name.
 	workspace, pathErr := filepath.Abs(q.Source)
 	if pathErr != nil {
-		return "", pathErr
+		return "", "", pathErr
 	}
 	if canonical, e := filepath.EvalSymlinks(workspace); e == nil {
 		workspace = canonical
 	}
 	journals, listErr := e.Store.Transfers()
 	if listErr != nil {
-		return "", listErr
+		return "", "", listErr
 	}
-	name := ""
 	for _, j := range journals {
 		if j.Source.Workspace == workspace && (q.LocalName == "" || j.Source.LocalName == q.LocalName) {
 			if name != "" {
-				return "", fmt.Errorf("multiple pending transfers.\nUse the exact source name.")
+				return "", "", fmt.Errorf("multiple pending transfers.\nUse the exact source name.")
 			}
-			name = j.Source.Name
+			name, id = j.Source.Name, j.SourceID
 		}
 	}
 	if name != "" {
-		return name, nil
+		return name, id, nil
 	}
 	r, err := e.Locate(ctx, q.Source, q.LocalName)
-	return r.Identity.Name, err
+	return r.Identity.Name, r.ID, err
 }
 func (e *Engine) transferDestination(q TransferOptions, source environment.Identity) (environment.Identity, error) {
 	workspace := q.Destination
@@ -156,7 +154,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, err
 		}
 	}
-	sourceName, err := e.transferSource(ctx, q)
+	sourceName, selectedID, err := e.transferSource(ctx, q)
 	if err != nil {
 		return result, err
 	}
@@ -174,6 +172,9 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, err
 		}
 		sourceIdentity, sourceID = source.Identity, source.ID
+	}
+	if selectedID != "" && sourceID != selectedID {
+		return result, commanderror.New("session_changed", "Selected source session was replaced; select it again.", sourceName, nil)
 	}
 	if q.LocalName != "" && sourceIdentity.LocalName != q.LocalName {
 		return result, fmt.Errorf("selection does not match the source session")
