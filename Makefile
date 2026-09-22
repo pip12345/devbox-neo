@@ -5,13 +5,15 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS ?= -X devbox/internal/cli.Version=$(VERSION)
 DOCS_IMAGE := zensical/zensical:0.0.62@sha256:162b7e191224f57b8c584debe51b157b9802efd25d3a8948e4e0f64c1baaaee6
 
-.PHONY: install-go fmt test test-race test-integration build build-migrate docs-build docs-serve check tidy clean
+.PHONY: install-go fmt test test-fast test-race test-integration build build-migrate docs-build docs-serve check tidy clean
 install-go:
 	bash scripts/install-go.sh
 fmt:
 	$(GOFMT) -w $$(find cmd internal -name '*.go' -type f)
 test:
 	$(GO) test -timeout=2m ./...
+test-fast:
+	$(GO) test -timeout=2m -exec $(CURDIR)/scripts/test-fast-exec.sh ./...
 test-race:
 	$(GO) test -race -timeout=5m ./...
 test-integration:

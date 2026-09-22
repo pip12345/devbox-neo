@@ -165,7 +165,7 @@ func TestConfigurationAndHarnessFailuresUseSharedCodes(t *testing.T) {
 			completionFile(t, home, "harnesses/pi/harness.json", tt.definition)
 		}
 		name := ""
-		cmd := sourcesCommand(func(*cobra.Command) (*app.Engine, error) { return engine, nil }, &name)
+		cmd := editCommand(func(*cobra.Command) (*app.Engine, error) { return engine, nil }, &name)
 		cmd.SilenceUsage, cmd.SilenceErrors = true, true
 		var out, stderr bytes.Buffer
 		cmd.SetOut(&out)

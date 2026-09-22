@@ -28,7 +28,7 @@ func (p sourcePicker) capture(input string) (config.Reference, error) {
 	return config.CaptureReference(p.home, p.workspace, p.cwd, p.userHome, input)
 }
 
-func (p sourcePicker) choose(current *config.Reference) (config.Reference, bool, error) {
+func (p sourcePicker) choose(current *config.Reference, back string) (config.Reference, bool, error) {
 	entries, err := os.ReadDir(filepath.Join(p.home, "configs"))
 	if err != nil && !os.IsNotExist(err) {
 		return config.Reference{}, false, err
@@ -63,9 +63,9 @@ func (p sourcePicker) choose(current *config.Reference) (config.Reference, bool,
 		}
 		var choice int
 		if current == nil {
-			choice, err = p.menu.choose("Select a config source", choices, "Back")
+			choice, err = p.menu.choose("Select a config source", choices, back)
 		} else {
-			choice, err = p.selectedChoice("Replace config source", choices, selected, current.Label+" ("+current.Kind+")", "Back")
+			choice, err = p.selectedChoice("Replace config source", choices, selected, current.Label+" ("+current.Kind+")", back)
 		}
 		if err != nil || choice < 0 {
 			return config.Reference{}, false, err
@@ -153,7 +153,7 @@ func editSourceChain(p sourcePicker, sources []config.Reference, action string) 
 		if index >= 0 {
 			current = &sources[index]
 		}
-		reference, chosen, err := p.choose(current)
+		reference, chosen, err := p.choose(current, "Back")
 		if err != nil || !chosen {
 			return sources, false, err
 		}

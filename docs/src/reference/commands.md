@@ -68,10 +68,10 @@ See [output and errors](output.md) for columns, change classifications, and JSON
 | `config edit <reference>` | Edit an existing directory or add missing optional files |
 | `config list [--json]` | Show named configs under the selected home's `configs/` with harness and directory path; report invalid or incomplete entries; no Docker required |
 | `config delete <name> [--force] [--json]` | Delete an unreferenced named config and its files; confirm in a terminal, or use `--force` to skip confirmation (required with `--json`) |
-| `config sources <folder>` | Pick a session, then manage its ordered source chain |
-| `config sources <folder> --name NAME` | Manage that session's sources directly |
-| `config sources <full-name>` | Manage an exact session's sources |
-| `config sources <target> --show [--json]` | Inspect combined configuration; folder targets require `--name` |
+| `edit <folder>` | Pick a session, then manage its ordered source chain |
+| `edit <folder> --name NAME` | Manage that session's sources directly |
+| `edit <full-name>` | Manage an exact session's sources |
+| `edit <target> --show [--json]` | Inspect combined configuration; folder targets require `--name` |
 
 Creation and source menus select existing directories; they never open another command's editor. Completed settings/source edits save immediately. See [editing controls](configuration.md#editing-and-inspection).
 

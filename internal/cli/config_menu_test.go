@@ -208,7 +208,7 @@ func TestMenuRePromptsAndListEditing(t *testing.T) {
 }
 
 func TestConfigCLIRequiresExplicitOperationsWithoutTTY(t *testing.T) {
-	for _, args := range [][]string{{"config", "edit", "basic"}, {"config", "edit", "basic", "--json"}, {"config", "sources", ".", "--json"}} {
+	for _, args := range [][]string{{"config", "edit", "basic"}, {"config", "edit", "basic", "--json"}, {"edit", ".", "--json"}} {
 		cmd := New()
 		var out bytes.Buffer
 		cmd.SetOut(&out)

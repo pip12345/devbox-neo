@@ -33,6 +33,14 @@ func TestExecutableName(t *testing.T) {
 	}
 }
 
+func TestSessionEditorIsNotUnderConfig(t *testing.T) {
+	root := New()
+	root.SetArgs([]string{"config", "sources", "base"})
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "unknown command \"sources\"") {
+		t.Fatal("old session editor still accepted under config", err)
+	}
+}
+
 func TestFlagHelpDescribesActions(t *testing.T) {
 	for _, tt := range []struct{ command, flag, description string }{
 		{"open", "harness-arg", "Pass an argument to the harness (repeatable)"},
@@ -41,7 +49,7 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 		{"open", "name", "Select the session's folder-local name"},
 		{"stop", "force", "Stop even if commands are still running"},
 		{"delete", "force", "Allow container deletion despite attached commands; never implies deleting saved data"},
-		{"config sources", "show", "Show combined settings and their sources without editing"},
+		{"edit", "show", "Show combined settings and their sources without editing"},
 		{"config create", "harness", "Set this config's persistent harness selection"},
 		{"config edit", "artifact-harness", "Choose which harness's files to add without changing the config's harness"},
 		{"copy", "as", "Destination local name (default: preserve the source name)"},
@@ -65,7 +73,7 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 	for _, tt := range []struct{ command, description string }{
 		{"config create", "Create a config directory and offer initial setup"},
 		{"config edit", "Edit a config directory or add missing optional files"},
-		{"config sources", "Manage a session's config sources and inspect combined configuration"},
+		{"edit", "Edit a session's config sources and inspect combined configuration"},
 		{"set", "Select or clear a folder's default session"},
 		{"shell", "Open a shell in a session"},
 		{"exec", "Run a command in a session"},

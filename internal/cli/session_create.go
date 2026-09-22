@@ -60,6 +60,17 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		if err := environment.ValidateLocalName(localName); err != nil {
 			return err
 		}
+		if len(sources) == 0 {
+			reference, chosen, err := picker.choose(nil, "Cancel")
+			if errors.Is(err, io.EOF) || (err == nil && !chosen) {
+				cmd.Println("Cancelled. No session was created.")
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			sources = append(sources, reference)
+		}
 		if missing {
 			var proceed bool
 			sources, proceed, err = createSessionMenu(picker, e, localName, sources)
@@ -107,7 +118,11 @@ func createSessionMenu(p sourcePicker, e *app.Engine, name string, sources []con
 		if len(sources) > 0 {
 			actions = []string{"Create session", "Add source", "Replace source", "Remove source", "Reorder sources"}
 		}
-		choice, err := p.menu.choose("What would you like to do?", actions, "Cancel")
+		gapBefore := -1
+		if len(sources) > 0 {
+			gapBefore = 1
+		}
+		choice, err := p.menu.choose("What would you like to do?", actions, "Cancel", gapBefore)
 		if err != nil || choice < 0 {
 			return sources, false, err
 		}

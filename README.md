@@ -14,11 +14,13 @@ make check
 bin/devbox-neo --help
 ```
 
+For quicker local runs of the full test suite, use `make test-fast`: only the app tests use `/dev/shm` for temporary files when available. Run `make test` for the normal disk-backed check.
+
 Saved environments are the top-level model: use `list`, `status <folder|session>`, `status --all`, and `copy` (add `--move` to remove the source after copying). Single-target status combines saved session details, active commands, container state, and pending configuration changes. There is no `session` command group. List/status retain environments without containers and warn separately about unmatched managed containers.
 
 `delete <folder|session>` asks about container deletion, then saved data. Explicit `--container` deletes runtime only; `--session` deletes the whole environment, without prompts. Filter cleanup with `--older-than`, `--orphaned`, `--stopped`, or `--all`; preview with `--dry-run` and an explicit scope. `--force` never expands scope. There is no separate `prune` command.
 
-Sessions have explicit folder-local names, independent of their ordered config directories. First use is `config create base` → `create .` → `set .` → `open .`. Folder-only access requires an explicitly saved default, even for a sole session; `--name` or a full session name targets another session. Configs have no global layer, discovery, or inheritance cutoff. Use `config edit` for source files and `config sources` for a session's desired chain. `config delete <name>` removes a named directory only when no saved session uses it. Dockerfiles and hooks compose in source order. Session schema 5 requires a clean development-state reset; there are no old-record readers.
+Sessions have explicit folder-local names, independent of their ordered config directories. First use is `config create base` → `create .` → `set .` → `open .`. Folder-only access requires an explicitly saved default, even for a sole session; `--name` or a full session name targets another session. Configs have no global layer, discovery, or inheritance cutoff. Use `config edit` for a config directory and `edit` for a session's source chain. `config delete <name>` removes a named directory only when no saved session uses it. Dockerfiles and hooks compose in source order. Session schema 5 requires a clean development-state reset; there are no old-record readers.
 
 Managed source files are reapplied before any stopped-container `open`, `start`, `shell`, `exec`, or `ssh`, and during creation/recreation. Running access does not synchronize. Ordinary managed files overwrite local copies; Pi's shared JSON preserves undeclared keys. Unmanaged state/history remains intact. Invalid config blocks startup; no `reset` command is needed to restore managed files.
 

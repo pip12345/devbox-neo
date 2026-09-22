@@ -57,11 +57,16 @@ func writeMenuHint(out io.Writer, text string) error {
 	return writeStyledConfigLine(out, "", text, "", configDisplayWidth(out), terminalColors(out).dim)
 }
 
-func writeMenuChoices(out io.Writer, title string, choices []string) error {
+func writeMenuChoices(out io.Writer, title string, choices []string, gapBefore ...int) error {
 	if err := writeMenuTitle(out, title); err != nil {
 		return err
 	}
 	for i, choice := range choices {
+		if len(gapBefore) > 0 && i == gapBefore[0] {
+			if _, err := fmt.Fprintln(out); err != nil {
+				return err
+			}
+		}
 		prefix := menuPrefix(i + 1)
 		if err := writeConfigLine(out, prefix, choice, strings.Repeat(" ", len(prefix)), configDisplayWidth(out)); err != nil {
 			return err
@@ -72,8 +77,8 @@ func writeMenuChoices(out io.Writer, title string, choices []string) error {
 
 const menuChoicePrompt = "\n   Choose a number > "
 
-func (m menu) choose(title string, choices []string, back string) (int, error) {
-	if err := writeMenuChoices(m.out, title, choices); err != nil {
+func (m menu) choose(title string, choices []string, back string, gapBefore ...int) (int, error) {
+	if err := writeMenuChoices(m.out, title, choices, gapBefore...); err != nil {
 		return -1, err
 	}
 	return m.readChoice(len(choices), back)

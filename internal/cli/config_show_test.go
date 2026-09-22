@@ -16,7 +16,7 @@ import (
 func runSourcesCLI(t *testing.T, e *app.Engine, args ...string) (string, error) {
 	t.Helper()
 	name := ""
-	cmd := sourcesCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+	cmd := editCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)

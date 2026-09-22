@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -31,7 +32,7 @@ func TestSourcePickerHintsRetainExplicitHome(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, selected, err := picker.choose(nil); err != nil || selected {
+		if _, selected, err := picker.choose(nil, "Back"); err != nil || selected {
 			t.Fatal(selected, err)
 		}
 		want := "devbox-neo "
@@ -92,7 +93,7 @@ func TestExplicitCreateAndSetAreSeparateWorkflows(t *testing.T) {
 func TestInteractiveCreationStartsWithBlankNameAndOnlySelectsConfigs(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("Fresh\n1\n1\n1\n"); err != nil {
+	if _, err := master.WriteString("Fresh\n1\n1\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -116,8 +117,42 @@ func TestInteractiveCreationStartsWithBlankNameAndOnlySelectsConfigs(t *testing.
 	if !strings.HasPrefix(text, "Session name (:back cancels): ") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "set "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
 		t.Fatal(text)
 	}
+	pickerIndex, reviewIndex := strings.Index(text, "Select a config source"), strings.Index(text, "Create session · Fresh")
+	if pickerIndex < 0 || reviewIndex < 0 || pickerIndex > reviewIndex || !strings.Contains(text, "[1]  Create session\n\n   [2]  Add source") {
+		t.Fatal("source picker did not open first or create action was not separated", text)
+	}
 	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {
 		t.Fatal("interactive creation selected a default", selected, err)
+	}
+}
+
+func TestInteractiveCreationCanCancelAtInitialSourcePicker(t *testing.T) {
+	e, q, _ := namedCLIFixture(t)
+	master, slave := testTerminal(t)
+	if _, err := master.WriteString("Fresh\n0\n"); err != nil {
+		t.Fatal(err)
+	}
+	name := ""
+	cmd := createCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+	var out bytes.Buffer
+	cmd.SetIn(slave)
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{q.Workspace})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		t.Fatal(out.String(), err)
+	}
+	if !strings.Contains(out.String(), "Select a config source") || !strings.Contains(out.String(), "[0]  Cancel") || !strings.Contains(out.String(), "Cancelled. No session was created.") || strings.Contains(out.String(), "Create session · Fresh") {
+		t.Fatal(out.String())
+	}
+	identity, err := environment.Identify(q.Workspace, "Fresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Store.Read(ctx, identity.Name); !os.IsNotExist(err) {
+		t.Fatal("cancelling the picker created a session", err)
 	}
 }
 

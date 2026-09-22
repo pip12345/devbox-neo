@@ -43,10 +43,10 @@ Each interactive workflow has one command entry point:
 | `config list [--json]` | List named configs under the selected home's `configs/`, including invalid or incomplete entries; path-based configs are not registered here |
 | `config delete <name>` | Remove an unreferenced named config under the selected home's `configs/` after confirmation; refuse desired or committed session users and list every known user |
 | `create <folder>` | Name a session and select existing config sources |
-| `config sources <folder|session>` | Manage a session's source chain and inspect combined configuration |
+| `edit <folder|session>` | Manage a session's source chain and inspect combined configuration |
 | `set <folder|session>` | Select or clear a folder's default session |
 
-Keep directory creation/editing out of session creation and source-chain menus. Those menus may print the exact command to run next, but must not launch another command's menu. Reuse the existing underlying configuration mechanisms without duplicating their interactive entry points. `config sources` replaces the bare `config <folder|session>` form; do not retain it as an alias or add a root-level `sources` command.
+Keep directory creation/editing out of session creation and source-chain menus. Those menus may print the exact command to run next, but must not launch another command's menu. Reuse the existing underlying configuration mechanisms without duplicating their interactive entry points. Top-level `edit` replaces the bare `config <folder|session>` form; do not retain the old `config sources` command as an alias or add a root-level `sources` command.
 
 ## Shared menu presentation and controls
 
@@ -473,7 +473,7 @@ The overlay creation example leaves `harness` unset. Adding OpenCode files later
 
 ### Folder overview
 
-`devbox config sources .` opens a menu of the folder's sessions, regardless of whether a default is selected:
+`devbox edit .` opens a menu of the folder's sessions, regardless of whether a default is selected:
 
 ```text
 Select a session to manage its config sources
@@ -495,8 +495,8 @@ Selecting a session opens its config-source chain. To change the default, show a
 Skip the overview when the session is already known:
 
 ```sh
-devbox config sources . --name main
-devbox config sources <full-container-name>
+devbox edit . --name main
+devbox edit <full-container-name>
 ```
 
 ### Session source chain
@@ -536,8 +536,8 @@ Source rows describe references; they do not open directory editors. Show an exa
 Distinguish these operations clearly:
 
 - **`config edit <reference>`:** changes shared source files, affecting every session referencing that directory, potentially across folders.
-- **Add, replace, remove, or reorder in `config sources`:** changes only this session's desired source chain.
-- **Show combined configuration in `config sources`:** read-only inspection of the effective result and the sources contributing each value.
+- **Add, replace, remove, or reorder in `edit`:** changes only this session's desired source chain.
+- **Show combined configuration in `edit`:** read-only inspection of the effective result and the sources contributing each value.
 
 Do not present the merged result as an editable config, create hidden private copies, or write merged values into an arbitrary source. Completed edits save immediately, following the existing configuration menus; Back only navigates.
 
@@ -546,8 +546,8 @@ Allow incomplete configuration while editing. Validate the structure of each edi
 Non-interactive `--show` uses an exact full session name or a folder with explicit `--name`; it does not choose a folder session implicitly:
 
 ```sh
-devbox config sources . --name main --show
-devbox config sources . --name main --show --json
+devbox edit . --name main --show
+devbox edit . --name main --show --json
 ```
 
 Managed runtime file changes synchronize before a stopped container starts, without requiring recreation. If the container is already running, stop it and start or open it again to apply those file changes. Settings and build/setup changes that require a new image or container remain unapplied until recreation. Inspect and apply those changes explicitly:
@@ -685,7 +685,7 @@ Source: devconfig (workspace-relative)
 Resolved path: /work/moved-api/devconfig
 
 Replace or remove the source in the session's source chain:
-  devbox config sources . --name main
+  devbox edit . --name main
 Then open the session:
   devbox open . --name main
 ```
@@ -698,7 +698,7 @@ Implementation tests should cover these observable behaviors:
 
 1. Two independently named sessions in one folder can share the same configs while keeping separate identity and harness state. The same local name can also be used in different folders.
 2. A sole session is not implicitly the default. Opening never changes the default; deleting the default session clears it, while container-only deletion preserves it.
-3. Config creation and directory editing have only their dedicated `config create` and `config edit` entry points. Session creation and `config sources` never launch those menus or the default-selection menu. Config creation does not create a session, select a source automatically, or set a default. Existing config files survive creation/setup unchanged.
+3. Config creation and directory editing have only their dedicated `config create` and `config edit` entry points. Session creation and `edit` never launch those menus or the default-selection menu. Config creation does not create a session, select a source automatically, or set a default. Existing config files survive creation/setup unchanged.
 4. Names of 1 and 64 characters are accepted; empty, 65-character, or invalid-character names fail without truncation or normalization. Uppercase letters, digits, dashes, and underscores work in local names. Case-distinct names produce distinct full names; symlink aliases of the same workspace produce the same name. Long or similarly sanitized folder basenames retain full-path identity through the hash. Duplicate local names in one folder fail, and duplicate canonical source directories are rejected.
 5. Missing or broken config sources do not block session lookup, listing, default selection, stopping, deletion, or the repair menu. They do block opening, including into an already-running container, with a concrete repair hint.
 6. Source edits, replacement, and reordering never rename the session. Incomplete intermediate edits can be saved and repaired, but cannot be used to open or recreate until valid.
@@ -708,7 +708,7 @@ Implementation tests should cover these observable behaviors:
 10. Concurrent default selection, source-chain edits, deletion, and move cleanup respect the session-before-workspace lock order. Deletion clears a matching default before removing state; container-only deletion, cancellation, and dry runs leave it unchanged. A stale default never selects a newly created session with a reused name. A stale source editor rejects changed sources/session identity rather than overwriting another completed edit; unrelated activity updates are preserved. Lifecycle operations resolve sources from the locked record, not a pre-lock snapshot.
 11. Global environment and harness defaults no longer contribute to resolution. The explicit source chain and built-in defaults account for the effective environment.
 12. First-time use works through `config create`, `create`, `set`, and `open`. The session-name prompt starts blank and requires user input. Empty config pickers provide a creation command without opening a nested wizard, while still allowing selection of an existing directory path.
-13. `config edit` works before any session references the directory. `config sources` provides folder overview, exact-session access, source-chain editing, and combined `--show`/`--json` inspection without exposing a directory editor. The bare `config <folder|session>` and root-level `sources` forms are not retained.
+13. `config edit` works before any session references the directory. Top-level `edit` provides folder overview, exact-session access, source-chain editing, and combined `--show`/`--json` inspection without exposing a directory editor. The bare `config <folder|session>` and root-level `sources` forms are not retained.
 14. All menus use the shared numbered layout, clear action titles, labeled context, wrapping, and terminal styling. Selection summaries agree with `(selected)` markers/checkmarks, including No default and empty multi-selections. Styling respects `NO_COLOR`, `TERM=dumb`, and redirected output without losing selection/status information or breaking alignment.
 15. Optional artifacts toggle individually with stable numbers, visible selection updates, Continue, and Back. Back retains pending creation choices without writing files. Text input still uses `:back`; no raw-terminal or Escape controls are introduced. Completed settings/source-chain edits survive Back and EOF, while incomplete input is abandoned.
 16. The folder source-management entry screen clearly selects a session; the next screen manages that session's sources. Back returns to that picker, while directly targeted source editing ends with Done. Directory editors show only their own contributions over built-in defaults and never present another session's merged values as editable local settings.

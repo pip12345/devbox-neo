@@ -41,7 +41,7 @@ This directory does not affect any session until you select it as a source.
 From the workspace, open the session picker:
 
 ```sh
-devbox-neo config sources .
+devbox-neo edit .
 ```
 
 Select a session, choose **Add source**, and enter `./devconfig`. Keep `base` before it if you want the workspace config's explicit scalar values to override the shared config. Lists generally append; [the reference](../reference/configuration.md#config-fields) describes field-specific rules.
@@ -51,7 +51,7 @@ Adding, replacing, removing, or reordering sources saves immediately. It changes
 Choose **Show combined configuration** to see effective values and their sources. For non-interactive inspection, provide the local name explicitly:
 
 ```sh
-devbox-neo config sources . --name Main --show
+devbox-neo edit . --name Main --show
 ```
 
 Missing sources remain visible so you can replace or remove them. You can save an incomplete chain during repair, but opening or recreating requires at least one source and a valid combined configuration, including a harness.

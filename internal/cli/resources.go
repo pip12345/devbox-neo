@@ -16,9 +16,9 @@ import (
 
 type resourceFactory func(*cobra.Command) (*resource.Service, error)
 
-func configCommands(engine engineFactory, factory resourceFactory, localName *string) *cobra.Command {
-	group := &cobra.Command{Use: "config", Short: "Create and edit config directories or manage a session's config sources"}
-	group.AddCommand(directoryCommand(factory, true), directoryCommand(factory, false), configListCommand(factory), configDeleteCommand(factory), sourcesCommand(engine, localName))
+func configCommands(factory resourceFactory) *cobra.Command {
+	group := &cobra.Command{Use: "config", Short: "Create, edit, list, and delete config directories"}
+	group.AddCommand(directoryCommand(factory, true), directoryCommand(factory, false), configListCommand(factory), configDeleteCommand(factory))
 	return group
 }
 

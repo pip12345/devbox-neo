@@ -118,7 +118,7 @@ func resolve(q Request, proposed *artifact.SourcePreview) (Spec, error) {
 	if err != nil {
 		var next []commanderror.Step
 		if q.Recorded != nil {
-			next = append(next, commanderror.Next("Repair the session's config sources", "config", "sources", identity.Name))
+			next = append(next, commanderror.Next("Repair the session's config sources", "edit", identity.Name))
 		}
 		return spec, commanderror.New("configuration_unavailable", "Cannot resolve config sources: "+err.Error(), identity.Name, err, next...)
 	}
@@ -126,7 +126,7 @@ func resolve(q Request, proposed *artifact.SourcePreview) (Spec, error) {
 	if err != nil {
 		if q.Recorded != nil {
 			return spec, commanderror.New("invalid_configuration", err.Error(), identity.Name, err,
-				commanderror.Next("Inspect and repair config sources", "config", "sources", identity.Name))
+				commanderror.Next("Inspect and repair config sources", "edit", identity.Name))
 		}
 		return spec, err
 	}

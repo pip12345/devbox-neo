@@ -68,8 +68,8 @@ config sources, then prepares a stopped container. Scripts supply --name NAME an
 repeated --config REF. Creation never selects a default. Use set <folder> to choose
 one, open <folder> --name NAME for an explicit local name, or a full session name
 from list for exact targeting anywhere. Even a sole session needs an explicit
-folder default. Config sources <folder|session> manages saved source references;
-it does not open directory editors. Config edits do not rename sessions.
+folder default. Edit <folder|session> manages a session's saved source references;
+it does not open config directory editors. Config edits do not rename sessions.
 Open/start require existing sessions, with recorded missing-container recovery.
 Lasting settings belong in config directories; open accepts continuation and
 invocation-only harness arguments.

@@ -200,7 +200,7 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 	visit = func(cmd *cobra.Command) {
 		path := strings.TrimPrefix(cmd.CommandPath(), root.Name()+" ")
 		switch path {
-		case "open", "start", "recreate", "status", "ssh", "shell", "exec", "stop", "logs", "set", "config sources":
+		case "open", "start", "recreate", "status", "ssh", "shell", "exec", "stop", "logs", "set", "edit":
 			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
 		case "delete":
 			cmd.ValidArgsFunction = completeTarget(func(cmd *cobra.Command) []string {

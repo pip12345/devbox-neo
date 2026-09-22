@@ -14,9 +14,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func sourcesCommand(factory engineFactory, name *string) *cobra.Command {
+func editCommand(factory engineFactory, name *string) *cobra.Command {
 	var show, asJSON bool
-	cmd := &cobra.Command{Use: "sources <folder|session>", Short: "Manage a session's config sources and inspect combined configuration", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Edit a session's config sources and inspect combined configuration", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if asJSON && !show {
 			return fmt.Errorf("--json requires --show")
 		}

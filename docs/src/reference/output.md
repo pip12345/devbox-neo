@@ -52,7 +52,7 @@ Public scalar changes may show before/after values. Environment changes show var
 
 ## Configuration output
 
-`config sources <full-name> --show` (or a folder with `--name`) reports combined settings, participating sources, ordered artifacts, and harness origin. Lists show per-entry sources; nested fields use dotted names such as `vscode.extensions`. Human output wraps at up to 80 columns or the narrower terminal width.
+`edit <full-name> --show` (or a folder with `--name`) reports combined settings, participating sources, ordered artifacts, and harness origin. Lists show per-entry sources; nested fields use dotted names such as `vscode.extensions`. Human output wraps at up to 80 columns or the narrower terminal width.
 
 JSON preserves structured values. `trace.entry_sources` gives layer names in resolved-list order, including duplicates. Env values are redacted; variable references are reported separately. A sparse configuration can be inspected before selecting a harness.
 
