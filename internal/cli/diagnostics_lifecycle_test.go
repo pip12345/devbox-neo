@@ -27,7 +27,7 @@ func diagnosticFixture(t *testing.T) (*app.Engine, *dockertest.Daemon, app.Reque
 	if err != nil {
 		t.Fatal(err)
 	}
-	profile := filepath.Join(state.Home, "profiles/test")
+	profile := filepath.Join(state.Home, "configs/test")
 	if err := os.MkdirAll(filepath.Join(profile, "pi"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func diagnosticFixture(t *testing.T) (*app.Engine, *dockertest.Daemon, app.Reque
 	put("before-open.sh", "echo hook-marker")
 	d := &dockertest.Daemon{}
 	e := &app.Engine{Store: state, Docker: docker.Runtime{Runner: d}, UID: os.Getuid(), GID: os.Getgid()}
-	q := app.Request{Workspace: t.TempDir(), Profile: "test"}
+	q := app.Request{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(state.Home, "test")}
 	result, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +112,7 @@ func TestRootWiresImmediateDiagnosticRendering(t *testing.T) {
 		}
 		return stderr.Write(p)
 	}))
-	root.SetArgs([]string{"--home", e.Store.Home, "--profile", q.Profile, "open", q.Workspace})
+	root.SetArgs([]string{"--home", e.Store.Home, "open", q.Workspace, "--name", q.LocalName})
 	if err := root.ExecuteContext(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal("root did not deliver diagnostic before Docker access", err)
 	}

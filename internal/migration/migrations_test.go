@@ -191,7 +191,7 @@ func TestStageConvertsAndCopiesWithoutTouchingExistingNeo(t *testing.T) {
 		t.Fatal("changed existing Neo")
 	}
 	root := filepath.Join(p.Work, "staged-home")
-	var global config.Global
+	var global config.Layer
 	if config.Decode([]byte(read(t, filepath.Join(root, "config.json"))), &global) != nil || global.Version != 1 {
 		t.Fatal("global not converted")
 	}
@@ -277,7 +277,7 @@ func TestProjectSlotIncludesItsInheritedProfile(t *testing.T) {
 	before := treeSnapshot(t, workspace)
 	v := inventory(t, p)
 	item := v.item("session:" + name)
-	if item.Profile != "" || item.SourceProfile != "work" || item.Target != environment.ContainerName(workspace, "profile-work.project") {
+	if item.Profile != "" || item.SourceProfile != "work" || !item.Project || item.Target != environment.ContainerName(workspace, "project") {
 		t.Fatalf("wrong slot: %+v", item)
 	}
 	mustStage(t, v)

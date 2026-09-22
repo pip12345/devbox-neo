@@ -122,7 +122,7 @@ func TestSeedingHigherPriorityDockerfileWarnsWithoutReplacement(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi"}`)
-	q.Profile = ""
+	q.Sources = q.Sources[1:]
 	first, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)

@@ -83,8 +83,8 @@ func TestConfigWrappingPreservesValues(t *testing.T) {
 
 func TestConfigMenuDisplaysEveryListItemWithoutStretching(t *testing.T) {
 	s := menuService(t)
-	owner, _ := s.Profile("basic")
-	s.Create(context.Background(), owner, "")
+	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
 	if err := s.SetConfigField(context.Background(), owner, "harness", nil, json.RawMessage(`"pi"`), false); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestConfigMenuDisplaysEveryListItemWithoutStretching(t *testing.T) {
 	}
 	menu := out[start:]
 	for _, arg := range args[:12] {
-		if !strings.Contains(strings.Join(strings.Fields(menu), " "), "• "+arg+" profile") {
+		if !strings.Contains(strings.Join(strings.Fields(menu), " "), "• "+arg+" basic") {
 			t.Fatal("list item missing from menu", arg, menu)
 		}
 	}
@@ -123,8 +123,8 @@ func TestConfigMenuDisplaysEveryListItemWithoutStretching(t *testing.T) {
 }
 
 func TestConfigShowUsesMultilineValuesAndLeavesJSONUnchanged(t *testing.T) {
-	home := t.TempDir()
-	resourceCLI(t, home, "profile", "create", "base")
+	e, _, fullName := namedCLIFixture(t)
+	home := e.Store.Home
 	long := "--long=" + strings.Repeat("x", 250)
 	contents := map[string]any{
 		"version": 1, "harness": "pi",
@@ -133,14 +133,14 @@ func TestConfigShowUsesMultilineValuesAndLeavesJSONUnchanged(t *testing.T) {
 		"vscode":       map[string]any{"extensions": []string{"example.one", "example.two"}},
 	}
 	data, _ := json.Marshal(contents)
-	if err := os.WriteFile(filepath.Join(home, "profiles/base/config.json"), data, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, "configs/base/config.json"), data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	out, err := resourceCLI(t, home, "profile", "config", "base", "--show")
+	out, err := runSourcesCLI(t, e, fullName, "--show")
 	if err != nil {
 		t.Fatal(out, err)
 	}
-	for _, text := range []string{"- --first profile", "- --second profile", "- TOKEN=<redacted> profile", "vscode.extensions:", "- example.one profile", "- example.two profile"} {
+	for _, text := range []string{"- --first base", "- --second base", "- TOKEN=<redacted> base", "vscode.extensions:", "- example.one base", "- example.two base"} {
 		if !strings.Contains(strings.Join(strings.Fields(out), " "), text) {
 			t.Fatal("missing multiline config detail", text, out)
 		}
@@ -156,7 +156,7 @@ func TestConfigShowUsesMultilineValuesAndLeavesJSONUnchanged(t *testing.T) {
 	if strings.Contains(out, "do-not-print") || strings.Contains(out, "...") || strings.Count(out, "x") < 250 {
 		t.Fatal("human display exposed env or truncated a value", out)
 	}
-	out, err = resourceCLI(t, home, "profile", "config", "base", "--show", "--json")
+	out, err = runSourcesCLI(t, e, fullName, "--show", "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestConfigShowUsesMultilineValuesAndLeavesJSONUnchanged(t *testing.T) {
 	if !bytes.Equal(got, want) || strings.Contains(out, "do-not-print") {
 		t.Fatal("JSON values were reformatted or env was exposed", out)
 	}
-	if got := strings.Join(view.Trace.EntrySources["harness_args"], ","); got != "profile,profile,profile" {
+	if got := strings.Join(view.Trace.EntrySources["harness_args"], ","); got != "base,base,base" {
 		t.Fatal("JSON did not retain per-entry provenance", got)
 	}
 	if _, ok := view.Values["vscode"].(map[string]any); !ok {

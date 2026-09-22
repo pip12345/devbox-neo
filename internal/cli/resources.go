@@ -1,271 +1,133 @@
 package cli
 
 import (
-	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"strconv"
-	"strings"
 
-	"devbox/internal/commanderror"
-	"devbox/internal/harness"
 	"devbox/internal/resource"
 	"github.com/spf13/cobra"
 )
 
 type resourceFactory func(*cobra.Command) (*resource.Service, error)
 
-func resourceCommands(factory resourceFactory) []*cobra.Command {
-	groups := []*cobra.Command{}
-	for _, kind := range []string{"profile", "project"} {
-		kind := kind
-		group := &cobra.Command{Use: kind, Short: "Manage " + kind + " configuration"}
-		owner := func(s *resource.Service, name string) (resource.Owner, error) {
-			if kind == "profile" {
-				return s.Profile(name)
-			}
-			return s.Project(name)
-		}
-		argument := "<profile>"
-		createHelp := "Create a named profile"
-		harnessHelp := "Choose a harness by name"
-		if kind == "project" {
-			argument = "<folder>"
-			createHelp = "Create project configuration in .devbox/"
-			harnessHelp = "Choose a harness by name, or inherit to use the profile/global setting"
-		}
-		var from string
-		var createJSON bool
-		create := &cobra.Command{Use: "create " + argument, Short: createHelp, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-			s, err := factory(cmd)
-			if err != nil {
-				return err
-			}
-			o, err := owner(s, args[0])
-			if err != nil {
-				return err
-			}
-			result, err := s.Create(cmd.Context(), o, from)
-			return renderResource(cmd, result, err, createJSON, s.Home)
-		}}
-		if kind == "project" {
-			create.Flags().StringVar(&from, "from-profile", "", "Copy a profile's configuration and files into the project without linking them")
-		}
-		create.Flags().BoolVar(&createJSON, "json", false, "Print the result and next steps as JSON")
-		group.AddCommand(create)
-		var selected string
-		var artifacts []string
-		var initJSON bool
-		init := &cobra.Command{Use: "init " + argument, Short: "Choose a harness and add optional configuration files", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-			s, err := factory(cmd)
-			if err != nil {
-				return err
-			}
-			o, err := owner(s, args[0])
-			if err != nil {
-				return err
-			}
-			options := resource.InitOptions{Harness: selected, Artifacts: artifacts}
-			reader := promptReader(cmd)
-			if interactive(cmd) && !initJSON {
-				options.ChooseHarness = func(choices []string, issues []harness.Issue) (string, error) {
-					for _, issue := range issues {
-						fmt.Fprintf(cmd.ErrOrStderr(), "Unavailable harness %s: %v\n", issue.Name, issue.Err)
-					}
-					return chooseOne(reader, cmd.OutOrStdout(), "Select a harness", choices)
-				}
-				if !cmd.Flags().Changed("harness") && !cmd.Flags().Changed("artifact") {
-					options.ChooseArtifacts = func(choices []string) ([]string, error) {
-						return chooseMany(reader, cmd.OutOrStdout(), "Optional artifacts", choices)
-					}
-				}
-			}
-			result, err := s.Init(cmd.Context(), o, options)
-			return renderResource(cmd, result, err, initJSON, s.Home)
-		}}
-		init.Flags().StringVar(&selected, "harness", "", harnessHelp)
-		init.Flags().StringSliceVar(&artifacts, "artifact", nil, "Add missing files: harness-config, setup.sh, before-open.sh, or Dockerfile (repeatable)")
-		init.Flags().BoolVar(&initJSON, "json", false, "Print the result and next steps as JSON; never prompt")
-		group.AddCommand(init, configCommand(factory, kind))
-		if kind == "profile" {
-			group.AddCommand(profileList(factory), profileSet(factory), profileDelete(factory))
-		}
-		groups = append(groups, group)
-	}
-	global := &cobra.Command{Use: "global", Short: "Manage global configuration"}
-	global.AddCommand(configCommand(factory, "global"))
-	groups = append(groups, global)
-	return groups
+func configCommands(engine engineFactory, factory resourceFactory, localName *string) *cobra.Command {
+	group := &cobra.Command{Use: "config", Short: "Create and edit config directories or manage a session's config sources"}
+	group.AddCommand(directoryCommand(factory, true), directoryCommand(factory, false), sourcesCommand(engine, localName))
+	return group
 }
+
+func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
+	action, description := "edit", "Edit a config directory or add missing optional files"
+	if create {
+		action, description = "create", "Create a config directory and offer initial setup"
+	}
+	var selected, artifactHarness string
+	var artifacts []string
+	var asJSON bool
+	cmd := &cobra.Command{Use: action + " <reference>", Short: description, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		service, err := factory(cmd)
+		if err != nil {
+			return err
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		userHome, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		owner, err := service.ConfigDirectory(args[0], cwd, userHome)
+		if err != nil {
+			return err
+		}
+		options := resource.SetupOptions{Artifacts: artifacts, ArtifactHarness: artifactHarness}
+		if cmd.Flags().Changed("harness") {
+			options.Harness = &selected
+		}
+		direct := cmd.Flags().Changed("harness") || cmd.Flags().Changed("artifact") || cmd.Flags().Changed("artifact-harness") || asJSON
+		if create {
+			if err := service.CheckConfigCreation(owner); err != nil {
+				return err
+			}
+			if !direct && interactive(cmd) {
+				m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout()}
+				var proceed bool
+				options, proceed, err = configCreationMenu(m, service.Home)
+				if errors.Is(err, io.EOF) || (err == nil && !proceed) {
+					cmd.Println("Cancelled. No config was created.")
+					return nil
+				}
+				if err != nil {
+					return err
+				}
+			}
+			result, err := service.CreateConfig(cmd.Context(), owner, options)
+			return renderResource(cmd, result, err, asJSON, service.Home)
+		}
+		if !direct && interactive(cmd) {
+			if _, err := service.ConfigSource(owner); err != nil {
+				return err
+			}
+			writeMenuHint(cmd.OutOrStdout(), "Directory: "+displayCell(owner.Root))
+			names, reportErr := service.ReferencingSessions(cmd.Context(), owner)
+			if len(names) > 0 {
+				writeMenuHint(cmd.OutOrStdout(), "Referenced by saved sessions:")
+				for _, name := range names {
+					writeMenuHint(cmd.OutOrStdout(), "  "+displayCell(name))
+				}
+			}
+			if reportErr != nil {
+				writeMenuHint(cmd.OutOrStdout(), "Shared-use report is incomplete: "+displayCell(reportErr.Error()))
+			}
+			return runConfigMenu(cmd, service, owner)
+		}
+		result, err := service.EditConfig(cmd.Context(), owner, options)
+		return renderResource(cmd, result, err, asJSON, service.Home)
+	}}
+	cmd.Flags().StringVar(&selected, "harness", "", "Set this config's persistent harness selection")
+	cmd.Flags().StringSliceVar(&artifacts, "artifact", nil, "Add missing harness-config, setup.sh, before-open.sh, or Dockerfile files (repeatable)")
+	cmd.Flags().StringVar(&artifactHarness, "artifact-harness", "", "Choose which harness's files to add without changing the config's harness")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Print the operation result as JSON; never prompt")
+	return cmd
+}
+
 func interactive(cmd *cobra.Command) bool {
-	f, ok := cmd.InOrStdin().(*os.File)
-	return ok && terminal(f)
+	file, ok := cmd.InOrStdin().(*os.File)
+	return ok && terminal(file)
 }
-func renderResource(cmd *cobra.Command, result resource.Result, err error, asJSON bool, home string) error {
-	if err != nil {
-		return err
-	}
+
+func renderResource(cmd *cobra.Command, result resource.Result, operationErr error, asJSON bool, home string) error {
 	result.Next = scopedSteps(cmd, result.Next, home)
 	if asJSON {
+		if operationErr != nil {
+			return operationErr
+		}
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
 	}
 	for _, warning := range result.Warnings {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s\n", warning)
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s\n", displayCell(warning))
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Configured %s\n", result.Path)
-	if result.Harness != "" {
-		fmt.Fprintf(cmd.OutOrStdout(), "Harness: %s\n", result.Harness)
+	if operationErr == nil {
+		cmd.Printf("Configured %s\n", displayCell(result.Path))
 	}
 	for _, path := range result.Created {
-		fmt.Fprintf(cmd.OutOrStdout(), "Created %s\n", path)
+		cmd.Printf("Created %s\n", displayCell(path))
+	}
+	for _, path := range result.Updated {
+		cmd.Printf("Updated %s\n", displayCell(path))
 	}
 	for _, path := range result.Skipped {
-		fmt.Fprintf(cmd.OutOrStdout(), "Kept existing %s\n", path)
+		cmd.Printf("Kept existing %s\n", displayCell(path))
+	}
+	if operationErr != nil {
+		return operationErr
 	}
 	if len(result.Next) > 0 {
-		fmt.Fprintf(cmd.OutOrStdout(), "\n%s", stepsText(result.Next))
+		cmd.Printf("\n%s", stepsText(result.Next))
 	}
 	return nil
-}
-func profileList(factory resourceFactory) *cobra.Command {
-	var asJSON bool
-	cmd := &cobra.Command{Use: "list", Short: "List profiles, including invalid configurations", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		s, err := factory(cmd)
-		if err != nil {
-			return err
-		}
-		profiles, err := s.Profiles()
-		if err != nil {
-			return err
-		}
-		if asJSON {
-			return json.NewEncoder(cmd.OutOrStdout()).Encode(profiles)
-		}
-		if len(profiles) == 0 {
-			fmt.Fprint(cmd.OutOrStdout(), "No profiles.\n\n")
-			fmt.Fprint(cmd.OutOrStdout(), stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Create profile", "profile", "create", "default")}, s.Home)))
-			return nil
-		}
-		for _, p := range profiles {
-			marker := " "
-			if p.Default {
-				marker = "*"
-			}
-			state := p.Harness
-			if state == "" {
-				state = "no harness selected"
-			}
-			if p.Error != "" {
-				state = "invalid: " + p.Error
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "%s %s (%s)\n", marker, p.Name, state)
-		}
-		return nil
-	}}
-	cmd.Flags().BoolVar(&asJSON, "json", false, "Print profile entries as JSON")
-	return cmd
-}
-func profileSet(factory resourceFactory) *cobra.Command {
-	var clear bool
-	cmd := &cobra.Command{Use: "set [profile]", Short: "Select or clear the default profile", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := factory(cmd)
-		if err != nil {
-			return err
-		}
-		if clear && len(args) > 0 {
-			return fmt.Errorf("--clear does not accept a profile name")
-		}
-		name := ""
-		if len(args) > 0 {
-			name = args[0]
-		} else if !clear {
-			if !interactive(cmd) {
-				return fmt.Errorf("provide a profile name or --clear")
-			}
-			profiles, err := s.Profiles()
-			if err != nil {
-				return err
-			}
-			choices := []string{"(no default)"}
-			for _, p := range profiles {
-				if p.Error == "" {
-					choices = append(choices, p.Name)
-				}
-			}
-			name, err = chooseOne(promptReader(cmd), cmd.OutOrStdout(), "Default profile", choices)
-			if err != nil {
-				return err
-			}
-			if name == choices[0] {
-				name = ""
-			}
-		}
-		if err = s.SetDefault(cmd.Context(), name); err != nil {
-			return err
-		}
-		if name == "" {
-			cmd.Println("Default profile cleared.")
-		} else {
-			cmd.Printf("Default profile: %s\n", name)
-		}
-		return nil
-	}}
-	cmd.Flags().BoolVar(&clear, "clear", false, "Clear the default profile without prompting")
-	return cmd
-}
-func chooseOne(reader *bufio.Reader, out io.Writer, title string, choices []string) (string, error) {
-	if len(choices) == 0 {
-		return "", fmt.Errorf("no valid choices are available")
-	}
-	if err := writeMenuChoices(out, title, choices); err != nil {
-		return "", err
-	}
-	if _, err := fmt.Fprint(out, menuChoicePrompt); err != nil {
-		return "", err
-	}
-	line, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return "", err
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(line))
-	if err != nil || n < 1 || n > len(choices) {
-		return "", fmt.Errorf("select a number from 1 to %d", len(choices))
-	}
-	return choices[n-1], nil
-}
-func chooseMany(reader *bufio.Reader, out io.Writer, title string, choices []string) ([]string, error) {
-	if err := writeMenuChoices(out, title, choices); err != nil {
-		return nil, err
-	}
-	if _, err := fmt.Fprintln(out); err != nil {
-		return nil, err
-	}
-	if err := writeMenuHint(out, "   Enter comma-separated numbers, or Enter for none."); err != nil {
-		return nil, err
-	}
-	if _, err := fmt.Fprint(out, "\n   Choose numbers > "); err != nil {
-		return nil, err
-	}
-	line, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-	if strings.TrimSpace(line) == "" {
-		return nil, nil
-	}
-	selected := []string{}
-	seen := map[int]bool{}
-	for _, part := range strings.Split(strings.TrimSpace(line), ",") {
-		n, err := strconv.Atoi(strings.TrimSpace(part))
-		if err != nil || n < 1 || n > len(choices) {
-			return nil, fmt.Errorf("invalid artifact selection")
-		}
-		if !seen[n] {
-			selected = append(selected, choices[n-1])
-			seen[n] = true
-		}
-	}
-	return selected, nil
 }

@@ -7,115 +7,71 @@ import (
 	"reflect"
 	"testing"
 
-	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/harness"
 )
 
-func put(t *testing.T, p, b string) {
+func put(t *testing.T, path, data string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte(b), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
-	}
-}
-func TestMissingConfigurationGuidanceIncludesDefaultProfileSelection(t *testing.T) {
-	for _, existing := range []bool{false, true} {
-		home, work := t.TempDir(), t.TempDir()
-		if existing {
-			put(t, filepath.Join(home, "profiles/base/config.json"), `{"version":1,"harness":"pi"}`)
-		}
-		_, err := Resolve(home, work, "", config.Layer{})
-		if err == nil {
-			t.Fatal("unselected configuration should fail")
-		}
-		var actionable *commanderror.Error
-		if !errors.As(err, &actionable) || actionable.Code != "configuration_missing" || len(actionable.Next) != 3 {
-			t.Fatalf("unexpected guidance: %v", err)
-		}
-		want := [][]string{{"devbox-neo", "profile", "create", "<profile>"}, {"devbox-neo", "profile", "set", "<profile>"}, {"devbox-neo", "project", "create", work}}
-		for i, step := range actionable.Next {
-			if !reflect.DeepEqual(step.Command, want[i]) {
-				t.Fatal(step, want[i])
-			}
-		}
 	}
 }
 
-func TestMissingProfileGuidanceOrdersCreationBeforeInitialization(t *testing.T) {
-	_, err := Resolve(t.TempDir(), t.TempDir(), "missing", config.Layer{})
-	var actionable *commanderror.Error
-	if !errors.As(err, &actionable) || actionable.Code != "profile_missing" || len(actionable.Next) != 2 {
-		t.Fatalf("unexpected guidance: %v", err)
-	}
-	want := [][]string{{"devbox-neo", "profile", "create", "missing"}, {"devbox-neo", "profile", "init", "missing", "--harness", "<name>"}}
-	for i, step := range actionable.Next {
-		if !reflect.DeepEqual(step.Command, want[i]) {
-			t.Fatal(step, want[i])
+func testSource(t *testing.T, label, data string) config.Source {
+	t.Helper()
+	source := config.Source{Label: label, Path: t.TempDir()}
+	put(t, filepath.Join(source.Path, "config.json"), data)
+	return source
+}
+
+func TestOnlyExplicitSourcesContribute(t *testing.T) {
+	first := testSource(t, "base", `{"harness":"pi","harness_args":["base"]}`)
+	second := testSource(t, "overlay", `{"harness":"pi","harness_args":["overlay"]}`)
+	for _, sources := range [][]config.Source{{first}, {first, second}, {second, first}} {
+		resolved, err := Resolve(sources, config.Host{})
+		if err != nil {
+			t.Fatal(err)
 		}
+		var expected []string
+		for _, source := range sources {
+			expected = append(expected, source.Label)
+		}
+		if !reflect.DeepEqual(resolved.Settings.HarnessArgs, expected) || !reflect.DeepEqual(resolved.Sources, sources) {
+			t.Fatal("source order changed", resolved)
+		}
+	}
+	put(t, filepath.Join(first.Path, "config.json"), "broken")
+	if _, err := Resolve([]config.Source{first, second}, config.Host{}); err == nil {
+		t.Fatal("later config bypassed a broken source")
+	}
+	if _, err := Resolve([]config.Source{second}, config.Host{}); err != nil {
+		t.Fatal("unselected source was read", err)
+	}
+	if err := os.Remove(filepath.Join(first.Path, "config.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve([]config.Source{first}, config.Host{}); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("lost the missing-file cause", err)
 	}
 }
 
-func TestLayerParticipation(t *testing.T) {
-	tests := []struct {
-		name, global, profile, project, explicit string
-		wantProfile                              string
-		wantArgs                                 []string
-		fail                                     bool
-	}{
-		{name: "project wins", global: `{"version":1,"default_profile":"base"}`, profile: `{"version":1,"harness":"pi","harness_args":["profile"]}`, project: `{"harness":"pi","version":1,"harness_args":["project"]}`, wantProfile: "base", wantArgs: []string{"profile", "project"}},
-		{name: "explicit includes invalid project", fail: true, profile: `{"version":1,"harness":"pi","harness_args":["profile"]}`, project: `invalid`, explicit: "base", wantProfile: "base", wantArgs: []string{"profile"}},
-		{name: "explicit includes env references", fail: true, profile: `{"version":1,"harness":"pi"}`, project: `{"version":1,"network":"${env:MISSING}"}`, explicit: "base", wantProfile: "base"},
-		{name: "standalone ignores missing default", global: `{"version":1,"default_profile":"missing"}`, project: `{"version":1,"inherit":false,"harness":"pi"}`},
-		{name: "standalone ignores corrupt default", global: `{"version":1,"default_profile":"base"}`, profile: `invalid`, project: `{"version":1,"inherit":false,"harness":"pi"}`},
-		{name: "global excludes project inheritance", global: `{"version":1,"default_profile":"base","ignore_project":true}`, profile: `{"version":1,"harness":"pi"}`, project: `{"version":1,"inherit":false}`, wantProfile: "base"},
-		{name: "invalid contributing project fails", global: `{"version":1,"default_profile":"base"}`, profile: `{"version":1,"harness":"pi"}`, project: `invalid`, fail: true},
-		{name: "missing selected profile", explicit: "base", fail: true},
+func TestArtifactsFollowTheSameSelectedSources(t *testing.T) {
+	first := testSource(t, "base", `{"harness":"pi"}`)
+	second := testSource(t, "overlay", `{}`)
+	for _, source := range []config.Source{first, second} {
+		put(t, filepath.Join(source.Path, "Dockerfile"), source.Label)
+		put(t, filepath.Join(source.Path, "pi/settings.json"), `{"packages":["`+source.Label+`"]}`)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			home := t.TempDir()
-			work := t.TempDir()
-			if tt.global != "" {
-				put(t, filepath.Join(home, "config.json"), tt.global)
-			}
-			if tt.profile != "" {
-				put(t, filepath.Join(home, "profiles/base/config.json"), tt.profile)
-			}
-			if tt.project != "" {
-				put(t, filepath.Join(work, ".devbox/config.json"), tt.project)
-			}
-			r, err := Resolve(home, work, tt.explicit, config.Layer{})
-			if (err != nil) != tt.fail {
-				t.Fatalf("resolution error: %v", err)
-			}
-			if tt.fail {
-				return
-			}
-			if r.Profile != tt.wantProfile || !reflect.DeepEqual(r.Settings.HarnessArgs, tt.wantArgs) {
-				t.Fatalf("unexpected layers: %+v", r)
-			}
-		})
-	}
-}
-func TestArtifactsFollowTheSameSelectedLayers(t *testing.T) {
-	home := t.TempDir()
-	work := t.TempDir()
-	put(t, filepath.Join(home, "config.json"), `{"version":1,"default_profile":"base"}`)
-	put(t, filepath.Join(home, "profiles/base/config.json"), `{"version":1,"harness":"pi"}`)
-	put(t, filepath.Join(work, ".devbox/config.json"), `{"version":1}`)
-	put(t, filepath.Join(home, "profiles/base/Dockerfile"), "profile")
-	put(t, filepath.Join(work, ".devbox/Dockerfile"), "project")
-	put(t, filepath.Join(home, "profiles/base/pi/settings.json"), `{"packages":["profile"]}`)
-	put(t, filepath.Join(work, ".devbox/pi/settings.json"), `{"packages":["project"]}`)
-	h, err := harness.Load(home, "pi")
+	h, err := harness.Load(t.TempDir(), "pi")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, explicit := range []string{"", "base"} {
-		r, err := Resolve(home, work, explicit, config.Layer{})
+	for _, sources := range [][]config.Source{{first, second}, {second, first}} {
+		r, err := Resolve(sources, config.Host{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -123,13 +79,13 @@ func TestArtifactsFollowTheSameSelectedLayers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wanted := "project"
-		if tree["settings.json"].Layer != wanted {
-			t.Fatal("config tree precedence drift")
+		last := sources[len(sources)-1]
+		if tree["settings.json"].Layer != last.Label || len(r.Trace.Artifacts["Dockerfile"]) != 2 {
+			t.Fatal("artifact composition drifted from source order")
 		}
-		b, _ := os.ReadFile(r.Trace.Artifacts["Dockerfile"][len(r.Trace.Artifacts["Dockerfile"])-1])
-		if string(b) != wanted {
-			t.Fatal("Dockerfile precedence drift")
+		data, _ := os.ReadFile(r.Trace.Artifacts["Dockerfile"][1])
+		if string(data) != last.Label {
+			t.Fatal("Dockerfile order changed")
 		}
 	}
 }

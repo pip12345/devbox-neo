@@ -23,7 +23,7 @@ func driftFixture(t *testing.T) (Spec, Request) {
 	putBuild(t, filepath.Join(root, "pi/custom.json"), `{"private":"file-secret"}`)
 	putBuild(t, filepath.Join(root, "setup.sh"), "echo setup")
 	putBuild(t, filepath.Join(root, "before-open.sh"), "echo entrypoint")
-	q := Request{Home: home, Workspace: workspace, Profile: "test", UID: 1000, GID: 1000, Salt: "test-installation"}
+	q := Request{Home: home, Workspace: workspace, LocalName: "test", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: root}}, UID: 1000, GID: 1000, Salt: "test-installation"}
 	s, err := Resolve(q)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestDetailedComparisonCoversFingerprintInputs(t *testing.T) {
 		{"generated image layer", "generated_layer", "input_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Layer = newHash }},
 		{"build arguments", "build_argument", "value_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Arguments["DEVBOX_UID"] = "1001" }},
 		{"workspace", "workspace", "value_changed", Recreate, func(i *Inputs) { i.Container.Identity.Workspace += "-new" }},
-		{"slot", "slot", "value_changed", Recreate, func(i *Inputs) { i.Container.Identity.Slot = "project" }},
+		{"local name", "local_name", "value_changed", Recreate, func(i *Inputs) { i.Container.Identity.LocalName = "project" }},
 		{"network", "network", "value_changed", Recreate, func(i *Inputs) { i.Container.Network = "host" }},
 		{"stores", "harness_stores", "entry_added", Recreate, func(i *Inputs) {
 			i.Container.Stores = append(i.Container.Stores, harness.Store{Name: "new", Target: "/home/devuser/new", Scope: "environment"})
@@ -194,7 +194,9 @@ func TestDetailedComparisonRoundTripProvenanceAndDeduplication(t *testing.T) {
 
 func TestInputSnapshotsAndReportsNeverExposeEnvOrFileContents(t *testing.T) {
 	s, q := driftFixture(t)
-	q.Overrides = config.Layer{Env: []string{"TOKEN=new-secret"}, DockerArgs: []string{"--env=RAW=new-raw-secret"}}
+	overlay := t.TempDir()
+	putBuild(t, filepath.Join(overlay, "config.json"), `{"env":["TOKEN=new-secret"],"docker_args":["--env=RAW=new-raw-secret"]}`)
+	q.Sources = append(q.Sources, config.Reference{Label: "overlay", Kind: config.ReferenceFixed, Path: overlay})
 	next, err := Resolve(q)
 	if err != nil {
 		t.Fatal(err)

@@ -15,12 +15,12 @@ import (
 
 func TestTypedSessionAbsenceDoesNotCreateOnStart(t *testing.T) {
 	e, d, q := fixture(t)
-	_, err := e.Locate(context.Background(), q.Workspace, q.Profile)
+	_, err := e.Locate(context.Background(), q.Workspace, q.LocalName)
 	var missing *commanderror.Error
 	if !errors.Is(err, os.ErrNotExist) || !errors.As(err, &missing) || missing.Code != "session_missing" {
 		t.Fatal(err)
 	}
-	_, err = e.Start(context.Background(), q.Workspace, q.Profile)
+	_, err = e.Start(context.Background(), q.Workspace, q.LocalName)
 	if !errors.Is(err, os.ErrNotExist) || !errors.As(err, &missing) || missing.Code != "session_missing" || len(missing.Next) != 1 {
 		t.Fatal(err)
 	}
@@ -129,14 +129,13 @@ func TestPiDefaultsToFullscreenAndAllowsLaterOverrides(t *testing.T) {
 func TestMissingHarnessGuidanceUsesResolvedOwner(t *testing.T) {
 	for _, project := range []bool{false, true} {
 		e, _, q := fixture(t)
-		want := []string{"devbox-neo", "profile", "init", "test", "--harness", "<name>"}
 		write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1}`)
 		if project {
-			q.Profile = ""
+			q.Sources = q.Sources[1:]
 			write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1}`)
-			want = []string{"devbox-neo", "project", "init", q.Workspace, "--harness", "<name>"}
 		}
-		_, err := e.Open(context.Background(), q)
+		want := []string{"devbox-neo", "config", "edit", q.Sources[0].Path, "--harness", "<name>"}
+		_, err := e.Create(context.Background(), q)
 		var missing *commanderror.Error
 		if !errors.As(err, &missing) || missing.Code != "harness_required" || len(missing.Next) != 1 || !reflect.DeepEqual(missing.Next[0].Command, want) {
 			t.Fatal(err, missing)

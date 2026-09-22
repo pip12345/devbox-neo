@@ -9,7 +9,6 @@ import (
 
 	"devbox/internal/app"
 	"devbox/internal/config"
-	"devbox/internal/environment"
 	"devbox/internal/fsutil"
 	"devbox/internal/store"
 )
@@ -61,7 +60,7 @@ func (m Merger) PendingPlan(ctx context.Context, j *Journal, accept []string) (M
 		} else if !os.IsNotExist(err) {
 			return p, err
 		}
-		spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, Profile: job.Identity.Profile, Sources: environment.SelectionSources(home, job.Identity), Host: m.host()})
+		spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, LocalName: job.Identity.LocalName, Sources: job.Sources, Recorded: &job.Identity, Host: m.host()})
 		if err != nil {
 			return p, publicFailure("Pending environment configuration does not resolve.", job.Identity.Name, err)
 		}

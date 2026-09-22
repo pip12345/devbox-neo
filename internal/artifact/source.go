@@ -13,27 +13,8 @@ import (
 
 var ArtifactNames = []string{"Dockerfile", "setup.sh", "before-open.sh"}
 
-func hasProjectArtifacts(root string) (bool, error) {
-	if _, err := fsutil.Path(root, "."); err != nil {
-		return false, err
-	}
-	entries, err := os.ReadDir(root)
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	for _, entry := range entries {
-		if slices.Contains(ArtifactNames, entry.Name()) || (config.Name.MatchString(entry.Name()) && (entry.IsDir() || entry.Type()&os.ModeSymlink != 0)) {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// SourceTree copies only the profile artifact layout, without injecting global
-// settings or harness defaults. Named config directories need not be selected.
+// SourceTree captures the config artifact layout without injecting defaults.
+// Import staging uses it independently of any session's selected source chain.
 func SourceTree(root string, harnessNames map[string]bool) (harness.Tree, error) {
 	result := harness.Tree{Files: map[string]harness.File{}}
 	if _, err := fsutil.Path(root, "."); err != nil {
@@ -102,7 +83,7 @@ func SourceTree(root string, harnessNames map[string]bool) (harness.Tree, error)
 		}
 	}
 	if _, ok := result.Files["config.json"]; !ok {
-		return result, fmt.Errorf("profile config is missing: %s", filepath.Join(root, "config.json"))
+		return result, fmt.Errorf("config.json is missing: %s", filepath.Join(root, "config.json"))
 	}
 	_, err = config.ParseLayer(result.Files["config.json"].Data)
 	if err != nil {

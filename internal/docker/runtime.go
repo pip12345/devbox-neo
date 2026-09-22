@@ -24,13 +24,11 @@ type Owner struct {
 	Installation string
 	Session      string
 	Workspace    string
-	Slot         string
-	Profile      string
-	Project      bool
+	LocalName    string
 }
 
 func (o Owner) Labels() map[string]string {
-	return map[string]string{Namespace + ".managed": "true", Namespace + ".ownership": "1", Namespace + ".installation": o.Installation, Namespace + ".session": o.Session, Namespace + ".workspace": o.Workspace, Namespace + ".slot": o.Slot, Namespace + ".profile": o.Profile, Namespace + ".project": fmt.Sprint(o.Project)}
+	return map[string]string{Namespace + ".managed": "true", Namespace + ".ownership": "1", Namespace + ".installation": o.Installation, Namespace + ".session": o.Session, Namespace + ".workspace": o.Workspace, Namespace + ".local-name": o.LocalName}
 }
 func ImageLabels(installation string) map[string]string {
 	return map[string]string{Namespace + ".managed": "true", Namespace + ".ownership": "1", Namespace + ".installation": installation}
@@ -67,7 +65,7 @@ type Endpoint struct {
 }
 
 func (c Container) Verify(o Owner) error {
-	if c.ID == "" || o.Installation == "" || o.Session == "" || o.Workspace == "" || o.Slot == "" {
+	if c.ID == "" || o.Installation == "" || o.Session == "" || o.Workspace == "" || o.LocalName == "" {
 		return commanderror.New("ownership_mismatch", "Cannot verify Devbox ownership of this container: incomplete identity.", c.Name, nil)
 	}
 	for key, value := range o.Labels() {

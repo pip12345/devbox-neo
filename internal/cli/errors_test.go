@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"devbox/internal/app"
 	"devbox/internal/commanderror"
 	"devbox/internal/docker"
 	"github.com/spf13/cobra"
@@ -24,7 +25,7 @@ func TestResourceJSONErrorsAreStructuredOnce(t *testing.T) {
 	var out, stderr bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&stderr)
-	cmd.SetArgs([]string{"--home", home, "profile", "init", "missing", "--harness", "pi", "--json"})
+	cmd.SetArgs([]string{"--home", home, "config", "edit", "missing", "--harness", "pi", "--json"})
 	if code := Execute(context.Background(), cmd); code != 1 {
 		t.Fatal(code)
 	}
@@ -36,8 +37,8 @@ func TestResourceJSONErrorsAreStructuredOnce(t *testing.T) {
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		t.Fatal("multiple output payloads", err)
 	}
-	want := []string{"devbox-neo", "--home", home, "profile", "create", "missing"}
-	if report.Code != "owner_missing" || report.Operation != "devbox-neo profile init" || len(report.Next) != 1 || !reflect.DeepEqual(report.Next[0].Command, want) || report.Target != filepath.Join(home, "profiles/missing/config.json") {
+	want := []string{"devbox-neo", "--home", home, "config", "create", "missing"}
+	if report.Code != "config_missing" || report.Operation != "devbox-neo config edit" || len(report.Next) != 1 || !reflect.DeepEqual(report.Next[0].Command, want) || report.Target != filepath.Join(home, "configs/missing/config.json") {
 		t.Fatal(report)
 	}
 	if stderr.Len() != 0 {
@@ -157,16 +158,19 @@ func TestConfigurationAndHarnessFailuresUseSharedCodes(t *testing.T) {
 		{`{"version":1,"harness":"not-installed"}`, "", "unknown_harness"},
 		{`{"version":1,"harness":"pi"}`, `{"version":1,"name":"pi","env":{"TOKEN":"private-value"},"config":"bad"}`, "invalid_harness_definition"},
 	} {
-		home := t.TempDir()
-		completionFile(t, home, "profiles/basic/config.json", tt.config)
+		engine, _, fullName := namedCLIFixture(t)
+		home := engine.Store.Home
+		completionFile(t, home, "configs/base/config.json", tt.config)
 		if tt.definition != "" {
 			completionFile(t, home, "harnesses/pi/harness.json", tt.definition)
 		}
-		cmd := New()
+		name := ""
+		cmd := sourcesCommand(func(*cobra.Command) (*app.Engine, error) { return engine, nil }, &name)
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
 		var out, stderr bytes.Buffer
 		cmd.SetOut(&out)
 		cmd.SetErr(&stderr)
-		cmd.SetArgs([]string{"--home", home, "profile", "config", "basic", "--show", "--json"})
+		cmd.SetArgs([]string{fullName, "--show", "--json"})
 		if code := Execute(context.Background(), cmd); code != 1 {
 			t.Fatal(code)
 		}

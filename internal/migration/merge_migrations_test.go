@@ -120,18 +120,18 @@ func TestMergeNeedsApprovalAndRechecksDestination(t *testing.T) {
 	if _, err = m.Apply(context.Background(), p, plan); err == nil {
 		t.Fatal("unaccepted changes applied")
 	}
-	absent(t, filepath.Join(p.Destination, "profiles/work"))
+	absent(t, filepath.Join(p.Destination, "configs/work"))
 	plan = approvedPlan(t, m, j, MergeChoices{})
-	put(t, filepath.Join(p.Destination, "config.json"), `{"version":1,"default_harness":"opencode"}`)
+	put(t, filepath.Join(p.Destination, "configs/imported-global/config.json"), `{"version":1,"default_harness":"opencode"}`)
 	if _, err = m.Apply(context.Background(), p, plan); err == nil {
 		t.Fatal("stale approval used")
 	}
-	absent(t, filepath.Join(p.Destination, "profiles/work"))
+	absent(t, filepath.Join(p.Destination, "configs/work"))
 }
 func TestProfileCollisionRequiresReuseRenameOrSkip(t *testing.T) {
 	p, _, j, m, _ := mergeFixture(t, false)
-	put(t, filepath.Join(p.Destination, "profiles/work/config.json"), `{"version":1,"harness":"pi","harness_args":["--existing"]}`)
-	before := treeSnapshot(t, filepath.Join(p.Destination, "profiles/work"))
+	put(t, filepath.Join(p.Destination, "configs/work/config.json"), `{"version":1,"harness":"pi","harness_args":["--existing"]}`)
+	before := treeSnapshot(t, filepath.Join(p.Destination, "configs/work"))
 	plan, err := m.Plan(context.Background(), j, MergeChoices{})
 	if err != nil {
 		t.Fatal(err)
@@ -140,13 +140,13 @@ func TestProfileCollisionRequiresReuseRenameOrSkip(t *testing.T) {
 		t.Fatal("profile collision silently reused")
 	}
 	plan = approvedPlan(t, m, j, MergeChoices{Rename: map[string]string{"work": "imported-work"}})
-	if plan.Sessions[0].Identity.Profile != "imported-work" {
+	if plan.Sessions[0].Identity.LocalName != "profile-imported-work" {
 		t.Fatal("rename did not change slot")
 	}
 	if _, err = m.Apply(context.Background(), p, plan); err != nil {
 		t.Fatal(err)
 	}
-	if !equalMap(before, treeSnapshot(t, filepath.Join(p.Destination, "profiles/work"))) {
+	if !equalMap(before, treeSnapshot(t, filepath.Join(p.Destination, "configs/work"))) {
 		t.Fatal("existing profile overwritten")
 	}
 }
@@ -419,8 +419,8 @@ func TestChangedPendingInputsRequireNewApproval(t *testing.T) {
 	if _, err := m.Apply(context.Background(), p, plan); err == nil {
 		t.Fatal("fault did not trigger")
 	}
-	put(t, filepath.Join(p.Destination, "profiles/work/setup.sh"), "#!/bin/bash\n# approved new setup\ntrue\n")
-	if err := os.Chmod(filepath.Join(p.Destination, "profiles/work/setup.sh"), 0700); err != nil {
+	put(t, filepath.Join(p.Destination, "configs/work/setup.sh"), "#!/bin/bash\n# approved new setup\ntrue\n")
+	if err := os.Chmod(filepath.Join(p.Destination, "configs/work/setup.sh"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	m.Fault = nil
@@ -485,7 +485,7 @@ func TestJournalCannotRedirectPublication(t *testing.T) {
 }
 func TestConfigComparisonWithholdsSensitiveAndUnknownFields(t *testing.T) {
 	p, _, j, _, _ := mergeFixture(t, false)
-	put(t, filepath.Join(p.Destination, "profiles/work/config.json"), `{"version":1,"extra_env":["KEY=private-env"],"unknown_token":"private-token","harness_args":["private-argument"]}`)
+	put(t, filepath.Join(p.Destination, "configs/work/config.json"), `{"version":1,"extra_env":["KEY=private-env"],"unknown_token":"private-token","harness_args":["private-argument"]}`)
 	lines, err := ConfigurationComparison(j, *j.Inventory.item("profile:work"), MergeChoices{})
 	if err != nil {
 		t.Fatal(err)

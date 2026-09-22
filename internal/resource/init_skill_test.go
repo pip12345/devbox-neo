@@ -11,40 +11,32 @@ import (
 	"devbox/internal/harness"
 )
 
-func TestInitLeavesDevboxSkillInheritedAndOverridable(t *testing.T) {
+func TestArtifactSetupLeavesDevboxSkillInheritedAndOverridable(t *testing.T) {
 	for _, name := range []string{"pi", "opencode"} {
-		for _, kind := range []string{"profile", "project"} {
-			t.Run(name+"/"+kind, func(t *testing.T) {
+		for _, form := range []string{"named", "path"} {
+			t.Run(name+"/"+form, func(t *testing.T) {
 				s := fixture(t)
 				ctx := context.Background()
-				workspace := t.TempDir()
-				var owner Owner
-				var err error
-				profile := ""
-				if kind == "profile" {
-					profile = "basic"
-					owner, err = s.Profile(profile)
-				} else {
-					owner, err = s.Project(workspace)
+				input := "basic"
+				if form == "path" {
+					input = filepath.Join(t.TempDir(), "config")
 				}
+				owner, err := s.ConfigDirectory(input, t.TempDir(), t.TempDir())
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err = s.Create(ctx, owner, ""); err != nil {
+				if _, err = s.CreateConfig(ctx, owner, SetupOptions{}); err != nil {
 					t.Fatal(err)
 				}
-				options := InitOptions{Harness: name, Artifacts: []string{"harness-config"}}
-				result, err := s.Init(ctx, owner, options)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(result.Created) != 1 {
-					t.Fatalf("expected only the harness settings file, got %v", result.Created)
+				options := SetupOptions{ArtifactHarness: name, Artifacts: []string{"harness-config"}}
+				result, err := s.EditConfig(ctx, owner, options)
+				if err != nil || len(result.Created) != 1 {
+					t.Fatalf("expected only the harness settings file: %+v, %v", result, err)
 				}
 				const skill = "skills/devbox/SKILL.md"
 				source := filepath.Join(owner.Root, name, skill)
 				if _, err = os.Stat(source); !os.IsNotExist(err) {
-					t.Fatalf("init populated the Devbox skill in user configuration: %v", err)
+					t.Fatalf("setup populated inherited Devbox guidance: %v", err)
 				}
 				h, err := harness.Load(s.Home, name)
 				if err != nil {
@@ -52,16 +44,13 @@ func TestInitLeavesDevboxSkillInheritedAndOverridable(t *testing.T) {
 				}
 				checkTree := func(want string) {
 					t.Helper()
-					r, err := artifact.Resolve(s.Home, workspace, profile, config.Layer{})
+					r, err := artifact.Resolve([]config.Source{{Label: owner.Name, Path: owner.Root}}, config.Host{})
 					if err != nil {
 						t.Fatal(err)
 					}
 					files, _, err := r.Tree(h)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if got := string(files[skill].Data); got != want {
-						t.Fatalf("wrong resolved skill: got %q, want %q", got, want)
+					if err != nil || string(files[skill].Data) != want {
+						t.Fatal("wrong resolved skill", err)
 					}
 				}
 				builtin := string(h.Defaults[skill].Data)
@@ -69,14 +58,13 @@ func TestInitLeavesDevboxSkillInheritedAndOverridable(t *testing.T) {
 					t.Fatal("missing built-in Devbox skill")
 				}
 				checkTree(builtin)
-
 				const override = "User-supplied Devbox guidance\n"
 				put(t, source, override)
-				if _, err = s.Init(ctx, owner, options); err != nil {
+				if _, err = s.EditConfig(ctx, owner, options); err != nil {
 					t.Fatal(err)
 				}
-				if got := string(get(t, source)); got != override {
-					t.Fatal("init changed an explicit skill override")
+				if string(get(t, source)) != override {
+					t.Fatal("setup changed an explicit skill override")
 				}
 				checkTree(override)
 			})

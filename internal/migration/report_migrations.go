@@ -91,7 +91,7 @@ func ConfigurationComparison(j *Journal, item Item, c MergeChoices) ([]string, e
 	target := ""
 	switch item.Kind {
 	case "global":
-		target = filepath.Join(j.Inventory.Paths.Destination, "config.json")
+		target = importedGlobalPath(j.Inventory.Paths.Destination)
 	case "profile":
 		name := item.Name
 		if c.Rename[name] != "" {
@@ -101,7 +101,7 @@ func ConfigurationComparison(j *Journal, item Item, c MergeChoices) ([]string, e
 			return nil, fmt.Errorf("invalid profile name")
 		}
 		source = filepath.Join(source, "config.json")
-		target = filepath.Join(j.Inventory.Paths.Destination, "profiles", name, "config.json")
+		target = filepath.Join(j.Inventory.Paths.Destination, "configs", name, "config.json")
 	case "project":
 		source = filepath.Join(source, "config.json")
 		target = filepath.Join(item.Path, "config.json")

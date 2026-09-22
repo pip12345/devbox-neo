@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"devbox/internal/config"
@@ -60,7 +61,7 @@ func validateMerge(j *Journal) error {
 		directory := false
 		switch item.Kind {
 		case "global":
-			target = filepath.Join(home, "config.json")
+			target = importedGlobalPath(home)
 		case "profile":
 			name := item.Name
 			if p.Choices.Rename[name] != "" {
@@ -69,7 +70,7 @@ func validateMerge(j *Journal) error {
 			if !config.Name.MatchString(name) {
 				return fmt.Errorf("invalid profile target")
 			}
-			target = filepath.Join(home, "profiles", name)
+			target = filepath.Join(home, "configs", name)
 			directory = true
 		case "project":
 			if !contains(p.Choices.Projects, item.Key) {
@@ -145,14 +146,14 @@ func validateMerge(j *Journal) error {
 		if profile != "" && !config.Name.MatchString(profile) {
 			return fmt.Errorf("invalid imported profile")
 		}
-		if err := job.Identity.ValidateSlot(); err != nil {
+		if err := job.Identity.Validate(); err != nil {
 			return err
 		}
-		if item.Profile == "" && !job.Identity.Project {
-			return fmt.Errorf("imported project lost its participation")
+		localName := importLocalName(*item, profile)
+		expected := environment.Identity{Workspace: item.Workspace, LocalName: localName, Name: environment.ContainerName(item.Workspace, localName)}
+		if !reflect.DeepEqual(job.Sources, importReferences(home, *item, profile)) {
+			return fmt.Errorf("imported session source chain differs from its approved selection")
 		}
-		slot := environment.Slot(profile, job.Identity.Project)
-		expected := environment.Identity{Workspace: item.Workspace, Profile: profile, Project: job.Identity.Project, Slot: slot, Name: environment.ContainerName(item.Workspace, slot)}
 		if job.Identity != expected || job.ID != item.SessionID || !idPattern.MatchString(job.ID) || job.Created.IsZero() || !hashString(job.Desired.Image) || !hashString(job.Desired.Container) || !hashString(job.Desired.Runtime) || names[expected.Name] || ids[job.ID] {
 			return fmt.Errorf("invalid imported session identity")
 		}

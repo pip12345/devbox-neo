@@ -40,7 +40,7 @@ type Record struct {
 	ManualStart     bool                     `json:"manual_start"`
 	ID              string                   `json:"id"`
 	Identity        environment.Identity     `json:"identity"`
-	Sources         []config.Source          `json:"sources"`
+	Sources         []config.Reference       `json:"sources"`
 	Created         time.Time                `json:"created_at"`
 	Activity        time.Time                `json:"last_activity"`
 	Action          string                   `json:"last_action"`
@@ -63,7 +63,7 @@ type Record struct {
 	ManifestVersion int                      `json:"manifest_version"`
 }
 
-const RecordVersion = 4
+const RecordVersion = 5
 
 // Runtime synchronization must advance its explanation baseline together with
 // its fingerprint. Image/container inputs remain committed until recreation.
@@ -79,13 +79,10 @@ func (r Record) Validate(name string) error {
 	if r.Version != RecordVersion || r.Ownership != 1 || r.ManifestVersion != 1 {
 		return fmt.Errorf("unsupported session record version; a clean development session reset is required")
 	}
-	if !idPattern.MatchString(r.ID) || r.Identity.Name != name || !validName(name) || !filepath.IsAbs(r.Identity.Workspace) || r.Identity.Slot == "" {
+	if !idPattern.MatchString(r.ID) || r.Identity.Name != name || !validName(name) {
 		return fmt.Errorf("invalid session identity")
 	}
-	if r.Identity.Name != environment.ContainerName(r.Identity.Workspace, r.Identity.Slot) || filepath.Clean(r.Identity.Workspace) != r.Identity.Workspace {
-		return fmt.Errorf("recorded workspace/slot does not match its container name")
-	}
-	if err := r.Identity.ValidateSlot(); err != nil {
+	if err := r.Identity.Validate(); err != nil {
 		return err
 	}
 	if !strings.HasPrefix(r.ImageID, "sha256:") || !hashPattern.MatchString(strings.TrimPrefix(r.ImageID, "sha256:")) || r.ImageTag != docker.Namespace+"/session:"+r.ID || r.Creation.Name != name || r.Creation.Image != r.ImageID {
@@ -109,9 +106,6 @@ func (r Record) Validate(name string) error {
 	if r.Definition.Origin != "builtin" && !filepath.IsAbs(r.Definition.Origin) {
 		return fmt.Errorf("invalid recorded definition source")
 	}
-	if len(r.Sources) == 0 {
-		return fmt.Errorf("recorded configuration sources are missing")
-	}
 	for _, source := range r.Sources {
 		if err := source.Validate(); err != nil {
 			return err
@@ -132,12 +126,8 @@ func (r Record) Validate(name string) error {
 		}
 		switch source.Kind {
 		case "file":
-			if !filepath.IsAbs(source.Path) || source.Index < 0 || (source.Field != "global_env" && source.Field != "env") {
+			if !filepath.IsAbs(source.Path) || source.Index < 0 || source.Field != "env" {
 				return fmt.Errorf("invalid recorded environment source")
-			}
-		case "invocation":
-			if source.Path != "" || source.Field != "" {
-				return fmt.Errorf("invalid invocation environment source")
 			}
 		default:
 			return fmt.Errorf("unknown recorded environment source kind")
@@ -242,21 +232,10 @@ func Open(ctx context.Context, home string) (*Store, error) {
 	if !idPattern.MatchString(id) {
 		return nil, fmt.Errorf("corrupt installation identity")
 	}
-	for _, dir := range []string{"profiles", "harnesses", "auth", "cache/harnesses", "sessions"} {
+	for _, dir := range []string{"configs", "harnesses", "auth", "cache/harnesses", "sessions"} {
 		if _, err = fsutil.Dir(absolute, dir, 0700); err != nil {
 			return nil, err
 		}
-	}
-	configPath, err := fsutil.Path(absolute, "config.json")
-	if err != nil {
-		return nil, err
-	}
-	if _, err = os.Lstat(configPath); os.IsNotExist(err) {
-		if err = fsutil.JSON(configPath, config.Global{Version: 1, GlobalEnv: []string{}}); err != nil {
-			return nil, err
-		}
-	} else if err != nil {
-		return nil, err
 	}
 	return &Store{Home: absolute, Installation: id}, nil
 }

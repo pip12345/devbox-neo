@@ -26,7 +26,7 @@ func cleanAbsolute(path string) bool {
 }
 
 func (r Reference) Validate() error {
-	if r.Label == "" || strings.ContainsAny(r.Label, "\x00\r\n") || r.Path == "" || filepath.Clean(r.Path) != r.Path || strings.ContainsRune(r.Path, '\x00') {
+	if r.Label == "" || strings.ContainsRune(r.Label, '\x00') || r.Path == "" || filepath.Clean(r.Path) != r.Path || strings.ContainsRune(r.Path, '\x00') {
 		return fmt.Errorf("invalid configuration reference")
 	}
 	switch r.Kind {
@@ -48,7 +48,7 @@ func (r Reference) Validate() error {
 // selection. It does not inspect the filesystem: creation accepts absent paths,
 // and source-chain repair must remain possible while directories are missing.
 func ConfigPath(home, cwd, userHome, reference string) (string, error) {
-	if reference == "" || strings.ContainsAny(reference, "\x00\r\n") {
+	if reference == "" || strings.ContainsRune(reference, '\x00') {
 		return "", fmt.Errorf("configuration reference must be a nonempty name or directory path")
 	}
 	switch {
@@ -112,6 +112,28 @@ func (r Reference) Expand(workspace string) (Source, error) {
 		path = filepath.Join(workspace, path)
 	}
 	return Source{Label: r.Label, Path: path}, nil
+}
+
+// ValidateReferenceChain permits unavailable sources while checking structure
+// and duplicate directory identities. It is used by pending creation choices
+// and saved-source edits; runtime resolution separately requires every source.
+func ValidateReferenceChain(workspace string, references []Reference) error {
+	seen := map[string]bool{}
+	for _, reference := range references {
+		source, err := reference.Expand(workspace)
+		if err != nil {
+			return err
+		}
+		key := source.Path
+		if canonical, err := filepath.EvalSymlinks(key); err == nil {
+			key = canonical
+		}
+		if seen[key] {
+			return fmt.Errorf("config directory selected more than once: %s", source.Path)
+		}
+		seen[key] = true
+	}
+	return nil
 }
 
 // ResolveReferences validates runtime directory inputs, including aliases of a

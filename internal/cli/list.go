@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"devbox/internal/app"
+	"devbox/internal/config"
 	"devbox/internal/store"
 )
 
@@ -67,23 +68,73 @@ func exactTime(at time.Time) string {
 }
 
 func printSessionList(out io.Writer, views []app.View, wide bool, now time.Time) error {
+	groups := map[string][]app.View{}
+	for _, view := range views {
+		groups[view.Workspace] = append(groups[view.Workspace], view)
+	}
+	folders := make([]string, 0, len(groups))
+	for folder := range groups {
+		folders = append(folders, folder)
+	}
+	sort.Strings(folders)
+	for _, folder := range folders {
+		title := displayCell(folder)
+		if folder == "" {
+			title = "Sessions with invalid state"
+		}
+		if err := writeMenuTitle(out, title); err != nil {
+			return err
+		}
+		if err := printSessionTable(out, groups[folder], wide, now, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func sourceSummary(sources []config.Reference) string {
+	if len(sources) == 0 {
+		return "None"
+	}
+	labels := make([]string, len(sources))
+	for i, source := range sources {
+		label := source.Label
+		if source.Kind == config.ReferenceRelative {
+			label = source.Path
+			if label != "." && label != ".." && !strings.HasPrefix(label, "../") {
+				label = "./" + label
+			}
+		}
+		labels[i] = displayCell(label)
+	}
+	return strings.Join(labels, " → ")
+}
+
+func printSessionTable(out io.Writer, views []app.View, wide bool, now time.Time, local bool) error {
 	// Align plain cells before styling whole rows: tabwriter counts ANSI escapes
 	// as visible text, which would otherwise shift columns on inactive rows.
 	var table bytes.Buffer
 	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
-	header := "NAME\tHARNESS\tPROFILE\tLAST ACTIVE\tCONTAINER\tFOLDER"
+	header := "NAME\tDEFAULT\tHARNESS\tLAST ACTIVE\tCONTAINER\tCONFIGS"
 	if wide {
 		header += "\tLAST ACTION\tCREATED"
 	}
 	fmt.Fprintln(w, header)
 	for _, view := range views {
 		state := containerState(view)
-		profile := viewProfile(view)
+		name := view.Name
+		if local && view.LocalName != "" {
+			name = view.LocalName
+		}
+		marker := ""
+		if view.Default {
+			marker = "*"
+		}
 		activity := activityAge(view.LastActivity, now)
 		if wide {
 			activity = exactTime(view.LastActivity)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s", displayCell(view.Name), displayCell(view.Harness), displayCell(profile), activity, state, displayCell(view.Workspace))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s", displayCell(name), marker, displayCell(view.Harness), activity, state, sourceSummary(view.Sources))
 		if wide {
 			fmt.Fprintf(w, "\t%s\t%s", displayCell(view.LastAction), exactTime(view.CreatedAt))
 		}
@@ -92,7 +143,7 @@ func printSessionList(out io.Writer, views []app.View, wide bool, now time.Time)
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	return printListRows(out, views, table.String())
+	return printListRows(out, views, table.String(), true)
 }
 
 func printUnmatchedContainers(out io.Writer, views []app.View) error {
@@ -131,22 +182,21 @@ func containerState(view app.View) string {
 	return state
 }
 
-func viewProfile(view app.View) string {
-	if view.Profile == "" && view.SessionID != "" {
-		return ".project"
-	}
-	if view.Project {
-		return view.Profile + ".project"
-	}
-	return view.Profile
-}
-
-func printListRows(out io.Writer, views []app.View, table string) error {
+func printListRows(out io.Writer, views []app.View, table string, defaults bool) error {
 	paint := terminalColors(out)
 	lines := strings.Split(strings.TrimSuffix(table, "\n"), "\n")
 	for i, line := range lines {
-		if i > 0 && !(views[i-1].Exists && views[i-1].Running) {
-			line = paint.dim(line)
+		if i > 0 {
+			view := views[i-1]
+			style := func(text string) string { return text }
+			if !(view.Exists && view.Running) {
+				style = paint.dim
+			}
+			if index := strings.IndexByte(line, '*'); defaults && view.Default && index >= 0 {
+				line = style(line[:index]) + paint.green("*") + style(line[index+1:])
+			} else {
+				line = style(line)
+			}
 		}
 		if _, err := fmt.Fprintln(out, line); err != nil {
 			return err

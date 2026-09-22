@@ -30,48 +30,23 @@ const ContainerPrefix = "devbox-"
 
 type Identity struct {
 	Workspace string `json:"workspace"`
-	Slot      string `json:"slot"`
+	LocalName string `json:"local_name"`
 	Name      string `json:"name"`
-	Profile   string `json:"profile,omitempty"`
-	Project   bool   `json:"project"`
-}
-
-func Identify(workspace, profile string, project bool) (Identity, error) {
-	absolute, err := filepath.Abs(workspace)
-	if err != nil {
-		return Identity{}, err
-	}
-	canonical, err := filepath.EvalSymlinks(absolute)
-	if err != nil {
-		return Identity{}, err
-	}
-	info, err := os.Stat(canonical)
-	if err != nil {
-		return Identity{}, err
-	}
-	if !info.IsDir() {
-		return Identity{}, fmt.Errorf("workspace must be a directory")
-	}
-	slot := Slot(profile, project)
-	if _, _, err := ParseSlot(slot); err != nil {
-		return Identity{}, err
-	}
-	return Identity{Workspace: canonical, Slot: slot, Profile: profile, Project: project, Name: ContainerName(canonical, slot)}, nil
 }
 
 var unsafeFolderCharacters = regexp.MustCompile(`[^a-z0-9_.-]+`)
 
-func ContainerName(workspace, slot string) string {
+func ContainerName(workspace, localName string) string {
 	// The folder is a readable hint, not identity: truncation and sanitization
-	// must not change which full workspace path and slot feed the hash.
+	// must not change the canonical workspace or case-sensitive local name.
 	folder := unsafeFolderCharacters.ReplaceAllString(strings.ToLower(filepath.Base(workspace)), "-")
 	folder = strings.Trim(folder, "-_.")
 	folder = strings.TrimRight(folder[:min(len(folder), 32)], "-_.")
 	if folder == "" {
 		folder = "workspace"
 	}
-	sum := sha256.Sum256([]byte(workspace + "\x00" + slot))
-	return ContainerPrefix + folder + "-" + hex.EncodeToString(sum[:6]) + "." + slot
+	sum := sha256.Sum256([]byte(workspace + "\x00" + localName))
+	return ContainerPrefix + folder + "-" + hex.EncodeToString(sum[:6]) + "." + localName
 }
 
 type Fingerprints struct {
@@ -85,81 +60,83 @@ type Hook struct {
 	Data []byte `json:"-"`
 }
 type Spec struct {
-	Identity     Identity
-	Settings     config.Settings
-	Harness      harness.Effective
-	Trace        artifact.Trace
-	Files        map[string]artifact.File
-	Warnings     []string
-	Build        ImageBuildPlan
-	Setup        []Hook
-	BeforeOpen   []Hook
-	Sources      []config.Source
-	Fingerprints Fingerprints
-	Inputs       Inputs
-	EnvSources   []config.EnvSource
-	ExtraMounts  []docker.Mount
-	Metadata     string
-	Host         config.Host `json:"-"`
+	Identity        Identity
+	Settings        config.Settings
+	Harness         harness.Effective
+	Trace           artifact.Trace
+	Files           map[string]artifact.File
+	Warnings        []string
+	Build           ImageBuildPlan
+	Setup           []Hook
+	BeforeOpen      []Hook
+	Sources         []config.Reference
+	ResolvedSources []config.Source
+	Fingerprints    Fingerprints
+	Inputs          Inputs
+	EnvSources      []config.EnvSource
+	ExtraMounts     []docker.Mount
+	Metadata        string
+	Host            config.Host `json:"-"`
 }
 type Request struct {
-	Salt          string
-	Home          string
-	Workspace     string
-	Profile       string
-	Overrides     config.Layer
-	IgnoreProject bool
-	Sources       []config.Source
-	Recorded      *Identity
-	UID           int
-	GID           int
-	Host          config.Host `json:"-"`
+	Salt      string
+	Home      string
+	Workspace string
+	LocalName string
+	Sources   []config.Reference
+	Recorded  *Identity
+	UID       int
+	GID       int
+	Host      config.Host `json:"-"`
 }
 
 func Resolve(q Request) (Spec, error) { return resolve(q, nil) }
 
-// Preview validates proposed project configuration without publishing it.
-// Its specification is for comparison only; execution resolves final paths.
-func Preview(q Request, project *config.Layer) (Spec, error) { return resolve(q, project) }
+// Preview validates one proposed source without publishing it. Execution
+// resolves final paths; importer previews remain isolated from runtime state.
+func Preview(q Request, source *artifact.SourcePreview) (Spec, error) { return resolve(q, source) }
 
-func resolve(q Request, project *config.Layer) (Spec, error) {
+func resolve(q Request, proposed *artifact.SourcePreview) (Spec, error) {
 	var spec Spec
-	workspace, err := Identify(q.Workspace, "", true)
+	if q.Recorded != nil && q.LocalName == "" {
+		q.LocalName = q.Recorded.LocalName
+	}
+	identity, err := Identify(q.Workspace, q.LocalName)
 	if err != nil {
 		return spec, err
 	}
-	q.Workspace = workspace.Workspace
+	if q.Recorded != nil && identity != *q.Recorded {
+		return spec, fmt.Errorf("requested session does not match its recorded identity")
+	}
+	q.Workspace = identity.Workspace
 	if q.Host == nil {
 		q.Host = config.Snapshot()
 	} else {
 		q.Host = maps.Clone(q.Host)
 	}
-	selection := artifact.Selection{Profile: q.Profile, IgnoreProject: q.IgnoreProject, Sources: q.Sources}
-	if q.Recorded != nil {
-		selection.Recorded = &artifact.Participation{Profile: q.Recorded.Profile, Project: q.Recorded.Project, Sources: q.Sources}
-	}
-	r, err := artifact.PreviewSelection(q.Home, q.Workspace, selection, q.Overrides, project, q.Host)
+	sources, err := config.ResolveReferences(q.Workspace, q.Sources)
 	if err != nil {
-		return spec, err
+		var next []commanderror.Step
+		if q.Recorded != nil {
+			next = append(next, commanderror.Next("Repair the session's config sources", "config", "sources", identity.Name))
+		}
+		return spec, commanderror.New("configuration_unavailable", "Cannot resolve config sources: "+err.Error(), identity.Name, err, next...)
 	}
-	identity := Identity{Workspace: q.Workspace, Profile: r.Profile, Project: r.Project, Slot: Slot(r.Profile, r.Project)}
-	identity.Name = ContainerName(identity.Workspace, identity.Slot)
-	if err = identity.ValidateSlot(); err != nil {
+	r, err := artifact.Preview(sources, proposed, q.Host)
+	if err != nil {
+		if q.Recorded != nil {
+			return spec, commanderror.New("invalid_configuration", err.Error(), identity.Name, err,
+				commanderror.Next("Inspect and repair config sources", "config", "sources", identity.Name))
+		}
 		return spec, err
-	}
-	if q.Recorded != nil && identity != *q.Recorded {
-		return spec, fmt.Errorf("requested combination does not match its recorded identity")
 	}
 	if err = r.Settings.Validate(); err != nil {
 		var actionable *commanderror.Error
 		if errors.As(err, &actionable) && actionable.Code == "harness_required" {
-			step := commanderror.Next("Select a harness", "project", "init", workspace.Workspace, "--harness", "<name>")
-			if identity.Profile != "" {
-				step = commanderror.Next("Select a harness", "profile", "init", identity.Profile, "--harness", "<name>")
-			}
+			step := commanderror.Next("Select a harness in a config source", "config", "edit", sources[0].Path, "--harness", "<name>")
 			return spec, commanderror.New(actionable.Code, actionable.Message, identity.Name, err, step)
 		}
-		return spec, commanderror.New("invalid_configuration", "Invalid configuration: "+err.Error(), workspace.Workspace, err)
+		return spec, commanderror.New("invalid_configuration", "Invalid configuration: "+err.Error(), q.Workspace, err)
 	}
 	h, err := harness.Load(q.Home, r.Settings.Harness)
 	if err != nil {
@@ -193,7 +170,7 @@ func resolve(q Request, project *config.Layer) (Spec, error) {
 	if q.UID <= 0 || q.GID <= 0 {
 		return spec, fmt.Errorf("run the development CLI as a non-root user with a non-root primary group")
 	}
-	spec = Spec{Identity: identity, Settings: r.Settings, Harness: h, Trace: r.Trace, Files: files, Warnings: warnings, Host: q.Host, Sources: r.Selection.Sources}
+	spec = Spec{Identity: identity, Settings: r.Settings, Harness: h, Trace: r.Trace, Files: files, Warnings: warnings, Host: q.Host, Sources: append([]config.Reference(nil), q.Sources...), ResolvedSources: sources}
 	protected := []string{"/workspace", "/devbox"}
 	for _, store := range h.Definition.Stores {
 		protected = append(protected, store.Target)

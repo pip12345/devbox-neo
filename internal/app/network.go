@@ -40,8 +40,8 @@ func networkFacts(r store.Record, c docker.Container) NetworkFacts {
 func (f NetworkFacts) Env() map[string]string {
 	return map[string]string{"DEVBOX_HOST": f.Host, "DEVBOX_NETWORK": f.Mode, "DEVBOX_PRIMARY_NETWORK": f.Primary, "DEVBOX_DEFAULT_GATEWAY_IP": f.Gateway}
 }
-func (e *Engine) NetworkFacts(ctx context.Context, target, profile string) (NetworkFacts, error) {
-	r, err := e.Locate(ctx, target, profile)
+func (e *Engine) NetworkFacts(ctx context.Context, target, localName string) (NetworkFacts, error) {
+	r, err := e.Locate(ctx, target, localName)
 	if err != nil {
 		return NetworkFacts{}, err
 	}
@@ -55,11 +55,11 @@ func (e *Engine) NetworkFacts(ctx context.Context, target, profile string) (Netw
 	}
 	return networkFacts(r, c), nil
 }
-func (e *Engine) ChangeNetwork(ctx context.Context, target, profile, name string, connect bool) error {
+func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name string, connect bool) error {
 	if !config.NetworkName.MatchString(name) || name == "default" || name == "host" {
 		return fmt.Errorf("select an existing secondary Docker network by name")
 	}
-	r, err := e.Locate(ctx, target, profile)
+	r, err := e.Locate(ctx, target, localName)
 	if err != nil {
 		return err
 	}
@@ -68,7 +68,7 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, profile, name string
 		return err
 	}
 	defer lock.Close()
-	r, err = lock.Load()
+	r, err = loadSelected(lock, r)
 	if err != nil {
 		return err
 	}

@@ -6,54 +6,32 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"devbox/internal/commanderror"
-	"devbox/internal/config"
 	"devbox/internal/docker"
-	"devbox/internal/environment"
 	"devbox/internal/filesync"
 	"devbox/internal/store"
 )
 
-func creationRequired(workspace, profile string, cause error) error {
-	message := "No environment exists."
-	if profile != "" {
-		message = fmt.Sprintf("No environment exists (profile: %s).", profile)
+func creationRequired(workspace, localName string, cause error) error {
+	message := "No session exists."
+	if localName != "" {
+		message = fmt.Sprintf("No session named %q exists for this folder.", localName)
 	}
 	return commanderror.New("session_missing", message, workspace, cause,
-		commanderror.Next("Create", "create", workspace))
+		commanderror.Next("Create a session", "create", workspace))
 }
 
 // Open keeps the operation lock through stopped-only synchronization, startup,
 // and lease creation. The long foreground command runs after releasing it.
 func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error) {
-	invocationArgs := append([]string(nil), q.Overrides.HarnessArgs...)
-	q.Overrides = config.Layer{}
-	lookup := *e
-	lookup.IgnoreProject = e.IgnoreProject || q.IgnoreProject
-	r, loadErr := lookup.Locate(ctx, q.Workspace, q.Profile)
-	if loadErr != nil {
-		var missing *commanderror.Error
-		if errors.As(loadErr, &missing) && missing.Code == "session_missing" && !strings.HasPrefix(q.Workspace, environment.ContainerPrefix) {
-			spec, resolveErr := e.resolveSpec(q)
-			if resolveErr != nil {
-				return result, resolveErr
-			}
-			return result, creationRequired(q.Workspace, spec.Identity.Profile, loadErr)
-		}
-		return result, loadErr
-	}
-	q.Workspace, q.Profile, q.Recorded, q.Sources = r.Identity.Workspace, r.Identity.Profile, &r.Identity, r.Sources
-	// Defer resolution warnings so creation drift is visible before any other
-	// open output, especially before entrypoint or harness output can scroll it away.
-	spec, err := e.resolveSpec(q)
+	invocationArgs := append([]string(nil), q.HarnessArgs...)
+	r, err := e.Locate(ctx, q.Workspace, q.LocalName)
 	if err != nil {
-		e.resolutionWarnings(spec)
 		return result, err
 	}
-	result.Name = spec.Identity.Name
+	result.Name = r.Identity.Name
 	if _, err = store.ProcessIdentity(os.Getpid()); err != nil {
 		return result, err
 	}
@@ -62,11 +40,16 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 		return result, err
 	}
 	defer lock.Close()
-	record, err := lock.Load()
-	if errors.Is(err, os.ErrNotExist) {
-		return result, creationRequired(q.Workspace, spec.Identity.Profile, err)
-	}
+	record, err := loadSelected(lock, r)
 	if err != nil {
+		return result, err
+	}
+	q.Workspace, q.LocalName, q.Recorded, q.Sources = record.Identity.Workspace, record.Identity.LocalName, &record.Identity, record.Sources
+	// Desired references are loaded and resolved under the operation lock.
+	// Otherwise a concurrent source edit could be overwritten by this open.
+	spec, err := e.resolveSpec(q)
+	if err != nil {
+		e.resolutionWarnings(spec)
 		return result, err
 	}
 	e.creationDrift(&result, record, spec)

@@ -1,104 +1,67 @@
 package environment
 
 import (
-	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
-
-	"devbox/internal/artifact"
-	"devbox/internal/commanderror"
-	"devbox/internal/config"
 )
 
-func Slot(profile string, project bool) string {
-	if profile == "" {
-		if project {
-			return "project"
-		}
-		return ""
-	}
-	slot := "profile-" + profile
-	if project {
-		slot += ".project"
-	}
-	return slot
-}
+var localNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
-func ParseSlot(slot string) (profile string, project bool, err error) {
-	if slot == "project" {
-		return "", true, nil
-	}
-	profile, ok := strings.CutPrefix(slot, "profile-")
-	if !ok {
-		return "", false, fmt.Errorf("invalid session slot")
-	}
-	profile, project = strings.CutSuffix(profile, ".project")
-	if !config.Name.MatchString(profile) {
-		return "", false, fmt.Errorf("invalid profile in session slot")
-	}
-	return profile, project, nil
-}
-
-// SelectionSources expands frontend selection into generic directory inputs.
-// Saved environments use their recorded Sources instead of rediscovering these.
-func SelectionSources(home string, id Identity) []config.Source {
-	var sources []config.Source
-	if id.Profile != "" {
-		sources = append(sources, config.Source{Label: "profile", Path: filepath.Join(home, "profiles", id.Profile)})
-	}
-	if id.Project {
-		sources = append(sources, config.Source{Label: "project", Path: filepath.Join(id.Workspace, ".devbox")})
-	}
-	return sources
-}
-
-func (id Identity) ValidateSlot() error {
-	if id.Slot == "" || id.Slot != Slot(id.Profile, id.Project) {
-		return fmt.Errorf("session slot does not match its profile/project selection")
-	}
-	if id.Profile != "" && !config.Name.MatchString(id.Profile) {
-		return fmt.Errorf("invalid recorded profile selection")
+func ValidateLocalName(name string) error {
+	if !localNamePattern.MatchString(name) {
+		return fmt.Errorf("session name must be 1–64 ASCII letters, digits, dashes, or underscores, beginning with a letter or digit")
 	}
 	return nil
 }
 
-func Select(home, workspace, profile string, ignoreProject bool, host config.Host) (Identity, error) {
-	canonical, err := Identify(workspace, "", true)
+func CanonicalWorkspace(workspace string) (string, error) {
+	absolute, err := filepath.Abs(workspace)
 	if err != nil {
-		return Identity{}, commanderror.New("workspace_unavailable", "Cannot access workspace: "+err.Error(), workspace, err)
+		return "", err
 	}
-	if host == nil {
-		host = config.Snapshot()
-	}
-	selected, err := artifact.Select(home, canonical.Workspace, artifact.Selection{Profile: profile, IgnoreProject: ignoreProject}, nil, host)
+	canonical, err := filepath.EvalSymlinks(absolute)
 	if err != nil {
-		var actionable *commanderror.Error
-		if !errors.As(err, &actionable) {
-			err = commanderror.New("invalid_configuration", "Cannot select session: "+err.Error(), workspace, err)
-		}
-		return Identity{}, err
+		return "", err
 	}
-	return Identify(canonical.Workspace, selected.Profile, selected.Project)
+	info, err := os.Stat(canonical)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("workspace must be a directory")
+	}
+	return canonical, nil
 }
 
-func (id Identity) Selector() string { return "." + id.Slot }
+func Identify(workspace, localName string) (Identity, error) {
+	if err := ValidateLocalName(localName); err != nil {
+		return Identity{}, err
+	}
+	canonical, err := CanonicalWorkspace(workspace)
+	if err != nil {
+		return Identity{}, err
+	}
+	return Identity{Workspace: canonical, LocalName: localName, Name: ContainerName(canonical, localName)}, nil
+}
 
-func IdentifySlot(workspace, selector string) (Identity, error) {
-	slot := strings.TrimPrefix(selector, ".")
-	if !strings.HasPrefix(selector, ".") {
-		return Identity{}, fmt.Errorf("slot must be .profile-<name>, .profile-<name>.project, or .project")
+// Validate uses saved canonical paths without reopening the workspace. Exact
+// session lookup and cleanup must work after a directory has moved or vanished.
+func (id Identity) Validate() error {
+	if err := ValidateLocalName(id.LocalName); err != nil {
+		return err
 	}
-	profile, project, err := ParseSlot(slot)
-	if err != nil {
-		return Identity{}, err
+	if !filepath.IsAbs(id.Workspace) || filepath.Clean(id.Workspace) != id.Workspace || strings.ContainsRune(id.Workspace, '\x00') {
+		return fmt.Errorf("invalid recorded workspace identity")
 	}
-	id, err := Identify(workspace, profile, project)
-	if err != nil {
-		return Identity{}, err
+	if id.Name != ContainerName(id.Workspace, id.LocalName) {
+		return fmt.Errorf("recorded workspace and local name do not match the full session name")
 	}
-	if id.Selector() != selector {
-		return Identity{}, fmt.Errorf("use the exact slot suffix: %s", id.Selector())
-	}
-	return id, nil
+	return nil
+}
+
+func IsSessionTarget(target string) bool {
+	return strings.HasPrefix(target, ContainerPrefix) && !strings.ContainsAny(target, "/\\")
 }

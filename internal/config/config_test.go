@@ -13,7 +13,7 @@ func TestStrictJSON(t *testing.T) {
 		if err := os.WriteFile(path, []byte(input), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := ReadGlobal(path, Host{}); err == nil {
+		if _, err := ReadLayer(path, Host{}); err == nil {
 			t.Errorf("accepted %s", input)
 		}
 	}
@@ -34,13 +34,7 @@ func TestSparseMerge(t *testing.T) {
 	}
 }
 func TestGenericSourceMetadata(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.json")
-	os.WriteFile(path, []byte(`{"version":1,"inherit":false}`), 0600)
-	layer, err := ReadLayer(path, Host{})
-	if err != nil || layer.Inherit == nil || *layer.Inherit {
-		t.Fatal(layer, err)
-	}
-	for _, data := range []string{`{"inherit_profile":false}`, `{"name":".unused"}`} {
+	for _, data := range []string{`{"inherit":false}`, `{"inherit_profile":false}`, `{"name":".unused"}`, `{"global_env":[]}`, `{"default_harness":"pi"}`, `{"default_profile":"base"}`, `{"ignore_project":true}`} {
 		if _, err := ParseLayer([]byte(data)); err == nil {
 			t.Fatal("accepted removed source field", data)
 		}

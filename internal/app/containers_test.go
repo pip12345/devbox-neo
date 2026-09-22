@@ -43,7 +43,7 @@ func TestContainerViewsUseBatchedInventoryAndBrokenConfigDoesNotHideState(t *tes
 		t.Fatal("list did not use one inventory and one batched inspect")
 	}
 	for _, view := range views {
-		if view.Name == first.Name && (!view.CreatedAt.Equal(owned.Created) || view.LastActivity.IsZero() || view.LastAction == "" || view.Profile != q.Profile || view.Harness == "") {
+		if view.Name == first.Name && (!view.CreatedAt.Equal(owned.Created) || view.LastActivity.IsZero() || view.LastAction == "" || view.LocalName != q.LocalName || view.Harness == "") {
 			t.Fatal("list lost live creation time or recorded details", view)
 		}
 	}
@@ -184,10 +184,10 @@ func TestSecondaryNetworksDoNotChangeCreationContract(t *testing.T) {
 		t.Fatal("host-network container accepted secondary network")
 	}
 }
-func TestExactRootTargetKeepsItsSlotWhenDefaultsChange(t *testing.T) {
+func TestExactTargetIgnoresObsoleteGlobalConfiguration(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
-	q.Profile = ""
+	q.Sources = q.Sources[1:]
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi"}`)
 	first, err := e.Create(ctx, q)
 	if err != nil {
@@ -234,7 +234,7 @@ func TestExplicitProfileLocateIgnoresUnrelatedCorruptRecords(t *testing.T) {
 	}
 	other := environment.ContainerName("/unrelated", "project")
 	write(t, filepath.Join(e.Store.Home, "sessions", other, "session.json"), "broken")
-	r, err := e.Locate(ctx, q.Workspace, q.Profile)
+	r, err := e.Locate(ctx, q.Workspace, q.LocalName)
 	if err != nil || r.Identity.Name != first.Name {
 		t.Fatal("unrelated corrupt record blocked explicit selection", err)
 	}

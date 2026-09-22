@@ -17,6 +17,7 @@ import (
 
 	"devbox/internal/docker"
 	"devbox/internal/docker/dockertest"
+	"devbox/internal/environment"
 	"devbox/internal/harness"
 	"github.com/spf13/cobra"
 )
@@ -89,11 +90,17 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("DEVBOX_HOME", filepath.Join(userHome, "environment"))
 	explicit := filepath.Join(userHome, "explicit")
-	completionFile(t, os.Getenv("DEVBOX_HOME"), "profiles/env/config.json", `{"version":1}`)
-	completionFile(t, explicit, "profiles/basic/config.json", `{"version":1}`)
-	completionFile(t, explicit, "profiles/broken/config.json", `broken`)
-	completionFile(t, explicit, "profiles/not valid/config.json", `{}`)
-	completionFile(t, explicit, "sessions/devbox-example-0123456789ab.profile-basic/session.json", `broken`)
+	completionFile(t, os.Getenv("DEVBOX_HOME"), "configs/env/config.json", `{"version":1}`)
+	completionFile(t, explicit, "configs/basic/config.json", `{"version":1}`)
+	completionFile(t, explicit, "configs/broken/config.json", `broken`)
+	completionFile(t, explicit, "configs/not valid/config.json", `{}`)
+	workspace := t.TempDir()
+	identity, err := environment.Identify(workspace, "Main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, _ := json.Marshal(map[string]any{"identity": identity})
+	completionFile(t, explicit, filepath.Join("sessions", identity.Name, "session.json"), string(metadata))
 	completionFile(t, explicit, "harnesses/pi/harness.json", `invalid override`)
 	custom, err := harness.Load(explicit, "opencode")
 	if err != nil {
@@ -105,7 +112,7 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 		t.Fatal(err)
 	}
 	completionFile(t, explicit, "harnesses/custom/harness.json", string(definition))
-	if err := os.Symlink(filepath.Join(explicit, "profiles/basic"), filepath.Join(explicit, "profiles/linked")); err != nil {
+	if err := os.Symlink(filepath.Join(explicit, "configs/basic"), filepath.Join(explicit, "configs/linked")); err != nil {
 		t.Fatal(err)
 	}
 	before := completionSnapshot(t, userHome)
@@ -114,29 +121,28 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 		want []string
 		dir  cobra.ShellCompDirective
 	}{
-		{[]string{"profile", "set", ""}, []string{"env"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "profile", "config", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "open", "--profile", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "project", "config", ".", "--profile", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "project", "create", ".", "--from-profile", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "copy", ".", "--to", ""}, []string{".profile-basic", ".profile-basic.project", ".profile-broken", ".profile-broken.project", ".project"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "copy", ".", "--move", "--from", ""}, []string{".profile-basic", ".profile-basic.project", ".profile-broken", ".profile-broken.project", ".project"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "profile", "init", "basic", "--harness", ""}, []string{"custom", "opencode"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "project", "init", ".", "--harness", ""}, []string{"custom", "inherit", "opencode"}, cobra.ShellCompDirectiveNoFileComp},
+		{[]string{"config", "edit", ""}, []string{"env"}, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "config", "edit", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "open", workspace, "--name", "M"}, []string{"Main"}, cobra.ShellCompDirectiveNoFileComp},
+		{[]string{"--home", explicit, "config", "sources", workspace, "--name", "M"}, []string{"Main"}, cobra.ShellCompDirectiveNoFileComp},
+		{[]string{"--home", explicit, "create", ".", "--config", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "copy", ".", "--as", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
+		{[]string{"--home", explicit, "copy", workspace, "--move", "--name", "M"}, []string{"Main"}, cobra.ShellCompDirectiveNoFileComp},
+		{[]string{"--home", explicit, "config", "edit", "basic", "--harness", ""}, []string{"custom", "opencode"}, cobra.ShellCompDirectiveNoFileComp},
+		{[]string{"--home", explicit, "config", "create", "overlay", "--artifact-harness", ""}, []string{"custom", "opencode"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "list", "--sort", ""}, []string{"last-active", "name"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "status", "devbox-"}, []string{"devbox-example-0123456789ab.profile-basic"}, cobra.ShellCompDirectiveDefault},
-		{[]string{"--home", explicit, "status", "devbox-"}, []string{"devbox-example-0123456789ab.profile-basic"}, cobra.ShellCompDirectiveDefault},
-		{[]string{"--home", explicit, "copy", "devbox-example-0123456789ab.profile-basic", ""}, nil, cobra.ShellCompDirectiveFilterDirs},
-		{[]string{"--home", explicit, "copy", "--move", "devbox-example-0123456789ab.profile-basic", ""}, nil, cobra.ShellCompDirectiveFilterDirs},
-		{[]string{"--home", explicit, "copy", "--move", "devbox-"}, []string{"devbox-example-0123456789ab.profile-basic"}, cobra.ShellCompDirectiveDefault},
-		{[]string{"--home", explicit, "project", "create", ""}, nil, cobra.ShellCompDirectiveFilterDirs},
+		{[]string{"--home", explicit, "status", "devbox-"}, []string{identity.Name}, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "copy", identity.Name, ""}, nil, cobra.ShellCompDirectiveFilterDirs},
+		{[]string{"--home", explicit, "copy", "--move", identity.Name, ""}, nil, cobra.ShellCompDirectiveFilterDirs},
+		{[]string{"--home", explicit, "copy", "--move", "devbox-"}, []string{identity.Name}, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "list", ""}, nil, cobra.ShellCompDirectiveFilterDirs},
 		{[]string{"--home", explicit, "create", ""}, nil, cobra.ShellCompDirectiveFilterDirs},
 		{[]string{"--home", explicit, "create", ".", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "create", "--profile", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveNoFileComp},
+		{[]string{"--home", explicit, "create", "--config", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveDefault},
 		{[]string{"--home", explicit, "open", ".", "--", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "exec", ".", "--", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "delete", "--all", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "delete", "devbox-example-0123456789ab.profile-basic", ""}, nil, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "delete", identity.Name, ""}, nil, cobra.ShellCompDirectiveDefault},
 	}
 	for _, tt := range cases {
 		got, dir := runCompletion(t, tt.args...)
@@ -156,7 +162,7 @@ func TestCompletionFreshAndRejectedHomes(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	for _, home := range []string{"", filepath.Join(userHome, "fresh"), filepath.Join(userHome, ".devbox")} {
 		before := completionSnapshot(t, userHome)
-		for _, command := range [][]string{{"open", ""}, {"shell", ""}, {"profile", "set", ""}} {
+		for _, command := range [][]string{{"open", ""}, {"shell", ""}, {"config", "edit", ""}} {
 			args := command
 			if home != "" {
 				args = append([]string{"--home", home}, command...)
@@ -170,8 +176,8 @@ func TestCompletionFreshAndRejectedHomes(t *testing.T) {
 			t.Fatal("completion initialized a home", home)
 		}
 	}
-	completionFile(t, filepath.Join(userHome, ".devbox-neo"), "profiles/default/config.json", `{}`)
-	got, _ := runCompletion(t, "profile", "set", "")
+	completionFile(t, filepath.Join(userHome, ".devbox-neo"), "configs/default/config.json", `{}`)
+	got, _ := runCompletion(t, "config", "edit", "")
 	if !slices.Equal(got, []string{"default"}) {
 		t.Fatal("default home not used", got)
 	}

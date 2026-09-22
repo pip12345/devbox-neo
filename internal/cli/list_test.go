@@ -13,7 +13,7 @@ import (
 func TestListDetailsAndSorting(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	views := []app.View{
-		{Name: "b", Exists: true, Profile: "basic", Harness: "pi", Workspace: "/work/api", LastActivity: now.Add(-2 * time.Hour), LastAction: "open", CreatedAt: now.Add(-24 * time.Hour)},
+		{Name: "b", Exists: true, LocalName: "basic", Harness: "pi", Workspace: "/work/api", LastActivity: now.Add(-2 * time.Hour), LastAction: "open", CreatedAt: now.Add(-24 * time.Hour)},
 		{Name: "a", Exists: true, Running: true, SessionID: "project", Harness: "opencode", Workspace: "/work/ui", LastActivity: now},
 		{Name: "unknown", Exists: true, Error: "no durable record", Pending: &store.Reservation{Mode: "clone", Phase: "prepare", Source: "a", Destination: "b"}},
 	}
@@ -25,7 +25,7 @@ func TestListDetailsAndSorting(t *testing.T) {
 	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"NAME", "PROFILE", "LAST ACTIVE", ".project", "2 hours ago", "just now", "stopped!*", "no durable record", "pending copy"} {
+	for _, want := range []string{"NAME", "DEFAULT", "CONFIGS", "LAST ACTIVE", "/work/api", "/work/ui", "2 hours ago", "just now", "stopped!*", "no durable record", "pending copy"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
@@ -57,7 +57,8 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	views := []app.View{
 		{Name: "recent", SessionID: "project", Harness: "pi", Workspace: "/work/project", LastActivity: now},
-		{Name: "older", Profile: "basic", Harness: "opencode", Exists: true, Workspace: "/work/api", LastActivity: now.Add(-2 * time.Hour)},
+		{Name: "older", LocalName: "basic", Harness: "opencode", Exists: true, Workspace: "/work/project", LastActivity: now.Add(-2 * time.Hour)},
+		{Name: "separate", Workspace: "/work/api"},
 		{Name: "broken", Error: "corrupt record", Pending: &store.Reservation{Mode: "relocate", Phase: "prepare", Source: "older", Destination: "broken"}},
 	}
 	sortViews(views, "last-active")
@@ -65,17 +66,16 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
-	lines := strings.Split(out.String(), "\n")
-	if got := strings.Fields(lines[0]); strings.Join(got, " ") != "NAME HARNESS PROFILE LAST ACTIVE CONTAINER FOLDER" {
-		t.Fatal("not a session-focused table", lines[0])
+	if !strings.Contains(strings.Join(strings.Fields(out.String()), " "), "NAME DEFAULT HARNESS LAST ACTIVE CONTAINER CONFIGS") {
+		t.Fatal("not a session-focused table", out.String())
 	}
-	for _, want := range []string{"pi", ".project", "just now", "missing", "opencode", "basic", "2 hours ago", "stopped", "missing!*", "corrupt record", "pending copy --move"} {
+	for _, want := range []string{"pi", "/work/project", "just now", "missing", "opencode", "older", "2 hours ago", "stopped", "missing!*", "corrupt record", "pending copy --move"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
 	}
-	if !strings.HasPrefix(lines[1], "recent ") || !strings.HasPrefix(lines[2], "older ") || !strings.HasPrefix(lines[3], "broken ") {
-		t.Fatal("incorrect session order", out.String())
+	if strings.Index(out.String(), "/work/api") > strings.Index(out.String(), "/work/project") || strings.Index(out.String(), "\nrecent ") > strings.Index(out.String(), "\nolder ") {
+		t.Fatal("incorrect folder grouping or within-folder session order", out.String())
 	}
 	if strings.Contains(out.String(), "\x1b") {
 		t.Fatal("non-terminal output contains styling")
@@ -97,14 +97,14 @@ func TestListTimesAndUnsafeCells(t *testing.T) {
 	if err := printSessionList(&out, views, true, now); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 2 {
+	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 4 {
 		t.Fatal("unsafe path changed table structure", out.String())
 	}
 	out.Reset()
 	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 2 {
+	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 4 {
 		t.Fatal("unsafe session fields changed table structure", out.String())
 	}
 }

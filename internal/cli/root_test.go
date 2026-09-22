@@ -37,19 +37,14 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 	for _, tt := range []struct{ command, flag, description string }{
 		{"open", "harness-arg", "Pass an argument to the harness (repeatable)"},
 		{"recreate", "image", "Rebuild the image without using the build cache"},
-		{"recreate", "all", "Recreate all Devbox containers, add --profile NAME to recreate all belonging to one profile"},
-		{"open", "profile", "Select the base profile"},
+		{"recreate", "all", "Recreate all Devbox containers"},
+		{"open", "name", "Select the session's folder-local name"},
 		{"stop", "force", "Stop even if commands are still running"},
 		{"delete", "force", "Allow container deletion despite attached commands; never implies deleting saved data"},
-		{"profile delete", "force", "Delete without prompting"},
-		{"global config", "show", "Show resolved settings and where they come from"},
-		{"profile config", "show", "Show resolved settings and where they come from"},
-		{"project config", "show", "Show resolved settings and where they come from"},
-		{"project config", "profile", "With --show, select the base profile beneath project configuration"},
-		{"profile init", "harness", "Choose a harness by name"},
-		{"project init", "harness", "Choose a harness by name, or inherit to use the profile/global setting"},
-		{"copy", "from", "Source session suffix, e.g. .profile-work.project"},
-		{"copy", "to", "Destination config selection: .profile-NAME, .profile-NAME.project, or .project"},
+		{"config sources", "show", "Show combined settings and their sources without editing"},
+		{"config create", "harness", "Set this config's persistent harness selection"},
+		{"config edit", "artifact-harness", "Choose which harness's files to add without changing the config's harness"},
+		{"copy", "as", "Destination local name (default: preserve the source name)"},
 		{"copy", "move", "Remove the source after the destination is ready"},
 		{"delete", "older-than", "Select environments inactive longer than this duration, e.g. 720h; rechecked while locked"},
 	} {
@@ -68,16 +63,16 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 	home := t.TempDir()
 	before := completionSnapshot(t, home)
 	for _, tt := range []struct{ command, description string }{
-		{"profile create", "Create a named profile"},
-		{"project create", "Create project configuration in .devbox/"},
-		{"profile init", "Choose a harness and add optional configuration files"},
-		{"project init", "Choose a harness and add optional configuration files"},
+		{"config create", "Create a config directory and offer initial setup"},
+		{"config edit", "Edit a config directory or add missing optional files"},
+		{"config sources", "Manage a session's config sources and inspect combined configuration"},
+		{"set", "Select or clear a folder's default session"},
 		{"shell", "Open a shell in a session"},
 		{"exec", "Run a command in a session"},
 		{"recreate", "Recreate the container with current settings, keeping session data"},
 		{"status", "Show session details, active commands, and pending configuration changes"},
 
-		{"copy", "Copy session state to another folder or profile"},
+		{"copy", "Copy session state to another folder or local name"},
 	} {
 		t.Run(tt.command, func(t *testing.T) {
 			root := New()
@@ -108,7 +103,7 @@ func TestOpenCommandOwnsTargetAndFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	for _, text := range []string{"open <folder|session>", "--continue", "--harness-arg", "--ignore-project"} {
+	for _, text := range []string{"open <folder|session>", "--continue", "--harness-arg", "--name"} {
 		if !strings.Contains(help, text) {
 			t.Fatalf("open help is missing %q: %s", text, help)
 		}
@@ -121,7 +116,7 @@ func TestOpenCommandOwnsTargetAndFlags(t *testing.T) {
 }
 
 func TestOpenRejectsCreationFlagsBeforeInitialization(t *testing.T) {
-	for _, flag := range []string{"--create", "--network=host", "--env=TOKEN=private-value", "--volume=/tmp:/extra", "--port=8080:80", "--docker-arg=--init", "--read-only", "--harness=pi"} {
+	for _, flag := range []string{"--profile=test", "--ignore-project", "--create", "--network=host", "--env=TOKEN=private-value", "--volume=/tmp:/extra", "--port=8080:80", "--docker-arg=--init", "--read-only", "--harness=pi"} {
 		t.Run(strings.SplitN(flag, "=", 2)[0], func(t *testing.T) {
 			home := t.TempDir()
 			before := completionSnapshot(t, home)
@@ -194,18 +189,22 @@ func TestPlainOpenAndStartRejectMissingSessionWithScopedGuidance(t *testing.T) {
 					cmd.SetErr(out)
 					args := []string{"--home", home, action, workspace}
 					if selection == "explicit" {
-						args = append(args, "--profile", "test")
+						args = append(args, "--name", "test")
 					}
 					cmd.SetArgs(args)
 					if code := Execute(context.Background(), cmd); code != 1 {
 						t.Fatal(code)
 					}
-					message := "No environment exists."
-					if action == "open" || selection == "explicit" {
-						message = "No environment exists (profile: test)."
+					message := "No sessions for this folder."
+					if selection == "explicit" {
+						message = "No session named \"test\" exists for this folder."
 					}
 					want := "Error: " + message + "\nTarget: " + workspace + "\n\n" +
-						"Create:\n  devbox-neo --home " + home + " create " + shellQuote(workspace) + "\n"
+						"Create a session:\n  devbox-neo --home " + home + " create " + shellQuote(workspace) + "\n"
+					if selection != "explicit" {
+						want += "\nThen select a default:\n  devbox-neo --home " + home + " set " + shellQuote(workspace) + "\n" +
+							"\nThen open it:\n  devbox-neo --home " + home + " open " + shellQuote(workspace) + "\n"
+					}
 					if out.String() != want {
 						t.Fatalf("got %q; want %q", out.String(), want)
 					}

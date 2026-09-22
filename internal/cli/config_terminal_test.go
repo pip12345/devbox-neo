@@ -44,7 +44,10 @@ func TestConfigCommandWithTerminalInputKeepsTerminalMode(t *testing.T) {
 		t.Fatal("dumb terminal received styling")
 	}
 	s := menuService(t)
-	input := fieldNumber(t, "global", "ignore_project") + "\n1\n1\n0\n"
+	if out, err := resourceCLI(t, s.Home, "config", "create", "basic"); err != nil {
+		t.Fatal(out, err)
+	}
+	input := fieldNumber(t, "network") + "\n1\nhost\n0\n"
 	if _, err = master.WriteString(input); err != nil {
 		t.Fatal(err)
 	}
@@ -53,15 +56,15 @@ func TestConfigCommandWithTerminalInputKeepsTerminalMode(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--home", s.Home, "global", "config"})
+	cmd.SetArgs([]string{"--home", s.Home, "config", "edit", "basic"})
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err = cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}
-	owner, _ := s.ConfigOwner("global", "")
+	owner := testConfigOwner(t, s.Home, "basic")
 	source, err := s.ConfigSource(owner)
-	if err != nil || string(source["ignore_project"]) != "true" {
+	if err != nil || string(source["network"]) != `"host"` {
 		t.Fatal("terminal menu did not save", out.String(), err)
 	}
 	after, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)

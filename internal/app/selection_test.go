@@ -10,21 +10,19 @@ import (
 	"devbox/internal/environment"
 )
 
-func TestCompoundSessionsRequireSeparateCreationAndPinSources(t *testing.T) {
+func TestNamedSessionsRequireExplicitDefaultsAndPinSources(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	write(t, filepath.Join(e.Store.Home, "config.json"), `{"default_profile":"test"}`)
-	write(t, filepath.Join(e.Store.Home, "profiles/other/config.json"), `{"harness":"pi"}`)
-	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"ports":["8080:80"]}`)
 	first, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := record(t, e, first.Name)
-	if !a.Identity.Project || a.Identity.Profile != "test" || !strings.HasSuffix(first.Name, ".profile-test.project") {
+	if a.Identity.LocalName != "test" || !strings.HasSuffix(first.Name, ".test") {
 		t.Fatal(a.Identity)
 	}
-	write(t, filepath.Join(e.Store.Home, "config.json"), `{"default_profile":"other"}`)
+	// Neither a sole session nor an obsolete global config selects a default.
+	write(t, filepath.Join(e.Store.Home, "config.json"), `{"default_profile":"test"}`)
 	calls := len(d.History())
 	for _, action := range []func() error{
 		func() error { _, err := e.Open(ctx, Request{Workspace: q.Workspace}); return err },
@@ -35,25 +33,33 @@ func TestCompoundSessionsRequireSeparateCreationAndPinSources(t *testing.T) {
 		func() error { return e.Logs(ctx, q.Workspace, "", false, "1") },
 	} {
 		if err := action(); err == nil {
-			t.Fatal("substituted another profile")
+			t.Fatal("selected an implicit default")
 		}
 	}
 	if len(d.History()) != calls {
 		t.Fatal("missing selection touched Docker")
 	}
-	q.Profile = "other"
+	q.LocalName = "other"
 	second, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
 	b := record(t, e, second.Name)
-	if a.ID == b.ID || a.Identity.Name == b.Identity.Name || a.Identity.Slot == b.Identity.Slot {
-		t.Fatal("shared compound identity")
+	if a.ID == b.ID || a.Identity.Name == b.Identity.Name {
+		t.Fatal("shared session identity")
+	}
+	if err := e.SetDefault(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := e.Locate(ctx, q.Workspace, ""); err != nil || got.ID != b.ID {
+		t.Fatal("did not select explicit default", got.ID, err)
 	}
 	if _, err = e.Open(ctx, Request{Workspace: first.Name}); err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(e.Store.Home, "config.json"), `{"default_profile":"other","ignore_project":true}`)
+	if got, err := e.Locate(ctx, q.Workspace, ""); err != nil || got.ID != b.ID {
+		t.Fatal("exact open changed default", got.ID, err)
+	}
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"ports":["9090:90"]}`)
 	pinned := Request{Workspace: a.Identity.Workspace, Recorded: &a.Identity, Sources: a.Sources}
 	if _, err = e.Recreate(ctx, pinned, false); err != nil {
@@ -63,27 +69,28 @@ func TestCompoundSessionsRequireSeparateCreationAndPinSources(t *testing.T) {
 	if got.ID != a.ID || got.Identity != a.Identity || len(got.Creation.Ports) != 1 || got.Creation.Ports[0] != "9090:90" {
 		t.Fatal(got)
 	}
-	list, err := e.List(ctx, "test")
-	if err != nil || len(list.Sessions) != 1 || list.Sessions[0].Name != first.Name {
+	list, err := e.List(ctx, q.Workspace)
+	if err != nil || len(list.Sessions) != 2 {
 		t.Fatal(list, err)
 	}
-	q.IgnoreProject = true
-	q.Profile = "test"
-	plain, err := e.Create(ctx, q)
-	if err != nil || plain.Name == first.Name || !strings.HasSuffix(plain.Name, ".profile-test") {
-		t.Fatal(plain, err)
+	for _, view := range list.Sessions {
+		if view.Default != (view.Name == b.Identity.Name) {
+			t.Fatal("incorrect default marker", view)
+		}
 	}
 }
 
 func TestDirectLookupIgnoresUnrelatedCorruptionAndRejectsConflictingSelectors(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
-	write(t, filepath.Join(e.Store.Home, "config.json"), `{"default_profile":"test"}`)
 	made, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	unrelated := environment.ContainerName("/banana", "project")
+	if err := e.SetDefault(ctx, record(t, e, made.Name)); err != nil {
+		t.Fatal(err)
+	}
+	unrelated := environment.ContainerName("/banana", "other")
 	write(t, filepath.Join(e.Store.Home, "sessions", unrelated, "session.json"), "broken")
 	r, err := e.Locate(ctx, q.Workspace, "")
 	if err != nil || r.Identity.Name != made.Name {
@@ -92,7 +99,7 @@ func TestDirectLookupIgnoresUnrelatedCorruptionAndRejectsConflictingSelectors(t 
 	if err = e.Stop(ctx, made.Name, "wrong", false); err == nil {
 		t.Fatal("ignored conflicting exact selector")
 	}
-	if _, err = e.Open(ctx, Request{Workspace: made.Name, Profile: "wrong"}); err == nil {
+	if _, err = e.Open(ctx, Request{Workspace: made.Name, LocalName: "wrong"}); err == nil {
 		t.Fatal("ignored conflicting open selector")
 	}
 	file, _ := e.Store.RecordPath(made.Name)
@@ -105,35 +112,27 @@ func TestDirectLookupIgnoresUnrelatedCorruptionAndRejectsConflictingSelectors(t 
 }
 
 func TestFolderLookupOnlyReadsSelectedSession(t *testing.T) {
-	for _, tt := range []struct {
-		slot string
-		fail bool
-	}{
-		{"profile-other", false},
-		{"profile-other.project", false},
-		{"profile-test", false},
-		{"profile-test.project", true},
-		{"project", false},
-	} {
-		t.Run(tt.slot, func(t *testing.T) {
+	for _, name := range []string{"other", "test", "Test"} {
+		t.Run(name, func(t *testing.T) {
 			e, _, q := fixture(t)
 			ctx := context.Background()
-			write(t, filepath.Join(e.Store.Home, "config.json"), `{"default_profile":"test"}`)
-			write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{}`)
 			made, err := e.Create(ctx, q)
 			if err != nil {
 				t.Fatal(err)
 			}
-			broken := environment.ContainerName(q.Workspace, tt.slot)
+			if err := e.SetDefault(ctx, record(t, e, made.Name)); err != nil {
+				t.Fatal(err)
+			}
+			broken := environment.ContainerName(q.Workspace, name)
 			write(t, filepath.Join(e.Store.Home, "sessions", broken, "session.json"), "broken")
-			for _, profile := range []string{"", q.Profile} {
-				r, err := e.Locate(ctx, q.Workspace, profile)
-				if tt.fail {
+			for _, localName := range []string{"", q.LocalName} {
+				r, err := e.Locate(ctx, q.Workspace, localName)
+				if name == q.LocalName {
 					if err == nil {
-						t.Fatal("unreadable selected session was ignored", err)
+						t.Fatal("unreadable selected session was ignored")
 					}
 				} else if err != nil || r.Identity.Name != made.Name {
-					t.Fatal("unrelated slot blocked lookup", r.Identity, err)
+					t.Fatal("unrelated session blocked lookup", r.Identity, err)
 				}
 			}
 		})
@@ -147,7 +146,7 @@ func TestInvocationHarnessArgumentsAreNotSaved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q.Overrides.HarnessArgs = []string{"--only-this-time"}
+	q.HarnessArgs = []string{"--only-this-time"}
 	q.Args = []string{"--also-once"}
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)

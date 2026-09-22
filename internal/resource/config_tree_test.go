@@ -8,32 +8,29 @@ import (
 	"strings"
 	"testing"
 
+	"devbox/internal/artifact"
 	"devbox/internal/harness"
 )
 
-func TestConfigCopiesReportSkippedSymlinks(t *testing.T) {
-	for _, operation := range []string{"from-profile", "init-defaults"} {
+func TestSourceTreesAndArtifactSetupReportSkippedSymlinks(t *testing.T) {
+	for _, operation := range []string{"source-tree", "seed-defaults"} {
 		t.Run(operation, func(t *testing.T) {
-			s := fixture(t)
+			s, owner := configDirectoryFixture(t)
 			ctx := context.Background()
-			source, err := s.Profile("source")
-			if err != nil {
+			if _, err := s.CreateConfig(ctx, owner, SetupOptions{}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := s.Create(ctx, source, ""); err != nil {
-				t.Fatal(err)
-			}
-			root := filepath.Join(source.Root, "pi")
-			if operation == "init-defaults" {
+			root := filepath.Join(owner.Root, "pi")
+			if operation == "seed-defaults" {
 				h, err := harness.Load(s.Home, "pi")
 				if err != nil {
 					t.Fatal(err)
 				}
-				b, err := json.Marshal(h.Definition)
+				data, err := json.Marshal(h.Definition)
 				if err != nil {
 					t.Fatal(err)
 				}
-				put(t, filepath.Join(s.Home, "harnesses/pi/harness.json"), string(b))
+				put(t, filepath.Join(s.Home, "harnesses/pi/harness.json"), string(data))
 				root = filepath.Join(s.Home, "harnesses/pi/defaults")
 			}
 			put(t, filepath.Join(root, "extension.js"), "export {};")
@@ -41,28 +38,31 @@ func TestConfigCopiesReportSkippedSymlinks(t *testing.T) {
 			if err := os.Symlink("extension.js", link); err != nil {
 				t.Fatal(err)
 			}
-			var result Result
-			destination := source
-			if operation == "from-profile" {
-				destination, err = s.Project(t.TempDir())
+			var warnings []string
+			if operation == "source-tree" {
+				tree, err := artifact.SourceTree(owner.Root, map[string]bool{"pi": true})
 				if err != nil {
 					t.Fatal(err)
 				}
-				result, err = s.Create(ctx, destination, source.Name)
+				warnings = tree.Warnings
+				if _, exists := tree.Files["pi/link"]; exists || string(tree.Files["pi/extension.js"].Data) != "export {};" {
+					t.Fatal("source tree included a link or lost a regular file")
+				}
 			} else {
-				result, err = s.Init(ctx, destination, InitOptions{Harness: "pi", Artifacts: []string{"harness-config"}})
+				result, err := s.EditConfig(ctx, owner, SetupOptions{ArtifactHarness: "pi", Artifacts: []string{"harness-config"}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				warnings = result.Warnings
+				if _, err := os.Lstat(filepath.Join(owner.Root, "pi/link")); !os.IsNotExist(err) {
+					t.Fatal("symlink copied", err)
+				}
+				if string(get(t, filepath.Join(owner.Root, "pi/extension.js"))) != "export {};" {
+					t.Fatal("regular file not copied")
+				}
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], link) {
-				t.Fatal("copy omitted warning", result)
-			}
-			if _, err := os.Lstat(filepath.Join(destination.Root, "pi/link")); !os.IsNotExist(err) {
-				t.Fatal("symlink copied", err)
-			}
-			if b := get(t, filepath.Join(destination.Root, "pi/extension.js")); string(b) != "export {};" {
-				t.Fatal("regular file was not copied")
+			if len(warnings) != 1 || !strings.Contains(warnings[0], link) {
+				t.Fatal("missing skipped-entry warning", warnings)
 			}
 		})
 	}

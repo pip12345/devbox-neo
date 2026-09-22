@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"devbox/internal/app"
+	"devbox/internal/resource"
 	"devbox/internal/store"
 	"golang.org/x/sys/unix"
 )
@@ -69,7 +70,7 @@ func enableTerminalColors(t *testing.T) {
 }
 
 func unstyle(text string) string {
-	return strings.NewReplacer("\x1b[1m", "", "\x1b[2m", "", "\x1b[0m", "").Replace(text)
+	return strings.NewReplacer("\x1b[1m", "", "\x1b[2m", "", "\x1b[32m", "", "\x1b[0m", "").Replace(text)
 }
 
 func TestListDimsOnlyInactiveRowsWithoutChangingAlignment(t *testing.T) {
@@ -88,7 +89,8 @@ func TestListDimsOnlyInactiveRowsWithoutChangingAlignment(t *testing.T) {
 		styled := terminalOutput(t, 80, func(out *os.File) error { return render(out) })
 		lines := strings.Split(styled, "\n")
 		for i, line := range lines {
-			shouldDim := i == 2 || i == 3
+			plainLine := unstyle(line)
+			shouldDim := strings.HasPrefix(plainLine, "inactive-long-name ") || strings.HasPrefix(plainLine, "missing ")
 			if strings.Contains(line, "\x1b[2m") != shouldDim {
 				t.Fatalf("unexpected styling on line %d: %q", i, line)
 			}
@@ -134,25 +136,30 @@ func TestMenusSharePresentationAndPreserveSelections(t *testing.T) {
 					}
 					return err
 				case "init-one":
-					selection, err := chooseOne(reader, out, "Harness", choices)
-					if err == nil && selection != "opencode" {
-						t.Fatal("init choice changed", selection)
+					m := menu{ctx: context.Background(), in: reader, out: out}
+					selection, err := m.selectedChoice("Harness", choices, 0, "", "Cancel")
+					if err == nil && selection != 1 {
+						t.Fatal("harness choice changed", selection)
 					}
 					return err
 				default:
-					selection, err := chooseMany(reader, out, "Harness", choices)
-					if err == nil && (len(selection) != 1 || selection[0] != "opencode") {
-						t.Fatal("multi-choice changed", selection)
+					m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("2\n5\n")), out: out}
+					options, proceed, err := optionalFilesMenu(m, t.TempDir(), resource.SetupOptions{})
+					if err == nil && (!proceed || len(options.Artifacts) != 1 || options.Artifacts[0] != "setup.sh") {
+						t.Fatal("artifact toggle changed", options)
 					}
 					return err
 				}
 			}
 			text := terminalOutput(t, 80, func(out *os.File) error { return render(out) })
-			if !strings.HasPrefix(text, "\n\x1b[1mHarness\x1b[0m\n   [1]  pi\n   [2]  opencode\n") {
+			if !strings.Contains(text, "\x1b[1m") || !strings.Contains(text, "[1]") || !strings.Contains(text, menuChoicePrompt) {
 				t.Fatal("menu did not share title/choice styling", text)
 			}
-			if kind == "init-many" && !strings.Contains(text, "\x1b[2m   Enter comma-separated numbers, or Enter for none.\x1b[0m") {
-				t.Fatal("multi-select instructions were not subdued", text)
+			if kind == "init-many" && (!strings.Contains(text, "\x1b[32m✓") || strings.Contains(text, "comma-separated")) {
+				t.Fatal("artifact choices did not use styled single-number toggles", text)
+			}
+			if kind == "init-one" && !strings.Contains(text, "\x1b[32m(selected)") {
+				t.Fatal("current selection marker was not styled", text)
 			}
 			var plain bytes.Buffer
 			if err := render(&plain); err != nil {
@@ -165,19 +172,16 @@ func TestMenusSharePresentationAndPreserveSelections(t *testing.T) {
 	}
 }
 
-func TestProfileAndProjectInitUseStyledMenus(t *testing.T) {
+func TestConfigCreationUsesStyledMenusForNamesAndPaths(t *testing.T) {
 	enableTerminalColors(t)
-	for _, kind := range []string{"profile", "project"} {
+	for _, kind := range []string{"named", "path"} {
 		t.Run(kind, func(t *testing.T) {
 			home := t.TempDir()
-			target, input := "basic", "1\n\n"
-			configPath := filepath.Join(home, "profiles/basic/config.json")
-			if kind == "project" {
-				target, input = t.TempDir(), "2\n\n" // Project choices start with inherit.
-				configPath = filepath.Join(target, ".devbox/config.json")
-			}
-			if text, err := resourceCLI(t, home, kind, "create", target); err != nil {
-				t.Fatal(text, err)
+			target, input := "basic", "1\n5\n"
+			configPath := filepath.Join(home, "configs/basic/config.json")
+			if kind == "path" {
+				target = filepath.Join(t.TempDir(), "config")
+				configPath = filepath.Join(target, "config.json")
 			}
 			master, slave := testTerminal(t)
 			before, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)
@@ -192,12 +196,12 @@ func TestProfileAndProjectInitUseStyledMenus(t *testing.T) {
 				cmd.SetIn(slave)
 				cmd.SetOut(out)
 				cmd.SetErr(out)
-				cmd.SetArgs([]string{"--home", home, kind, "init", target})
+				cmd.SetArgs([]string{"--home", home, "config", "create", target})
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 				defer cancel()
 				return cmd.ExecuteContext(ctx)
 			})
-			for _, want := range []string{"\x1b[1mSelect a harness\x1b[0m", "\x1b[1mOptional artifacts\x1b[0m", "\x1b[2m   Enter comma-separated numbers, or Enter for none.\x1b[0m"} {
+			for _, want := range []string{"\x1b[1mSelect a harness\x1b[0m", "\x1b[1mChoose optional files\x1b[0m", "\x1b[32m(selected)\x1b[0m"} {
 				if !strings.Contains(text, want) {
 					t.Fatalf("init missing %q: %q", want, text)
 				}

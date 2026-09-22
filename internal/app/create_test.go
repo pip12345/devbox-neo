@@ -15,11 +15,11 @@ import (
 
 func TestOpenRequiresExplicitCreation(t *testing.T) {
 	for _, project := range []bool{false, true} {
-		t.Run(map[bool]string{false: "profile", true: "project"}[project], func(t *testing.T) {
+		t.Run(map[bool]string{false: "chain", true: "single-config"}[project], func(t *testing.T) {
 			e, d, q := fixture(t)
 			if project {
-				q.Profile = ""
-				write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi","inherit":false}`)
+				q.Sources = q.Sources[1:]
+				write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi"}`)
 			}
 			ctx := context.Background()
 			_, err := e.Open(ctx, q)
@@ -28,7 +28,7 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := []commanderror.Step{
-				commanderror.Next("Create", "create", q.Workspace),
+				commanderror.Next("Create a session", "create", q.Workspace),
 			}
 			if !reflect.DeepEqual(missing.Next, want) {
 				t.Fatal(missing.Next)
@@ -99,7 +99,7 @@ func TestOpenLaunchOverridesDoNotRecreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := record(t, e, created.Name)
-	q.Overrides.HarnessArgs = []string{"--version"}
+	q.HarnessArgs = []string{"--version"}
 	q.Continue = true
 	q.Args = []string{"--one-off"}
 	if _, err = e.Open(ctx, q); err != nil {

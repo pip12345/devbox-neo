@@ -1,16 +1,11 @@
 package resource
 
 import (
-	"context"
-	"devbox/internal/store"
 	"encoding/json"
-	"fmt"
 	"path/filepath"
-	"strings"
 
 	"devbox/internal/artifact"
 	"devbox/internal/config"
-	"devbox/internal/environment"
 	"devbox/internal/harness"
 )
 
@@ -24,89 +19,32 @@ type ConfigView struct {
 }
 
 func fields(value any) (map[string]any, error) {
-	b, err := json.Marshal(value)
+	data, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
 	var result map[string]any
-	err = json.Unmarshal(b, &result)
+	err = json.Unmarshal(data, &result)
 	return result, err
 }
-func (s Service) ShowGlobal() (ConfigView, error) {
-	path := filepath.Join(s.Home, "config.json")
-	g, err := config.ReadGlobal(path, config.Snapshot())
+
+// The directory editor displays this source over built-in defaults, never the
+// merged configuration of an arbitrary session that happens to reference it.
+func (s Service) ShowOwner(o Owner) (ConfigView, error) {
+	resolved, err := artifact.Resolve([]config.Source{{Label: o.Name, Path: o.Root}}, config.Snapshot())
 	if err != nil {
 		return ConfigView{}, err
 	}
-	values, err := fields(g)
-	if err != nil {
-		return ConfigView{}, err
-	}
-	values["global_env"] = config.RedactEnv(g.GlobalEnv)
-	trace := artifact.Trace{Layers: []artifact.Layer{{Name: "built-in default"}, {Name: "global", Path: path}}, Sources: map[string][]string{}, EntrySources: map[string][]string{}}
-	for range g.GlobalEnv {
-		trace.EntrySources["global_env"] = append(trace.EntrySources["global_env"], "global")
-	}
-	for key := range values {
-		trace.Sources[key] = []string{"built-in default"}
-	}
-	var raw map[string]any
-	if err = config.Decode(g.Raw, &raw); err != nil {
-		return ConfigView{}, err
-	}
-	for key := range raw {
-		trace.Sources[key] = []string{"global"}
-	}
-	return ConfigView{Scope: "global", Path: path, Values: values, Trace: trace, References: map[string]map[string][]string{path: g.References}}, nil
+	return s.ConfigurationView("config", filepath.Join(o.Root, "config.json"), resolved)
 }
-func (s Service) ShowProfile(name string) (ConfigView, error) {
-	owner, err := s.Profile(name)
-	if err != nil {
-		return ConfigView{}, err
-	}
-	resolved, err := artifact.ResolveWithHost(s.Home, "", name, config.Layer{}, config.Snapshot())
-	if err != nil {
-		return ConfigView{}, err
-	}
-	return s.configView("profile", filepath.Join(owner.Root, "config.json"), resolved)
-}
-func (s Service) ShowProject(folder, profile string) (ConfigView, error) {
-	if profile != "" {
-		s.SelectedProfile = profile
-	}
-	owner, err := s.Project(folder)
-	if err != nil {
-		return ConfigView{}, err
-	}
-	selection := artifact.Selection{Profile: s.SelectedProfile, IgnoreProject: s.IgnoreProject}
-	if strings.HasPrefix(folder, environment.ContainerPrefix) && !strings.ContainsAny(folder, "/\\") {
-		r, err := (&store.Store{Home: s.Home}).Read(context.Background(), folder)
-		if err != nil {
-			return ConfigView{}, err
-		}
-		if s.SelectedProfile != "" && s.SelectedProfile != r.Identity.Profile {
-			return ConfigView{}, fmt.Errorf("profile does not match the recorded session")
-		}
-		selection.Recorded = &artifact.Participation{Profile: r.Identity.Profile, Project: r.Identity.Project, Sources: r.Sources}
-	}
-	resolved, err := artifact.PreviewSelection(s.Home, owner.Workspace, selection, config.Layer{}, nil, config.Snapshot())
-	if err != nil {
-		return ConfigView{}, err
-	}
-	return s.configView("project", filepath.Join(owner.Root, "config.json"), resolved)
-}
-func (s Service) configView(scope, path string, r artifact.Resolved) (ConfigView, error) {
+
+func (s Service) ConfigurationView(scope, path string, r artifact.Resolved) (ConfigView, error) {
 	values, err := fields(r.Settings)
 	if err != nil {
 		return ConfigView{}, err
 	}
 	values["env"] = config.RedactEnv(r.Settings.Env)
-	for _, layer := range r.Layers {
-		if filepath.Join(layer.Path, "config.json") == path {
-			values["inherit"] = layer.Config.Inherit == nil || *layer.Config.Inherit
-		}
-	}
-	result := ConfigView{Scope: scope, Path: path, Values: values, Trace: r.Trace, References: map[string]map[string][]string{filepath.Join(s.Home, "config.json"): r.Global.References}}
+	result := ConfigView{Scope: scope, Path: path, Values: values, Trace: r.Trace, References: map[string]map[string][]string{}}
 	for _, layer := range r.Layers {
 		if len(layer.Config.References) > 0 {
 			result.References[filepath.Join(layer.Path, "config.json")] = layer.Config.References

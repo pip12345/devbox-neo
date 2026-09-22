@@ -48,7 +48,7 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := record(t, e, opened.Name)
-	opts := TransferOptions{Mode: "relocate", Source: q.Workspace, Profile: q.Profile, Destination: t.TempDir()}
+	opts := TransferOptions{Mode: "relocate", Source: q.Workspace, LocalName: q.LocalName, Destination: t.TempDir()}
 	d.Fail = func(args []string) error {
 		if args[0] == "rm" && args[len(args)-1] == source.SetupContainer {
 			return errors.New("interruption")
@@ -154,9 +154,9 @@ func TestTransferRetriesPreparedButUncommittedDestination(t *testing.T) {
 		t.Fatal("stale snapshot won", err)
 	}
 }
-func TestTransferRetryRetainsRequestedSelectionAfterCutoff(t *testing.T) {
+func TestTransferRetryRetainsExplicitDestinationName(t *testing.T) {
 	for _, committed := range []bool{false, true} {
-		for _, retryTo := range []string{".profile-test.project", ".project"} {
+		for _, retryTo := range []string{"exact", "folder"} {
 			t.Run(map[bool]string{false: "prepare", true: "committed"}[committed]+retryTo, func(t *testing.T) {
 				e, d, q := fixture(t)
 				ctx := context.Background()
@@ -165,12 +165,11 @@ func TestTransferRetryRetainsRequestedSelectionAfterCutoff(t *testing.T) {
 					t.Fatal(err)
 				}
 				source := record(t, e, made.Name)
-				options := TransferOptions{Mode: "clone", Source: made.Name, Destination: t.TempDir(), To: ".profile-test.project"}
+				options := TransferOptions{Mode: "clone", Source: made.Name, Destination: t.TempDir(), As: "Review"}
 				if committed {
 					options.Mode, options.Destination = "relocate", q.Workspace
 				}
-				configPath := filepath.Join(options.Destination, ".devbox/config.json")
-				write(t, configPath, `{"inherit":false,"harness":"pi"}`)
+				configPath := filepath.Join(q.Sources[0].Path, "config.json")
 				d.Fail = func(args []string) error {
 					if (!committed && args[0] == "build") || (committed && args[0] == "rm" && args[len(args)-1] == source.SetupContainer) {
 						return errors.New("transfer interrupted")
@@ -182,25 +181,27 @@ func TestTransferRetryRetainsRequestedSelectionAfterCutoff(t *testing.T) {
 				}
 				d.Fail = nil
 				journal, err := e.Store.ReadTransfer(made.Name)
-				if err != nil || journal == nil || journal.RequestedTo != options.To || journal.Destination.Selector() != ".project" || (journal.Phase == "committed") != committed {
+				if err != nil || journal == nil || journal.Destination.LocalName != options.As || (journal.Phase == "committed") != committed {
 					t.Fatal(journal, err)
 				}
-				for _, selector := range []string{"project", ".invalid", ".profile-test"} {
+				for _, selector := range []string{"", ".invalid", strings.Repeat("x", 65)} {
 					invalid := *journal
-					invalid.RequestedTo = selector
+					invalid.Destination.LocalName = selector
 					if err := invalid.Validate(); err == nil {
 						t.Fatal("accepted inconsistent journal selector", selector)
 					}
 				}
 				bad := options
-				bad.To = ".profile-other.project"
+				bad.As = "Other"
 				if _, err = e.Transfer(ctx, bad); err == nil || !strings.Contains(err.Error(), "different destination or selection") {
 					t.Fatal("accepted an unrecorded selector", err)
 				}
 				if committed {
 					write(t, configPath, "committed recovery must not resolve current config")
 				}
-				options.To = retryTo
+				if retryTo == "folder" {
+					options.Source, options.LocalName = source.Identity.Workspace, source.Identity.LocalName
+				}
 				result, err := e.Transfer(ctx, options)
 				if err != nil || result.Destination != journal.Destination.Name || record(t, e, result.Destination).ID != journal.DestinationID {
 					t.Fatal("retry changed or rejected its destination", result, err)

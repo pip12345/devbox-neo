@@ -17,6 +17,7 @@ import (
 	"devbox/internal/environment"
 	"devbox/internal/fsutil"
 	"devbox/internal/harness"
+	"devbox/internal/resource"
 	"github.com/spf13/cobra"
 )
 
@@ -53,8 +54,8 @@ func completionDirectories(cmd *cobra.Command, directory string) []string {
 			continue
 		}
 		name := entry.Name()
-		if directory == "profiles" {
-			if config.Name.MatchString(name) {
+		if directory == "configs" {
+			if info, err := os.Lstat(filepath.Join(root, name, "config.json")); err == nil && info.Mode().IsRegular() {
 				names = append(names, name)
 			}
 		} else if strings.HasPrefix(name, environment.ContainerPrefix) {
@@ -69,15 +70,26 @@ func completionDirectories(cmd *cobra.Command, directory string) []string {
 	return names
 }
 
-func completeProfiles(cmd *cobra.Command) []string {
-	return completionDirectories(cmd, "profiles")
+func completeConfigs(cmd *cobra.Command) []string {
+	return completionDirectories(cmd, "configs")
 }
 
 func completeSessions(cmd *cobra.Command) []string {
 	return completionDirectories(cmd, "sessions")
 }
 
-func completeSourceSlots(cmd *cobra.Command) []string {
+func completeLocalNames(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
+	index := 0
+	if cmd.Name() == "connect" || cmd.Name() == "disconnect" {
+		index = 1
+	}
+	if len(args) <= index || environment.IsSessionTarget(args[index]) {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	workspace, err := environment.CanonicalWorkspace(args[index])
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
 	var values []string
 	for _, name := range completeSessions(cmd) {
 		path, err := fsutil.Path(completionHome(cmd), filepath.Join("sessions", name, "session.json"))
@@ -95,11 +107,11 @@ func completeSourceSlots(cmd *cobra.Command) []string {
 		var record struct {
 			Identity environment.Identity `json:"identity"`
 		}
-		if json.Unmarshal(data, &record) == nil && record.Identity.ValidateSlot() == nil {
-			values = append(values, record.Identity.Selector())
+		if json.Unmarshal(data, &record) == nil && record.Identity.Validate() == nil && record.Identity.Workspace == workspace {
+			values = append(values, record.Identity.LocalName)
 		}
 	}
-	return values
+	return completionMatches(values, nil, prefix), cobra.ShellCompDirectiveNoFileComp
 }
 
 func completeHarnesses(cmd *cobra.Command) []string {
@@ -183,20 +195,12 @@ func completeTarget(source completionSource, index int, multiple bool) func(*cob
 
 func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 	containers := completionContainers(runtime)
-	slots := func(cmd *cobra.Command) []string {
-		values := []string{".project"}
-		for _, profile := range completeProfiles(cmd) {
-			values = append(values, ".profile-"+profile, ".profile-"+profile+".project")
-		}
-		return values
-	}
-	_ = root.RegisterFlagCompletionFunc("profile", completeFlag(completeProfiles))
 	_ = root.MarkPersistentFlagDirname("home")
 	var visit func(*cobra.Command)
 	visit = func(cmd *cobra.Command) {
 		path := strings.TrimPrefix(cmd.CommandPath(), root.Name()+" ")
 		switch path {
-		case "open", "start", "recreate", "status", "ssh", "shell", "exec", "stop", "logs":
+		case "open", "start", "recreate", "status", "ssh", "shell", "exec", "stop", "logs", "set", "config sources":
 			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
 		case "delete":
 			cmd.ValidArgsFunction = completeTarget(func(cmd *cobra.Command) []string {
@@ -213,18 +217,14 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
 		case "network connect", "network disconnect":
 			cmd.ValidArgsFunction = completeTarget(completeSessions, 1, false)
-		case "profile init", "profile config", "profile set", "profile delete":
+		case "config create", "config edit":
 			cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
 				if len(args) != 0 {
 					return nil, cobra.ShellCompDirectiveNoFileComp
 				}
-				return completeFlag(completeProfiles)(cmd, args, prefix)
+				return completionMatches(completeConfigs(cmd), nil, prefix), cobra.ShellCompDirectiveDefault
 			}
-		case "profile create":
-			cmd.ValidArgsFunction = cobra.NoFileCompletions
-		case "project config":
-			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
-		case "create", "project create", "project init":
+		case "create", "list":
 			cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 				if len(args) == 0 {
 					return nil, cobra.ShellCompDirectiveFilterDirs
@@ -232,16 +232,24 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 		}
+		if cmd.Flags().Lookup("name") != nil {
+			_ = cmd.RegisterFlagCompletionFunc("name", completeLocalNames)
+		}
+		if cmd.Flags().Lookup("as") != nil {
+			_ = cmd.RegisterFlagCompletionFunc("as", cobra.NoFileCompletions)
+		}
+		if cmd.Flags().Lookup("config") != nil {
+			_ = cmd.RegisterFlagCompletionFunc("config", func(cmd *cobra.Command, _ []string, prefix string) ([]string, cobra.ShellCompDirective) {
+				return completionMatches(completeConfigs(cmd), nil, prefix), cobra.ShellCompDirectiveDefault
+			})
+		}
 		for flag, source := range map[string]completionSource{
-			"profile": completeProfiles, "from-profile": completeProfiles,
-			"from": func(cmd *cobra.Command) []string { return append(slots(cmd), completeSourceSlots(cmd)...) }, "to": slots, "harness": completeHarnesses,
-			"sort": func(*cobra.Command) []string { return []string{"name", "last-active"} },
+			"harness": completeHarnesses, "artifact-harness": completeHarnesses,
+			"artifact": func(*cobra.Command) []string { return resource.SetupArtifacts },
+			"sort":     func(*cobra.Command) []string { return []string{"name", "last-active"} },
 		} {
 			if cmd == root || cmd.Flags().Lookup(flag) == nil {
 				continue
-			}
-			if path == "project init" && flag == "harness" {
-				source = func(cmd *cobra.Command) []string { return append(completeHarnesses(cmd), "inherit") }
 			}
 			_ = cmd.RegisterFlagCompletionFunc(flag, completeFlag(source))
 		}

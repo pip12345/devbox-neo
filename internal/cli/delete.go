@@ -41,7 +41,7 @@ func confirmDeletion(reader *bufio.Reader, out io.Writer, prompt app.DeletePromp
 	return answer == "y" || answer == "yes", nil
 }
 
-func deleteCommand(factory engineFactory, profile *string) *cobra.Command {
+func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 	var options app.DeleteOptions
 	var container, session, asJSON bool
 	cmd := &cobra.Command{Use: "delete [folder|session...]", Short: "Delete containers, optionally also deleting saved session data", Args: cobra.ArbitraryArgs, RunE: func(cmd *cobra.Command, args []string) error {
@@ -61,7 +61,7 @@ func deleteCommand(factory engineFactory, profile *string) *cobra.Command {
 			return commanderror.New("deletion_scope_required", "Choose --container or --session for non-interactive deletion or a dry run.", "", nil)
 		}
 		options.Selection.Targets = args
-		options.Selection.Profile = *profile
+		options.Selection.LocalName = *localName
 		options.Confirm = nil
 		if options.Scope == "" {
 			reader := promptReader(cmd)
@@ -111,5 +111,5 @@ func deleteCommand(factory engineFactory, profile *string) *cobra.Command {
 	cmd.Flags().BoolVar(&options.Force, "force", false, "Allow container deletion despite attached commands; never implies deleting saved data")
 	cmd.Flags().BoolVar(&options.DryRun, "dry-run", false, "Preview the explicitly selected deletion without changing resources")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print deletion results as JSON; never prompt")
-	return cmd
+	return sessionNameFlag(cmd, localName)
 }

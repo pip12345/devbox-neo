@@ -16,7 +16,7 @@ server. It can also create tunnels into your computer and networks
 your computer can reach, potentially exposing private services
 and data outside the container.`
 
-func sshCommand(factory engineFactory, profile *string) *cobra.Command {
+func sshCommand(factory engineFactory, localName *string) *cobra.Command {
 	var hostMaster bool
 	cmd := &cobra.Command{
 		Use:   "ssh <folder|session> <destination>",
@@ -48,12 +48,12 @@ func sshCommand(factory engineFactory, profile *string) *cobra.Command {
 				mode = "HOST MASTER"
 			}
 			return runSSHInTerminal(input, cmd.ErrOrStderr(), func() error {
-				return e.SSH(cmd.Context(), args[0], *profile, args[1], app.SSHOptions{HostMaster: hostMaster, Connected: func(environment, alias string) {
+				return e.SSH(cmd.Context(), args[0], *localName, args[1], app.SSHOptions{HostMaster: hostMaster, Connected: func(environment, alias string) {
 					sshTerminalMessage(cmd.ErrOrStderr(), fmt.Sprintf("\nConnected: %s — %s\nShared with: %s\n\nInside the container:\n  ssh -F /devbox/ssh/config %s\n\nKeep this terminal open. Ctrl-C ends the shared connection\nand its active SSH sessions.\n", args[1], mode, environment, alias))
 				}})
 			})
 		},
 	}
 	cmd.Flags().BoolVar(&hostMaster, "host-master", false, "Run SSH on the host using host config and credentials; permits host-side forwarding through the shared control socket")
-	return cmd
+	return sessionNameFlag(cmd, localName)
 }

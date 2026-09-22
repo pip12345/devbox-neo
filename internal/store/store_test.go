@@ -25,11 +25,11 @@ func TestHomeAndExternalLocks(t *testing.T) {
 	if s.Installation != again.Installation {
 		t.Fatal("installation identity changed")
 	}
-	entries, _ := os.ReadDir(filepath.Join(s.Home, "profiles"))
+	entries, _ := os.ReadDir(filepath.Join(s.Home, "configs"))
 	if len(entries) != 0 {
-		t.Fatal("fresh home seeded profiles")
+		t.Fatal("fresh home seeded configs")
 	}
-	id, err := environment.Identify(t.TempDir(), "test", false)
+	id, err := environment.Identify(t.TempDir(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestLeasePIDReuseAndCorruption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, _ := environment.Identify(t.TempDir(), "test", false)
+	id, _ := environment.Identify(t.TempDir(), "test")
 	l, err := s.Lock(context.Background(), id.Name)
 	if err != nil {
 		t.Fatal(err)

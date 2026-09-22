@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -26,7 +25,7 @@ func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner
 }
 
 func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
-	fields := resource.ConfigFields(owner.Kind)
+	fields := resource.ConfigFields()
 	for {
 		source, err := s.ConfigSource(owner)
 		if err != nil {
@@ -38,52 +37,64 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 		}
 		if resolveErr != nil {
 			fmt.Fprintf(m.out, "Effective configuration unavailable: %s\nShowing values configured here; you can still edit them.\n", displayCell(resolveErr.Error()))
-		} else if owner.Kind == "project" && slices.Contains(view.Trace.Excluded, "project") {
-			fmt.Fprintln(m.out, "Project overrides are excluded by global settings; edits here will not currently affect opens.")
+
 		}
 		rows := make([]configDisplayRow, len(fields))
 		for i, field := range fields {
 			value := source[field.Key]
-			origin := owner.Kind
+			origin := owner.Name
 			var entrySources []string
 			if resolveErr == nil {
 				key := field.Key
 				if field.Kind == "extensions" {
 					key = "vscode.extensions"
 				}
-				origin = configSourceForScope(owner.Kind, configSourceLabel(view.Trace.Sources[key]))
+				origin = configSourceLabel(view.Trace.Sources[key])
 				entrySources = view.Trace.EntrySources[key]
 				effective := view.Values[field.Key]
-				if field.Key == "inherit" {
-					// Participation metadata belongs to the selected source, not
-					// the merged runtime settings.
-					var configured *bool
-					if raw := source[field.Key]; raw != nil {
-						_ = json.Unmarshal(raw, &configured)
-					}
-					effective, origin = true, "default"
-					if configured != nil {
-						effective, origin = *configured, owner.Kind
-					}
-				}
 				value, _ = json.Marshal(effective)
 			}
 			rows[i] = configDisplayRow{label: configLabel(field.Key), value: menuConfigValue(value, field), origin: origin, command: field.Key == "shell"}
 			if resolveErr != nil {
 				_, items := configDisplayParts(rows[i].value)
 				for range items {
-					entrySources = append(entrySources, owner.Kind)
+					entrySources = append(entrySources, owner.Name)
 				}
 			}
-			rows[i].entryOrigins = configEntryOrigins(owner.Kind, entrySources)
+			rows[i].entryOrigins = configEntryOrigins(entrySources)
 			if resolveErr != nil && source[field.Key] == nil {
 				rows[i].value = "Unavailable"
 				rows[i].origin = "unknown"
 			}
 		}
-		n, err := m.chooseConfig(rows)
+		n, err := m.chooseConfig(rows, "Add optional files")
 		if err != nil || n < 0 {
 			return err
+		}
+		if n == len(fields) {
+			var configured *string
+			if raw := source["harness"]; raw != nil {
+				_ = json.Unmarshal(raw, &configured)
+			}
+			options, proceed, err := optionalFilesMenu(m, s.Home, resource.SetupOptions{Harness: configured})
+			if err != nil {
+				return err
+			}
+			if !proceed || len(options.Artifacts) == 0 {
+				continue
+			}
+			options.Harness = nil
+			result, err := s.EditConfig(m.ctx, owner, options)
+			for _, path := range result.Created {
+				fmt.Fprintf(m.out, "Created %s\n", displayCell(path))
+			}
+			for _, path := range result.Skipped {
+				fmt.Fprintf(m.out, "Kept existing %s\n", displayCell(path))
+			}
+			if err != nil {
+				fmt.Fprintf(m.out, "Error: %s\n", displayCell(err.Error()))
+			}
+			continue
 		}
 		field := fields[n]
 		if err := writeMenuTitle(m.out, fmt.Sprintf("%s (%s)", configLabel(field.Key), field.Key)); err != nil {
@@ -105,7 +116,7 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 		}
 		actions := []string{"Edit value"}
 		if _, exists := source[field.Key]; exists {
-			actions = append(actions, "Reset to inherited (remove this setting)")
+			actions = append(actions, "Remove this setting")
 		}
 		action, err := m.choose(configLabel(field.Key), actions, "Back")
 		if err != nil {
@@ -117,7 +128,7 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 		remove := action == 1
 		var value json.RawMessage
 		if !remove {
-			value, err = readConfigValue(m, s, field)
+			value, err = readConfigValue(m, s, field, source[field.Key])
 			if err != nil {
 				return err
 			}
@@ -132,14 +143,7 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 }
 
 func configMenuTitle(owner resource.Owner) string {
-	switch owner.Kind {
-	case "profile":
-		return "Profile · " + displayCell(owner.Name)
-	case "project":
-		return "Project · " + displayCell(filepath.Base(owner.Workspace))
-	default:
-		return "Global configuration"
-	}
+	return "Config · " + displayCell(owner.Name)
 }
 
 func configLabel(key string) string {
@@ -150,7 +154,7 @@ func configLabel(key string) string {
 		return "Harness arguments"
 	case "docker_args":
 		return "Docker options"
-	case "env", "global_env":
+	case "env":
 		return "Environment variables"
 	case "ports":
 		return "Port forwards"
@@ -209,7 +213,7 @@ func configEntryLabel(entry string, field resource.ConfigField) string {
 	return displayCell(entry)
 }
 
-func readConfigValue(m menu, s *resource.Service, field resource.ConfigField) (json.RawMessage, error) {
+func readConfigValue(m menu, s *resource.Service, field resource.ConfigField, current json.RawMessage) (json.RawMessage, error) {
 	var value any
 	switch field.Kind {
 	case "bool":
@@ -221,7 +225,7 @@ func readConfigValue(m menu, s *resource.Service, field resource.ConfigField) (j
 	case "string":
 		choices := []string{}
 		switch field.Key {
-		case "harness", "default_harness":
+		case "harness":
 			registry, err := harness.Enumerate(s.Home)
 			if err != nil {
 				return nil, err
@@ -232,19 +236,11 @@ func readConfigValue(m menu, s *resource.Service, field resource.ConfigField) (j
 			for _, h := range registry.Valid {
 				choices = append(choices, h.Definition.Name)
 			}
-		case "default_profile":
-			profiles, err := s.Profiles()
-			if err != nil {
-				return nil, err
-			}
-			for _, p := range profiles {
-				if p.Error == "" {
-					choices = append(choices, p.Name)
-				}
-			}
 		}
 		if len(choices) > 0 {
-			n, err := m.choose("New value", append(append([]string(nil), choices...), "Enter a value or host expression"), "Cancel")
+			var selected string
+			_ = json.Unmarshal(current, &selected)
+			n, err := m.selectedChoice("New value", append(append([]string(nil), choices...), "Enter a value or host expression"), slices.Index(choices, selected), selected, "Cancel")
 			if err != nil || n < 0 {
 				return nil, err
 			}
@@ -271,7 +267,7 @@ func listItemName(key string) string {
 		return "mount"
 	case "ports":
 		return "port forward"
-	case "env", "global_env":
+	case "env":
 		return "environment variable"
 	case "vscode":
 		return "extension"
@@ -331,7 +327,7 @@ func editList(m menu, s *resource.Service, owner resource.Owner, field resource.
 		}
 		if _, configured := source[field.Key]; configured {
 			actions = append(actions, "reset")
-			choices = append(choices, "Reset to inherited (remove this setting)")
+			choices = append(choices, "Remove this setting")
 		}
 		n, err := m.choose("What would you like to do?", choices, "Back")
 		if err != nil || n < 0 {

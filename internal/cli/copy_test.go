@@ -33,19 +33,19 @@ func TestCopyCommandModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			resources := resource.Service{Home: state.Home}
-			owner, err := resources.Profile("test")
+			owner, err := resources.ConfigDirectory("test", t.TempDir(), t.TempDir())
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = resources.Create(ctx, owner, ""); err != nil {
+			if _, err = resources.CreateConfig(ctx, owner, resource.SetupOptions{}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = resources.Init(ctx, owner, resource.InitOptions{Harness: "pi"}); err != nil {
+			if _, err = resources.EditConfig(ctx, owner, resource.SetupOptions{Harness: harnessSetting("pi")}); err != nil {
 				t.Fatal(err)
 			}
 			daemon := &dockertest.Daemon{}
 			engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: daemon}, UID: 1000, GID: 1000}
-			made, err := engine.Create(ctx, app.Request{Workspace: t.TempDir(), Profile: "test"})
+			made, err := engine.Create(ctx, app.Request{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -58,7 +58,7 @@ func TestCopyCommandModes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			destination, err := environment.Identify(t.TempDir(), "test", false)
+			destination, err := environment.Identify(t.TempDir(), "test")
 			if err != nil {
 				t.Fatal(err)
 			}

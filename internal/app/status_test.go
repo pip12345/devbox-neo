@@ -82,11 +82,11 @@ func TestStatusAllLeavesPendingTransfersUnclassified(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := record(t, e, result.Name)
-	destination, err := environment.Identify(t.TempDir(), q.Profile, false)
+	destination, err := environment.Identify(t.TempDir(), q.LocalName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	journal := store.Transfer{Version: 1, ID: strings.Repeat("a", 32), Mode: "clone", Phase: "prepare", Source: source.Identity, Destination: destination, SourceID: source.ID, DestinationID: strings.Repeat("b", 32), Started: time.Now().UTC(), Desired: source.Applied}
+	journal := store.Transfer{Version: 2, ID: strings.Repeat("a", 32), Mode: "clone", Phase: "prepare", Source: source.Identity, Destination: destination, SourceID: source.ID, DestinationID: strings.Repeat("b", 32), Started: time.Now().UTC(), Desired: source.Applied}
 	if err := journal.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -118,8 +118,12 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	names := map[string]string{}
+	workspaces := map[string]string{}
 	for _, profile := range []string{"clean", "runtime", "container", "image", "invalid", "corrupt", "recordless", "mismatch", "missing"} {
-		q.Profile = profile
+		q.Workspace = t.TempDir()
+		workspaces[profile] = q.Workspace
+		q.LocalName = profile
+		q.Sources[0].Path = filepath.Join(e.Store.Home, "profiles", profile)
 		write(t, filepath.Join(e.Store.Home, "profiles", profile, "config.json"), `{"version":1,"harness":"pi"}`)
 		result, err := createAndOpen(ctx, e, q)
 		if err != nil {
@@ -202,16 +206,16 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 		}
 	}
 	for _, profile := range []string{"container", "corrupt", "missing"} {
-		report, err = e.StatusAll(ctx, profile)
+		report, err = e.StatusAll(ctx, workspaces[profile])
 		if err != nil || len(report.Sessions) != 1 || report.Sessions[0].Name != names[profile] {
-			t.Fatal("profile filter lost an environment", profile, report, err)
+			t.Fatal("folder filter lost an environment", profile, report, err)
 		}
 	}
-	report, err = e.StatusAll(ctx, "recordless")
+	report, err = e.StatusAll(ctx, workspaces["recordless"])
 	if err != nil || len(report.Sessions) != 0 || len(report.UnmatchedContainers) != 1 {
-		t.Fatal("profile filter lost the unmatched container", report, err)
+		t.Fatal("folder filter lost the unmatched container", report, err)
 	}
-	report, err = e.StatusAll(ctx, "absent")
+	report, err = e.StatusAll(ctx, t.TempDir())
 	if err != nil || report.Sessions == nil || len(report.Sessions) != 0 || report.UnmatchedContainers == nil || len(report.UnmatchedContainers) != 0 {
 		t.Fatal("empty selection must retain empty arrays", report, err)
 	}

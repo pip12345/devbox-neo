@@ -13,28 +13,26 @@ import (
 )
 
 type Engine struct {
-	Store         *store.Store
-	Docker        docker.Runtime
-	Streams       docker.Streams
-	TerminalEnv   []string
-	IgnoreProject bool
-	UID           int
-	GID           int
+	Store       *store.Store
+	Docker      docker.Runtime
+	Streams     docker.Streams
+	TerminalEnv []string
+	UID         int
+	GID         int
 	// OnDiagnostic runs synchronously at the reporting point, possibly under the
 	// operation lock. It must not reenter session operations or mutate diagnostic
 	// slices. Nil suppresses delivery, not collection in Result.Diagnostics.
 	OnDiagnostic func(Diagnostic)
 }
 type Request struct {
-	Workspace     string
-	Profile       string
-	Overrides     config.Layer
-	IgnoreProject bool
-	Sources       []config.Source
-	Recorded      *environment.Identity
-	Continue      bool
-	Args          []string
-	Host          config.Host
+	Workspace   string
+	LocalName   string
+	HarnessArgs []string
+	Sources     []config.Reference
+	Recorded    *environment.Identity
+	Continue    bool
+	Args        []string
+	Host        config.Host
 }
 type Diagnostic struct {
 	Code                string
@@ -49,7 +47,7 @@ type Result struct {
 }
 
 func (e *Engine) resolveSpec(q Request) (environment.Spec, error) {
-	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, Profile: q.Profile, Overrides: q.Overrides, IgnoreProject: q.IgnoreProject || e.IgnoreProject, Sources: q.Sources, Recorded: q.Recorded, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
+	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, LocalName: q.LocalName, Sources: q.Sources, Recorded: q.Recorded, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
 }
 func (e *Engine) Resolve(q Request) (environment.Spec, error) {
 	spec, err := e.resolveSpec(q)
@@ -70,7 +68,7 @@ func (e *Engine) diagnose(result *Result, diagnostic Diagnostic) {
 	}
 }
 func (e *Engine) owner(r store.Record) docker.Owner {
-	return docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot, Profile: r.Identity.Profile, Project: r.Identity.Project}
+	return docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, LocalName: r.Identity.LocalName}
 }
 func (e *Engine) inspect(ctx context.Context, r store.Record) (docker.Container, bool, error) {
 	c, exists, err := e.Docker.Inspect(ctx, r.Identity.Name)

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"devbox/internal/app"
+	"devbox/internal/config"
 	"devbox/internal/docker"
 	"devbox/internal/docker/dockertest"
 	"devbox/internal/resource"
@@ -15,21 +16,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestRecreateUsesRecordedProjectSelection(t *testing.T) {
+func TestRecreateUsesRecordedExplicitSources(t *testing.T) {
 	ctx := context.Background()
 	state, err := store.Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	resources := resource.Service{Home: state.Home}
-	owner, err := resources.Profile("test")
+	owner, err := resources.ConfigDirectory("test", t.TempDir(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = resources.Create(ctx, owner, ""); err != nil {
+	if _, err = resources.CreateConfig(ctx, owner, resource.SetupOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = resources.Init(ctx, owner, resource.InitOptions{Harness: "pi"}); err != nil {
+	if _, err = resources.EditConfig(ctx, owner, resource.SetupOptions{Harness: harnessSetting("pi")}); err != nil {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
@@ -41,7 +42,7 @@ func TestRecreateUsesRecordedProjectSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: &dockertest.Daemon{}}, UID: 1000, GID: 1000}
-	made, err := engine.Create(ctx, app.Request{Workspace: workspace, Profile: "test"})
+	made, err := engine.Create(ctx, app.Request{Workspace: workspace, LocalName: "test", Sources: append(testConfigSources(engine.Store.Home, "test"), config.Reference{Label: "overlay", Kind: config.ReferenceFixed, Path: projectDir})})
 	if err != nil {
 		t.Fatal(err)
 	}

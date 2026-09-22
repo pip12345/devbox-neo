@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -104,27 +105,43 @@ func TestInvalidCreationOptionsFailBeforeDocker(t *testing.T) {
 		})
 	}
 }
-func TestCLIOnlyEnvironmentRequiresExplicitRecreation(t *testing.T) {
+func TestSourceEditsDoNotReplaceCommittedEnvironmentRecoveryInputs(t *testing.T) {
 	e, d, q := fixture(t)
-	q.Overrides.Env = []string{"TOKEN=invocation-secret"}
-	result, err := e.Create(context.Background(), q)
+	ctx := context.Background()
+	write(t, filepath.Join(q.Sources[0].Path, "config.json"), `{"harness":"pi","env":["TOKEN=committed-value"]}`)
+	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := getFile(t, filepath.Join(e.Store.Home, "sessions", result.Name, "session.json"))
-	if bytes.Contains(data, []byte("invocation-secret")) {
-		t.Fatal("invocation env persisted")
+	before := record(t, e, result.Name)
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "config.json"), `{"harness":"pi","env":["TOKEN=desired-value"]}`)
+	refs := []config.Reference{{Label: "replacement", Kind: config.ReferenceFixed, Path: dir}}
+	if _, err := e.UpdateSources(ctx, before, refs); err != nil {
+		t.Fatal(err)
 	}
 	d.Forget(result.Name)
-	if _, err = e.Start(context.Background(), result.Name, ""); err == nil {
-		t.Fatal("recovery guessed invocation-only environment")
+	if _, err = e.Start(ctx, result.Name, ""); err != nil {
+		t.Fatal("source edit invalidated committed recovery provenance", err)
+	}
+	after := record(t, e, result.Name)
+	if after.Inputs.Sources[0].Path != before.Inputs.Sources[0].Path || after.Sources[0].Path != dir || after.Applied.Container != before.Applied.Container {
+		t.Fatal("recovery applied desired container configuration instead of committed inputs")
+	}
+	data := getFile(t, filepath.Join(e.Store.Home, "sessions", result.Name, "session.json"))
+	if bytes.Contains(data, []byte("committed-value")) || bytes.Contains(data, []byte("desired-value")) {
+		t.Fatal("source change persisted environment values")
 	}
 }
 func TestFileAndVolumeMountRecoveryChecksKinds(t *testing.T) {
 	e, d, q := fixture(t)
 	file := filepath.Join(t.TempDir(), "file")
 	os.WriteFile(file, []byte("data"), 0600)
-	q.Overrides.Mounts = []string{file + ":/extra-file", "shared-volume:/shared"}
+	data, err := json.Marshal(config.Layer{Version: 1, Mounts: []string{file + ":/extra-file", "shared-volume:/shared"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), string(data))
 	result, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)

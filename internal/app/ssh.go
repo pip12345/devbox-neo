@@ -18,11 +18,11 @@ type SSHOptions struct {
 	Connected func(environment, alias string)
 }
 
-func (e *Engine) SSH(ctx context.Context, target, profile, destination string, options SSHOptions) (err error) {
+func (e *Engine) SSH(ctx context.Context, target, localName, destination string, options SSHOptions) (err error) {
 	if err = sshshare.Validate(destination); err != nil {
 		return err
 	}
-	r, err := e.Locate(ctx, target, profile)
+	r, err := e.Locate(ctx, target, localName)
 	if err != nil {
 		return err
 	}
@@ -31,7 +31,7 @@ func (e *Engine) SSH(ctx context.Context, target, profile, destination string, o
 		return err
 	}
 	defer l.Close()
-	r, err = l.Load()
+	r, err = loadSelected(l, r)
 	if err != nil {
 		return err
 	}

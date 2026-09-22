@@ -133,7 +133,7 @@ func TestOpenWithoutCreationDriftDiagnostics(t *testing.T) {
 	if _, err := createAndOpen(context.Background(), e, q); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Start(context.Background(), q.Workspace, q.Profile); err != nil {
+	if _, err := e.Start(context.Background(), q.Workspace, q.LocalName); err != nil {
 		t.Fatal(err)
 	}
 	for _, change := range []string{"unchanged", "runtime-only", "runtime-deferred"} {

@@ -18,8 +18,8 @@ type StatusDetails struct {
 	Active []store.Lease `json:"active"`
 }
 
-func (e *Engine) Status(ctx context.Context, target, profile string) (StatusDetails, error) {
-	r, err := e.Locate(ctx, target, profile)
+func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDetails, error) {
+	r, err := e.Locate(ctx, target, localName)
 	if errors.Is(err, os.ErrNotExist) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
 		pending, pendingErr := e.Store.Pending(target)
 		if pendingErr != nil {
@@ -37,9 +37,13 @@ func (e *Engine) Status(ctx context.Context, target, profile string) (StatusDeta
 		return StatusDetails{}, err
 	}
 	defer lock.Close()
+	selectedID := r.ID
 	r, err = lock.ReadRecord(ctx)
 	if err != nil {
 		return StatusDetails{}, err
+	}
+	if r.ID != selectedID {
+		return StatusDetails{}, fmt.Errorf("selected session changed; retry status")
 	}
 	pending, err := e.Store.Pending(r.Identity.Name)
 	if err != nil {
@@ -118,7 +122,7 @@ func (e *Engine) removeSessionState(ctx context.Context, planned []sessionRemova
 			if err := ctx.Err(); err != nil {
 				return removed, err
 			}
-			if err := item.lock.Delete(); err != nil {
+			if err := removeSavedSession(ctx, item.lock, item.record.Identity.Workspace, item.record.ID); err != nil {
 				return removed, err
 			}
 			removed = append(removed, item.record.Identity.Name)
@@ -132,4 +136,17 @@ func (e *Engine) removeSessionState(ctx context.Context, planned []sessionRemova
 		}
 	}
 	return removed, nil
+}
+
+// Both whole-session deletion and committed move cleanup clear the default
+// before deleting state. The operation lock stays held across both writes.
+func removeSavedSession(ctx context.Context, lock *store.Locked, workspace, id string) error {
+	if err := lock.ClearMatchingDefault(ctx, workspace, id); err != nil {
+		return err
+	}
+	if err := lock.DeleteContext(ctx); err != nil {
+		return commanderror.New("session_delete_incomplete", "Saved session removal failed; its default may already be cleared.", lock.Name, err,
+			commanderror.Next("Inspect retained state", "status", lock.Name))
+	}
+	return nil
 }

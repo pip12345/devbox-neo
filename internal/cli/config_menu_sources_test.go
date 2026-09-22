@@ -26,96 +26,84 @@ func menuSettingRow(t *testing.T, output, key string) string {
 	return ""
 }
 
-func TestMenuSourcesFollowEffectiveLayersRatherThanLocalKeyPresence(t *testing.T) {
+func TestDirectoryMenuShowsOnlyItsOwnContributionsOverDefaults(t *testing.T) {
 	s := menuService(t)
-	profile, _ := s.Profile("base")
-	project, _ := s.Project(t.TempDir())
-	for _, owner := range []resource.Owner{profile, project} {
-		if _, err := s.Create(context.Background(), owner, ""); err != nil {
+	base := testConfigOwner(t, s.Home, "base")
+	overlay := testConfigOwner(t, s.Home, "overlay")
+	for _, owner := range []resource.Owner{base, overlay} {
+		if _, err := s.CreateConfig(context.Background(), owner, resource.SetupOptions{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	put := func(path, contents string) {
+	put := func(path, data string) {
 		t.Helper()
-		if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	put(filepath.Join(s.Home, "config.json"), `{"version":1,"default_profile":"base","default_harness":"pi","global_env":["GLOBAL=value"]}`)
-	put(filepath.Join(profile.Root, "config.json"), `{"harness":"pi","version":1,"harness_args":["--base"],"env":["PROFILE=value"],"mounts":["/base:/base"],"vscode":{"extensions":["base.ext"]}}`)
-	put(filepath.Join(project.Root, "config.json"), `{"version":1,"network":"host","harness_args":null,"env":["PROJECT=value"],"mounts":["/project:/project"],"vscode":{"extensions":["project.ext"]}}`)
-	check := func(want map[string]string) string {
-		t.Helper()
-		out, err := runMenu(t, s, project, "0\n")
-		if err != nil {
-			t.Fatal(out, err)
-		}
-		for key, suffix := range want {
-			if row := menuSettingRow(t, out, key); !strings.HasSuffix(row, suffix) {
-				t.Fatalf("%s: got %q, want suffix %q", key, row, suffix)
-			}
-		}
-		if strings.Contains(out, "set here") || strings.Contains(out, "(inherited)") || strings.Contains(out, "mixed -") {
-			t.Fatal("old source labels remain", out)
-		}
-		return out
+	put(filepath.Join(s.Home, "config.json"), `{"default_harness":"pi","global_env":["GLOBAL=value"]}`)
+	put(filepath.Join(base.Root, "config.json"), `{"harness":"pi","harness_args":["--base"],"env":["BASE=value"],"mounts":["/base:/base"]}`)
+	put(filepath.Join(overlay.Root, "config.json"), `{"network":"host","env":["LOCAL=value"],"mounts":["/local:/local"],"vscode":{"extensions":["local.ext"]}}`)
+	out, err := runMenu(t, s, overlay, "0\n")
+	if err != nil {
+		t.Fatal(err)
 	}
-	out := check(map[string]string{
-		"harness": "pi inherited - profile", "network": "host project",
-		"shell": "bash default", "harness_args": "Harness arguments", "mounts": "Mounts",
-		"env": "Environment variables", "vscode": "VS Code extensions", "inherit": "Yes default",
-	})
-	for _, item := range []string{"• --base inherited - profile", "• /base:/base inherited - profile", "• /project:/project project", "• GLOBAL=<redacted> inherited - global", "• PROFILE=<redacted> inherited - profile", "• PROJECT=<redacted> project", "• base.ext inherited - profile", "• project.ext project"} {
-		if !strings.Contains(strings.Join(strings.Fields(out), " "), item) {
-			t.Fatalf("missing entry provenance %q:\n%s", item, out)
+	for key, suffix := range map[string]string{"harness": "None default", "network": "host overlay", "shell": "bash default", "mounts": "Mounts"} {
+		if row := menuSettingRow(t, out, key); !strings.HasSuffix(row, suffix) {
+			t.Fatalf("%s: got %q, want %q", key, row, suffix)
 		}
 	}
-	put(filepath.Join(s.Home, "config.json"), `{"version":1,"default_profile":"base","default_harness":"pi","ignore_project":true}`)
-	check(map[string]string{"network": "default default", "mounts": "Mounts", "vscode": "VS Code extensions", "env": "Environment variables"})
-	put(filepath.Join(s.Home, "config.json"), `{"version":1,"default_profile":"base","default_harness":"pi"}`)
-	put(filepath.Join(project.Root, "config.json"), `{"version":1,"inherit":false,"mounts":["/project:/project"]}`)
-	check(map[string]string{"harness": "pi inherited - global", "mounts": "Mounts", "inherit": "No project"})
-	put(filepath.Join(project.Root, "config.json"), `{"version":1,"inherit":null}`)
-	check(map[string]string{"harness": "pi inherited - profile", "inherit": "Yes default"})
+	flat := strings.Join(strings.Fields(out), " ")
+	for _, expected := range []string{"• /local:/local overlay", "• LOCAL=<redacted> overlay", "• local.ext overlay"} {
+		if !strings.Contains(flat, expected) {
+			t.Fatal("missing local entry provenance", expected, out)
+		}
+	}
+	for _, unexpected := range []string{"GLOBAL=", "BASE=", "--base", "inherited -", "[11] Inherit"} {
+		if strings.Contains(out, unexpected) {
+			t.Fatal("directory view imported another source", unexpected, out)
+		}
+	}
+	put(filepath.Join(s.Home, "config.json"), "broken unrelated global config")
+	after, err := runMenu(t, s, overlay, "0\n")
+	if err != nil || after != out {
+		t.Fatal("obsolete global file affected directory editing", err)
+	}
 }
 
 func TestMenuSourcesDoNotGuessWhenResolutionFails(t *testing.T) {
 	s := menuService(t)
-	owner, _ := s.Profile("base")
-	s.Create(context.Background(), owner, "")
-	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"invalid network"}`), 0600); err != nil {
+	owner := testConfigOwner(t, s.Home, "base")
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
+	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"harness":"pi","network":"invalid network"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	out, err := runMenu(t, s, owner, "0\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(menuSettingRow(t, out, "harness"), "pi profile") || !strings.HasSuffix(menuSettingRow(t, out, "shell"), "Unavailable unknown") {
+	if !strings.HasSuffix(menuSettingRow(t, out, "harness"), "pi base") || !strings.HasSuffix(menuSettingRow(t, out, "shell"), "Unavailable unknown") {
 		t.Fatal("unresolved values were assigned invented sources", out)
 	}
 }
 
-func TestMenuGlobalAndEmptyHarnessSources(t *testing.T) {
+func TestMenuEmptyHarnessAndNeutralSourceLabels(t *testing.T) {
 	s := menuService(t)
-	global, _ := s.ConfigOwner("global", "")
-	if err := os.WriteFile(filepath.Join(s.Home, "config.json"), []byte(`{"version":1,"default_harness":"pi"}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	out, err := runMenu(t, s, global, "0\n")
-	if err != nil || !strings.HasSuffix(menuSettingRow(t, out, "default_harness"), "pi global") || !strings.HasSuffix(menuSettingRow(t, out, "ignore_project"), "No default") {
-		t.Fatal(out, err)
-	}
-	profile, _ := s.Profile("base")
-	s.Create(context.Background(), profile, "")
-	if err := os.WriteFile(filepath.Join(s.Home, "config.json"), []byte(`{"version":1}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	out, err = runMenu(t, s, profile, "0\n")
+	owner := testConfigOwner(t, s.Home, "base")
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
+	out, err := runMenu(t, s, owner, "0\n")
 	if err != nil || !strings.HasSuffix(menuSettingRow(t, out, "harness"), "None default") {
 		t.Fatal(out, err)
 	}
-	sources := []string{"built-in default", "profile"}
-	if got := configSourceLabel(sources); got != "default + profile" || !reflect.DeepEqual(sources, []string{"built-in default", "profile"}) {
-		t.Fatal("display mutated or mislabelled source data", sources, got)
+	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"harness":""}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, err = runMenu(t, s, owner, "0\n")
+	if err != nil || !strings.HasSuffix(menuSettingRow(t, out, "harness"), "None base") {
+		t.Fatal("explicit unset lost its provenance", out, err)
+	}
+	sources := []string{"built-in default", "base"}
+	if got := configSourceLabel(sources); got != "default + base" || !reflect.DeepEqual(sources, []string{"built-in default", "base"}) {
+		t.Fatal("display mutated source data", sources, got)
 	}
 }

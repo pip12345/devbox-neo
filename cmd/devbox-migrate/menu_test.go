@@ -184,12 +184,12 @@ func preparedMenuFixture(t *testing.T) (migration.Paths, migration.Merger) {
 
 func TestEntryMenuPreparedImportStillRequiresMergeApproval(t *testing.T) {
 	paths, merger := preparedMenuFixture(t)
-	for _, input := range []string{"2\n4\n0\n", "3\n0\n", "3\n5\nn\n0\n"} {
+	for _, input := range []string{"2\n4\n0\n", "3\n0\n", "3\n4\ny\n5\nn\n0\n"} {
 		out, err, _ := executeWithMerger(t, merger, true, input)
 		if err != nil {
 			t.Fatal(out, err)
 		}
-		notExist(t, filepath.Join(paths.Destination, "profiles/work"))
+		notExist(t, filepath.Join(paths.Destination, "configs/work"))
 		j, err := migration.Load(paths)
 		if err != nil {
 			t.Fatal(err)
@@ -198,7 +198,7 @@ func TestEntryMenuPreparedImportStillRequiresMergeApproval(t *testing.T) {
 			t.Fatal("entering merge review authorized import")
 		}
 	}
-	out, err, _ := executeWithMerger(t, merger, true, "3\n5\ny\n")
+	out, err, _ := executeWithMerger(t, merger, true, "3\n4\ny\n5\ny\n")
 	if err != nil {
 		t.Fatal(out, err)
 	}
@@ -244,7 +244,7 @@ func TestEntryMenuResumesInterruptedStaging(t *testing.T) {
 	if j.Phase != "prepared" || j.Merge != nil || runtime.calls == 0 {
 		t.Fatal("did not resume staging only")
 	}
-	notExist(t, filepath.Join(paths.Destination, "profiles/work"))
+	notExist(t, filepath.Join(paths.Destination, "configs/work"))
 }
 
 func TestEntryMenuResumesApprovedMerge(t *testing.T) {
@@ -255,7 +255,7 @@ func TestEntryMenuResumesApprovedMerge(t *testing.T) {
 		}
 		return nil
 	}
-	if _, err, _ := executeWithMerger(t, merger, true, "3\n5\ny\n"); err == nil {
+	if _, err, _ := executeWithMerger(t, merger, true, "3\n4\ny\n5\ny\n"); err == nil {
 		t.Fatal("fault did not trigger")
 	}
 	j, err := migration.Load(paths)

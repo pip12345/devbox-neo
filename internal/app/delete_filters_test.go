@@ -137,7 +137,7 @@ func TestMissingContainerDeletionStillHonorsProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.Forget(created.Name)
-	_, err = e.Delete(ctx, DeleteOptions{Scope: DeleteSession, Selection: Selection{Targets: []string{created.Name}, Profile: "other"}})
+	_, err = e.Delete(ctx, DeleteOptions{Scope: DeleteSession, Selection: Selection{Targets: []string{created.Name}, LocalName: "other"}})
 	if err == nil {
 		t.Fatal("profile mismatch ignored for missing container")
 	}

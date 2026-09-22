@@ -24,7 +24,6 @@ type Transfer struct {
 	Phase         string                   `json:"phase"`
 	Source        environment.Identity     `json:"source"`
 	Destination   environment.Identity     `json:"destination"`
-	RequestedTo   string                   `json:"requested_to,omitempty"`
 	SourceID      string                   `json:"source_id"`
 	DestinationID string                   `json:"destination_id"`
 	Running       bool                     `json:"restore_running"`
@@ -54,26 +53,19 @@ func TransferCommand(mode string) string {
 	return "copy"
 }
 
-// RetryStep uses the journal's exact endpoints, including same-folder slots.
+// RetryStep uses the journal's exact endpoints, including same-folder names.
 // It does not rediscover defaults or depend on the source record still existing.
 func (j Transfer) RetryStep() commanderror.Step {
 	args := []string{"copy"}
 	if j.Mode == "relocate" {
 		args = append(args, "--move")
 	}
-	if j.Source.Workspace == j.Destination.Workspace {
-		args = append(args, j.Source.Workspace, "--from", j.Source.Selector(), "--to", "."+environment.Slot(j.Destination.Profile, j.Destination.Project))
-	} else {
-		args = append(args, j.Source.Name, j.Destination.Workspace)
-		if j.Destination.Profile != j.Source.Profile || j.Destination.Project != j.Source.Project {
-			args = append(args, "--to", "."+environment.Slot(j.Destination.Profile, j.Destination.Project))
-		}
-	}
+	args = append(args, j.Source.Name, j.Destination.Workspace, "--as", j.Destination.LocalName)
 	return commanderror.Next("Resume transfer", args...)
 }
 
 func (j Transfer) Validate() error {
-	if j.Version != 1 || !idPattern.MatchString(j.ID) || !idPattern.MatchString(j.SourceID) || !idPattern.MatchString(j.DestinationID) || j.Started.IsZero() {
+	if j.Version != 2 || !idPattern.MatchString(j.ID) || !idPattern.MatchString(j.SourceID) || !idPattern.MatchString(j.DestinationID) || j.Started.IsZero() {
 		return fmt.Errorf("invalid transfer identity")
 	}
 	if j.Mode != "clone" && j.Mode != "relocate" {
@@ -86,24 +78,9 @@ func (j Transfer) Validate() error {
 		return fmt.Errorf("invalid transfer policy")
 	}
 	for _, id := range []environment.Identity{j.Source, j.Destination} {
-		if !validName(id.Name) || !filepath.IsAbs(id.Workspace) || filepath.Clean(id.Workspace) != id.Workspace || id.Name != environment.ContainerName(id.Workspace, id.Slot) {
-			return fmt.Errorf("invalid transfer endpoint")
+		if err := id.Validate(); err != nil {
+			return fmt.Errorf("invalid transfer endpoint: %w", err)
 		}
-		if err := id.ValidateSlot(); err != nil {
-			return err
-		}
-	}
-	if j.RequestedTo != "" {
-		slot, prefixed := strings.CutPrefix(j.RequestedTo, ".")
-		profile, project, err := environment.ParseSlot(slot)
-		// Inheritance can remove a requested profile, but cannot add one or
-		// change whether the destination uses project configuration.
-		if !prefixed || err != nil || project != j.Destination.Project || (profile != j.Destination.Profile && (!project || j.Destination.Profile != "")) {
-			return fmt.Errorf("invalid requested transfer destination")
-		}
-	}
-	if j.Source.Workspace != j.Destination.Workspace && j.Mode == "relocate" && (j.Source.Profile != j.Destination.Profile || j.Source.Project != j.Destination.Project) {
-		return fmt.Errorf("cross-folder relocation must retain the source combination")
 	}
 	if j.Source.Name == j.Destination.Name {
 		return fmt.Errorf("transfer endpoints must differ")

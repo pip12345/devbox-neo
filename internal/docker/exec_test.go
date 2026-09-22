@@ -14,7 +14,7 @@ import (
 func TestExecForwardsEnvWithoutChangingArgvOrStreams(t *testing.T) {
 	d := &dockertest.Daemon{}
 	runtime := docker.Runtime{Runner: d}
-	owner := docker.Owner{Installation: "installation", Session: "session", Workspace: "/workspace", Slot: "project"}
+	owner := docker.Owner{Installation: "installation", Session: "session", Workspace: "/workspace", LocalName: "project"}
 	c := docker.Container{ID: "container-id"}
 	c.Config.Labels = owner.Labels()
 	streams := docker.Streams{In: strings.NewReader(""), Out: io.Discard, Err: io.Discard, TTY: true}

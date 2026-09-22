@@ -57,15 +57,15 @@ func TestSourceReferencesVerifyExpressionAndValue(t *testing.T) {
 		t.Fatal("changed expression silently adopted")
 	}
 }
-func TestGlobalPassthroughAndSensitiveValidation(t *testing.T) {
+func TestExplicitEnvironmentReferencesAndSensitiveValidation(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
-	os.WriteFile(p, []byte(`{"version":1,"global_env":["PRESENT","ABSENT","EMPTY","LITERAL=x"]}`), 0600)
-	g, err := ReadGlobal(p, Host{"PRESENT": "value", "EMPTY": ""})
+	os.WriteFile(p, []byte(`{"version":1,"env":["PRESENT=${env:PRESENT}","EMPTY=${env:EMPTY}","LITERAL=x"]}`), 0600)
+	g, err := ReadLayer(p, Host{"PRESENT": "value", "EMPTY": ""})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(g.EnvInputs) != 3 || g.GlobalEnv[0] != "PRESENT=value" || g.GlobalEnv[1] != "EMPTY=" {
-		t.Fatal(g.GlobalEnv)
+	if len(g.EnvInputs) != 3 || g.Env[0] != "PRESENT=value" || g.Env[1] != "EMPTY=" {
+		t.Fatal(g.Env)
 	}
 	for _, entry := range []string{"DEVBOX_HOST=value", "BAD-NAME=secret", "KEY=multi\nline", "KEY"} {
 		if err = ValidateEnvAssignment(entry); err == nil {

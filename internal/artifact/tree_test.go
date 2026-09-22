@@ -29,7 +29,11 @@ func TestSkippedEntriesDoNotOverrideLowerLayers(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, profile := range []string{"", "base"} {
-		r, err := PreviewSelection(home, work, Selection{Profile: profile, IgnoreProject: profile != ""}, config.Layer{}, nil, config.Snapshot())
+		sources := []config.Source{{Label: "base", Path: filepath.Join(home, "profiles/base")}}
+		if profile == "" {
+			sources = append(sources, config.Source{Label: "overlay", Path: filepath.Join(work, ".devbox")})
+		}
+		r, err := Resolve(sources, config.Snapshot())
 		if err != nil {
 			t.Fatal(err)
 		}

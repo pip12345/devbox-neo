@@ -29,9 +29,9 @@ func menuService(t *testing.T) *resource.Service {
 	return &resource.Service{Home: state.Home}
 }
 
-func fieldNumber(t *testing.T, scope, key string) string {
+func fieldNumber(t *testing.T, key string) string {
 	t.Helper()
-	for i, f := range resource.ConfigFields(scope) {
+	for i, f := range resource.ConfigFields() {
 		if f.Key == key {
 			return fmt.Sprint(i + 1)
 		}
@@ -51,30 +51,16 @@ func runMenu(t *testing.T, s *resource.Service, owner resource.Owner, input stri
 	return out.String(), err
 }
 
-func TestConfigMenusEditAndResetEachScope(t *testing.T) {
-	for _, scope := range []string{"global", "profile", "project"} {
-		t.Run(scope, func(t *testing.T) {
+func TestConfigMenusEditAndRemoveSettingsForEachReferenceForm(t *testing.T) {
+	for _, target := range []string{"basic", filepath.Join(t.TempDir(), "local")} {
+		t.Run(target, func(t *testing.T) {
 			s := menuService(t)
-			target := "basic"
-			if scope == "project" {
-				target = t.TempDir()
-			}
-			owner, err := s.ConfigOwner(scope, target)
-			if err != nil {
+			owner := testConfigOwner(t, s.Home, target)
+			if _, err := s.CreateConfig(context.Background(), owner, resource.SetupOptions{}); err != nil {
 				t.Fatal(err)
 			}
-			if scope != "global" {
-				if _, err = s.Create(context.Background(), owner, ""); err != nil {
-					t.Fatal(err)
-				}
-			}
 			key, selection, want := "network", "host", `"host"`
-			if scope == "global" {
-				key, selection, want = "ignore_project", "1", "true"
-			} else if scope == "project" {
-				key, selection, want = "inherit", "2", "false"
-			}
-			n := fieldNumber(t, scope, key)
+			n := fieldNumber(t, key)
 			out, err := runMenu(t, s, owner, n+"\n1\n"+selection+"\n0\n")
 			if err != nil || !strings.Contains(out, "Saved "+configLabel(key)+".") {
 				t.Fatal(out, err)
@@ -96,14 +82,14 @@ func TestConfigMenusEditAndResetEachScope(t *testing.T) {
 
 func TestConfigMenuPreservesExpressionsAndDoesNotPrintEnvValues(t *testing.T) {
 	s := menuService(t)
-	owner, _ := s.Profile("basic")
-	s.Create(context.Background(), owner, "")
+	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
 	path := filepath.Join(owner.Root, "config.json")
 	original := `{"version":1,"env":["TOKEN=private-value","NEXT=${env:UNSET_MENU_REFERENCE}"],"harness":"pi"}`
 	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}
-	input := fieldNumber(t, "profile", "network") + "\n1\ndefault\n0\n"
+	input := fieldNumber(t, "network") + "\n1\ndefault\n0\n"
 	out, err := runMenu(t, s, owner, input)
 	if err != nil || strings.Contains(out, "private-value") || !strings.Contains(out, "redacted") || !strings.Contains(out, "Effective configuration unavailable") {
 		t.Fatal(out, err)
@@ -116,7 +102,7 @@ func TestConfigMenuPreservesExpressionsAndDoesNotPrintEnvValues(t *testing.T) {
 	if strings.Join(env, ",") != "TOKEN=private-value,NEXT=${env:UNSET_MENU_REFERENCE}" {
 		t.Fatal("unrelated edit replaced source env with display values")
 	}
-	input = fieldNumber(t, "profile", "env") + "\n1\nNEW=another-private-value\n0\n0\n"
+	input = fieldNumber(t, "env") + "\n1\nNEW=another-private-value\n0\n0\n"
 	out, err = runMenu(t, s, owner, input)
 	if err != nil || strings.Contains(out, "private-value") {
 		t.Fatal("env input leaked through list or save feedback", out, err)
@@ -129,16 +115,15 @@ func TestConfigMenuPreservesExpressionsAndDoesNotPrintEnvValues(t *testing.T) {
 
 func TestMenuEditsOnlyLocalListContribution(t *testing.T) {
 	s := menuService(t)
-	profile, _ := s.Profile("base")
-	s.Create(context.Background(), profile, "")
+	profile, _ := s.ConfigDirectory("base", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), profile, resource.SetupOptions{})
 	os.WriteFile(filepath.Join(profile.Root, "config.json"), []byte(`{"version":1,"harness":"pi","harness_args":["--base"]}`), 0600)
-	s.SetDefault(context.Background(), "base")
-	project, _ := s.Project(t.TempDir())
-	s.Create(context.Background(), project, "")
+	project := testConfigOwner(t, s.Home, "overlay")
+	s.CreateConfig(context.Background(), project, resource.SetupOptions{})
 	if err := s.SetConfigField(context.Background(), project, "harness", nil, json.RawMessage(`"pi"`), false); err != nil {
 		t.Fatal(err)
 	}
-	n := fieldNumber(t, "project", "harness_args")
+	n := fieldNumber(t, "harness_args")
 	out, err := runMenu(t, s, project, n+"\n1\n--local\n0\n0\n")
 	if err != nil {
 		t.Fatal(out, err)
@@ -151,7 +136,7 @@ func TestMenuEditsOnlyLocalListContribution(t *testing.T) {
 	if len(local) != 1 || local[0] != "--local" {
 		t.Fatal("menu copied inherited entries into local source", source)
 	}
-	r, err := artifact.Resolve(s.Home, project.Workspace, "", config.Layer{})
+	r, err := artifact.Resolve([]config.Source{{Label: "base", Path: profile.Root}, {Label: "overlay", Path: project.Root}}, config.Host{})
 	if err != nil || strings.Join(r.Settings.HarnessArgs, ",") != "--base,--local" {
 		t.Fatal("menu broke list inheritance", r, err)
 	}
@@ -159,11 +144,11 @@ func TestMenuEditsOnlyLocalListContribution(t *testing.T) {
 
 func TestMenuCancellationAndValidationDoNotWrite(t *testing.T) {
 	s := menuService(t)
-	owner, _ := s.Profile("basic")
-	s.Create(context.Background(), owner, "")
+	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
 	path := filepath.Join(owner.Root, "config.json")
 	before, _ := os.ReadFile(path)
-	n := fieldNumber(t, "profile", "network")
+	n := fieldNumber(t, "network")
 	for _, input := range []string{"", "0\n", n + "\n0\n0\n", n + "\n1\n:back\n0\n", n + "\n1\n", n + "\n1\nhost", n + "\n1\nnot a network\n0\n"} {
 		if out, err := runMenu(t, s, owner, input); err != nil {
 			t.Fatal(out, err)
@@ -189,8 +174,8 @@ func TestMenuRePromptsAndListEditing(t *testing.T) {
 		t.Fatal(out.String(), n, err)
 	}
 	s := menuService(t)
-	owner, _ := s.Profile("basic")
-	s.Create(context.Background(), owner, "")
+	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
 	if err := s.SetConfigField(context.Background(), owner, "harness", nil, json.RawMessage(`"pi"`), false); err != nil {
 		t.Fatal(err)
 	}
@@ -222,20 +207,20 @@ func TestMenuRePromptsAndListEditing(t *testing.T) {
 	}
 }
 
-func TestConfigCLIRequiresTTYAndShowForJSON(t *testing.T) {
-	for _, args := range [][]string{{"global", "config"}, {"global", "config", "--json"}, {"project", "config", ".", "--profile", "basic"}} {
+func TestConfigCLIRequiresExplicitOperationsWithoutTTY(t *testing.T) {
+	for _, args := range [][]string{{"config", "edit", "basic"}, {"config", "edit", "basic", "--json"}, {"config", "sources", ".", "--json"}} {
 		cmd := New()
 		var out bytes.Buffer
 		cmd.SetOut(&out)
 		cmd.SetErr(&out)
 		cmd.SetIn(strings.NewReader("1\n"))
-		cmd.SetArgs(args)
-		if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--show") {
+		cmd.SetArgs(append([]string{"--home", t.TempDir()}, args...))
+		if err := cmd.Execute(); err == nil {
 			t.Fatal("noninteractive config invocation was not rejected", err)
 		}
 	}
 	// The schema-version field remains outside the editable menu.
-	if strings.Contains(fieldLabels(resource.ConfigFields("global")), "version") {
+	if strings.Contains(fieldLabels(resource.ConfigFields()), "version") {
 		t.Fatal("version exposed as a setting")
 	}
 }

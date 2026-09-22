@@ -25,19 +25,18 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	resources := resource.Service{Home: state.Home}
-	owner, _ := resources.Profile("test")
-	resources.Create(ctx, owner, "")
-	resources.Init(ctx, owner, resource.InitOptions{Harness: "pi"})
+	owner, _ := resources.ConfigDirectory("test", t.TempDir(), t.TempDir())
+	resources.CreateConfig(ctx, owner, resource.SetupOptions{})
+	resources.EditConfig(ctx, owner, resource.SetupOptions{Harness: harnessSetting("pi")})
 	daemon := &dockertest.Daemon{}
 	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: daemon}, UID: 1000, GID: 1000}
-	result, err := engine.Create(ctx, app.Request{Workspace: t.TempDir(), Profile: "test"})
+	result, err := engine.Create(ctx, app.Request{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	run := func(args ...string) (string, error) {
 		root := &cobra.Command{Use: "devbox-neo", SilenceUsage: true, SilenceErrors: true}
 		profile := ""
-		root.PersistentFlags().StringVar(&profile, "profile", "", "Select a profile")
 		factory := func(cmd *cobra.Command) (*app.Engine, error) {
 			engine.Streams.Out = cmd.OutOrStdout()
 			engine.Streams.Err = cmd.ErrOrStderr()
@@ -63,16 +62,16 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 			t.Fatal("invalid list option accepted", args)
 		}
 	}
-	out, err := run("status", "--all", "--profile", "test", "--json")
+	out, err := run("status", "--all", "--json")
 	var statusViews app.InventoryReport
 	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews.Sessions) != 1 || statusViews.Sessions[0].Name != result.Name || statusViews.Sessions[0].Desired != "NoChange" {
 		t.Fatal("bulk status JSON did not include drift", out, err)
 	}
-	if out, err := run("status", "--all", "--profile", "absent", "--json"); err != nil || strings.TrimSpace(out) != `{"sessions":[],"unmatched_containers":[]}` {
-		t.Fatal("bulk status ignored profile filtering", out, err)
+	if out, err := run("status", "--all", "--profile", "test"); err == nil {
+		t.Fatal("retained removed profile selection", out)
 	}
-	if out, err := run("status", "--all", "--profile", "absent"); err != nil || !strings.Contains(out, "No matching saved environments.") {
-		t.Fatal("incorrect empty bulk status", out, err)
+	if out, err := run("status", "--all", "--name", "test"); err == nil {
+		t.Fatal("accepted a folder-local name without a folder target", out)
 	}
 	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host","env":["TOKEN=private-status-value"]}`), 0600); err != nil {
 		t.Fatal(err)
@@ -135,7 +134,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 			t.Fatal("session JSON ignored sorting", out)
 		}
 		table, err := run("list", "--sort", order)
-		if err != nil || !strings.Contains(table, "LAST ACTIVE") || !strings.Contains(table, "CONTAINER") || strings.Index(table, views[0].Name) > strings.Index(table, views[1].Name) {
+		if err != nil || !strings.Contains(table, "LAST ACTIVE") || !strings.Contains(table, "CONTAINER") || !strings.Contains(table, views[0].Name) || !strings.Contains(table, views[1].Name) || (views[0].Workspace == views[1].Workspace && strings.Index(table, views[0].Name) > strings.Index(table, views[1].Name)) {
 			t.Fatal("session text and JSON disagree", table, err)
 		}
 	}
@@ -178,7 +177,7 @@ func TestSessionListEmptyOutput(t *testing.T) {
 		if err := cmd.Execute(); err != nil {
 			t.Fatal(err)
 		}
-		if asJSON && strings.TrimSpace(out.String()) != `{"sessions":[],"unmatched_containers":[]}` || !asJSON && strings.TrimSpace(out.String()) != "No durable sessions. Configure a profile/project, then use create <folder>." {
+		if asJSON && strings.TrimSpace(out.String()) != `{"sessions":[],"unmatched_containers":[]}` || !asJSON && strings.TrimSpace(out.String()) != "No saved sessions. Use create <folder> to create one." {
 			t.Fatal("incorrect empty session output", out.String())
 		}
 	}
@@ -186,8 +185,8 @@ func TestSessionListEmptyOutput(t *testing.T) {
 
 func TestRemovedFullDockerfileIsNotAnInitChoice(t *testing.T) {
 	home := t.TempDir()
-	resourceCLI(t, home, "profile", "create", "test")
-	if _, err := resourceCLI(t, home, "profile", "init", "test", "--harness", "pi", "--artifact", "Dockerfile.full"); err == nil {
+	resourceCLI(t, home, "config", "create", "test")
+	if _, err := resourceCLI(t, home, "config", "edit", "test", "--harness", "pi", "--artifact", "Dockerfile.full"); err == nil {
 		t.Fatal("removed full override was seeded")
 	}
 }

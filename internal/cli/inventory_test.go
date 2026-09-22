@@ -25,16 +25,16 @@ func inventoryCLI(t *testing.T) (*app.Engine, *dockertest.Daemon, string, func()
 		t.Fatal(err)
 	}
 	resources := resource.Service{Home: state.Home}
-	owner, _ := resources.Profile("test")
-	if _, err := resources.Create(ctx, owner, ""); err != nil {
+	owner, _ := resources.ConfigDirectory("test", t.TempDir(), t.TempDir())
+	if _, err := resources.CreateConfig(ctx, owner, resource.SetupOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resources.Init(ctx, owner, resource.InitOptions{Harness: "pi"}); err != nil {
+	if _, err := resources.EditConfig(ctx, owner, resource.SetupOptions{Harness: harnessSetting("pi")}); err != nil {
 		t.Fatal(err)
 	}
 	daemon := &dockertest.Daemon{}
 	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: daemon}, UID: 1000, GID: 1000}
-	created, err := engine.Create(ctx, app.Request{Workspace: t.TempDir(), Profile: "test"})
+	created, err := engine.Create(ctx, app.Request{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
 	if err != nil {
 		t.Fatal(err)
 	}

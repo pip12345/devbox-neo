@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"devbox/internal/commanderror"
+	"devbox/internal/config"
 	"devbox/internal/docker"
 	"devbox/internal/docker/dockertest"
 	"devbox/internal/environment"
@@ -29,8 +30,13 @@ func fixture(t *testing.T) (*Engine, *dockertest.Daemon, Request) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(home, "profiles", "test", "config.json"), `{"version":1,"harness":"pi"}`)
+	write(t, filepath.Join(workspace, ".devbox", "config.json"), `{"version":1}`)
 	d := &dockertest.Daemon{}
-	return &Engine{Store: s, Docker: docker.Runtime{Runner: d}, Streams: docker.Streams{Out: new(bytes.Buffer), Err: new(bytes.Buffer)}, UID: 1000, GID: 1000}, d, Request{Workspace: workspace, Profile: "test"}
+	sources := []config.Reference{
+		{Label: "base", Kind: config.ReferenceFixed, Path: filepath.Join(home, "profiles", "test")},
+		{Label: "workspace", Kind: config.ReferenceFixed, Path: filepath.Join(workspace, ".devbox")},
+	}
+	return &Engine{Store: s, Docker: docker.Runtime{Runner: d}, Streams: docker.Streams{Out: new(bytes.Buffer), Err: new(bytes.Buffer)}, UID: 1000, GID: 1000}, d, Request{Workspace: workspace, LocalName: "test", Sources: sources}
 }
 func createAndOpen(ctx context.Context, e *Engine, q Request) (Result, error) {
 	if result, err := e.Create(ctx, q); err != nil {

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"devbox/internal/app"
+	"devbox/internal/artifact"
 	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/docker"
@@ -58,6 +59,7 @@ type Publication struct {
 type ImportSession struct {
 	Item     string                   `json:"item"`
 	Identity environment.Identity     `json:"identity"`
+	Sources  []config.Reference       `json:"sources"`
 	ID       string                   `json:"id"`
 	Created  time.Time                `json:"created"`
 	Activity time.Time                `json:"activity"`
@@ -359,7 +361,7 @@ func destinationInventory(ctx context.Context, home string) (string, []store.Rec
 		return "", nil, "", fmt.Errorf("destination has pending or invalid transfers")
 	}
 	facts := map[string]string{"installation": id}
-	for _, part := range []string{"config.json", "profiles", "harnesses", "auth"} {
+	for _, part := range []string{"configs", "harnesses", "auth"} {
 		h, err := stateHash(ctx, filepath.Join(home, part))
 		if err != nil {
 			return "", nil, "", err
@@ -445,7 +447,7 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 		return plan, err
 	}
 	defer removePreview(preview)
-	if _, err = fsutil.Dir(preview, "profiles", 0700); err != nil {
+	if _, err = fsutil.Dir(preview, "configs", 0700); err != nil {
 		return plan, err
 	}
 	if _, err = fsutil.Dir(preview, "harnesses", 0700); err != nil {
@@ -505,11 +507,15 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 		plan.Publications = append(plan.Publications, Publication{Key: key, Item: item, Source: source, Target: target, Before: before, After: after, Directory: directory, Backup: backup, BackupHash: backupHash, OriginalMode: mode})
 		return nil
 	}
-	globalSource := filepath.Join(home, "config.json")
+	globalSource := importedGlobalPath(home)
 	globalItem := j.Inventory.item("global:config")
-	importGlobal := plan.Fresh || c.Global == "import"
-	if plan.Fresh && c.Global == "keep" {
-		plan.block("global", "global:config", "There are no destination globals to keep; choose import.")
+	_, globalErr := os.Lstat(globalSource)
+	if globalErr != nil && !os.IsNotExist(globalErr) {
+		return plan, globalErr
+	}
+	importGlobal := c.Global == "import" || (c.Global == "" && os.IsNotExist(globalErr))
+	if os.IsNotExist(globalErr) && c.Global == "keep" {
+		plan.block("global", "global:config", "There is no imported-global config to keep; choose import.")
 		return plan, nil
 	}
 	if importGlobal {
@@ -523,15 +529,13 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 	if err != nil {
 		return plan, err
 	}
-	g, err := config.ParseGlobal(b)
-	if err != nil {
-		return plan, publicFailure("Cannot parse selected global configuration.", globalSource, err)
+	if _, err := config.ParseLayer(b); err != nil {
+		return plan, publicFailure("Cannot parse the imported-global config.", globalSource, err)
 	}
-	if importGlobal && c.Rename[g.DefaultProfile] != "" {
-		g.DefaultProfile = c.Rename[g.DefaultProfile]
-		b = encode(g)
+	if _, err = fsutil.Dir(preview, filepath.Join("configs", importedGlobalName), 0700); err != nil {
+		return plan, err
 	}
-	if err = fsutil.WriteNew(filepath.Join(preview, "config.json"), b, 0600); err != nil {
+	if err = fsutil.WriteNew(importedGlobalPath(preview), b, 0600); err != nil {
 		return plan, err
 	}
 	if importGlobal {
@@ -539,14 +543,14 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 		if err != nil {
 			return plan, err
 		}
-		if err = addPublication("global:config", input, filepath.Join(home, "config.json"), false); err != nil {
+		if err = addPublication("global:config", input, importedGlobalPath(home), false); err != nil {
 			return plan, err
 		}
-		if !plan.Fresh {
-			plan.change("global:replace", "global:config", "Replace Neo global settings; this affects existing environments as well as imports.")
+		if globalErr == nil {
+			plan.change("global:replace", "global:config", "Replace the imported-global config; this affects any existing sessions explicitly referencing it as well as imports.")
 		}
 	} else {
-		plan.Notices = append(plan.Notices, "Keep existing Neo global defaults and environment settings.")
+		plan.Notices = append(plan.Notices, "Reuse the existing imported-global config for the imported sessions.")
 	}
 	profiles := map[string]string{}
 	for _, i := range j.Inventory.Items {
@@ -562,7 +566,11 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 			continue
 		}
 		source := stagedItemRoot(j, i)
-		target := filepath.Join(home, "profiles", name)
+		target := filepath.Join(home, "configs", name)
+		if name == importedGlobalName {
+			plan.block(i.Key, i.Key, "Rename this imported profile: imported-global is used for the converted global config.")
+			continue
+		}
 		if _, exists := profiles[name]; exists {
 			plan.block(i.Key, i.Key, "Two imports select the same profile name.")
 			continue
@@ -584,18 +592,12 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 		}
 		profiles[name] = source
 	}
-	// Existing defaults may be needed even when they were not source profiles.
-	if g.DefaultProfile != "" {
-		if _, ok := profiles[g.DefaultProfile]; !ok {
-			profiles[g.DefaultProfile] = filepath.Join(home, "profiles", g.DefaultProfile)
-		}
-	}
 	for name, source := range profiles {
 		if !config.Name.MatchString(name) {
 			plan.block("global", "global:config", "Invalid participating default profile.")
 			continue
 		}
-		if err = copyTree(ctx, source, filepath.Join(preview, "profiles", name)); err != nil {
+		if err = copyTree(ctx, source, filepath.Join(preview, "configs", name)); err != nil {
 			plan.block("profile:"+name, "profile:"+name, "Cannot read participating profile; resolve its conflict or missing configuration.")
 		}
 	}
@@ -672,15 +674,7 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 				profile = c.Rename[profile]
 			}
 		}
-		var identity environment.Identity
-		var e error
-		if i.Profile == "" {
-			// A source project session records its base profile (including none).
-			// Destination defaults must not silently select a different combination.
-			identity, e = environment.Identify(i.Workspace, profile, true)
-		} else {
-			identity, e = environment.Select(preview, i.Workspace, profile, false, m.host())
-		}
+		identity, e := environment.Identify(i.Workspace, importLocalName(i, profile))
 		if e != nil {
 			plan.block(i.Key, i.Key, "Workspace is unavailable or noncanonical.")
 			continue
@@ -719,7 +713,7 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 			plan.block(i.Key, i.Key, "Source creation settings are unavailable.")
 			continue
 		}
-		var proposed *config.Layer
+		var proposed *artifact.SourcePreview
 		project := j.Inventory.item("project:" + i.Workspace)
 		if project != nil && plan.Excluded[project.Key] == "" {
 			data, e := readRegular(ctx, filepath.Join(stagedItemRoot(j, *project), "config.json"))
@@ -730,9 +724,9 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 			if e != nil {
 				return plan, e
 			}
-			proposed = &l
+			proposed = &artifact.SourcePreview{Path: project.Path, Layer: l}
 		}
-		q := environment.Request{Home: preview, Workspace: i.Workspace, Profile: profile, Salt: id, UID: m.UID, GID: m.GID, Host: m.host(), Sources: environment.SelectionSources(preview, identity), Recorded: &identity}
+		q := environment.Request{Home: preview, Workspace: i.Workspace, LocalName: identity.LocalName, Salt: id, UID: m.UID, GID: m.GID, Host: m.host(), Sources: importReferences(preview, i, profile), Recorded: &identity}
 		spec, e := environment.Preview(q, proposed)
 		if e != nil {
 			plan.block("config:"+i.Key, i.Key, "Final configuration cannot be resolved; review participating profiles/projects and required host environment variables.")
@@ -792,9 +786,7 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 		if meta.ProxyEnabled {
 			plan.change("proxy:"+i.Key, i.Key, "Proxy protection will not carry over; Neo does not restrict container egress.")
 		}
-		if identity.Project && identity.Profile != "" {
-			plan.change("profile-rules:"+i.Key, i.Key, "The imported session has a separate identity for its profile and project combination.")
-		}
+		plan.change("session-name:"+i.Key, i.Key, "Create the folder-local session "+identity.LocalName+" with an explicit config chain; leave the folder default unchanged.")
 		plan.change("create:"+i.Key, i.Key, "Build a fresh environment and run its setup code; shared workspace and external side effects cannot be rolled back.")
 		needConfig := false
 		for _, f := range j.Inventory.Files {
@@ -831,7 +823,7 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 		}
 		created, _ := time.Parse(time.RFC3339Nano, i.Created)
 		activity, _ := time.Parse(time.RFC3339Nano, i.Activity)
-		plan.Sessions = append(plan.Sessions, ImportSession{Item: i.Key, Identity: identity, ID: i.SessionID, Created: created, Activity: activity, Action: i.Action, Desired: spec.Fingerprints})
+		plan.Sessions = append(plan.Sessions, ImportSession{Item: i.Key, Identity: identity, Sources: importReferences(home, i, profile), ID: i.SessionID, Created: created, Activity: activity, Action: i.Action, Desired: spec.Fingerprints})
 	}
 	for old, name := range c.Rename {
 		if j.Inventory.item("profile:"+old) == nil || !config.Name.MatchString(name) {
@@ -1316,7 +1308,7 @@ func lockDestination(ctx context.Context, st *store.Store, p MergePlan) (func(),
 			_ = fsutil.Unlock(files[n])
 		}
 	}
-	roots := map[string]bool{st.Home: true}
+	roots := map[string]bool{}
 	for _, pub := range p.Publications {
 		root := filepath.Dir(pub.Target)
 		if pub.Directory {
@@ -1324,13 +1316,13 @@ func lockDestination(ctx context.Context, st *store.Store, p MergePlan) (func(),
 		}
 		roots[root] = true
 	}
-	// Protect reused profile inputs as well as owners being published.
-	entries, err := readEntries(filepath.Join(st.Home, "profiles"))
+	// Protect reused config directories as well as owners being published.
+	entries, err := readEntries(filepath.Join(st.Home, "configs"))
 	if err != nil {
 		return release, nil, err
 	}
 	for _, entry := range entries {
-		roots[filepath.Join(st.Home, "profiles", entry.Name())] = true
+		roots[filepath.Join(st.Home, "configs", entry.Name())] = true
 	}
 	dir, err := fsutil.Dir(st.Home, "state/locks/config", 0700)
 	if err != nil {
@@ -1403,7 +1395,7 @@ func (m Merger) destinationIdle(ctx context.Context, st *store.Store, j *Journal
 			allowed := false
 			for _, job := range j.Merge.Plan.Sessions {
 				if a := j.Merge.Attempts[job.Item]; a != nil && a.Phase != "done" && strings.TrimPrefix(containers[0].Name, "/") == job.Identity.Name {
-					owner := docker.Owner{Installation: st.Installation, Session: job.ID, Workspace: job.Identity.Workspace, Slot: job.Identity.Slot, Profile: job.Identity.Profile, Project: job.Identity.Project}
+					owner := docker.Owner{Installation: st.Installation, Session: job.ID, Workspace: job.Identity.Workspace, LocalName: job.Identity.LocalName}
 					if err := containers[0].Verify(owner); err != nil {
 						return err
 					}
@@ -1580,7 +1572,7 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 		if !exists {
 			return fmt.Errorf("committed container is missing; recover it through Neo before completing the import")
 		}
-		owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot, Profile: r.Identity.Profile, Project: r.Identity.Project}
+		owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, LocalName: r.Identity.LocalName}
 		if err = c.Verify(owner); err != nil {
 			return err
 		}
@@ -1622,7 +1614,7 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 			return err
 		}
 	}
-	spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, Profile: job.Identity.Profile, Sources: environment.SelectionSources(e.Store.Home, job.Identity), Host: m.host()})
+	spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, LocalName: job.Identity.LocalName, Sources: job.Sources, Recorded: &job.Identity, Host: m.host()})
 	if err != nil {
 		return publicFailure("Final configuration no longer resolves.", job.Identity.Name, err)
 	}
@@ -1639,7 +1631,7 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 			return err
 		}
 		if exists {
-			owner := docker.Owner{Installation: e.Store.Installation, Session: job.ID, Workspace: job.Identity.Workspace, Slot: job.Identity.Slot, Profile: job.Identity.Profile, Project: job.Identity.Project}
+			owner := docker.Owner{Installation: e.Store.Installation, Session: job.ID, Workspace: job.Identity.Workspace, LocalName: job.Identity.LocalName}
 			if err = c.Verify(owner); err != nil {
 				return err
 			}
@@ -1718,7 +1710,7 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 	if err = m.fault("record-committed:" + job.Item); err != nil {
 		return err
 	}
-	owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, Slot: r.Identity.Slot, Profile: r.Identity.Profile, Project: r.Identity.Project}
+	owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, LocalName: r.Identity.LocalName}
 	if err = m.Docker.Stop(ctx, c, owner); err != nil {
 		return err
 	}

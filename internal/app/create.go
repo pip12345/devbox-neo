@@ -20,11 +20,12 @@ import (
 // Create prepares a new environment without attaching a harness. Preparation
 // requires a running container, but successful standalone creation leaves it stopped.
 func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
-	spec, err := e.Resolve(q)
+	identity, err := environment.Identify(q.Workspace, q.LocalName)
 	if err != nil {
 		return Result{}, err
 	}
-	result := Result{Name: spec.Identity.Name}
+	q.Workspace = identity.Workspace
+	result := Result{Name: identity.Name}
 	lock, err := e.Store.Lock(ctx, result.Name)
 	if err != nil {
 		return result, err
@@ -35,6 +36,10 @@ func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
 			commanderror.Next("Open", "open", result.Name),
 			commanderror.Next("Or recreate with current configuration", "recreate", result.Name))
 	} else if !errors.Is(err, os.ErrNotExist) {
+		return result, err
+	}
+	spec, err := e.Resolve(q)
+	if err != nil {
 		return result, err
 	}
 	if err = e.requireNew(ctx, lock); err != nil {
@@ -277,26 +282,22 @@ func (e *Engine) runHooks(ctx context.Context, c docker.Container, r store.Recor
 }
 
 func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, error) {
-	// Resolve from the locked record so recreation cannot switch to today's
-	// default profile or a source selection read before another mutation.
-	target := ""
+	// Resolve from the locked record, never a source list captured by the CLI
+	// before another mutation or a default changed after this invocation chose it.
+	target := q.Workspace
 	if q.Recorded != nil {
 		target = q.Recorded.Name
-	} else {
-		lookup := *e
-		lookup.IgnoreProject = lookup.IgnoreProject || q.IgnoreProject
-		r, err := lookup.Locate(ctx, q.Workspace, q.Profile)
-		if err != nil {
-			return Result{}, err
-		}
-		target = r.Identity.Name
 	}
-	l, err := e.Store.Lock(ctx, target)
+	selected, err := e.Locate(ctx, target, q.LocalName)
+	if err != nil {
+		return Result{}, err
+	}
+	l, err := e.Store.Lock(ctx, selected.Identity.Name)
 	if err != nil {
 		return Result{}, err
 	}
 	defer l.Close()
-	old, err := l.Load()
+	old, err := loadSelected(l, selected)
 	if err != nil {
 		return Result{}, err
 	}
@@ -306,13 +307,7 @@ func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, e
 	if err = l.RequireIdle(); err != nil {
 		return Result{}, err
 	}
-	if q.Recorded != nil && q.Profile != "" && q.Profile != old.Identity.Profile {
-		return Result{}, fmt.Errorf("profile does not match the recorded session")
-	}
-	if (e.IgnoreProject || q.IgnoreProject) && old.Identity.Project {
-		return Result{}, fmt.Errorf("project exclusion does not match the recorded session")
-	}
-	q.Workspace, q.Profile, q.Recorded, q.Sources = old.Identity.Workspace, old.Identity.Profile, &old.Identity, old.Sources
+	q.Workspace, q.LocalName, q.Recorded, q.Sources = old.Identity.Workspace, old.Identity.LocalName, &old.Identity, old.Sources
 	s, err := e.Resolve(q)
 	if err != nil {
 		return Result{}, err

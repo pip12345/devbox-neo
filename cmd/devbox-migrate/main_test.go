@@ -245,16 +245,16 @@ func TestExplicitMergeDoesNotApplyWithoutConfirmation(t *testing.T) {
 		err := cmd.Execute()
 		return out.String(), err
 	}
-	out, err := run("--merge")
+	out, err := run("--merge", "--accept-change", "conversion:global:config")
 	if err == nil || !strings.Contains(err.Error(), "--confirm-merge") {
 		t.Fatal(out, err)
 	}
-	notExist(t, filepath.Join(destination, "profiles/work"))
-	out, err = run("--merge", "--confirm-merge")
+	notExist(t, filepath.Join(destination, "configs/work"))
+	out, err = run("--merge", "--accept-change", "conversion:global:config", "--confirm-merge")
 	if err != nil {
 		t.Fatal(out, err)
 	}
-	if _, err = os.Stat(filepath.Join(destination, "profiles/work/config.json")); err != nil {
+	if _, err = os.Stat(filepath.Join(destination, "configs/work/config.json")); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out, "private-value") {

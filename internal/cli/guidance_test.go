@@ -54,30 +54,25 @@ func TestResourceSuggestionsOnlyCarryExplicitHome(t *testing.T) {
 					t.Fatal("explicit resolved home was not quoted", text)
 				}
 			}
-			out, err := run("profile", "list")
+			out, err := run("config", "create", "basic")
 			if err != nil {
 				t.Fatal(err)
 			}
 			check(out)
-			out, err = run("profile", "create", "basic")
-			if err != nil {
-				t.Fatal(err)
-			}
-			check(out)
-			if !explicit && !strings.Contains(out, "  devbox-neo profile init basic\n") {
+			if !explicit && !strings.Contains(out, "  devbox-neo create ") {
 				t.Fatal("default suggestion is not minimal", out)
 			}
-			out, err = run("profile", "init", "basic")
+			out, err = run("config", "create", "basic")
 			if err == nil {
-				t.Fatal("expected harness selection guidance")
+				t.Fatal("expected existing-config edit guidance")
 			}
 			check(out)
-			out, err = run("profile", "set", "missing")
+			out, err = run("config", "edit", "missing", "--artifact", "Dockerfile")
 			if err == nil {
 				t.Fatal("expected missing-profile guidance")
 			}
 			check(out)
-			out, err = run("profile", "create", "json", "--json")
+			out, err = run("config", "create", "json", "--json")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -89,15 +84,10 @@ func TestResourceSuggestionsOnlyCarryExplicitHome(t *testing.T) {
 			if explicit {
 				want = append(want, "--home", home)
 			}
-			want = append(want, "profile", "init", "json")
+			want = append(want, "create", "<folder>", "--config", filepath.Join(home, "configs/json"))
 			if len(result.Next) != 1 || !reflect.DeepEqual(result.Next[0].Command, want) {
 				t.Fatalf("wrong JSON next steps: %#v", result.Next)
 			}
-			out, err = run("profile", "delete", "basic", "--force")
-			if err != nil {
-				t.Fatal(err)
-			}
-			check(out)
 		})
 	}
 }

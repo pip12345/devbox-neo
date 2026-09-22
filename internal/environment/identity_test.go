@@ -11,10 +11,10 @@ import (
 )
 
 func TestContainerNameUsesFolderAndTwelveHexCharacterHash(t *testing.T) {
-	for _, slot := range []string{"project", "profile-pi-basic", "profile-pi-basic.project"} {
+	for _, slot := range []string{"Main", "main", "pi-basic", "a_b"} {
 		workspace := "/workspace/example"
 		sum := sha256.Sum256([]byte(workspace + "\x00" + slot))
-		want := "devbox-example-" + hex.EncodeToString(sum[:6]) + "." + strings.ReplaceAll(slot, ":", "-")
+		want := "devbox-example-" + hex.EncodeToString(sum[:6]) + "." + slot
 		if got := ContainerName(workspace, slot); got != want {
 			t.Fatalf("name = %q, want %q", got, want)
 		}
@@ -67,11 +67,11 @@ func TestContainerNameUsesCanonicalFolderThroughSymlinks(t *testing.T) {
 	if err := os.Symlink(workspace, alias); err != nil {
 		t.Fatal(err)
 	}
-	actual, err := Identify(workspace, "pi-basic", false)
+	actual, err := Identify(workspace, "pi-basic")
 	if err != nil {
 		t.Fatal(err)
 	}
-	linked, err := Identify(alias, "pi-basic", false)
+	linked, err := Identify(alias, "pi-basic")
 	if err != nil || actual != linked || !strings.HasPrefix(actual.Name, "devbox-real-folder-") {
 		t.Fatal("symlink alias changed canonical identity", actual, linked, err)
 	}

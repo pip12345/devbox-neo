@@ -10,7 +10,7 @@ import (
 )
 
 func TestUnknownCommandsUseStructuredSuggestionsWithoutInitializingHome(t *testing.T) {
-	for _, args := range [][]string{{"/tmp"}, {"awerhkjawer"}, {"profile", "creat"}, {"network", "inspec"}, {"bad\nError: forged\x1b[31m"}} {
+	for _, args := range [][]string{{"/tmp"}, {"awerhkjawer"}, {"config", "creat"}, {"network", "inspec"}, {"bad\nError: forged\x1b[31m"}} {
 		home := filepath.Join(t.TempDir(), "absent")
 		root := New()
 		var out, stderr bytes.Buffer
@@ -33,7 +33,7 @@ func TestUnknownCommandsUseStructuredSuggestionsWithoutInitializingHome(t *testi
 		if args[0] == "/tmp" && !strings.Contains(text, "Did you mean:\n  devbox-neo --home "+home+" stop\n") {
 			t.Fatal("missing structured suggestion", text)
 		}
-		if args[0] == "profile" && !strings.Contains(text, " profile create\n") {
+		if args[0] == "config" && !strings.Contains(text, " config create\n") {
 			t.Fatal(text)
 		}
 		if args[0] == "network" && !strings.Contains(text, " network inspect\n") {
@@ -43,7 +43,7 @@ func TestUnknownCommandsUseStructuredSuggestionsWithoutInitializingHome(t *testi
 }
 
 func TestGroupCommandsStillShowHelpWithoutArguments(t *testing.T) {
-	for _, args := range [][]string{{}, {"profile"}, {"network"}} {
+	for _, args := range [][]string{{}, {"config"}, {"network"}} {
 		root := New()
 		var output bytes.Buffer
 		root.SetOut(&output)

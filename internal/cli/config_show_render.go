@@ -21,11 +21,6 @@ func printConfigView(out io.Writer, view resource.ConfigView) error {
 			return err
 		}
 	}
-	for _, excluded := range view.Trace.Excluded {
-		if err := writeConfigLine(out, "  excluded: ", displayCell(excluded), "    ", width); err != nil {
-			return err
-		}
-	}
 	rows := []configDisplayRow{}
 	var add func(string, any)
 	add = func(key string, value any) {
@@ -46,8 +41,8 @@ func printConfigView(out io.Writer, view resource.ConfigView) error {
 		}
 		rows = append(rows, configDisplayRow{
 			label: displayCell(key), value: value,
-			origin:       configSourceForScope(view.Scope, configSourceLabel(view.Trace.Sources[key])),
-			entryOrigins: configEntryOrigins(view.Scope, view.Trace.EntrySources[key]),
+			origin:       configSourceLabel(view.Trace.Sources[key]),
+			entryOrigins: configEntryOrigins(view.Trace.EntrySources[key]),
 			command:      key == "shell",
 		})
 	}

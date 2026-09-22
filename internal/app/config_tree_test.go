@@ -20,7 +20,7 @@ func TestOpenWarnsAndSkipsConfigSymlinks(t *testing.T) {
 			root := filepath.Join(e.Store.Home, "profiles/test/pi")
 			switch source {
 			case "project":
-				q.Profile = ""
+				q.Sources = q.Sources[1:]
 				root = filepath.Join(q.Workspace, ".devbox/pi")
 				write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi"}`)
 			case "defaults":

@@ -14,9 +14,9 @@ import (
 
 func TestScalarEditPersistsBeforeTheNextPrompt(t *testing.T) {
 	s := menuService(t)
-	owner, _ := s.Profile("basic")
-	s.Create(context.Background(), owner, "")
-	n := fieldNumber(t, "profile", "network")
+	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
+	n := fieldNumber(t, "network")
 	out, err := runMenu(t, s, owner, n+"\n1\nhost\n")
 	if err != nil {
 		t.Fatal(out, err)
@@ -50,13 +50,13 @@ func (r *menuReadHook) Read(p []byte) (int, error) {
 
 func TestImmediateListConflictReloadsWithoutOverwritingOrRetrying(t *testing.T) {
 	s := menuService(t)
-	owner, _ := s.Profile("basic")
-	s.Create(context.Background(), owner, "")
+	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
 	if err := s.SetConfigField(context.Background(), owner, "harness", nil, json.RawMessage(`"pi"`), false); err != nil {
 		t.Fatal(err)
 	}
 	key := "harness_args"
-	n := fieldNumber(t, "profile", key)
+	n := fieldNumber(t, key)
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
 	var out bytes.Buffer
@@ -94,13 +94,13 @@ func TestImmediateListValidationPreservesTheLastSavedValue(t *testing.T) {
 	} {
 		t.Run(tt.key, func(t *testing.T) {
 			s := menuService(t)
-			owner, _ := s.Profile("basic")
-			s.Create(context.Background(), owner, "")
+			owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+			s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
 			if err := s.SetConfigField(context.Background(), owner, tt.key, nil, json.RawMessage(tt.initial), false); err != nil {
 				t.Fatal(err)
 			}
 			before, _ := s.ConfigSource(owner)
-			out, err := runMenu(t, s, owner, fieldNumber(t, "profile", tt.key)+"\n"+tt.input)
+			out, err := runMenu(t, s, owner, fieldNumber(t, tt.key)+"\n"+tt.input)
 			if err != nil || !strings.Contains(out, "Not saved:") {
 				t.Fatal(out, err)
 			}
@@ -114,9 +114,9 @@ func TestImmediateListValidationPreservesTheLastSavedValue(t *testing.T) {
 
 func TestExtensionListOperationsUseTheSameImmediateModel(t *testing.T) {
 	s := menuService(t)
-	owner, _ := s.Profile("basic")
-	s.Create(context.Background(), owner, "")
-	n := fieldNumber(t, "profile", "vscode")
+	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
+	n := fieldNumber(t, "vscode")
 	out, err := runMenu(t, s, owner, n+"\n1\nexample.one\n2\n1\nexample.two\n0\n0\n")
 	if err != nil {
 		t.Fatal(out, err)

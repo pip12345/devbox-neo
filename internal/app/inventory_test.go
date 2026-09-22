@@ -27,16 +27,16 @@ func TestMissingContainersStillHaveConfigurationStatus(t *testing.T) {
 				t.Fatal(err)
 			}
 			d.Forget(created.Name)
-			write(t, filepath.Join(e.Store.Home, "profiles", q.Profile, "config.json"), tc.config)
+			write(t, filepath.Join(e.Store.Home, "profiles", q.LocalName, "config.json"), tc.config)
 			view, err := e.Status(ctx, created.Name, "")
 			if err != nil || view.Exists || view.Running || (view.ConfigError != "") != tc.invalid || view.Desired != tc.change {
 				t.Fatal(view, err)
 			}
-			report, err := e.StatusAll(ctx, q.Profile)
+			report, err := e.StatusAll(ctx, q.Workspace)
 			if err != nil || len(report.Sessions) != 1 || report.Sessions[0].Desired != view.Desired || report.Sessions[0].ConfigError != view.ConfigError {
 				t.Fatal(report, err)
 			}
-			list, err := e.List(ctx, q.Profile)
+			list, err := e.List(ctx, q.Workspace)
 			if err != nil || len(list.Sessions) != 1 || list.Sessions[0].ConfigError != "" || list.Sessions[0].Desired != "" {
 				t.Fatal("listing resolved configuration", list, err)
 			}

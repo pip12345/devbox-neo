@@ -46,12 +46,12 @@ func (e *Engine) deletionTargets(ctx context.Context, options DeleteOptions, cut
 	selection := options.Selection
 	filtered := selection.All || selection.Stopped || options.Orphaned || !cutoff.IsZero()
 	if !filtered {
-		return e.selectContainers(ctx, selection)
+		return e.selectContainers(ctx, &selection)
 	}
-	if len(selection.Targets) > 0 {
-		return nil, fmt.Errorf("use exact targets or selection filters, not both")
+	if len(selection.Targets) > 0 || selection.LocalName != "" {
+		return nil, fmt.Errorf("use exact targets with optional --name, or selection filters, not both")
 	}
-	report, err := e.List(ctx, selection.Profile)
+	report, err := e.List(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +118,7 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (DeleteResul
 	if options.OlderThan > 0 {
 		cutoff = time.Now().Add(-options.OlderThan)
 	}
+	options.Selection.selectedIDs = map[string]string{}
 	names, err := e.deletionTargets(ctx, options, cutoff)
 	if err != nil {
 		return result, err
@@ -143,8 +144,8 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (DeleteResul
 		if err != nil {
 			return result, err
 		}
-		if profile := options.Selection.Profile; profile != "" && r.Identity.Profile != profile {
-			return result, fmt.Errorf("profile does not match the selected session")
+		if name := options.Selection.LocalName; name != "" && r.Identity.LocalName != name {
+			return result, fmt.Errorf("local name does not match the selected session")
 		}
 		sessionLocks = append(sessionLocks, lock)
 		result.Retained = append(result.Retained, lock.Name)

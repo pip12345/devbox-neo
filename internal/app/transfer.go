@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"devbox/internal/artifact"
 	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/docker"
@@ -24,26 +23,27 @@ type TransferOptions struct {
 	Mode        string
 	Source      string
 	Destination string
-	Profile     string
-	From        string
-	To          string
+	LocalName   string
+	As          string
 	DryRun      bool
 }
 type TransferResult struct {
-	Source      string `json:"source"`
-	Destination string `json:"destination"`
-	Mode        string `json:"mode"`
-	SessionID   string `json:"session_id"`
-	DryRun      bool   `json:"dry_run"`
+	Source          string             `json:"source"`
+	Destination     string             `json:"destination"`
+	Mode            string             `json:"mode"`
+	SessionID       string             `json:"session_id"`
+	DryRun          bool               `json:"dry_run"`
+	Workspace       string             `json:"workspace"`
+	LocalName       string             `json:"local_name"`
+	Sources         []config.Reference `json:"sources"`
+	ResolvedSources []config.Source    `json:"resolved_sources"`
 }
 
-func transferSlot(workspace, slot string) (environment.Identity, error) {
-	return environment.IdentifySlot(workspace, slot)
-}
 func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string, error) {
-	if q.From != "" {
-		id, err := transferSlot(q.Source, q.From)
-		return id.Name, err
+	if q.LocalName != "" {
+		if err := environment.ValidateLocalName(q.LocalName); err != nil {
+			return "", err
+		}
 	}
 	if strings.HasPrefix(q.Source, environment.ContainerPrefix) && !strings.ContainsAny(q.Source, "/\\") {
 		return q.Source, nil
@@ -63,7 +63,7 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string,
 	}
 	name := ""
 	for _, j := range journals {
-		if j.Source.Workspace == workspace && (q.Profile == "" || j.Source.Profile == q.Profile) && !(e.IgnoreProject && j.Source.Project) {
+		if j.Source.Workspace == workspace && (q.LocalName == "" || j.Source.LocalName == q.LocalName) {
 			if name != "" {
 				return "", fmt.Errorf("multiple pending transfers.\nUse the exact source name.")
 			}
@@ -73,7 +73,7 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (string,
 	if name != "" {
 		return name, nil
 	}
-	r, err := e.Locate(ctx, q.Source, q.Profile)
+	r, err := e.Locate(ctx, q.Source, q.LocalName)
 	return r.Identity.Name, err
 }
 func (e *Engine) transferDestination(q TransferOptions, source environment.Identity) (environment.Identity, error) {
@@ -81,26 +81,11 @@ func (e *Engine) transferDestination(q TransferOptions, source environment.Ident
 	if workspace == "" {
 		workspace = source.Workspace
 	}
-	profile, project := source.Profile, source.Project
-	if q.To != "" {
-		selected, err := environment.IdentifySlot(workspace, q.To)
-		if err != nil {
-			return selected, err
-		}
-		profile, project = selected.Profile, selected.Project
+	name := source.LocalName
+	if q.As != "" {
+		name = q.As
 	}
-	id, err := environment.Identify(workspace, profile, project)
-	if err != nil {
-		return id, err
-	}
-	selected, err := artifact.Select(e.Store.Home, id.Workspace, artifact.Selection{Profile: profile, Sources: environment.SelectionSources(e.Store.Home, id)}, nil, config.Snapshot())
-	if err != nil {
-		return id, err
-	}
-	id.Profile, id.Project = selected.Profile, selected.Project
-	id.Slot = environment.Slot(id.Profile, id.Project)
-	id.Name = environment.ContainerName(id.Workspace, id.Slot)
-	return id, nil
+	return environment.Identify(workspace, name)
 }
 func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode string) ([]harness.Definition, error) {
 	root, err := l.Path("harnesses")
@@ -163,11 +148,13 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if q.Mode != "clone" && q.Mode != "relocate" {
 		return result, fmt.Errorf("select clone or relocate")
 	}
-	if q.Destination == "" && q.To == "" {
-		return result, fmt.Errorf("provide a destination folder or --to slot")
+	if q.Destination == "" && q.As == "" {
+		return result, fmt.Errorf("provide a destination folder or --as NAME")
 	}
-	if q.From != "" && q.Profile != "" {
-		return result, fmt.Errorf("select the source with --from or --profile, not both")
+	if q.As != "" {
+		if err := environment.ValidateLocalName(q.As); err != nil {
+			return result, err
+		}
 	}
 	sourceName, err := e.transferSource(ctx, q)
 	if err != nil {
@@ -178,16 +165,17 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		return result, err
 	}
 	var sourceIdentity environment.Identity
+	var sourceID string
 	if journal != nil {
-		sourceIdentity = journal.Source
+		sourceIdentity, sourceID = journal.Source, journal.SourceID
 	} else {
 		source, err := e.readSession(ctx, sourceName)
 		if err != nil {
 			return result, err
 		}
-		sourceIdentity = source.Identity
+		sourceIdentity, sourceID = source.Identity, source.ID
 	}
-	if (q.Profile != "" && sourceIdentity.Profile != q.Profile) || (e.IgnoreProject && sourceIdentity.Project) {
+	if q.LocalName != "" && sourceIdentity.LocalName != q.LocalName {
 		return result, fmt.Errorf("selection does not match the source session")
 	}
 	var destinationIdentity environment.Identity
@@ -197,11 +185,15 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		if q.Destination != "" {
 			workspace = q.Destination
 		}
-		probe, pathErr := environment.Identify(workspace, "", true)
+		canonical, pathErr := config.CanonicalPath(workspace)
 		if pathErr != nil {
 			return result, pathErr
 		}
-		if probe.Workspace != destinationIdentity.Workspace || (q.To != "" && q.To != journal.RequestedTo && q.To != destinationIdentity.Selector()) {
+		name := sourceIdentity.LocalName
+		if q.As != "" {
+			name = q.As
+		}
+		if canonical != destinationIdentity.Workspace || name != destinationIdentity.LocalName {
 			return result, fmt.Errorf("pending transfer has a different destination or selection")
 		}
 	} else {
@@ -210,11 +202,8 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, err
 		}
 	}
-	if q.Mode == "relocate" && sourceIdentity.Workspace != destinationIdentity.Workspace && (sourceIdentity.Profile != destinationIdentity.Profile || sourceIdentity.Project != destinationIdentity.Project) {
-		return result, fmt.Errorf("cross-folder relocation must retain the source combination; change slots in the same folder first")
-	}
 	if sourceName == destinationIdentity.Name {
-		return result, fmt.Errorf("source and destination are the same session")
+		return result, fmt.Errorf("source and destination are the same session; choose --as NAME or another destination folder")
 	}
 	names := []string{sourceName, destinationIdentity.Name}
 	sort.Strings(names)
@@ -242,6 +231,14 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	}
 	if journal != nil && journal.Phase == "committed" {
 		result = transferResult(*journal, q.DryRun)
+		committed, readErr := destLock.ReadRecord(ctx)
+		if readErr != nil {
+			return result, readErr
+		}
+		if committed.ID != journal.DestinationID || committed.Identity != journal.Destination {
+			return result, fmt.Errorf("committed destination identity differs from journal")
+		}
+		result.Sources, result.ResolvedSources = committed.Sources, committed.Inputs.Sources
 		if q.DryRun {
 			return result, nil
 		}
@@ -255,7 +252,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if err != nil {
 		return result, err
 	}
-	if source.Identity != sourceIdentity {
+	if source.Identity != sourceIdentity || source.ID != sourceID {
 		return result, fmt.Errorf("source identity changed during transfer selection")
 	}
 	c, exists, err := e.inspect(ctx, source)
@@ -303,16 +300,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, readErr
 		}
 	}
-	if destinationIdentity.Project {
-		p, pathErr := fsutil.Path(destinationIdentity.Workspace, ".devbox/config.json")
-		if pathErr != nil {
-			return result, pathErr
-		}
-		if _, pathErr = os.Stat(p); pathErr != nil {
-			return result, fmt.Errorf("project destination must be initialized: %w", pathErr)
-		}
-	}
-	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, Profile: destinationIdentity.Profile, Sources: environment.SelectionSources(e.Store.Home, destinationIdentity)})
+	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, LocalName: destinationIdentity.LocalName, Sources: source.Sources})
 	if err != nil {
 		return result, err
 	}
@@ -337,9 +325,10 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 				return result, idErr
 			}
 		}
-		journal = &store.Transfer{Version: 1, ID: nonce, Mode: q.Mode, Phase: "prepare", Source: source.Identity, Destination: destinationIdentity, RequestedTo: q.To, SourceID: source.ID, DestinationID: id, Running: q.Mode == "relocate" && (source.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.ManualStart, Started: time.Now().UTC(), Desired: spec.Fingerprints}
+		journal = &store.Transfer{Version: 2, ID: nonce, Mode: q.Mode, Phase: "prepare", Source: source.Identity, Destination: destinationIdentity, SourceID: source.ID, DestinationID: id, Running: q.Mode == "relocate" && (source.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.ManualStart, Started: time.Now().UTC(), Desired: spec.Fingerprints}
 	}
 	result = transferResult(*journal, q.DryRun)
+	result.Sources, result.ResolvedSources = spec.Sources, spec.ResolvedSources
 	if q.DryRun {
 		return result, nil
 	}
@@ -393,7 +382,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	return result, e.finishTransfer(ctx, sourceLock, destLock, *journal)
 }
 func transferResult(j store.Transfer, dryRun bool) TransferResult {
-	return TransferResult{j.Source.Name, j.Destination.Name, j.Mode, j.DestinationID, dryRun}
+	return TransferResult{Source: j.Source.Name, Destination: j.Destination.Name, Mode: j.Mode, SessionID: j.DestinationID, DryRun: dryRun, Workspace: j.Destination.Workspace, LocalName: j.Destination.LocalName}
 }
 func (e *Engine) verifyReservation(destination *store.Locked, j store.Transfer) error {
 	pending, err := e.Store.Pending(destination.Name)
@@ -428,7 +417,7 @@ func (e *Engine) clearTransferAttempt(ctx context.Context, destination *store.Lo
 		return readErr
 	}
 	if exists {
-		owner := docker.Owner{Installation: e.Store.Installation, Session: j.DestinationID, Workspace: j.Destination.Workspace, Slot: j.Destination.Slot, Profile: j.Destination.Profile, Project: j.Destination.Project}
+		owner := docker.Owner{Installation: e.Store.Installation, Session: j.DestinationID, Workspace: j.Destination.Workspace, LocalName: j.Destination.LocalName}
 		if err = c.Verify(owner); err != nil {
 			return err
 		}
@@ -528,7 +517,7 @@ func (e *Engine) finishTransfer(ctx context.Context, source, destination *store.
 				return fmt.Errorf("source container exists without its transfer record; refusing state cleanup")
 			}
 		}
-		if err = source.Delete(); err != nil {
+		if err = removeSavedSession(ctx, source, j.Source.Workspace, j.SourceID); err != nil {
 			return err
 		}
 	}

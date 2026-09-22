@@ -18,8 +18,8 @@ func TestEmptyListShowsOnlyAddAndBack(t *testing.T) {
 	var out bytes.Buffer
 	m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("0\n")), out: &out}
 	s := menuService(t)
-	owner, _ := s.Profile("basic")
-	s.Create(context.Background(), owner, "")
+	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
 	if err := editList(m, s, owner, field); err != nil {
 		t.Fatal(err)
 	}
@@ -32,8 +32,8 @@ func TestEmptyListShowsOnlyAddAndBack(t *testing.T) {
 func TestListOperationsSaveWithoutApprovalSteps(t *testing.T) {
 	field := resource.ConfigField{Key: "mounts", Kind: "list"}
 	s := menuService(t)
-	owner, _ := s.Profile("basic")
-	s.Create(context.Background(), owner, "")
+	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
 	var out bytes.Buffer
 	m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("1\n/data:/data:ro\n0\n")), out: &out}
 	if err := editList(m, s, owner, field); err != nil {
@@ -44,7 +44,7 @@ func TestListOperationsSaveWithoutApprovalSteps(t *testing.T) {
 	if err != nil || len(entries) != 1 || entries[0] != "/data:/data:ro" {
 		t.Fatal("back lost the completed add", entries, err)
 	}
-	for _, text := range []string{"Edit mount", "Remove mount", "Saved Mounts", "Reset to inherited"} {
+	for _, text := range []string{"Edit mount", "Remove mount", "Saved Mounts", "Remove this setting"} {
 		if !strings.Contains(out.String(), text) {
 			t.Fatalf("missing %q after adding a mount:\n%s", text, out.String())
 		}
@@ -58,9 +58,9 @@ func TestListOperationsSaveWithoutApprovalSteps(t *testing.T) {
 
 func TestMountEditorSavesOperationsAndCancelsOnlyIncompleteInput(t *testing.T) {
 	s := menuService(t)
-	owner, _ := s.Profile("basic")
-	s.Create(context.Background(), owner, "")
-	n := fieldNumber(t, "profile", "mounts")
+	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
+	n := fieldNumber(t, "mounts")
 	out, err := runMenu(t, s, owner, n+"\n1\n/data:/data:ro\n0\n0\n")
 	if err != nil {
 		t.Fatal(out, err)
@@ -128,21 +128,21 @@ func TestSettingsOverviewUsesReadableValues(t *testing.T) {
 		}
 	}
 	s := menuService(t)
-	owner, _ := s.Profile("basic")
-	s.Create(context.Background(), owner, "")
-	s.Init(context.Background(), owner, resource.InitOptions{Harness: "pi"})
+	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
+	s.EditConfig(context.Background(), owner, resource.SetupOptions{Harness: harnessSetting("pi")})
 	out, err := runMenu(t, s, owner, "0\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"Harness pi profile", "Shell command bash default", "Mounts None default", "VS Code extensions None default"} {
+	for _, text := range []string{"Harness pi basic", "Shell command bash default", "Mounts None default", "VS Code extensions None default"} {
 		if !strings.Contains(strings.Join(strings.Fields(out), " "), text) {
 			t.Fatalf("missing readable summary %q:\n%s", text, out)
 		}
 	}
 	originColumn := -1
 	for _, line := range strings.Split(out, "\n") {
-		if !strings.HasPrefix(line, "   [") || strings.Contains(line, "[0]") {
+		if !strings.HasPrefix(line, "   [") || strings.Contains(line, "[0]") || strings.Contains(line, "Add optional files") {
 			continue
 		}
 		parts := strings.Fields(line)
@@ -155,7 +155,7 @@ func TestSettingsOverviewUsesReadableValues(t *testing.T) {
 	if originColumn < 0 || !strings.Contains(out, "\n\n   [0]  Done\n\n   Choose a number > ") {
 		t.Fatalf("missing aligned origins or menu spacing:\n%s", out)
 	}
-	if !strings.Contains(out, "Profile · basic") || !strings.Contains(out, "Setting") || !strings.Contains(out, "Value") || !strings.Contains(out, "Source") {
+	if !strings.Contains(out, "Config · basic") || !strings.Contains(out, "Setting") || !strings.Contains(out, "Value") || !strings.Contains(out, "Source") {
 		t.Fatal("missing title or column headings", out)
 	}
 	for _, text := range []string{"local:", "effective:", "null", "[]", "{}", "Changes save immediately", "Creation changes require", "Values include inherited", "Select a setting", s.Home} {

@@ -14,16 +14,6 @@ import (
 	"devbox/internal/commanderror"
 )
 
-type Global struct {
-	Raw            []byte              `json:"-"`
-	References     map[string][]string `json:"-"`
-	EnvInputs      []EnvInput          `json:"-"`
-	Version        int                 `json:"version"`
-	DefaultProfile string              `json:"default_profile"`
-	DefaultHarness string              `json:"default_harness"`
-	GlobalEnv      []string            `json:"global_env"`
-	IgnoreProject  bool                `json:"ignore_project"`
-}
 type VSCode struct {
 	Extensions []string `json:"extensions,omitempty"`
 }
@@ -41,7 +31,6 @@ type Layer struct {
 	Env         []string            `json:"env,omitempty"`
 	Ports       []string            `json:"ports,omitempty"`
 	VSCode      VSCode              `json:"vscode,omitempty"`
-	Inherit     *bool               `json:"inherit,omitempty"`
 	BaseImage   *string             `json:"base_image,omitempty"`
 }
 type Settings struct {
@@ -128,43 +117,6 @@ func value(d *json.Decoder) error {
 	_, err = d.Token()
 	return err
 }
-func ReadGlobal(path string, host Host) (g Global, err error) {
-	defer func() { err = configurationError(path, err) }()
-	g = Global{Version: 1}
-	b, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return g, nil
-	}
-	if err != nil {
-		return g, err
-	}
-	raw, err := ParseGlobal(b)
-	if err != nil {
-		return g, fmt.Errorf("%s: invalid global config: %w", path, err)
-	}
-	expanded, refs, err := Expand(b, path, host)
-	if err != nil {
-		return g, err
-	}
-	g, err = ParseGlobal(expanded)
-	if err != nil {
-		return g, fmt.Errorf("%s: invalid expanded global config: %w", path, err)
-	}
-	g.Raw = b
-	g.References = refs
-	g.EnvInputs, err = envInputs(raw.GlobalEnv, g.GlobalEnv, path, "global_env", host, true)
-	if err != nil {
-		return g, err
-	}
-	g.GlobalEnv = nil
-	for _, input := range g.EnvInputs {
-		g.GlobalEnv = append(g.GlobalEnv, input.Value)
-	}
-	if g.DefaultProfile != "" && !Name.MatchString(g.DefaultProfile) {
-		return g, fmt.Errorf("%s: invalid default_profile", path)
-	}
-	return g, nil
-}
 func ReadLayer(path string, host Host) (Layer, error) {
 	l := Layer{Version: 1}
 	b, err := os.ReadFile(path)
@@ -190,7 +142,7 @@ func ResolveLayer(b []byte, path string, host Host) (l Layer, err error) {
 	}
 	l.Raw = b
 	l.References = refs
-	l.EnvInputs, err = envInputs(raw.Env, l.Env, path, "env", host, false)
+	l.EnvInputs, err = envInputs(raw.Env, l.Env, path)
 	return l, err
 }
 
@@ -212,8 +164,8 @@ func configurationError(path string, err error) error {
 	return commanderror.New(code, message, path, err)
 }
 
-// Source operations validate shape without resolving values. Copying a profile
-// or editing one field must preserve expressions, not flatten host/global inputs.
+// Source operations validate shape without resolving values. Copying a config
+// or editing one field must preserve expressions, not flatten host inputs.
 func ParseLayer(b []byte) (Layer, error) {
 	l := Layer{Version: 1, Raw: b}
 	if err := Decode(b, &l); err != nil {
@@ -229,16 +181,6 @@ func ParseLayer(b []byte) (Layer, error) {
 		return l, fmt.Errorf("harness_args requires a harness in the same configuration layer")
 	}
 	return l, nil
-}
-func ParseGlobal(b []byte) (Global, error) {
-	g := Global{Version: 1, Raw: b}
-	if err := Decode(b, &g); err != nil {
-		return g, err
-	}
-	if g.Version != 1 {
-		return g, fmt.Errorf("unsupported version")
-	}
-	return g, nil
 }
 func (s *Settings) Apply(l Layer) {
 	if l.BaseImage != nil {

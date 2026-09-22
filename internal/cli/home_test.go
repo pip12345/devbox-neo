@@ -21,11 +21,14 @@ func TestDefaultHomeIsNeo(t *testing.T) {
 	cmd.SetArgs([]string{"open", t.TempDir()})
 	err := cmd.Execute()
 	var missing *commanderror.Error
-	if !errors.As(err, &missing) || missing.Code != "configuration_missing" {
+	if !errors.As(err, &missing) || missing.Code != "sessions_missing" {
 		t.Fatalf("expected fresh-home guidance, got %v", err)
 	}
-	if _, err = os.Stat(filepath.Join(home, ".devbox-neo/config.json")); err != nil {
+	if _, err = os.Stat(filepath.Join(home, ".devbox-neo/state/installation-id")); err != nil {
 		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(home, ".devbox-neo/config.json")); !os.IsNotExist(err) {
+		t.Fatal("seeded a removed global config", err)
 	}
 	if _, err = os.Stat(filepath.Join(home, ".devbox")); !os.IsNotExist(err) {
 		t.Fatal("touched old home")

@@ -21,8 +21,9 @@ import (
 type View struct {
 	Name                string                    `json:"name"`
 	Workspace           string                    `json:"workspace,omitempty"`
-	Profile             string                    `json:"profile,omitempty"`
-	Project             bool                      `json:"project"`
+	LocalName           string                    `json:"local_name,omitempty"`
+	Default             bool                      `json:"default"`
+	Sources             []config.Reference        `json:"sources,omitempty"`
 	ManualStart         bool                      `json:"manual_start"`
 	Harness             string                    `json:"harness,omitempty"`
 	SessionID           string                    `json:"session_id,omitempty"`
@@ -40,7 +41,7 @@ type View struct {
 }
 
 func recordView(r store.Record) View {
-	return View{Name: r.Identity.Name, Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Project: r.Identity.Project, ManualStart: r.ManualStart, Harness: r.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action}
+	return View{Name: r.Identity.Name, Workspace: r.Identity.Workspace, LocalName: r.Identity.LocalName, Sources: r.Sources, ManualStart: r.ManualStart, Harness: r.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action, CreatedAt: r.Created}
 }
 func (e *Engine) inventory(ctx context.Context) ([]store.Entry, []docker.Container, error) {
 	entries, err := e.Store.Inventory(ctx)
@@ -100,7 +101,7 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 }
 
 func (e *Engine) desiredStatus(view *View, r store.Record) {
-	desired, err := e.Resolve(Request{Workspace: r.Identity.Workspace, Profile: r.Identity.Profile, Recorded: &r.Identity, Sources: r.Sources})
+	desired, err := e.Resolve(Request{Workspace: r.Identity.Workspace, LocalName: r.Identity.LocalName, Recorded: &r.Identity, Sources: r.Sources})
 	if err != nil {
 		view.ConfigError = err.Error()
 	} else {
@@ -108,8 +109,8 @@ func (e *Engine) desiredStatus(view *View, r store.Record) {
 		view.Desired, view.PendingInputChanges = report.Change, report.PendingInputChanges
 	}
 }
-func (e *Engine) Logs(ctx context.Context, target, profile string, follow bool, tail string) error {
-	r, err := e.Locate(ctx, target, profile)
+func (e *Engine) Logs(ctx context.Context, target, localName string, follow bool, tail string) error {
+	r, err := e.Locate(ctx, target, localName)
 	if err != nil {
 		return err
 	}
@@ -125,15 +126,22 @@ func (e *Engine) Logs(ctx context.Context, target, profile string, follow bool, 
 }
 
 type Selection struct {
-	Targets []string
-	Profile string
-	All     bool
-	Stopped bool
+	Targets     []string
+	LocalName   string
+	All         bool
+	Stopped     bool
+	selectedIDs map[string]string
 }
 
-func (e *Engine) selectContainers(ctx context.Context, selection Selection) ([]string, error) {
+func (e *Engine) selectContainers(ctx context.Context, selection *Selection) ([]string, error) {
 	if (selection.All && selection.Stopped) || ((selection.All || selection.Stopped) && len(selection.Targets) > 0) {
 		return nil, fmt.Errorf("use exact targets, --all, or --stopped, not a combination")
+	}
+	if selection.LocalName != "" && (selection.All || selection.Stopped) {
+		return nil, fmt.Errorf("--name requires an explicit folder target")
+	}
+	if selection.selectedIDs == nil {
+		selection.selectedIDs = map[string]string{}
 	}
 	names := map[string]bool{}
 	if selection.All || selection.Stopped {
@@ -142,12 +150,6 @@ func (e *Engine) selectContainers(ctx context.Context, selection Selection) ([]s
 			return nil, err
 		}
 		for _, c := range containers {
-			if e.IgnoreProject && c.Config.Labels[docker.Namespace+".project"] == "true" {
-				continue
-			}
-			if selection.Profile != "" && c.Config.Labels[docker.Namespace+".profile"] != selection.Profile {
-				continue
-			}
 			if !selection.Stopped || !c.State.Running {
 				names[strings.TrimPrefix(c.Name, "/")] = true
 			}
@@ -157,15 +159,17 @@ func (e *Engine) selectContainers(ctx context.Context, selection Selection) ([]s
 			return nil, fmt.Errorf("provide a target or an explicit selection flag")
 		}
 		for _, target := range selection.Targets {
-			r, err := e.Locate(ctx, target, selection.Profile)
+			r, err := e.Locate(ctx, target, selection.LocalName)
 			if err != nil {
 				if errors.Is(err, os.ErrNotExist) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
 					names[target] = true
+					selection.selectedIDs[target] = ""
 					continue
 				}
 				return nil, err
 			}
 			names[r.Identity.Name] = true
+			selection.selectedIDs[r.Identity.Name] = r.ID
 		}
 	}
 	result := make([]string, 0, len(names))
@@ -176,7 +180,7 @@ func (e *Engine) selectContainers(ctx context.Context, selection Selection) ([]s
 	return result, nil
 }
 func (e *Engine) DeleteContainers(ctx context.Context, selection Selection, force bool) ([]string, error) {
-	names, err := e.selectContainers(ctx, selection)
+	names, err := e.selectContainers(ctx, &selection)
 	if err != nil {
 		return nil, err
 	}
@@ -202,6 +206,9 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection
 		if loadErr != nil && !os.IsNotExist(loadErr) {
 			return nil, loadErr
 		}
+		if expected, tracked := selection.selectedIDs[lock.Name]; tracked && r.ID != expected {
+			return nil, fmt.Errorf("selected session changed; retry deletion")
+		}
 		if !force {
 			if err = lock.RequireIdle(); err != nil {
 				return nil, err
@@ -225,11 +232,8 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection
 		if !exists {
 			continue
 		}
-		if e.IgnoreProject && owner.Project {
-			return nil, fmt.Errorf("project selection does not match the selected session")
-		}
-		if selection.Profile != "" && owner.Profile != selection.Profile {
-			return nil, fmt.Errorf("profile does not match the selected container")
+		if selection.LocalName != "" && owner.LocalName != selection.LocalName {
+			return nil, fmt.Errorf("local name does not match the selected container")
 		}
 		if selection.Stopped && c.State.Running {
 			return nil, fmt.Errorf("selected container started during preflight")
@@ -266,7 +270,7 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection
 // clean up a fully labelled owned container without modifying retained state.
 func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 	labels := c.Config.Labels
-	owner := docker.Owner{Installation: e.Store.Installation, Session: labels[docker.Namespace+".session"], Workspace: labels[docker.Namespace+".workspace"], Slot: labels[docker.Namespace+".slot"], Profile: labels[docker.Namespace+".profile"], Project: labels[docker.Namespace+".project"] == "true"}
+	owner := docker.Owner{Installation: e.Store.Installation, Session: labels[docker.Namespace+".session"], Workspace: labels[docker.Namespace+".workspace"], LocalName: labels[docker.Namespace+".local-name"]}
 	id, err := hex.DecodeString(owner.Session)
 	if err != nil || len(id) != 16 || hex.EncodeToString(id) != owner.Session {
 		return owner, fmt.Errorf("invalid container session ownership")
@@ -274,10 +278,10 @@ func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 	if !filepath.IsAbs(owner.Workspace) || filepath.Clean(owner.Workspace) != owner.Workspace {
 		return owner, fmt.Errorf("invalid container workspace ownership")
 	}
-	if err := (environment.Identity{Slot: owner.Slot, Profile: owner.Profile, Project: owner.Project}).ValidateSlot(); err != nil {
+	if err := environment.ValidateLocalName(owner.LocalName); err != nil {
 		return owner, err
 	}
-	if strings.TrimPrefix(c.Name, "/") != environment.ContainerName(owner.Workspace, owner.Slot) {
+	if strings.TrimPrefix(c.Name, "/") != environment.ContainerName(owner.Workspace, owner.LocalName) {
 		return owner, fmt.Errorf("container name does not match its labelled identity")
 	}
 	return owner, c.Verify(owner)
@@ -287,7 +291,7 @@ func (e *Engine) RecreateAll(ctx context.Context, force bool, options Request) (
 	if options.Host == nil {
 		options.Host = config.Snapshot()
 	}
-	names, err := e.selectContainers(ctx, Selection{All: true, Profile: options.Profile})
+	names, err := e.selectContainers(ctx, &Selection{All: true, LocalName: options.LocalName})
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +324,7 @@ func (e *Engine) RecreateAll(ctx context.Context, force bool, options Request) (
 		}
 		request := options
 		request.Workspace = r.Identity.Workspace
-		request.Profile = r.Identity.Profile
+		request.LocalName = r.Identity.LocalName
 		request.Recorded = &r.Identity
 		request.Sources = r.Sources
 		spec, err := e.Resolve(request)

@@ -36,20 +36,10 @@ func configSourceLabel(sources []string) string {
 	return strings.Join(labels, " + ")
 }
 
-func configSourceForScope(scope, source string) string {
-	source = configSourceLabel([]string{source})
-	if source == "global" || source == "profile" || source == "project" {
-		if source != scope {
-			return "inherited - " + source
-		}
-	}
-	return source
-}
-
-func configEntryOrigins(scope string, sources []string) []string {
+func configEntryOrigins(sources []string) []string {
 	origins := make([]string, len(sources))
 	for i, source := range sources {
-		origins[i] = configSourceForScope(scope, source)
+		origins[i] = configSourceLabel([]string{source})
 	}
 	return origins
 }
@@ -270,7 +260,7 @@ func writeConfigValue(out io.Writer, prefix, text, origin, continuation string, 
 		visible := first
 		if text == "None" {
 			visible = paint.dim(first)
-		} else if origin == "profile" || origin == "project" || origin == "global" {
+		} else if origin != "" && origin != "default" && origin != "unknown" {
 			visible = paint.strong(first)
 		}
 		if _, err := fmt.Fprintln(out, prefix+visible+padding+paint.dim(origin)); err != nil {
@@ -279,7 +269,7 @@ func writeConfigValue(out io.Writer, prefix, text, origin, continuation string, 
 	}
 	if len(value) > budget {
 		var style func(string) string
-		if origin == "profile" || origin == "project" || origin == "global" {
+		if origin != "" && origin != "default" && origin != "unknown" {
 			style = paint.strong
 		}
 		return writeStyledConfigLine(out, continuation, string(value[budget:]), continuation, width, style)
@@ -287,7 +277,7 @@ func writeConfigValue(out io.Writer, prefix, text, origin, continuation string, 
 	return nil
 }
 
-func (m menu) chooseConfig(rows []configDisplayRow) (int, error) {
+func (m menu) chooseConfig(rows []configDisplayRow, actions ...string) (int, error) {
 	fmt.Fprintln(m.out)
 	numbered := make([]configDisplayRow, len(rows))
 	for i, row := range rows {
@@ -297,5 +287,14 @@ func (m menu) chooseConfig(rows []configDisplayRow) (int, error) {
 	if err := renderConfigRows(m.out, numbered, "        ", configDisplayWidth(m.out), true); err != nil {
 		return -1, err
 	}
-	return m.readChoice(len(rows), "Done")
+	if len(actions) > 0 {
+		fmt.Fprintln(m.out)
+		for i, action := range actions {
+			prefix := menuPrefix(len(rows) + i + 1)
+			if err := writeConfigLine(m.out, prefix, action, strings.Repeat(" ", len(prefix)), configDisplayWidth(m.out)); err != nil {
+				return -1, err
+			}
+		}
+	}
+	return m.readChoice(len(rows)+len(actions), "Done")
 }

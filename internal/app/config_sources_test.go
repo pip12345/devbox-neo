@@ -16,7 +16,7 @@ import (
 	"devbox/internal/resource"
 )
 
-func TestWorkspaceProjectSourceIsUsedByEveryAccessPath(t *testing.T) {
+func TestExplicitWorkspaceSourceIsUsedByEveryAccessPath(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	dir := filepath.Join(q.Workspace, ".devbox")
@@ -26,27 +26,27 @@ func TestWorkspaceProjectSourceIsUsedByEveryAccessPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := record(t, e, made.Name)
-	if !strings.HasSuffix(made.Name, ".profile-test.project") || len(r.Sources) != 2 || r.Sources[1].Path != dir {
+	if !strings.HasSuffix(made.Name, ".test") || len(r.Sources) != 2 || r.Sources[1].Path != dir {
 		t.Fatal(r.Identity, r.Sources)
 	}
 	if got, err := e.Open(ctx, q); err != nil || got.Name != made.Name {
 		t.Fatal(got, err)
 	}
-	if status, err := e.Status(ctx, q.Workspace, q.Profile); err != nil || status.ConfigError != "" || status.Name != made.Name {
+	if status, err := e.Status(ctx, q.Workspace, q.LocalName); err != nil || status.ConfigError != "" || status.Name != made.Name {
 		t.Fatal(status, err)
 	}
-	s := resource.Service{Home: e.Store.Home, SelectedProfile: q.Profile}
-	owner, err := s.Project(q.Workspace)
+	s := resource.Service{Home: e.Store.Home}
+	owner, err := s.ConfigDirectory(dir, q.Workspace, t.TempDir())
 	if err != nil || owner.Root != dir {
 		t.Fatal(owner, err)
 	}
-	view, err := s.ShowProject(made.Name, "")
+	view, err := s.ShowOwner(owner)
 	if err != nil || view.Path != filepath.Join(dir, "config.json") {
 		t.Fatal(view, err)
 	}
 	// Missing-container recovery restores env from the workspace's project config.
 	d.Forget(made.Name)
-	if _, err = e.Start(ctx, q.Workspace, q.Profile); err != nil {
+	if _, err = e.Start(ctx, q.Workspace, q.LocalName); err != nil {
 		t.Fatal(err)
 	}
 	if err = e.Stop(ctx, made.Name, "", false); err != nil {
@@ -61,37 +61,33 @@ func TestWorkspaceProjectSourceIsUsedByEveryAccessPath(t *testing.T) {
 }
 
 func TestGenericSourcesComposeWithoutProfileOrProjectRoles(t *testing.T) {
-	e, _, q := fixture(t)
 	a, b := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(a, "config.json"), `{"harness":"pi","ports":["8080:80"]}`)
 	write(t, filepath.Join(b, "config.json"), `{"env":["FLAG=yes"]}`)
 	sources := []config.Source{{Label: "first", Path: a}, {Label: "second", Path: b}}
-	r, err := artifact.PreviewSelection(e.Store.Home, q.Workspace, artifact.Selection{Sources: sources}, config.Layer{}, nil, config.Host{})
+	r, err := artifact.Resolve(sources, config.Host{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Settings.Harness != "pi" || !slices.Equal(r.Settings.Ports, []string{"8080:80"}) || !reflect.DeepEqual(r.Selection.Sources, sources) {
+	if r.Settings.Harness != "pi" || !slices.Equal(r.Settings.Ports, []string{"8080:80"}) || !reflect.DeepEqual(r.Sources, sources) {
 		t.Fatal(r)
 	}
-	write(t, filepath.Join(b, "config.json"), `{"inherit":false,"harness":"opencode"}`)
-	r, err = artifact.PreviewSelection(e.Store.Home, q.Workspace, artifact.Selection{Sources: sources}, config.Layer{}, nil, config.Host{})
-	if err != nil || r.Settings.Harness != "opencode" || len(r.Settings.Ports) != 0 || len(r.Selection.Sources) != 1 {
+	write(t, filepath.Join(b, "config.json"), `{"harness":"opencode"}`)
+	r, err = artifact.Resolve(sources, config.Host{})
+	if err != nil || r.Settings.Harness != "opencode" || len(r.Settings.Ports) != 1 || len(r.Sources) != 2 {
 		t.Fatal(r, err)
 	}
 }
 
-func TestSourceCutoffSkipsBrokenPrecedingInputs(t *testing.T) {
-	e, _, q := fixture(t)
+func TestExplicitSourcesNeverSkipBrokenPrecedingInputs(t *testing.T) {
+	e, d, q := fixture(t)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
-	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"inherit":false,"harness":"pi"}`)
-	write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "invalid and unreadable input")
-	made, err := e.Create(context.Background(), q)
-	if err != nil {
-		t.Fatal(err)
+	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"harness":"pi"}`)
+	if _, err := e.Create(context.Background(), q); err == nil {
+		t.Fatal("later config silently bypassed a broken explicit source")
 	}
-	r := record(t, e, made.Name)
-	if r.Identity.Slot != "project" || r.Identity.Profile != "" || len(r.Sources) != 1 || len(r.Inputs.Image.Stages) != 0 {
-		t.Fatal(r.Identity, r.Sources, r.Inputs.Image)
+	if count(d, "create") != 0 || count(d, "build") != 0 {
+		t.Fatal("invalid configuration reached materialization")
 	}
 }
 
@@ -143,32 +139,32 @@ func TestProfileAndProjectScriptsRunInOrderAndStopOnFailure(t *testing.T) {
 	}
 }
 
-func TestProjectAndProfileOnlyRemainDistinct(t *testing.T) {
+func TestSourcesNeverDetermineSessionIdentity(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
-	plain, err := e.Create(ctx, q)
+	made, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{}`)
-	combined, err := e.Create(ctx, q)
-	if err != nil {
-		t.Fatal(err)
+	before := record(t, e, made.Name)
+	after, err := e.UpdateSources(ctx, before, before.Sources[:1])
+	if err != nil || before.ID != after.ID || before.Identity != after.Identity {
+		t.Fatal("source edit changed identity", after.Identity, err)
 	}
-	if combined.Name == plain.Name {
-		t.Fatal("shared identity")
+	q.Sources = q.Sources[:1]
+	if _, err := e.Create(ctx, q); err == nil {
+		t.Fatal("changing config inputs made an occupied local name available")
 	}
-	if r, err := e.Locate(ctx, q.Workspace, q.Profile); err != nil || r.Identity.Name != combined.Name {
-		t.Fatal(r.Identity, err)
-	}
-	e.IgnoreProject = true
-	if r, err := e.Locate(ctx, q.Workspace, q.Profile); err != nil || r.Identity.Name != plain.Name {
-		t.Fatal(r.Identity, err)
+	q.LocalName = "another"
+	other, err := e.Create(ctx, q)
+	if err != nil || other.Name == made.Name {
+		t.Fatal("independently named sessions could not share configs", other, err)
 	}
 }
 
-func TestTransferUsesDestinationWorkspaceProject(t *testing.T) {
+func TestTransferRebasesOnlyWorkspaceRelativeSources(t *testing.T) {
 	e, _, q := fixture(t)
+	q.Sources[1].Kind, q.Sources[1].Path = config.ReferenceRelative, ".devbox"
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"ports":["8080:80"]}`)
 	destination := t.TempDir()
 	write(t, filepath.Join(destination, ".devbox/config.json"), `{"ports":["9090:90"]}`)
@@ -181,7 +177,7 @@ func TestTransferUsesDestinationWorkspaceProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := record(t, e, copied.Destination)
-	if r.Sources[1].Path != filepath.Join(destination, ".devbox") || !slices.Equal(r.Creation.Ports, []string{"9090:90"}) {
+	if r.Sources[1].Path != ".devbox" || r.Inputs.Sources[1].Path != filepath.Join(destination, ".devbox") || !slices.Equal(r.Creation.Ports, []string{"9090:90"}) {
 		t.Fatal(r.Identity, r.Sources, r.Creation.Ports)
 	}
 }

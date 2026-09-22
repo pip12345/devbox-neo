@@ -28,7 +28,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const journalVersion = 1
+const journalVersion = 2
 
 var idPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 var oldProfilePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
@@ -126,6 +126,7 @@ type Item struct {
 	Workspace     string   `json:"workspace,omitempty"`
 	Profile       string   `json:"profile,omitempty"`
 	SourceProfile string   `json:"source_profile,omitempty"`
+	Project       bool     `json:"project"`
 	Target        string   `json:"target,omitempty"`
 	SessionID     string   `json:"session_id,omitempty"`
 	Alias         string   `json:"alias,omitempty"`
@@ -391,7 +392,7 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 	if err != nil {
 		return nil, err
 	}
-	ng := config.Global{Version: 1, DefaultProfile: g.DefaultProfile, DefaultHarness: g.DefaultHarness, GlobalEnv: g.GlobalEnv, IgnoreProject: g.IgnoreProject}
+	ng := convertedGlobal(g)
 	if g.DefaultHarness != "" && !supported(g.DefaultHarness) {
 		v.issue(key, "Unsupported default harness; manually select Pi/OpenCode before staging global configuration.")
 	}
@@ -404,7 +405,16 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 	if v.Installation == "" {
 		v.notice(key, "Source has no installation ID; only metadata-backed pre-label sessions can be imported. No source identity will be created.")
 	}
-	v.notice(key, "Converted global.json to Neo config.json version 1; supported defaults and env expressions are retained.")
+	v.notice(key, "Converted global.json to the ordinary imported-global config; imported sessions select it explicitly. No folder default is selected.")
+	if g.DefaultProfile != "" || g.IgnoreProject {
+		v.item(key).Changes = append(v.item(key).Changes, "Global discovery controls become explicit source selections; imported sessions do not select folder defaults.")
+	}
+	for _, entry := range g.GlobalEnv {
+		if !strings.Contains(entry, "=") {
+			v.item(key).Changes = append(v.item(key).Changes, "Bare environment names become required host references; define or remove unset values before merge.")
+			break
+		}
+	}
 	v.generated(key, globalPath, "config.json", encode(ng), 0600)
 	profiles, err := readEntries(filepath.Join(p.Source, "profiles"))
 	if err != nil {
@@ -572,8 +582,8 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 			v.issue(key, "Project-slot session has no project artifacts; manual review required.")
 		}
 		projectParticipates := projectSlot || (v.item("project:"+m.Folder) != nil && !g.IgnoreProject)
-		slot := environment.Slot(m.Profile, projectParticipates)
-		v.item(key).Target = environment.ContainerName(m.Folder, slot)
+		v.item(key).Project = projectParticipates
+		v.item(key).Target = environment.ContainerName(m.Folder, importLocalName(*v.item(key), m.Profile))
 		if m.ProxyEnabled {
 			v.notice(key, "Proxy protection will not carry over.")
 		}

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"devbox/internal/config"
 	"devbox/internal/docker"
 	"devbox/internal/harness"
 	"devbox/internal/resource"
@@ -48,20 +49,17 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 		seedThird(t, s.Home)
 	}
 	resources := resource.Service{Home: s.Home}
-	profile, err := resources.Profile("test")
+	profile, err := resources.ConfigDirectory("test", workspace, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = resources.Create(ctx, profile, ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = resources.Init(ctx, profile, resource.InitOptions{Harness: harnessName}); err != nil {
+	if _, err = resources.CreateConfig(ctx, profile, resource.SetupOptions{Harness: &harnessName}); err != nil {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
 	e := &Engine{Store: s, Docker: docker.Runtime{Runner: runner}, Streams: docker.Streams{Out: &output, Err: &output}, UID: os.Getuid(), GID: os.Getgid()}
 	e.OnDiagnostic = func(d Diagnostic) { t.Logf("diagnostic: %+v", d) }
-	q := Request{Workspace: workspace, Profile: "test", Args: []string{"--version"}}
+	q := Request{Workspace: workspace, LocalName: "test", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: profile.Root}}, Args: []string{"--version"}}
 	spec, err := e.Resolve(q)
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +83,7 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 		var sessionID string
 		if exists {
 			sessionID = c.Config.Labels[docker.Namespace+".session"]
-			owner := docker.Owner{Installation: s.Installation, Session: sessionID, Workspace: workspace, Slot: spec.Identity.Slot, Profile: spec.Identity.Profile, Project: spec.Identity.Project}
+			owner := docker.Owner{Installation: s.Installation, Session: sessionID, Workspace: workspace, LocalName: spec.Identity.LocalName}
 			if err = c.Verify(owner); err != nil {
 				t.Error(err)
 				return

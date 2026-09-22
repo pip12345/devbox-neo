@@ -30,9 +30,9 @@ func TestSessionNamesAreIndependentOfDevelopmentOwnershipNamespace(t *testing.T)
 	if r.ImageTag != "devbox-rewrite/session:"+r.ID {
 		t.Fatal("renaming changed the image namespace", r.ImageTag)
 	}
-	sum := sha256.Sum256([]byte(r.Identity.Workspace + "\x00" + r.Identity.Slot))
+	sum := sha256.Sum256([]byte(r.Identity.Workspace + "\x00" + r.Identity.LocalName))
 	for _, prefix := range []string{"devbox-rewrite-", "devbox-"} {
-		oldName := prefix + hex.EncodeToString(sum[:12]) + "." + strings.ReplaceAll(r.Identity.Slot, ":", "-")
+		oldName := prefix + hex.EncodeToString(sum[:12]) + "." + strings.ReplaceAll(r.Identity.LocalName, ":", "-")
 		r.Identity.Name, r.Creation.Name = oldName, oldName
 		if err := r.Validate(oldName); err == nil {
 			t.Fatal("old naming accepted without the required clean reset")

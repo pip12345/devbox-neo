@@ -12,11 +12,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func statusCommand(factory engineFactory, profile *string) *cobra.Command {
+func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 	var asJSON, all bool
 	cmd := &cobra.Command{Use: "status [folder|session]", Short: "Show session details, active commands, and pending configuration changes", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if all && len(args) != 0 {
-			return fmt.Errorf("--all does not accept an exact target")
+		if all && (len(args) != 0 || *localName != "") {
+			return fmt.Errorf("--all does not accept a target or --name")
 		}
 		if !all && len(args) != 1 {
 			return fmt.Errorf("provide a target or --all")
@@ -26,7 +26,7 @@ func statusCommand(factory engineFactory, profile *string) *cobra.Command {
 			return err
 		}
 		if all {
-			report, err := e.StatusAll(cmd.Context(), *profile)
+			report, err := e.StatusAll(cmd.Context(), "")
 			if err != nil {
 				return err
 			}
@@ -38,9 +38,12 @@ func statusCommand(factory engineFactory, profile *string) *cobra.Command {
 			} else if err := printStatusList(cmd.OutOrStdout(), report.Sessions); err != nil {
 				return err
 			}
+			if err := printDefaultErrors(cmd.OutOrStdout(), report.DefaultErrors); err != nil {
+				return err
+			}
 			return printUnmatchedContainers(cmd.OutOrStdout(), report.UnmatchedContainers)
 		}
-		details, err := e.Status(cmd.Context(), args[0], *profile)
+		details, err := e.Status(cmd.Context(), args[0], *localName)
 		if err != nil {
 			return err
 		}
@@ -67,8 +70,8 @@ func statusCommand(factory engineFactory, profile *string) *cobra.Command {
 		return nil
 	}}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print session details and status, or bulk inventory diagnostics, as JSON")
-	cmd.Flags().BoolVar(&all, "all", false, "Check all saved environments, optionally limited by --profile NAME")
-	return cmd
+	cmd.Flags().BoolVar(&all, "all", false, "Check all saved environments")
+	return sessionNameFlag(cmd, localName)
 }
 
 func statusChange(view app.View) string {
@@ -99,7 +102,7 @@ func printStatusList(out io.Writer, views []app.View) error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	if err := printListRows(out, views, table.String()); err != nil {
+	if err := printListRows(out, views, table.String(), false); err != nil {
 		return err
 	}
 	for _, view := range views {

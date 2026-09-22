@@ -16,7 +16,7 @@ func TestMountCSVPreservesLinuxPathCharacters(t *testing.T) {
 	runtime := docker.Runtime{Runner: d}
 	source := "/work/with,comma and\nnewline"
 	plan := docker.CreatePlan{Name: "devbox-rewrite-test", Image: "image", Network: "default", Mounts: []docker.Mount{{Source: source, Target: "/workspace", ReadOnly: true}}}
-	owner := docker.Owner{Installation: strings.Repeat("a", 32), Session: strings.Repeat("b", 32), Workspace: source, Slot: "project"}
+	owner := docker.Owner{Installation: strings.Repeat("a", 32), Session: strings.Repeat("b", 32), Workspace: source, LocalName: "project"}
 	if _, err := runtime.Create(context.Background(), plan, owner); err != nil {
 		t.Fatal(err)
 	}

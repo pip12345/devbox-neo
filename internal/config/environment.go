@@ -137,23 +137,13 @@ func Expand(b []byte, path string, host Host) ([]byte, map[string][]string, erro
 	data, err := json.Marshal(root)
 	return data, references, err
 }
-func envInputs(raw, expanded []string, path, field string, host Host, passthrough bool) ([]EnvInput, error) {
+func envInputs(raw, expanded []string, path string) ([]EnvInput, error) {
 	result := []EnvInput{}
 	for i, value := range expanded {
-		if !strings.Contains(value, "=") && passthrough {
-			if !EnvName.MatchString(value) {
-				return nil, fmt.Errorf("%s %s/%d: invalid env name", path, field, i)
-			}
-			hostValue, present := host[value]
-			if !present {
-				continue
-			}
-			value += "=" + hostValue
-		}
 		if err := ValidateEnvAssignment(value); err != nil {
-			return nil, fmt.Errorf("%s %s/%d: %w", path, field, i, err)
+			return nil, fmt.Errorf("%s env/%d: %w", path, i, err)
 		}
-		result = append(result, EnvInput{Value: value, Source: EnvSource{Kind: "file", Path: path, Field: field, Index: i, Raw: raw[i]}})
+		result = append(result, EnvInput{Value: value, Source: EnvSource{Kind: "file", Path: path, Field: "env", Index: i, Raw: raw[i]}})
 	}
 	return result, nil
 }
@@ -171,8 +161,8 @@ func ValidateEnvAssignment(value string) error {
 	return nil
 }
 func (s EnvSource) Restore(key string, host Host, files map[string][]byte) (string, error) {
-	if s.Kind != "file" {
-		return "", fmt.Errorf("invocation-only environment requires explicit recreation with its inputs")
+	if s.Kind != "file" || s.Field != "env" {
+		return "", fmt.Errorf("invalid recorded environment source")
 	}
 	b, ok := files[s.Path]
 	if !ok {
@@ -198,13 +188,6 @@ func (s EnvSource) Restore(key string, host Host, files map[string][]byte) (stri
 	value, _, err := ExpandString(raw, host)
 	if err != nil {
 		return "", err
-	}
-	if s.Field == "global_env" && !strings.Contains(value, "=") {
-		hostValue, present := host[value]
-		if !present {
-			return "", fmt.Errorf("recorded host passthrough is unset")
-		}
-		value += "=" + hostValue
 	}
 	if envHash(key, value) != s.ValueHash {
 		return "", fmt.Errorf("recorded environment value changed")

@@ -25,13 +25,13 @@ func TestTransferResumesJournalBeforeDestinationCreation(t *testing.T) {
 	}
 	source := record(t, e, opened.Name)
 	dest := t.TempDir()
-	spec, err := e.Resolve(Request{Workspace: dest, Profile: q.Profile})
+	spec, err := e.Resolve(Request{Workspace: dest, LocalName: q.LocalName, Sources: q.Sources})
 	if err != nil {
 		t.Fatal(err)
 	}
 	nonce, _ := fsutil.ID()
 	newID, _ := fsutil.ID()
-	j := store.Transfer{Version: 1, ID: nonce, Mode: "clone", Phase: "prepare", Source: source.Identity, Destination: spec.Identity, SourceID: source.ID, DestinationID: newID, Started: time.Now().UTC(), Desired: spec.Fingerprints}
+	j := store.Transfer{Version: 2, ID: nonce, Mode: "clone", Phase: "prepare", Source: source.Identity, Destination: spec.Identity, SourceID: source.ID, DestinationID: newID, Started: time.Now().UTC(), Desired: spec.Fingerprints}
 	names := []string{source.Identity.Name, spec.Identity.Name}
 	sort.Strings(names)
 	locks, err := e.Store.LockAll(ctx, names)
@@ -138,6 +138,10 @@ func TestTransferFromMissingWorkspaceAndContainer(t *testing.T) {
 	for _, mode := range []string{"clone", "relocate"} {
 		t.Run(mode, func(t *testing.T) {
 			e, d, q := fixture(t)
+			q.Sources = q.Sources[:1]
+			if err := os.RemoveAll(filepath.Join(q.Workspace, ".devbox")); err != nil {
+				t.Fatal(err)
+			}
 			ctx := context.Background()
 			opened, err := e.Create(ctx, q)
 			if err != nil {
@@ -153,7 +157,7 @@ func TestTransferFromMissingWorkspaceAndContainer(t *testing.T) {
 		})
 	}
 }
-func TestTransferSlotsAndDryRun(t *testing.T) {
+func TestTransferNamesAndDryRun(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	opened, err := e.Create(ctx, q)
@@ -161,7 +165,7 @@ func TestTransferSlotsAndDryRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi"}`)
-	opts := TransferOptions{Mode: "clone", Source: q.Workspace, From: ".profile-test", To: ".project", DryRun: true}
+	opts := TransferOptions{Mode: "clone", Source: q.Workspace, LocalName: q.LocalName, As: "project", DryRun: true}
 	before := count(d, "create")
 	result, err := e.Transfer(ctx, opts)
 	if err != nil {
@@ -181,7 +185,7 @@ func TestTransferSlotsAndDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record(t, e, result.Destination).Identity.Slot != "project" {
+	if record(t, e, result.Destination).Identity.LocalName != "project" {
 		t.Fatal("wrong destination slot")
 	}
 }
@@ -214,7 +218,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 		t.Fatal("source not restarted")
 	}
 	var pendingError *commanderror.Error
-	if _, err = e.Start(ctx, opened.Name, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "devbox-neo copy --move "+opened.Name+" "+opts.Destination {
+	if _, err = e.Start(ctx, opened.Name, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "devbox-neo copy --move "+opened.Name+" "+opts.Destination+" --as "+q.LocalName {
 		t.Fatal("pending source not guarded", err)
 	}
 	j, err := e.Store.ReadTransfer(opened.Name)
@@ -297,7 +301,7 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	dest := t.TempDir()
-	destOpen, err := e.Create(ctx, Request{Workspace: dest, Profile: q.Profile})
+	destOpen, err := e.Create(ctx, Request{Workspace: dest, LocalName: q.LocalName, Sources: q.Sources})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +331,7 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	lock.Close()
-	id, _ := environment.Identify(opts.Destination, q.Profile, false)
+	id, _ := environment.Identify(opts.Destination, q.LocalName)
 	foreign, _ := d.Snapshot(opened.Name)
 	foreign.Name = "/" + id.Name
 	foreign.Config.Labels = map[string]string{}

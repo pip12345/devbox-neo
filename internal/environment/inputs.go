@@ -17,6 +17,9 @@ import (
 // Inputs is the single secret-free baseline for fingerprints and drift reasons.
 // Paths explain inputs; only content, order and effective settings cause drift.
 type Inputs struct {
+	// Committed source directories authorize environment recovery independently
+	// of the editable desired references. Runtime sync does not rewrite them.
+	Sources   []config.Source `json:"sources"`
 	Image     ImageInputs     `json:"image"`
 	Container ContainerInputs `json:"container"`
 	Runtime   RuntimeInputs   `json:"runtime"`
@@ -113,7 +116,7 @@ func (s Spec) captureInputs(salt, assetsHash string) Inputs {
 		}
 		runtime.Files[name] = fileInput(salt, source, file.Data, file.Mode&0111, false)
 	}
-	return Inputs{s.Build.inputs(s.Harness, salt), container, runtime}
+	return Inputs{Sources: slices.Clone(s.ResolvedSources), Image: s.Build.inputs(s.Harness, salt), Container: container, Runtime: runtime}
 }
 func fileStates(files map[string]FileInput) map[string]FileState {
 	if files == nil {
@@ -199,6 +202,14 @@ func validateFiles(files map[string]FileInput) error {
 	return nil
 }
 func (i Inputs) Validate() error {
+	if len(i.Sources) == 0 {
+		return fmt.Errorf("committed configuration sources are missing")
+	}
+	for _, source := range i.Sources {
+		if err := source.Validate(); err != nil {
+			return err
+		}
+	}
 	if !config.ImageReference.MatchString(i.Image.BaseImage) || !config.Name.MatchString(i.Image.Harness) {
 		return fmt.Errorf("invalid recorded image inputs")
 	}
