@@ -42,7 +42,10 @@ func (p sourcePicker) choose(current *config.Reference) (config.Reference, bool,
 	}
 	for {
 		if len(names) == 0 {
-			writeMenuHint(p.out, "No reusable configs found. Create one with devbox-neo config create base, or enter an existing directory path.")
+			writeMenuHint(p.out, "No reusable configs found. Create one separately, or enter an existing directory path.")
+			if err := p.commandHint(p.home, "Create a reusable config", "config", "create", "base"); err != nil {
+				return config.Reference{}, false, err
+			}
 		}
 		choices := append(slices.Clone(names), "Enter a directory path")
 		selected := -1
@@ -89,14 +92,19 @@ func (p sourcePicker) choose(current *config.Reference) (config.Reference, bool,
 			}
 		}
 		if err != nil {
-			fmt.Fprintf(p.out, "Error: %s\nCreate missing configs separately with devbox-neo config create <reference>.\n", displayCell(err.Error()))
+			fmt.Fprintf(p.out, "Error: %s\n", displayCell(err.Error()))
+			if os.IsNotExist(err) {
+				if hintErr := p.commandHint(p.home, "Create this config separately", "config", "create", input); hintErr != nil {
+					return config.Reference{}, false, hintErr
+				}
+			}
 			continue
 		}
 		return reference, true, nil
 	}
 }
 
-func showSourceChain(m menu, workspace string, sources []config.Reference) error {
+func showSourceChain(m menu, home, workspace string, sources []config.Reference) error {
 	fmt.Fprintln(m.out, "\nConfig sources, in order:")
 	if len(sources) == 0 {
 		fmt.Fprintln(m.out, "   None")
@@ -113,7 +121,13 @@ func showSourceChain(m menu, workspace string, sources []config.Reference) error
 		}
 		if _, err := config.ReadLayer(filepath.Join(source.Path, "config.json"), config.Snapshot()); err != nil {
 			writeMenuHint(m.out, "      Error: "+displayCell(err.Error()))
-			writeMenuHint(m.out, "      Edit: devbox-neo config edit "+shellQuote(source.Path))
+			action, reason := "edit", "Edit this config"
+			if os.IsNotExist(err) {
+				action, reason = "create", "Create this config separately"
+			}
+			if hintErr := m.commandHint(home, reason, "config", action, source.Path); hintErr != nil {
+				return hintErr
+			}
 		}
 	}
 	return nil

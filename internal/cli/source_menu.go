@@ -45,7 +45,7 @@ func sourcesCommand(factory engineFactory, name *string) *cobra.Command {
 			}
 			return printConfigView(cmd.OutOrStdout(), view)
 		}
-		m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout()}
+		m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout(), cmd: cmd}
 		for {
 			var selected *store.Record
 			if direct {
@@ -101,7 +101,7 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) error {
 		}
 		writeMenuHint(m.out, "Session: "+r.Identity.LocalName)
 		writeMenuHint(m.out, "Folder: "+displayCell(r.Identity.Workspace))
-		if err := showSourceChain(m, r.Identity.Workspace, r.Sources); err != nil {
+		if err := showSourceChain(m, e.Store.Home, r.Identity.Workspace, r.Sources); err != nil {
 			return err
 		}
 		if resolved, err := e.CombinedConfiguration(r); err != nil {

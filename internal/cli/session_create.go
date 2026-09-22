@@ -28,7 +28,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout()}
+		m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout(), cmd: cmd}
 		picker, err := newSourcePicker(m, e.Store.Home, workspace)
 		if err != nil {
 			return err
@@ -76,7 +76,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 			return err
 		}
 		cmd.Printf("Created session %s\nFull name: %s\nFolder: %s\nContainer: stopped\n", localName, result.Name, displayCell(workspace))
-		if err := showSourceChain(m, workspace, sources); err != nil {
+		if err := showSourceChain(m, e.Store.Home, workspace, sources); err != nil {
 			return err
 		}
 		steps := scopedSteps(cmd, []commanderror.Step{
@@ -96,7 +96,7 @@ func createSessionMenu(p sourcePicker, e *app.Engine, name string, sources []con
 			return sources, false, err
 		}
 		writeMenuHint(p.out, "Folder: "+displayCell(p.workspace))
-		if err := showSourceChain(p.menu, p.workspace, sources); err != nil {
+		if err := showSourceChain(p.menu, p.home, p.workspace, sources); err != nil {
 			return sources, false, err
 		}
 		actions := []string{"Add source"}

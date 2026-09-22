@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,36 @@ import (
 	"devbox/internal/environment"
 	"github.com/spf13/cobra"
 )
+
+func TestSourcePickerHintsRetainExplicitHome(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		home := filepath.Join(t.TempDir(), "home with spaces")
+		cmd := &cobra.Command{Use: "create"}
+		cmd.Flags().String("home", "", "")
+		if explicit {
+			if err := cmd.Flags().Set("home", home); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var out bytes.Buffer
+		m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("0\n")), out: &out, cmd: cmd}
+		picker, err := newSourcePicker(m, home, t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, selected, err := picker.choose(nil); err != nil || selected {
+			t.Fatal(selected, err)
+		}
+		want := "devbox-neo "
+		if explicit {
+			want += "--home " + shellQuote(home) + " "
+		}
+		want += "config create base"
+		if !strings.Contains(out.String(), want) || strings.Contains(out.String(), "--home") != explicit {
+			t.Fatal("menu hint changed installations", out.String())
+		}
+	}
+}
 
 func TestExplicitCreateAndSetAreSeparateWorkflows(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)

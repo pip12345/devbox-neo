@@ -15,7 +15,7 @@ import (
 )
 
 func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner) error {
-	m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout()}
+	m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout(), cmd: cmd}
 	err := configMenu(m, s, owner)
 	if errors.Is(err, io.EOF) {
 		fmt.Fprintln(m.out, "\nMenu closed. Completed changes remain saved.")

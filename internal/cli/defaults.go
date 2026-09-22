@@ -36,7 +36,7 @@ func setCommand(factory engineFactory, name *string) *cobra.Command {
 			if !interactive(cmd) {
 				return fmt.Errorf("set requires --name or --clear without a terminal, or an exact full session name")
 			}
-			m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout()}
+			m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout(), cmd: cmd}
 			var record *store.Record
 			var noDefault bool
 			record, noDefault, err = chooseSession(m, e, args[0], true)
@@ -74,8 +74,8 @@ func chooseSession(m menu, e *app.Engine, folder string, forDefault bool) (*stor
 		return nil, false, err
 	}
 	if len(entries) == 0 && !forDefault {
-		fmt.Fprintf(m.out, "No sessions for this folder. Create one with devbox-neo create %s.\n", shellQuote(folder))
-		return nil, false, nil
+		fmt.Fprintln(m.out, "No sessions for this folder.")
+		return nil, false, m.commandHint(e.Store.Home, "Create a session", "create", folder)
 	}
 	selected, defaultErr := e.Store.ReadDefault(m.ctx, workspace)
 	if defaultErr != nil {

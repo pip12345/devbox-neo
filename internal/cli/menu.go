@@ -7,6 +7,9 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"devbox/internal/commanderror"
+	"github.com/spf13/cobra"
 )
 
 // Menus stay in canonical terminal mode: the terminal provides line editing,
@@ -16,6 +19,16 @@ type menu struct {
 	ctx context.Context
 	in  *bufio.Reader
 	out io.Writer
+	cmd *cobra.Command
+}
+
+func (m menu) commandHint(home, reason string, args ...string) error {
+	steps := []commanderror.Step{commanderror.Next(reason, args...)}
+	if m.cmd != nil {
+		steps = scopedSteps(m.cmd, steps, home)
+	}
+	_, err := fmt.Fprint(m.out, stepsText(steps))
+	return err
 }
 
 func (m menu) line(prompt string) (string, error) {
