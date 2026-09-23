@@ -24,7 +24,7 @@ Use `status` when you want more detail:
 devbox-neo status .
 ```
 
-Folder commands use the default you selected with `devbox-neo set .`. Use `--name NAME` to select another session in that folder, or a full session name from `list` to target it from anywhere. `list .` shows just this folder's sessions. Missing selections fail; opening never creates a session or chooses a default.
+Folder commands use the default you selected through `devbox-neo edit .`. Use `--name NAME` to select another session in that folder, or a full session name from `list` to target it from anywhere. `list .` shows just this folder's sessions. Missing selections fail; opening never creates a session or chooses a default.
 
 ## Open an interactive shell
 

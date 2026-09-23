@@ -90,7 +90,7 @@ func TestListDimsOnlyInactiveRowsWithoutChangingAlignment(t *testing.T) {
 		lines := strings.Split(styled, "\n")
 		for i, line := range lines {
 			plainLine := unstyle(line)
-			shouldDim := strings.HasPrefix(plainLine, "inactive-long-name ") || strings.HasPrefix(plainLine, "missing ")
+			shouldDim := strings.HasPrefix(plainLine, "/work/b ") || strings.HasPrefix(plainLine, "/work/c ")
 			if strings.Contains(line, "\x1b[2m") != shouldDim {
 				t.Fatalf("unexpected styling on line %d: %q", i, line)
 			}

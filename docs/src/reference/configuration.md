@@ -54,7 +54,7 @@ Creation, opening, and recreation require at least one source, accessible valid 
 | `config edit <reference>` | Edit one existing directory's settings or add missing optional files |
 | `config list [--json]` | Show names, harnesses, and directory paths under `<home>/configs/`, including invalid or incomplete configs; does not discover arbitrary path-based configs |
 | `config delete <name> [--force] [--json]` | Remove a named config directory and all its files; `--force` skips confirmation, not reference checks |
-| `edit <folder>` | Pick a saved session, then edit its source chain |
+| `edit <folder>` | Pick a saved session, edit its source chain, or change the folder default |
 | `edit <folder> --name NAME` | Edit that named session's source chain directly |
 | `edit <full-name> --show [--json]` | Inspect combined settings and provenance |
 

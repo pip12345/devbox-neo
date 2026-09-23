@@ -39,17 +39,25 @@ func TestSessionEditorIsNotUnderConfig(t *testing.T) {
 	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "unknown command \"sources\"") {
 		t.Fatal("old session editor still accepted under config", err)
 	}
+	root = New()
+	root.SetArgs([]string{"set", "."})
+	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "unknown command \"set\"") {
+		t.Fatal("old default command still accepted", err)
+	}
 }
 
 func TestFlagHelpDescribesActions(t *testing.T) {
 	for _, tt := range []struct{ command, flag, description string }{
 		{"open", "harness-arg", "Pass an argument to the harness (repeatable)"},
+		{"list", "sort", "Sort sessions by name, folder, or last-active (newest first)"},
 		{"recreate", "image", "Rebuild the image without using the build cache"},
 		{"recreate", "all", "Recreate all Devbox containers"},
 		{"open", "name", "Select the session's folder-local name"},
 		{"stop", "force", "Stop even if commands are still running"},
 		{"delete", "force", "Allow container deletion despite attached commands; never implies deleting saved data"},
 		{"edit", "show", "Show combined settings and their sources without editing"},
+		{"edit", "default", "Select this session as its folder's default without prompting"},
+		{"edit", "clear-default", "Clear the folder's default without selecting another session"},
 		{"config create", "harness", "Set this config's persistent harness selection"},
 		{"config edit", "artifact-harness", "Choose which harness's files to add without changing the config's harness"},
 		{"copy", "as", "Destination local name (default: preserve the source name)"},
@@ -73,8 +81,7 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 	for _, tt := range []struct{ command, description string }{
 		{"config create", "Create a config directory and offer initial setup"},
 		{"config edit", "Edit a config directory or add missing optional files"},
-		{"edit", "Edit a session's config sources and inspect combined configuration"},
-		{"set", "Select or clear a folder's default session"},
+		{"edit", "Edit a session's sources or its folder's default selection"},
 		{"shell", "Open a shell in a session"},
 		{"exec", "Run a command in a session"},
 		{"recreate", "Recreate the container with current settings, keeping session data"},
@@ -210,7 +217,7 @@ func TestPlainOpenAndStartRejectMissingSessionWithScopedGuidance(t *testing.T) {
 					want := "Error: " + message + "\nTarget: " + workspace + "\n\n" +
 						"Create a session:\n  devbox-neo --home " + home + " create " + shellQuote(workspace) + "\n"
 					if selection != "explicit" {
-						want += "\nThen select a default:\n  devbox-neo --home " + home + " set " + shellQuote(workspace) + "\n" +
+						want += "\nThen select a default:\n  devbox-neo --home " + home + " edit " + shellQuote(workspace) + "\n" +
 							"\nThen open it:\n  devbox-neo --home " + home + " open " + shellQuote(workspace) + "\n"
 					}
 					if out.String() != want {

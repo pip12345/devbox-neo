@@ -117,7 +117,7 @@ else
 fi
 [[ $(complete -p dbx) == *'-F __start_devbox-neo dbx' ]]
 [[ $(complete -p devbox-neo) == *'-F __start_devbox-neo devbox-neo' ]]
-words=(dbx profile set b)
+words=(dbx edit b)
 cur=b
 __devbox-neo_get_completion_results
 [[ $out == $'basic\n' && $directive == 4 ]]
@@ -130,7 +130,7 @@ __devbox-neo_get_completion_results
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := []string{"--home", home, "__complete", "profile", "set", "b"}
+		want := []string{"--home", home, "__complete", "edit", "b"}
 		if got := strings.Split(strings.TrimSpace(string(b)), "\n"); !reflect.DeepEqual(got, want) {
 			t.Fatal("completion bypassed shortcut flags", kind, got)
 		}

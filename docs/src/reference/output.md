@@ -2,12 +2,13 @@
 
 ## Environment listings
 
-`list` groups sessions by workspace and shows full names. `list <folder>` uses local names. Tables contain `NAME`, `DEFAULT`, `HARNESS`, `LAST ACTIVE`, `CONTAINER`, and ordered `CONFIGS`. `--wide` adds the last action and exact UTC activity/creation timestamps.
+`list` shows one table with each session's full name and `FOLDER` path. `list <folder>` shows that folder's path as a heading and uses local names without a `FOLDER` column. Tables also contain `NAME`, `DEFAULT`, `HARNESS`, `LAST ACTIVE`, `CONTAINER`, and ordered `CONFIGS`. `--wide` adds the last action and exact UTC activity/creation timestamps.
 
-- `--sort name` is the default.
-- `--sort last-active` is newest first, then name; unknown activity sorts last.
+- `--sort name` is the default and orders full session names.
+- `--sort folder` orders folder paths, then names within a folder; unknown paths sort first.
+- `--sort last-active` is newest first across all folders, then name; unknown activity sorts last.
 - `*` in `DEFAULT` marks the selected session. In `CONTAINER`, `!` marks an error and `*` marks a pending transfer.
-- Stopped/missing rows are dimmed; default markers remain prominent and diagnostics readable. Human sorting is within workspace groups.
+- Stopped/missing rows are dimmed; default markers remain prominent and diagnostics readable. Sorting applies to the whole table.
 
 Both `list` and `status --all` report installation-managed containers without session records separately. Corrupt records remain session rows with diagnostics. Listings do not adopt, delete, or repair resources.
 

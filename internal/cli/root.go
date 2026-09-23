@@ -108,7 +108,7 @@ func New() *cobra.Command {
 	root.AddCommand(recreateCommand(engine, &localName), sshCommand(engine, &localName))
 	root.AddCommand(containerCommands(engine, &localName)...)
 	root.AddCommand(sessionCommands(engine, &localName)...)
-	root.AddCommand(configCommands(resources), editCommand(engine, &localName), setCommand(engine, &localName))
+	root.AddCommand(configCommands(resources), editCommand(engine, &localName))
 	bindCompletionScripts(root)
 	bindCompletions(root, docker.Runtime{Runner: docker.ExecRunner{}})
 	bindCommandErrors(root)

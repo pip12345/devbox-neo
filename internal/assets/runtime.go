@@ -65,7 +65,7 @@ explicit sources too. Creation rejects existing config.json; artifact setup neve
 overwrites existing files. Harness-file generation does not force harness selection.
 Devbox-neo create <folder> asks for an explicit local session name and existing
 config sources, then prepares a stopped container. Scripts supply --name NAME and
-repeated --config REF. Creation never selects a default. Use set <folder> to choose
+repeated --config REF. Creation never selects a default. Use edit <folder> to choose
 one, open <folder> --name NAME for an explicit local name, or a full session name
 from list for exact targeting anywhere. Even a sole session needs an explicit
 folder default. Edit <folder|session> manages a session's saved source references;
@@ -77,8 +77,8 @@ Manual start keeps a container running until stop, including automatic restart
 when Docker starts after reboot. Without manual start, the last attached Devbox
 command stops it. Open never changes this intent. Reboot restarts the container,
 not the prior harness process, terminal, or SSH connection.
-On the host, devbox-neo list shows saved environments and their running/stopped/missing
-containers. Status --all checks their configuration and changed local inputs, including
+On the host, devbox-neo list shows saved environments with their folder paths and
+running/stopped/missing containers. Status --all checks their configuration and changed local inputs, including
 environments without containers; it does not check upstream releases. Both commands
 warn separately about managed containers without session records. Status <folder|session>
 combines saved session details, active commands, container state, and pending changes;

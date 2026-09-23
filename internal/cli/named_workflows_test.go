@@ -46,7 +46,7 @@ func TestSourcePickerHintsRetainExplicitHome(t *testing.T) {
 	}
 }
 
-func TestExplicitCreateAndSetAreSeparateWorkflows(t *testing.T) {
+func TestExplicitCreateAndEditDefaultAreSeparateWorkflows(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	factory := func(*cobra.Command) (*app.Engine, error) { return e, nil }
 	name := ""
@@ -65,7 +65,7 @@ func TestExplicitCreateAndSetAreSeparateWorkflows(t *testing.T) {
 	if err := create.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(out.String(), err)
 	}
-	if !strings.Contains(out.String(), "Docker output without newline\nCreated session Second") || strings.Contains(out.String(), "Choose a number") || !strings.Contains(out.String(), "set "+shellQuote(q.Workspace)+" --name Second") {
+	if !strings.Contains(out.String(), "Docker output without newline\nCreated session Second") || strings.Contains(out.String(), "Choose a number") || !strings.Contains(out.String(), "edit "+shellQuote(q.Workspace)+" --name Second --default") {
 		t.Fatal(out.String())
 	}
 	if selected, err := e.Store.ReadDefault(context.Background(), q.Workspace); err != nil || selected != nil {
@@ -77,16 +77,135 @@ func TestExplicitCreateAndSetAreSeparateWorkflows(t *testing.T) {
 		t.Fatal(r.Sources, err)
 	}
 	name = ""
-	set := setCommand(factory, &name)
-	set.SetOut(&out)
-	set.SetErr(&out)
-	set.SetIn(strings.NewReader(""))
-	set.SetArgs([]string{q.Workspace, "--name", "Second"})
-	if err := set.ExecuteContext(context.Background()); err != nil {
+	edit := editCommand(factory, &name)
+	edit.SetOut(&out)
+	edit.SetErr(&out)
+	edit.SetIn(strings.NewReader(""))
+	edit.SetArgs([]string{q.Workspace, "--name", "Second", "--default"})
+	if err := edit.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(out.String(), err)
 	}
 	if selected, err := e.Locate(context.Background(), q.Workspace, ""); err != nil || selected.ID != r.ID {
-		t.Fatal("set did not select the requested session", selected.ID, err)
+		t.Fatal("edit --default did not select the requested session", selected.ID, err)
+	}
+}
+
+func TestEditDefaultFlagsSetAndClearWithoutSessionEditor(t *testing.T) {
+	e, q, fullName := namedCLIFixture(t)
+	ctx := context.Background()
+	run := func(args ...string) (string, error) {
+		name := ""
+		cmd := editCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+		var out bytes.Buffer
+		cmd.SetIn(strings.NewReader(""))
+		cmd.SetOut(&out)
+		cmd.SetErr(&out)
+		cmd.SetArgs(args)
+		err := cmd.ExecuteContext(ctx)
+		return out.String(), err
+	}
+	if _, err := run(q.Workspace, "--name", "Main", "--default"); err != nil {
+		t.Fatal(err)
+	}
+	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected == nil || selected.Name != fullName {
+		t.Fatal("named session was not selected", selected, err)
+	}
+	if _, err := run(q.Workspace, "--clear-default"); err != nil {
+		t.Fatal(err)
+	}
+	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {
+		t.Fatal("folder default was not cleared", selected, err)
+	}
+	if _, err := run(fullName, "--default"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(fullName, "--clear-default"); err != nil {
+		t.Fatal("exact session target could not clear its folder default", err)
+	}
+	if err := os.Remove(filepath.Join(e.Store.Home, "configs", "base", "config.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(fullName, "--default"); err != nil {
+		t.Fatal("missing config blocked default selection", err)
+	}
+	if _, err := run(q.Workspace, "--clear-default"); err != nil {
+		t.Fatal("missing config blocked clearing the default", err)
+	}
+	for _, args := range [][]string{
+		{q.Workspace, "--default"},
+		{q.Workspace, "--default", "--clear-default"},
+		{q.Workspace, "--name", "Main", "--clear-default"},
+		{q.Workspace, "--name", "Main", "--default", "--show"},
+	} {
+		if _, err := run(args...); err == nil {
+			t.Fatal("accepted ambiguous default flags", args)
+		}
+	}
+}
+
+func TestEditFolderMenuSetsAndClearsDefault(t *testing.T) {
+	e, q, _ := namedCLIFixture(t)
+	q.LocalName = "Second"
+	if _, err := e.Create(context.Background(), q); err != nil {
+		t.Fatal(err)
+	}
+	master, slave := testTerminal(t)
+	if _, err := master.WriteString("3\n2\n4\n0\n"); err != nil {
+		t.Fatal(err)
+	}
+	name := ""
+	cmd := editCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+	var out bytes.Buffer
+	cmd.SetIn(slave)
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{q.Workspace})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		t.Fatal(out.String(), err)
+	}
+	text := out.String()
+	if !strings.Contains(text, "[3]  Set folder default") || !strings.Contains(text, "[4]  Clear folder default") || !strings.Contains(text, "Current selection: No default") || !strings.Contains(text, ": Second\n") || !strings.Contains(text, "Cleared default session for ") || strings.Contains(text, "Make folder default") {
+		t.Fatal("default actions were not available in the folder menu", text)
+	}
+	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {
+		t.Fatal("folder default was not cleared", selected, err)
+	}
+}
+
+func TestEditCanClearStaleDefaultWithoutSessions(t *testing.T) {
+	e, q, fullName := namedCLIFixture(t)
+	ctx := context.Background()
+	r, err := e.Store.Read(ctx, fullName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.SetDefault(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(e.Store.Home, "sessions", fullName)); err != nil {
+		t.Fatal(err)
+	}
+	master, slave := testTerminal(t)
+	if _, err := master.WriteString("1\n"); err != nil {
+		t.Fatal(err)
+	}
+	name := ""
+	cmd := editCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+	var out bytes.Buffer
+	cmd.SetIn(slave)
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{q.Workspace})
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		t.Fatal(out.String(), err)
+	}
+	if !strings.Contains(out.String(), "Clear folder default") || !strings.Contains(out.String(), "Cleared default session for ") {
+		t.Fatal("missing session hid its saved default", out.String())
+	}
+	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {
+		t.Fatal("stale default was not cleared", selected, err)
 	}
 }
 
@@ -114,7 +233,7 @@ func TestInteractiveCreationStartsWithBlankNameAndOnlySelectsConfigs(t *testing.
 			t.Fatal("session creation entered another workflow or suggested a name", text)
 		}
 	}
-	if !strings.HasPrefix(text, "Session name (:back cancels): ") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "set "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
+	if !strings.HasPrefix(text, "Session name (:back cancels): ") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "edit "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
 		t.Fatal(text)
 	}
 	pickerIndex, reviewIndex := strings.Index(text, "Select a config source"), strings.Index(text, "Create session · Fresh")

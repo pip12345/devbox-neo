@@ -28,11 +28,11 @@ After installing the CLI and Docker, a first-time user runs these commands from 
 ```sh
 devbox config create base
 devbox create .
-devbox set .
+devbox edit .
 devbox open .
 ```
 
-`config create base` creates a reusable config and offers harness/artifact setup. Optional customization files can be skipped. `create .` asks for a session name and lets the user select the existing `base` config. `set .` chooses that saved session as the folder's default. `open .` starts it and launches its harness. Later visits need only `open .`, optionally with `-c` to continue the previous harness conversation.
+`config create base` creates a reusable config and offers harness/artifact setup. Optional customization files can be skipped. `create .` asks for a session name and lets the user select the existing `base` config. In `edit .`, choose **Set folder default** and select that session. `open .` starts it and launches its harness. Later visits need only `open .`, optionally with `-c` to continue the previous harness conversation.
 
 Each interactive workflow has one command entry point:
 
@@ -43,8 +43,7 @@ Each interactive workflow has one command entry point:
 | `config list [--json]` | List named configs under the selected home's `configs/`, including invalid or incomplete entries; path-based configs are not registered here |
 | `config delete <name>` | Remove an unreferenced named config under the selected home's `configs/` after confirmation; refuse desired or committed session users and list every known user |
 | `create <folder>` | Name a session and select existing config sources |
-| `edit <folder|session>` | Manage a session's source chain and inspect combined configuration |
-| `set <folder|session>` | Select or clear a folder's default session |
+| `edit <folder|session>` | Manage a session's source chain, inspect combined configuration, and select or clear its folder default |
 
 Keep directory creation/editing out of session creation and source-chain menus. Those menus may print the exact command to run next, but must not launch another command's menu. Reuse the existing underlying configuration mechanisms without duplicating their interactive entry points. Top-level `edit` replaces the bare `config <folder|session>` form; do not retain the old `config sources` command as an alias or add a root-level `sources` command.
 
@@ -64,7 +63,7 @@ Follow the rewrite's existing menu and settings-display components in `internal/
 
 ## Create sessions
 
-Creating a session requires an explicit `devbox create <folder>` command. The folder argument is mandatory: use `devbox create .` for the current folder. Do not infer it from an omitted argument. `open`, `set`, and configuration inspection never implicitly create sessions.
+Creating a session requires an explicit `devbox create <folder>` command. The folder argument is mandatory: use `devbox create .` for the current folder. Do not infer it from an omitted argument. `open`, `edit`, and configuration inspection never implicitly create sessions.
 
 With all required inputs supplied, creation runs directly:
 
@@ -166,7 +165,7 @@ There is no preselected source when adding one. Replacement shows the current so
 
 The interactive flow creates no session or container until the user selects Create session. It never creates or edits config directories. A fully specified command does not require a redundant confirmation. Without a terminal, missing required inputs produce an actionable error rather than prompting.
 
-Successful creation leaves the container stopped and does not select a default. Print the local name, full session/container name, and resolved config sources in order, followed by concrete commands to select a default and open it. The user then runs `set` or opens the new session explicitly by name; do not launch the default-selection menu from session creation.
+Successful creation leaves the container stopped and does not select a default. Print the local name, full session/container name, and resolved config sources in order, followed by concrete commands to select a default and open it. The user then runs `edit` to choose a default or opens the new session explicitly by name; do not launch the editor from session creation.
 
 ## Folder-local names and exact session targets
 
@@ -211,8 +210,8 @@ Preserve the existing distinction between full `devbox-...` session targets and 
 ## List sessions
 
 ```sh
-devbox list .   # sessions belonging to this folder
-devbox list     # all sessions, preserving the existing global listing
+devbox list .                 # sessions belonging to this folder
+devbox list --sort folder     # all sessions, ordered by folder path in one table
 ```
 
 The folder view shows local names, the default, container status, and config source order:
@@ -225,39 +224,37 @@ main         *        stopped    base → ./devconfig
 experiment            running    base → ./devconfig → ~/configs/experimental
 ```
 
-The global view groups sessions by workspace and exposes full session/container names for exact targeting. Listing is about saved sessions, including those whose containers are missing, not just running Docker containers.
+The global view shows one row per saved session with a `FOLDER` path and full session/container name; there are no folder headings. `--sort name` is the default, `--sort folder` orders folder paths then names, and `--sort last-active` orders all rows newest first. Listing includes saved sessions whose containers are missing, not just running Docker containers.
 
 ## Select a default
 
-Use `set`, following the existing `profile set` convention: direct selection when a name is supplied, an interactive picker otherwise, and `--clear` to remove the selection.
+`edit` manages both a session's source chain and its folder's default selection. In `edit .`, choose **Set folder default**, then choose a numbered session from the picker. The folder overview shows the current default and offers **Clear folder default** when one is saved, even if that session is missing. Clearing needs no session selection or config resolution.
 
 ```sh
-devbox set . --name myenv1          # select directly within this folder
-devbox set .                        # choose interactively
-devbox set . --clear                # clear this folder's default
-devbox set <full-container-name>     # default for that session's recorded workspace
+devbox edit . --name myenv1 --default       # select directly within this folder
+devbox edit .                              # choose Set folder default, then a session
+devbox edit . --clear-default              # clear this folder's default
+devbox edit <full-container-name> --default # select for its recorded workspace
 ```
 
-The picker lists this folder's sessions and a `No default` choice. Show the current selection both above the choices and beside the selected row:
-
 ```text
-Select the default session
+Select a session to edit
 
-Folder:            /work/api
-Current selection: Main
+Folder:  /work/api
+Default: Main
 
-   [1]  Main (selected)
-   [2]  Experiment
-   [3]  No default
+   [1]  Main          default · stopped
+   [2]  Experiment    running
+
+   [3]  Set folder default
+   [4]  Clear folder default
 
    [0]  Cancel
 
    Choose a number >
 ```
 
-Use the shared styling: emphasize `Main` in the summary and selected row, and style `(selected)` in green. When no default is set, the summary reads `No default` and that row gets the marker. Selecting a row saves and exits without another confirmation; Cancel leaves the default unchanged. Success output names both the folder and selected session, or states that the folder's default was cleared.
-
-Without a terminal, folder-targeted `set` requires `--name` or `--clear`. Setting a default never starts, stops, or opens a session.
+Selecting a session opens its source editor; selecting Set folder default opens a numbered session picker. Choosing Clear folder default saves the clear and returns to the overview. A folder without sessions still offers clearing when it has a stale saved default. `--default` requires `--name` or an exact full session name, while `--clear-default` accepts a folder or exact session target and cannot be combined with `--name`. Default changes never start, stop, or open a session.
 
 After selecting `myenv1` as the default:
 
@@ -290,7 +287,7 @@ Error: No default session selected.
 Target: .
 
 Select a default session:
-  devbox set .
+  devbox edit .
 Then open it:
   devbox open .
 ```
@@ -304,7 +301,7 @@ Target: .
 Create a session:
   devbox create .
 Then select a default:
-  devbox set .
+  devbox edit .
 Then open it:
   devbox open .
 ```
@@ -476,12 +473,16 @@ The overlay creation example leaves `harness` unset. Adding OpenCode files later
 `devbox edit .` opens a menu of the folder's sessions, regardless of whether a default is selected:
 
 ```text
-Select a session to manage its config sources
+Select a session to edit
 
 Folder: /work/api
+Default: Main
 
    [1]  Main          default · stopped
    [2]  Experiment    running
+
+   [3]  Set folder default
+   [4]  Clear folder default
 
    [0]  Cancel
 
@@ -490,7 +491,7 @@ Folder: /work/api
 
 This screen lists sessions, not sources. The default annotation describes folder state; it does not preselect a session in this picker. Use the session list's running/inactive styling and keep annotations readable.
 
-Selecting a session opens its config-source chain. To change the default, show a `devbox set .` hint rather than opening the default-selection menu from here. An empty overview guides the user to `devbox create .`; it does not implicitly create a session.
+Selecting a session opens its source-chain editor. The overview changes the default: Set opens a numbered session picker; Clear needs no selected session. An empty overview guides the user to `devbox create .` unless a stale saved default needs clearing; it never implicitly creates a session.
 
 Skip the overview when the session is already known:
 
@@ -527,7 +528,7 @@ What would you like to do?
    Choose a number >
 ```
 
-Back returns to the session picker. When entered directly with `--name` or an exact session target, use Done instead because there is no previous picker. Add/replace and reordering use the same source-selection controls described under session creation, but each completed operation here immediately saves the session's desired source chain. Hide remove/replace/reorder actions when there are no sources.
+Back returns to the folder overview. When entered directly with `--name` or an exact session target, use Done instead because there is no previous picker. Default controls live only in the folder overview. Add/replace and reordering use the same source-selection controls described under session creation, but each completed operation here immediately saves the session's desired source chain. Hide remove/replace/reorder actions when there are no sources.
 
 Show combined configuration uses the existing read-only renderer, including scalar and per-entry provenance, not a second editable settings dashboard.
 
@@ -623,7 +624,7 @@ Use the existing `store` package for saved session state and locks, and `resourc
 
 `<workspace-key>` is the full lowercase SHA-256 hex digest of the canonical absolute workspace path's bytes, following the existing path-keyed config-lock pattern. It is not the shortened hash in a container name. The default record contains `version: 1`, `workspace`, and `default_session`. A selected `default_session` contains the full session `name` and durable `id`; no selection is represented by `null`. An absent file also means no default. A malformed file is an error, not absence. Validate that the recorded workspace matches its key.
 
-Create the workspace state record on the first default change, not during listing or config discovery. `set --clear` writes `default_session: null` when a record exists and is a no-op when none exists. Do not store a duplicate list of sessions in this file. The name locates the selected record; the ID prevents a deleted-and-recreated session from inheriting a stale default merely because it reused the same name.
+Create the workspace state record on the first default change, not during listing or config discovery. `edit --clear-default` writes `default_session: null` when a record exists and is a no-op when none exists. Do not store a duplicate list of sessions in this file. The name locates the selected record; the ID prevents a deleted-and-recreated session from inheriting a stale default merely because it reused the same name.
 
 Keep the ordered desired source references in the session record's `sources` field. Each saved reference has a diagnostic `label`, a `kind` of `relative` or `fixed`, and a `path`. Relative paths are clean paths relative to the recorded workspace, including `.` or `..` where appropriate; fixed paths are clean absolute paths. Labels do not determine identity or resolution. Expand references to absolute source directories at the resolver boundary, so composition and build code retain their existing absolute-source contract. Applied inputs stay separate from these editable references. Session schema 5 also captures committed absolute source directories in `inputs.sources`; environment recovery validates against those directories rather than the mutable desired chain.
 
@@ -646,9 +647,9 @@ Session operation locks remain the authority for session mutation. Preserve the 
 
 Creation uses the deterministic full session name and its existing operation lock to enforce folder-local name uniqueness. It needs no folder-default lock because it never sets a default. Inventory continues to come from saved session records; a missing or corrupt default must not hide those records or prevent exact-name session lookup. Exact-target default changes and deletion use the session's recorded canonical workspace as the state key; they do not require that workspace directory or its config sources to remain accessible.
 
-Whole-session deletion retains the existing complete session-operation-lock set and preflight/confirmation rules. Immediately before removing a session's saved state, acquire its folder-default lock and clear the selection only if both name and ID match that session. Persist the clear successfully before deleting the session state, and release the folder lock after the clear; the session operation lock remains held through deletion, so `set` cannot select the disappearing session. Container-only deletion, cancelled deletion, and dry runs do not clear defaults.
+Whole-session deletion retains the existing complete session-operation-lock set and preflight/confirmation rules. Immediately before removing a session's saved state, acquire its folder-default lock and clear the selection only if both name and ID match that session. Persist the clear successfully before deleting the session state, and release the folder lock after the clear; the session operation lock remains held through deletion, so `edit --default` cannot select the disappearing session. Container-only deletion, cancelled deletion, and dry runs do not clear defaults.
 
-If deletion fails or the process exits after clearing the default but before removing state, the session may remain with no default. Report that partial result when possible; the user can select it again with `set`. This ordering avoids dangling defaults without adding a cross-file transaction journal or automatically restoring an old choice over a newer one.
+If deletion fails or the process exits after clearing the default but before removing state, the session may remain with no default. Report that partial result when possible; the user can select it again with `edit`. This ordering avoids dangling defaults without adding a cross-file transaction journal or automatically restoring an old choice over a newer one.
 
 Centralize default clearing in the saved-session removal path rather than only the delete CLI handler. Committed move cleanup uses it too, including retries after the source record is gone; the existing transfer journal supplies the source workspace, name, and ID. A copy leaves the source default untouched. A move clears a matching source default when removing the source but does not select a destination default. Keep destination defaults unchanged and reuse the current endpoint locks and transfer-recovery machinery.
 
@@ -698,7 +699,7 @@ Implementation tests should cover these observable behaviors:
 
 1. Two independently named sessions in one folder can share the same configs while keeping separate identity and harness state. The same local name can also be used in different folders.
 2. A sole session is not implicitly the default. Opening never changes the default; deleting the default session clears it, while container-only deletion preserves it.
-3. Config creation and directory editing have only their dedicated `config create` and `config edit` entry points. Session creation and `edit` never launch those menus or the default-selection menu. Config creation does not create a session, select a source automatically, or set a default. Existing config files survive creation/setup unchanged.
+3. Config creation and directory editing have only their dedicated `config create` and `config edit` entry points. Session creation and `edit` never launch directory editors; `edit` changes the folder default only on an explicit action. Config creation does not create a session, select a source automatically, or set a default. Existing config files survive creation/setup unchanged.
 4. Names of 1 and 64 characters are accepted; empty, 65-character, or invalid-character names fail without truncation or normalization. Uppercase letters, digits, dashes, and underscores work in local names. Case-distinct names produce distinct full names; symlink aliases of the same workspace produce the same name. Long or similarly sanitized folder basenames retain full-path identity through the hash. Duplicate local names in one folder fail, and duplicate canonical source directories are rejected.
 5. Missing or broken config sources do not block session lookup, listing, default selection, stopping, deletion, or the repair menu. They do block opening, including into an already-running container, with a concrete repair hint.
 6. Source edits, replacement, and reordering never rename the session. Incomplete intermediate edits can be saved and repaired, but cannot be used to open or recreate until valid.
@@ -707,11 +708,11 @@ Implementation tests should cover these observable behaviors:
 9. Copy/move rebases workspace-relative references, preserves fixed references, and fails clearly on missing required sources or local-name collisions. `--as` permits same-folder copies/moves and explicitly named cross-folder destinations; omitted destination folders use the source workspace. Names are preserved when `--as` is absent, and identical source/destination identities fail rather than overwriting. Retried transfers retain the pinned source and destination, including an explicit destination name. Initial relative config arguments resolve against the invoking directory even when it differs from the workspace.
 10. Concurrent default selection, source-chain edits, deletion, and move cleanup respect the session-before-workspace lock order. Deletion clears a matching default before removing state; container-only deletion, cancellation, and dry runs leave it unchanged. A stale default never selects a newly created session with a reused name. A stale source editor rejects changed sources/session identity rather than overwriting another completed edit; unrelated activity updates are preserved. Lifecycle operations resolve sources from the locked record, not a pre-lock snapshot.
 11. Global environment and harness defaults no longer contribute to resolution. The explicit source chain and built-in defaults account for the effective environment.
-12. First-time use works through `config create`, `create`, `set`, and `open`. The session-name prompt starts blank and requires user input. Empty config pickers provide a creation command without opening a nested wizard, while still allowing selection of an existing directory path.
-13. `config edit` works before any session references the directory. Top-level `edit` provides folder overview, exact-session access, source-chain editing, and combined `--show`/`--json` inspection without exposing a directory editor. The bare `config <folder|session>` and root-level `sources` forms are not retained.
-14. All menus use the shared numbered layout, clear action titles, labeled context, wrapping, and terminal styling. Selection summaries agree with `(selected)` markers/checkmarks, including No default and empty multi-selections. Styling respects `NO_COLOR`, `TERM=dumb`, and redirected output without losing selection/status information or breaking alignment.
+12. First-time use works through `config create`, `create`, `edit`, and `open`. The session-name prompt starts blank and requires user input. Empty config pickers provide a creation command without opening a nested wizard, while still allowing selection of an existing directory path.
+13. `config edit` works before any session references the directory. Top-level `edit` provides folder overview, exact-session access, source-chain editing, default selection/clearing, and combined `--show`/`--json` inspection without exposing a directory editor. The bare `config <folder|session>` and root-level `sources` forms are not retained.
+14. All menus use the shared numbered layout, clear action titles, labeled context, wrapping, and terminal styling. Selection summaries agree with `(selected)` markers/checkmarks, including empty multi-selections. The folder editor names its default separately from the session being edited. Styling respects `NO_COLOR`, `TERM=dumb`, and redirected output without losing selection/status information or breaking alignment.
 15. Optional artifacts toggle individually with stable numbers, visible selection updates, Continue, and Back. Back retains pending creation choices without writing files. Text input still uses `:back`; no raw-terminal or Escape controls are introduced. Completed settings/source-chain edits survive Back and EOF, while incomplete input is abandoned.
-16. The folder source-management entry screen clearly selects a session; the next screen manages that session's sources. Back returns to that picker, while directly targeted source editing ends with Done. Directory editors show only their own contributions over built-in defaults and never present another session's merged values as editable local settings.
+16. The folder editor lets users select a session to edit, or set/clear the folder default; Set opens a numbered session picker. The session editor manages sources only. Back returns to that picker, while directly targeted source editing ends with Done. Directory editors show only their own contributions over built-in defaults and never present another session's merged values as editable local settings.
 17. An absent workspace-state file means no default without seeding one during reads. Corrupt default state is reported without hiding sessions or blocking exact session lookup. Failure after default clearing but before state removal leaves a recoverable session with no default, not a dangling selection. Copy/move retries preserve the specified source/destination default behavior.
 18. Repeating `config create` for a directory with `config.json` fails before prompting or mutation and points to `config edit`, including for empty or invalid existing files. An existing directory without `config.json` is accepted without overwriting its files. Concurrent creators cannot replace one another's config or add artifacts after losing the creation race. Existing configs gain missing optional files through `config edit`; cancellation and deselection do not delete files, and completed additions preserve existing content and settings.
 19. Harness-file generation works with an unset or different persistent harness. Its target picker and `--artifact-harness` generate the requested harness tree without altering `harness`. Only an explicit Harness edit or `--harness` changes that setting. General artifacts need no harness, and existing files survive repeated additions.

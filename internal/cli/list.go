@@ -17,6 +17,9 @@ import (
 
 func sortViews(views []app.View, by string) {
 	sort.SliceStable(views, func(i, j int) bool {
+		if by == "folder" && views[i].Workspace != views[j].Workspace {
+			return views[i].Workspace < views[j].Workspace
+		}
 		if by == "last-active" && !views[i].LastActivity.Equal(views[j].LastActivity) {
 			return views[i].LastActivity.After(views[j].LastActivity)
 		}
@@ -74,28 +77,7 @@ func writeListTitle(out io.Writer, title string) error {
 }
 
 func printSessionList(out io.Writer, views []app.View, wide bool, now time.Time) error {
-	groups := map[string][]app.View{}
-	for _, view := range views {
-		groups[view.Workspace] = append(groups[view.Workspace], view)
-	}
-	folders := make([]string, 0, len(groups))
-	for folder := range groups {
-		folders = append(folders, folder)
-	}
-	sort.Strings(folders)
-	for _, folder := range folders {
-		title := displayCell(folder)
-		if folder == "" {
-			title = "Sessions with invalid state"
-		}
-		if err := writeListTitle(out, title); err != nil {
-			return err
-		}
-		if err := printSessionTable(out, groups[folder], wide, now, false); err != nil {
-			return err
-		}
-	}
-	return nil
+	return printSessionTable(out, views, wide, now, false)
 }
 
 func sourceSummary(sources []config.Reference) string {
@@ -122,6 +104,9 @@ func printSessionTable(out io.Writer, views []app.View, wide bool, now time.Time
 	var table bytes.Buffer
 	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
 	header := "NAME\tDEFAULT\tHARNESS\tLAST ACTIVE\tCONTAINER\tCONFIGS"
+	if !local {
+		header = "FOLDER\t" + header
+	}
 	if wide {
 		header += "\tLAST ACTION\tCREATED"
 	}
@@ -139,6 +124,9 @@ func printSessionTable(out io.Writer, views []app.View, wide bool, now time.Time
 		activity := activityAge(view.LastActivity, now)
 		if wide {
 			activity = exactTime(view.LastActivity)
+		}
+		if !local {
+			fmt.Fprintf(w, "%s\t", displayCell(view.Workspace))
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s", displayCell(name), marker, displayCell(view.Harness), activity, state, sourceSummary(view.Sources))
 		if wide {

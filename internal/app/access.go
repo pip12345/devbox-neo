@@ -71,13 +71,13 @@ func (e *Engine) Locate(ctx context.Context, target, localName string) (store.Re
 		for _, entry := range entries {
 			if entry.Err == nil && entry.Record.Identity.Workspace == workspace {
 				return store.Record{}, commanderror.New("default_missing", "No default session selected.", target, nil,
-					commanderror.Next("Select a default session", "set", target),
+					commanderror.Next("Select a default session", "edit", target),
 					commanderror.Next("Then open it", "open", target))
 			}
 		}
 		return store.Record{}, commanderror.New("sessions_missing", "No sessions for this folder.", target, nil,
 			commanderror.Next("Create a session", "create", target),
-			commanderror.Next("Then select a default", "set", target),
+			commanderror.Next("Then select a default", "edit", target),
 			commanderror.Next("Then open it", "open", target))
 	}
 	r, err := e.readSession(ctx, selected.Name)
@@ -89,7 +89,7 @@ func (e *Engine) Locate(ctx context.Context, target, localName string) (store.Re
 	}
 	if err != nil || r.ID != selected.ID || r.Identity.Workspace != workspace {
 		return store.Record{}, commanderror.New("default_unavailable", "The saved default session is unavailable. Select a default again.", target, err,
-			commanderror.Next("Select a default session", "set", target))
+			commanderror.Next("Select a default session", "edit", target))
 	}
 	return r, nil
 }

@@ -15,21 +15,51 @@ import (
 )
 
 func editCommand(factory engineFactory, name *string) *cobra.Command {
-	var show, asJSON bool
-	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Edit a session's config sources and inspect combined configuration", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	var show, asJSON, setDefault, clearDefault bool
+	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Edit a session's sources or its folder's default selection", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if asJSON && !show {
 			return fmt.Errorf("--json requires --show")
+		}
+		if setDefault && clearDefault {
+			return fmt.Errorf("use --default or --clear-default, not both")
+		}
+		if clearDefault && *name != "" {
+			return fmt.Errorf("use --name or --clear-default, not both")
+		}
+		if show && (setDefault || clearDefault) {
+			return fmt.Errorf("use --show or change the folder default, not both")
 		}
 		direct := *name != "" || environment.IsSessionTarget(args[0])
 		if show && !direct {
 			return fmt.Errorf("--show requires --name or an exact full session name")
 		}
-		if !show && !interactive(cmd) {
-			return fmt.Errorf("source menus require a terminal; use --name NAME --show to inspect without prompting")
+		if setDefault && !direct {
+			return fmt.Errorf("--default requires --name or an exact full session name")
+		}
+		if !show && !setDefault && !clearDefault && !interactive(cmd) {
+			return fmt.Errorf("editing requires a terminal; use --name NAME --show to inspect or --name NAME --default to select without prompting")
 		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
+		}
+		if clearDefault {
+			workspace, err := e.ClearDefault(cmd.Context(), args[0])
+			if err == nil {
+				cmd.Printf("Cleared default session for %s.\n", displayCell(workspace))
+			}
+			return err
+		}
+		if setDefault {
+			r, err := e.Locate(cmd.Context(), args[0], *name)
+			if err != nil {
+				return err
+			}
+			if err := e.SetDefault(cmd.Context(), r); err != nil {
+				return err
+			}
+			cmd.Printf("Default session for %s: %s\n", displayCell(r.Identity.Workspace), r.Identity.LocalName)
+			return nil
 		}
 		if show {
 			r, err := e.Locate(cmd.Context(), args[0], *name)
@@ -55,12 +85,37 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 				}
 				selected = &r
 			} else {
-				selected, _, err = chooseSession(m, e, args[0], false)
-				if errors.Is(err, io.EOF) || (err == nil && selected == nil) {
+				var action folderEditAction
+				selected, action, err = chooseSessionToEdit(m, e, args[0])
+				if errors.Is(err, io.EOF) || (err == nil && selected == nil && action == folderEditNone) {
 					return nil
 				}
 				if err != nil {
 					return err
+				}
+				switch action {
+				case folderEditSetDefault:
+					chosen, err := chooseFolderDefault(m, e, args[0])
+					if errors.Is(err, io.EOF) {
+						return nil
+					}
+					if err != nil {
+						return err
+					}
+					if chosen != nil {
+						if err := e.SetDefault(cmd.Context(), *chosen); err != nil {
+							return err
+						}
+						cmd.Printf("Default session for %s: %s\n", displayCell(chosen.Identity.Workspace), chosen.Identity.LocalName)
+					}
+					continue
+				case folderEditClearDefault:
+					workspace, err := e.ClearDefault(cmd.Context(), args[0])
+					if err != nil {
+						return err
+					}
+					cmd.Printf("Cleared default session for %s.\n", displayCell(workspace))
+					continue
 				}
 			}
 			back := "Back"
@@ -79,6 +134,8 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 	}}
 	cmd.Flags().BoolVar(&show, "show", false, "Show combined settings and their sources without editing")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print --show output as JSON")
+	cmd.Flags().BoolVar(&setDefault, "default", false, "Select this session as its folder's default without prompting")
+	cmd.Flags().BoolVar(&clearDefault, "clear-default", false, "Clear the folder's default without selecting another session")
 	return sessionNameFlag(cmd, name)
 }
 

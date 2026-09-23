@@ -90,9 +90,9 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		if err := showSourceChain(m, e.Store.Home, workspace, sources); err != nil {
 			return err
 		}
-		selectDefault := commanderror.Next("Select it as this folder's default", "set", args[0], "--name", localName)
+		selectDefault := commanderror.Next("Select it as this folder's default", "edit", args[0], "--name", localName, "--default")
 		if interactive(cmd) {
-			selectDefault = commanderror.Next("Choose this folder's default session", "set", args[0])
+			selectDefault = commanderror.Next("Choose this folder's default session", "edit", args[0])
 		}
 		steps := scopedSteps(cmd, []commanderror.Step{
 			selectDefault,

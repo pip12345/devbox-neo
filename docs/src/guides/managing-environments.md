@@ -60,7 +60,7 @@ devbox-neo copy /path/to/project /path/to/copy --dry-run
 devbox-neo copy /path/to/project /path/to/copy
 ```
 
-The destination local name must be unused. Copy preserves the name unless you supply `--as NAME`, leaves the destination stopped, and keeps the source. It does not select a destination default; use `devbox-neo set /path/to/copy` before opening that folder without a name.
+The destination local name must be unused. Copy preserves the name unless you supply `--as NAME`, leaves the destination stopped, and keeps the source. It does not select a destination default; use `devbox-neo edit /path/to/copy` to make a session the default before opening that folder without a name.
 
 To move rather than copy, add `--move` to `copy`. It removes the source environment after the destination is ready and preserves whether it was running.
 

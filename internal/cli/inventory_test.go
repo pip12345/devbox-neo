@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -57,12 +58,38 @@ func TestFolderListStartsWithItsHeading(t *testing.T) {
 	cmd := root()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"list", record.Identity.Workspace})
+	cmd.SetArgs([]string{"list", record.Identity.Workspace, "--sort", "folder"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if strings.HasPrefix(out.String(), "\n") || strings.Contains(out.String(), "\n\n") || !strings.Contains(strings.ReplaceAll(out.String(), "\n", ""), record.Identity.Workspace) || !strings.Contains(out.String(), "\nNAME") {
-		t.Fatal("folder list has extra blank lines", out.String())
+	if strings.HasPrefix(out.String(), "\n") || strings.Contains(out.String(), "\n\n") || !strings.Contains(strings.ReplaceAll(out.String(), "\n", ""), record.Identity.Workspace) || !strings.Contains(out.String(), "\nNAME") || strings.Contains(out.String(), "FOLDER") {
+		t.Fatal("folder list changed its compact layout", out.String())
+	}
+}
+
+func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
+	engine, _, firstName, root := inventoryCLI(t)
+	first, err := engine.Store.Read(context.Background(), firstName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := t.TempDir()
+	second, err := engine.Create(context.Background(), app.Request{Workspace: other, LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := root()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"list", "--sort", "folder"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	folders := []string{first.Identity.Workspace, other}
+	sort.Strings(folders)
+	if !strings.HasPrefix(text, "FOLDER") || strings.Index(text, folders[0]) < 0 || strings.Index(text, folders[1]) < 0 || strings.Index(text, folders[0]) >= strings.Index(text, folders[1]) || !strings.Contains(text, firstName) || !strings.Contains(text, second.Name) || strings.Contains(text, "\n\n") {
+		t.Fatal("global list did not render and sort folder rows", text)
 	}
 }
 

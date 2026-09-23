@@ -80,7 +80,7 @@ A session is identified by its canonical workspace and explicit folder-local nam
 
 The full session/container name is `devbox-<folder>-<12-hex-hash>.<local-name>`. The hash is the first 12 lowercase hex characters of SHA-256 over the canonical absolute workspace path, a NUL separator, and the exact local name. The readable folder hint is lowercased, sanitized, and capped at 32 characters; the full name is at most 117 characters. Symlink aliases of a workspace share identity.
 
-Config sources do not determine identity. Each local name needs explicit creation; a missing container does not remove the saved session. Folder-only targeting requires a default selected with `set`, even for a sole session. Defaults pin the durable ID so reusing a deleted local name cannot silently inherit an old selection.
+Config sources do not determine identity. Each local name needs explicit creation; a missing container does not remove the saved session. Folder-only targeting requires a default selected through `edit`, even for a sole session. Defaults pin the durable ID so reusing a deleted local name cannot silently inherit an old selection.
 
 Names locate resources; labels prove ownership. Containers carry installation, ownership-version, session, workspace, and local-name labels under `devbox-rewrite.*`. Images retain installation ownership and `devbox-rewrite/session:<session-id>` tags.
 

@@ -25,7 +25,7 @@ func TestListDetailsAndSorting(t *testing.T) {
 	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"NAME", "DEFAULT", "CONFIGS", "LAST ACTIVE", "/work/api", "/work/ui", "2 hours ago", "just now", "stopped!*", "no durable record", "pending copy"} {
+	for _, want := range []string{"FOLDER", "NAME", "DEFAULT", "CONFIGS", "LAST ACTIVE", "/work/api", "/work/ui", "2 hours ago", "just now", "stopped!*", "no durable record", "pending copy"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
@@ -51,6 +51,10 @@ func TestListDetailsAndSorting(t *testing.T) {
 	if views[0].Name != "a" {
 		t.Fatal("name ordering changed")
 	}
+	sortViews(views, "folder")
+	if views[0].Name != "unknown" || views[1].Name != "b" || views[2].Name != "a" {
+		t.Fatal("folder sort must put unknown paths first and sort names within each folder", views)
+	}
 }
 
 func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
@@ -66,7 +70,7 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(strings.Fields(out.String()), " "), "NAME DEFAULT HARNESS LAST ACTIVE CONTAINER CONFIGS") {
+	if !strings.Contains(strings.Join(strings.Fields(out.String()), " "), "FOLDER NAME DEFAULT HARNESS LAST ACTIVE CONTAINER CONFIGS") {
 		t.Fatal("not a session-focused table", out.String())
 	}
 	for _, want := range []string{"pi", "/work/project", "just now", "missing", "opencode", "older", "2 hours ago", "stopped", "missing!*", "corrupt record", "pending copy --move"} {
@@ -74,14 +78,17 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
 	}
-	if strings.Index(out.String(), "/work/api") > strings.Index(out.String(), "/work/project") || strings.Index(out.String(), "\nrecent ") > strings.Index(out.String(), "\nolder ") {
-		t.Fatal("incorrect folder grouping or within-folder session order", out.String())
+	names := []string{"recent", "older", "broken", "separate"}
+	for i := 1; i < len(names); i++ {
+		if strings.Index(out.String(), names[i-1]) >= strings.Index(out.String(), names[i]) {
+			t.Fatal("last-active sort did not apply across folders", out.String())
+		}
 	}
 	if strings.Contains(out.String(), "\x1b") {
 		t.Fatal("non-terminal output contains styling")
 	}
-	if !strings.HasPrefix(out.String(), "Sessions with invalid state\nNAME") || strings.Contains(out.String(), "\n\n") {
-		t.Fatal("list added blank lines around folder groups", out.String())
+	if !strings.HasPrefix(out.String(), "FOLDER") || strings.Contains(out.String(), "\n\n") {
+		t.Fatal("global list retained folder headings or blank lines", out.String())
 	}
 }
 
@@ -100,14 +107,14 @@ func TestListTimesAndUnsafeCells(t *testing.T) {
 	if err := printSessionList(&out, views, true, now); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 3 {
+	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 2 {
 		t.Fatal("unsafe path changed table structure", out.String())
 	}
 	out.Reset()
 	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 3 {
+	if strings.Contains(out.String(), "\x1b") || strings.Count(out.String(), "\n") != 2 {
 		t.Fatal("unsafe session fields changed table structure", out.String())
 	}
 }

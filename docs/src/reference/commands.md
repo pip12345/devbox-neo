@@ -52,7 +52,7 @@ Mount, environment, port, and raw Docker validation rules are in [configuration]
 
 | Command | Output |
 |---|---|
-| `list [folder] [--sort name\|last-active] [--wide] [--json]` | Saved sessions, including missing containers; folder view uses local names, global view groups by workspace |
+| `list [folder] [--sort name\|folder\|last-active] [--wide] [--json]` | Saved sessions, including missing containers; folder view uses local names, global view includes each folder path |
 | `status <folder\|session> [--json]` | Saved details, live commands, container state, and pending configuration changes |
 | `status --all [--json]` | Container state and configuration health for all saved environments |
 
@@ -68,9 +68,9 @@ See [output and errors](output.md) for columns, change classifications, and JSON
 | `config edit <reference>` | Edit an existing directory or add missing optional files |
 | `config list [--json]` | Show named configs under the selected home's `configs/` with harness and directory path; report invalid or incomplete entries; no Docker required |
 | `config delete <name> [--force] [--json]` | Delete an unreferenced named config and its files; confirm in a terminal, or use `--force` to skip confirmation (required with `--json`) |
-| `edit <folder>` | Pick a session, then manage its ordered source chain |
-| `edit <folder> --name NAME` | Manage that session's sources directly |
-| `edit <full-name>` | Manage an exact session's sources |
+| `edit <folder>` | Pick a session to edit its sources or make it the folder default; clear a saved default from the folder menu |
+| `edit <folder> --name NAME` | Edit that session's sources directly |
+| `edit <full-name>` | Edit an exact session's sources directly |
 | `edit <target> --show [--json]` | Inspect combined configuration; folder targets require `--name` |
 
 Creation and source menus select existing directories; they never open another command's editor. Completed settings/source edits save immediately. See [editing controls](configuration.md#editing-and-inspection).
@@ -90,12 +90,12 @@ Explicit setup flags run directly, even in a terminal. Without flags, interactiv
 
 | Command | Effect |
 |---|---|
-| `set <folder>` | Choose a saved session or No default in a terminal |
-| `set <folder> --name NAME` | Select directly |
-| `set <full-name>` | Select that session for its recorded workspace |
-| `set <folder\|session> --clear` | Clear the workspace's default without selecting another |
+| `edit <folder>` | Pick a session to edit its sources, or choose **Set folder default** or **Clear folder default** from the folder menu |
+| `edit <folder> --name NAME --default` | Select directly without a terminal |
+| `edit <full-name> --default` | Select that session for its recorded workspace |
+| `edit <folder\|session> --clear-default` | Clear the workspace's default without selecting another session |
 
-Without a terminal, provide `--name`, `--clear`, or an exact session name. `--clear` and `--name` are mutually exclusive. Selection never starts a container. Opening does not change the default.
+`--default` requires `--name` or an exact full session name. `--clear-default` cannot be combined with `--name`, `--default`, or `--show`. Selection never starts a container. Opening does not change the default.
 
 ## SSH sharing
 

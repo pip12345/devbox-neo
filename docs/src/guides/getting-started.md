@@ -69,10 +69,10 @@ Your project folder appears at `/workspace` inside the container. Changes made t
 Choose the session to use when you address this folder without a name:
 
 ```sh
-devbox-neo set .
+devbox-neo edit .
 ```
 
-Select the session you just created. Even a folder with only one session needs an explicit default. Then open it:
+Choose **Set folder default**, then select the session you just created. Even a folder with only one session needs an explicit default. Then open it:
 
 ```sh
 devbox-neo open .
