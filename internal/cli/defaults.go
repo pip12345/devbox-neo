@@ -14,6 +14,7 @@ const (
 	folderEditNone folderEditAction = iota
 	folderEditSetDefault
 	folderEditClearDefault
+	folderEditRetry
 )
 
 func chooseSessionToEdit(m menu, e *app.Engine, folder string) (*store.Record, folderEditAction, error) {
@@ -103,7 +104,7 @@ func chooseSessionToEdit(m menu, e *app.Engine, folder string) (*store.Record, f
 		return nil, folderEditClearDefault, nil
 	}
 	if entries[choice].Err != nil {
-		return nil, folderEditNone, entries[choice].Err
+		return nil, folderEditRetry, entries[choice].Err
 	}
 	return &entries[choice].Record, folderEditNone, nil
 }

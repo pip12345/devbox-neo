@@ -46,7 +46,7 @@ devbox-neo edit .
 
 Select a session, choose **Add source**, and enter `./devconfig`. The folder menu also lets you choose **Set folder default** or **Clear folder default**. Keep `base` before it if you want the workspace config's explicit scalar values to override the shared config. Lists generally append; [the reference](../reference/configuration.md#config-fields) describes field-specific rules.
 
-Adding, replacing, removing, or reordering sources saves immediately. It changes this session only, without renaming it or copying the directories. Editing a shared directory instead affects every session that uses it.
+Adding, replacing, removing, or reordering sources saves immediately. **Exit** does not undo those changes. The editor prints an exact-session `status` command on exit so you can check whether the container needs updating. It changes this session only, without renaming it or copying the directories. Editing a shared directory instead affects every session that uses it.
 
 Choose **Show combined configuration** to see effective values and their sources. For non-interactive inspection, provide the local name explicitly:
 
@@ -80,13 +80,13 @@ Set `WORK_TOKEN` in your host environment before running Devbox. An unset refere
 Saving config does not replace an existing container. Check its pending changes:
 
 ```sh
-devbox-neo status .
+devbox-neo status . --name Main
 ```
 
-Managed harness files synchronize before a stopped container starts. Stop/start applies those file changes without recreation. Container settings, image inputs, and setup changes require:
+Use the local name of the session you edited (or the exact command printed when you exit). Managed harness files synchronize before a stopped container starts. Stop/start applies those file changes without recreation. Container settings, image inputs, and setup changes require:
 
 ```sh
-devbox-neo recreate .
+devbox-neo recreate . --name Main
 ```
 
 Container-local files and tools are lost during recreation. See [managing environments](managing-environments.md#apply-configuration-changes) before replacing a customized container.

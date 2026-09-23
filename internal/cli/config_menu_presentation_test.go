@@ -152,7 +152,7 @@ func TestSettingsOverviewUsesReadableValues(t *testing.T) {
 		}
 		originColumn = column
 	}
-	if originColumn < 0 || !strings.Contains(out, "\n\n   [0]  Done\n\n   Choose a number > ") {
+	if originColumn < 0 || !strings.Contains(out, "\n\n   [0]  Exit\n\n   Choose a number > ") {
 		t.Fatalf("missing aligned origins or menu spacing:\n%s", out)
 	}
 	if !strings.Contains(out, "Config · basic") || !strings.Contains(out, "Setting") || !strings.Contains(out, "Value") || !strings.Contains(out, "Source") {

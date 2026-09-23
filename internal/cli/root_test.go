@@ -31,6 +31,12 @@ func TestExecutableName(t *testing.T) {
 	if strings.Contains(help, "--continue") || strings.Contains(help, "--network string") {
 		t.Fatalf("root help contains open-only flags: %s", help)
 	}
+	steps := []string{"# First run", "devbox-neo config create base", "devbox-neo create .", "devbox-neo edit .", "devbox-neo open ."}
+	for i, step := range steps {
+		if index := strings.Index(help, step); index < 0 || i > 0 && index <= strings.Index(help, steps[i-1]) {
+			t.Fatalf("first-run help steps are missing or out of order: %s", help)
+		}
+	}
 }
 
 func TestSessionEditorIsNotUnderConfig(t *testing.T) {
@@ -80,6 +86,8 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 	before := completionSnapshot(t, home)
 	for _, tt := range []struct{ command, description string }{
 		{"config create", "Create a config directory and offer initial setup"},
+		{"create", "Name a new session and select its existing config sources"},
+		{"version", "Print the Devbox version"},
 		{"config edit", "Edit a config directory or add missing optional files"},
 		{"edit", "Edit a session's sources or its folder's default selection"},
 		{"shell", "Open a shell in a session"},
@@ -106,6 +114,31 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 	}
 	if !reflect.DeepEqual(before, completionSnapshot(t, home)) {
 		t.Fatal("help initialized home")
+	}
+}
+
+func TestCreateAndEditHelpShowInteractiveAndDirectExamples(t *testing.T) {
+	for _, tc := range []struct {
+		command string
+		want    []string
+	}{
+		{"create", []string{"devbox-neo create .", "devbox-neo create . --name work --config base"}},
+		{"edit", []string{"devbox-neo edit .", "devbox-neo edit . --name work --default"}},
+	} {
+		t.Run(tc.command, func(t *testing.T) {
+			root := New()
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetArgs([]string{tc.command, "--help"})
+			if err := root.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			for _, example := range tc.want {
+				if !strings.Contains(out.String(), example) {
+					t.Fatal("missing interactive or direct help example", out.String())
+				}
+			}
+		})
 	}
 }
 

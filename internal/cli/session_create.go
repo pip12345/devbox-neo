@@ -83,6 +83,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		cmd.Printf("\n%s", stepsText(steps))
 		return nil
 	}}
+	cmd.Example = "  devbox-neo create .\n  devbox-neo create . --name work --config base"
 	cmd.Flags().StringArrayVar(&references, "config", nil, "Existing config name or directory path, in source order (repeatable)")
 	return sessionNameFlag(cmd, name)
 }

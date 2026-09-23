@@ -57,7 +57,7 @@ Follow the rewrite's existing menu and settings-display components in `internal/
 - Preserve the session list's distinction between running and inactive sessions: stopped/missing entries are dimmed, but selection markers remain prominent. The folder overview uses the same `*` as `list` to mark its default independently of container status; do not dim that marker. Errors have explicit labels and are never indicated by color alone.
 - Keep the settings dashboard's `Setting / Value / Source` columns. Show scalar values and shell commands inline, other lists underneath their setting with a source beside each entry, and empty values as `None`. Wrap long values and paths rather than truncating them; use the existing terminal-width limit.
 - Apply styling through shared terminal helpers, not command-specific ANSI fragments. Align plain text before styling so escape sequences do not shift columns. Respect output-terminal detection, `NO_COLOR`, `TERM=dumb`, and redirected output. Plain text retains `(selected)`, checkmarks, and status/error labels.
-- `[0] Back` returns to the previous step or menu. Use `[0] Cancel` when abandoning a selection or creation flow, `[0] Exit` to leave the folder editor without undoing saved changes, and `[0] Done` when leaving an editor entered directly. `q` follows the displayed `[0]` action. Do not show Back when there is no previous screen.
+- `[0] Back` returns to the previous step or menu. Use `[0] Cancel` when abandoning a selection or creation flow and `[0] Exit` to leave any immediate-save editor without undoing saved changes. `q` follows the displayed `[0]` action. Do not show Back when there is no previous screen.
 - Keep canonical line input: type a number and press Enter. Text entry uses `:back` to cancel the unfinished input, for example `New mount (:back cancels): `. Do not add Escape handling, raw-terminal controls, or a new keyboard-input system. EOF abandons incomplete input while retaining completed edits. One shared menu renderer redraws short screens in the terminal's temporary alternate screen, without changing input mode; oversized or unpredictable-width menus print normally. Restore the shell screen before printing final results or errors. Redirected output stays plain.
 - Completed setting and saved-source-chain edits save immediately. Back only navigates; there are no Save/Discard screens or extra approvals. Creation choices remain pending until the creation action; Back between creation steps preserves those choices without publishing files or a session.
 
@@ -414,7 +414,7 @@ Config · base
 
    [11] Add optional files
 
-   [0]  Done
+   [0]  Exit
 
    Choose a number >
 ```
@@ -491,7 +491,7 @@ Default: Main
    Choose a number >
 ```
 
-This screen lists sessions, not sources. The `*` marks the folder default; it does not preselect a session in this picker. Keep that marker prominent when its stopped/missing row is dimmed.
+This screen lists sessions, not sources. The `*` marks the folder default; it does not preselect a session in this picker. Keep that marker prominent when its stopped/missing row is dimmed. If a selected session record is invalid, show its error and return to this overview so another session can be chosen; failures to load the folder still end editing.
 
 Selecting a session opens its source-chain editor. The overview changes the default: Set opens a numbered session picker; Clear needs no selected session. An empty overview guides the user to `devbox create .` unless a stale saved default needs clearing; it never implicitly creates a session.
 
@@ -530,7 +530,7 @@ What would you like to do?
    Choose a number >
 ```
 
-Back returns to the folder overview. When entered directly with `--name` or an exact session target, use Done instead because there is no previous picker. Default controls live only in the folder overview. Add/replace and reordering use the same source-selection controls described under session creation, but each completed operation here immediately saves the session's desired source chain. Hide remove/replace/reorder actions when there are no sources.
+Back returns to the folder overview. When entered directly with `--name` or an exact session target, use Exit instead because there is no previous picker. Default controls live only in the folder overview. Add/replace and reordering use the same source-selection controls described under session creation, but each completed operation here immediately saves the session's desired source chain. Hide remove/replace/reorder actions when there are no sources. On exit after source changes, report the affected exact session names once with `status` commands to check whether container changes are still pending.
 
 Show combined configuration uses the existing read-only renderer, including scalar and per-entry provenance, not a second editable settings dashboard.
 

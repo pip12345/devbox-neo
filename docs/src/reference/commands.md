@@ -73,7 +73,7 @@ See [output and errors](output.md) for columns, change classifications, and JSON
 | `edit <full-name>` | Edit an exact session's sources directly |
 | `edit <target> --show [--json]` | Inspect combined configuration; folder targets require `--name` |
 
-Creation and source menus select existing directories; they never open another command's editor. Completed settings/source edits save immediately. See [editing controls](configuration.md#editing-and-inspection).
+Creation and source menus select existing directories; they never open another command's editor. Completed settings/source edits save immediately; **Exit** does not roll them back. After session source edits, the exit receipt gives an exact-session `status` command to check pending changes. See [editing controls](configuration.md#editing-and-inspection).
 
 Both directory commands accept setup flags:
 
@@ -95,7 +95,7 @@ Explicit setup flags run directly, even in a terminal. Without flags, interactiv
 | `edit <full-name> --default` | Select that session for its recorded workspace |
 | `edit <folder\|session> --clear-default` | Clear the workspace's default without selecting another session |
 
-`--default` requires `--name` or an exact full session name. `--clear-default` cannot be combined with `--name`, `--default`, or `--show`. In the folder overview, **Exit** leaves completed source/default changes saved. Selection never starts a container. Opening does not change the default.
+`--default` requires `--name` or an exact full session name. `--clear-default` cannot be combined with `--name`, `--default`, or `--show`. In the folder overview, **Exit** leaves completed source/default changes saved; selecting a broken session record shows its error and lets you choose again. Selection never starts a container. Opening does not change the default.
 
 ## SSH sharing
 

@@ -21,7 +21,7 @@ func sessionNameFlag(cmd *cobra.Command, name *string) *cobra.Command {
 
 func New() *cobra.Command {
 	var home, localName string
-	root := &cobra.Command{Use: "devbox-neo", Short: "Persistent development environments", SilenceUsage: true, SilenceErrors: true}
+	root := &cobra.Command{Use: "devbox-neo", Short: "Persistent development environments", Example: "  # First run\n  devbox-neo config create base\n  devbox-neo create .\n  devbox-neo edit .\n  devbox-neo open .", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().StringVar(&home, "home", "", "Devbox home (default ~/.devbox-neo; DEVBOX_HOME overrides)")
 	initialize := func(cmd *cobra.Command) (*store.Store, error) {
 		userHome, err := os.UserHomeDir()
@@ -69,7 +69,7 @@ func New() *cobra.Command {
 	open.Flags().StringArrayVar(&harnessArgs, "harness-arg", nil, "Pass an argument to the harness (repeatable)")
 	open.Flags().BoolVarP(&resume, "continue", "c", false, "Continue the previous harness session")
 	root.AddCommand(sessionNameFlag(open, &localName))
-	root.AddCommand(&cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { cmd.Println(Version); return nil }})
+	root.AddCommand(&cobra.Command{Use: "version", Short: "Print the Devbox version", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { cmd.Println(Version); return nil }})
 	root.AddCommand(sessionNameFlag(&cobra.Command{Use: "start <folder|session>", Short: "Keep a session running until stop, including across reboots", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {

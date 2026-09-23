@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -191,8 +192,8 @@ func TestEditFolderExitKeepsSavedDefault(t *testing.T) {
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(out.String(), err)
 	}
-	if !strings.Contains(out.String(), "[0]  Exit") || strings.Contains(out.String(), "[0]  Cancel") {
-		t.Fatal("folder overview implied that exiting rolls back edits", out.String())
+	if !strings.Contains(out.String(), "[0]  Exit") || strings.Contains(out.String(), "[0]  Cancel") || !strings.HasSuffix(strings.TrimSpace(out.String()), "Default session for "+displayCell(q.Workspace)+": Main") {
+		t.Fatal("exiting the folder overview lost its saved-action receipt", out.String())
 	}
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
 	if err != nil || selected == nil || selected.Name != fullName {
@@ -232,6 +233,50 @@ func TestEditCanClearStaleDefaultWithoutSessions(t *testing.T) {
 	}
 	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {
 		t.Fatal("stale default was not cleared", selected, err)
+	}
+}
+
+func TestEditFolderCanRecoverFromBrokenSessionSelection(t *testing.T) {
+	e, q, _ := namedCLIFixture(t)
+	q.LocalName = "Broken"
+	broken, err := e.Create(context.Background(), q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := e.Store.Read(context.Background(), broken.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Version = 0
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := e.Store.RecordPath(broken.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	master, slave := testTerminal(t)
+	if _, err := master.WriteString("1\n2\n0\n0\n"); err != nil {
+		t.Fatal(err)
+	}
+	name := ""
+	cmd := editCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+	var out bytes.Buffer
+	cmd.SetIn(slave)
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{q.Workspace})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		t.Fatal(out.String(), err)
+	}
+	if strings.Count(out.String(), "Select a session to edit") < 2 || !strings.Contains(out.String(), "Error: Invalid session state: unsupported session record version") || !strings.Contains(out.String(), "Manage config sources") || !strings.Contains(out.String(), "[0]  Exit") {
+		t.Fatal("invalid session selection closed the folder editor", out.String())
 	}
 }
 
@@ -403,6 +448,48 @@ func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
 	}
 }
 
+func TestEditReportsSavedSourcesAfterExitOnlyWhenChanged(t *testing.T) {
+	e, _, fullName := namedCLIFixture(t)
+	factory := func(*cobra.Command) (*app.Engine, error) { return e, nil }
+	run := func(input string) string {
+		t.Helper()
+		master, slave := testTerminal(t)
+		if _, err := master.WriteString(input); err != nil {
+			t.Fatal(err)
+		}
+		name := ""
+		cmd := editCommand(factory, &name)
+		var out bytes.Buffer
+		cmd.SetIn(slave)
+		cmd.SetOut(&out)
+		cmd.SetErr(&out)
+		cmd.SetArgs([]string{fullName})
+		if err := cmd.ExecuteContext(context.Background()); err != nil {
+			t.Fatal(out.String(), err)
+		}
+		return out.String()
+	}
+	changed := run("3\n1\n0\n")
+	if !strings.Contains(changed, "Saved config sources.") || !strings.Contains(changed, "Sources saved; container changes may still be pending. Check with:\n  devbox-neo status "+fullName) {
+		t.Fatal("source edit lost its saved-but-not-applied receipt", changed)
+	}
+	if unchanged := run("0\n"); strings.Contains(unchanged, "Sources saved;") {
+		t.Fatal("no-op edit claimed to have saved sources", unchanged)
+	}
+}
+
+func TestEditReceiptListsEachChangedSessionOnce(t *testing.T) {
+	var out bytes.Buffer
+	m := menu{out: &out, cmd: &cobra.Command{Use: "edit"}}
+	if err := writeEditReceipts(m, "", map[string]bool{"devbox-z": true, "devbox-a": true}, ""); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	if strings.Count(text, "Sources saved;") != 1 || strings.Count(text, "devbox-neo status devbox-a") != 1 || strings.Count(text, "devbox-neo status devbox-z") != 1 || strings.Index(text, "devbox-a") >= strings.Index(text, "devbox-z") {
+		t.Fatal("receipt lost or duplicated a changed session", text)
+	}
+}
+
 func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T) {
 	e, _, fullName := namedCLIFixture(t)
 	r, err := e.Store.Read(context.Background(), fullName)
@@ -411,14 +498,15 @@ func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T
 	}
 	var out bytes.Buffer
 	m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("3\n1\n0\n")), out: &out}
-	if err := sourceChainMenu(m, e, r, "Done"); err != nil {
-		t.Fatal(out.String(), err)
+	saved, err := sourceChainMenu(m, e, r, "Exit")
+	if err != nil || !saved {
+		t.Fatal(out.String(), saved, err)
 	}
 	after, err := e.Store.Read(context.Background(), fullName)
 	if err != nil || after.ID != r.ID || len(after.Sources) != 0 || after.Applied != r.Applied {
 		t.Fatal("source edit was lost or applied container settings", after, err)
 	}
-	if !strings.Contains(out.String(), "Saved config sources.") || !strings.Contains(out.String(), "at least one configuration source") || !strings.Contains(out.String(), "[0]  Done") {
+	if !strings.Contains(out.String(), "Saved config sources.") || !strings.Contains(out.String(), "at least one configuration source") || !strings.Contains(out.String(), "[0]  Exit") {
 		t.Fatal(out.String())
 	}
 	for _, forbidden := range []string{"Select a harness", "Choose optional files", "Select the default session"} {

@@ -295,5 +295,5 @@ func (m menu) chooseConfig(rows []configDisplayRow, actions ...string) (int, err
 			}
 		}
 	}
-	return m.readChoice(len(rows)+len(actions), "Done")
+	return m.readChoice(len(rows)+len(actions), "Exit")
 }
