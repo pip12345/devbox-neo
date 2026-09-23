@@ -55,12 +55,19 @@ func chooseSessionToEdit(m menu, e *app.Engine, folder string) (*store.Record, f
 		if entry.Err == nil {
 			canSet = true
 		}
-		label := sessionPickerLabel(entry, states, i == current)
+		label := sessionPickerLabel(entry, states)
+		inactive := states[entry.Name] != "running"
 		var style func(string) string
-		if states[entry.Name] != "running" {
+		if inactive {
 			style = paint.dim
 		}
 		prefix := menuPrefix(i + 1)
+		if i == current {
+			label = "* " + label
+			style = defaultRowStyle(paint, prefix, inactive)
+		} else {
+			label = "  " + label
+		}
 		if err := writeStyledConfigLine(m.out, prefix, label, strings.Repeat(" ", len(prefix)), configDisplayWidth(m.out), style); err != nil {
 			return nil, folderEditNone, err
 		}
@@ -85,7 +92,7 @@ func chooseSessionToEdit(m menu, e *app.Engine, folder string) (*store.Record, f
 			return nil, folderEditNone, err
 		}
 	}
-	choice, err := m.readChoice(count, "Cancel")
+	choice, err := m.readChoice(count, "Exit")
 	if err != nil || choice < 0 {
 		return nil, folderEditNone, err
 	}
@@ -117,7 +124,7 @@ func chooseFolderDefault(m menu, e *app.Engine, folder string) (*store.Record, e
 		summary = "Unavailable: " + selected.Name
 	}
 	for i, entry := range entries {
-		choices[i] = sessionPickerLabel(entry, states, false)
+		choices[i] = sessionPickerLabel(entry, states)
 		if selected != nil && entry.Name == selected.Name && entry.Record.ID == selected.ID {
 			current, summary = i, entry.Record.Identity.LocalName
 		}
@@ -147,7 +154,22 @@ func folderSessionStates(m menu, e *app.Engine, workspace string) map[string]str
 	return states
 }
 
-func sessionPickerLabel(entry store.Entry, states map[string]string, isDefault bool) string {
+func defaultRowStyle(paint terminalPaint, prefix string, inactive bool) func(string) string {
+	ordinary := func(text string) string {
+		if inactive {
+			return paint.dim(text)
+		}
+		return text
+	}
+	return func(line string) string {
+		if strings.HasPrefix(line, prefix+"*") {
+			return ordinary(prefix) + paint.green("*") + ordinary(line[len(prefix)+1:])
+		}
+		return ordinary(line)
+	}
+}
+
+func sessionPickerLabel(entry store.Entry, states map[string]string) string {
 	label := entry.Record.Identity.LocalName
 	if label == "" {
 		label = entry.Name
@@ -158,9 +180,6 @@ func sessionPickerLabel(entry store.Entry, states map[string]string, isDefault b
 	}
 	if entry.Err != nil {
 		state = "Error: " + entry.Err.Error()
-	}
-	if isDefault {
-		state = "default · " + state
 	}
 	return fmt.Sprintf("%-16s %s", displayCell(label), displayCell(state))
 }

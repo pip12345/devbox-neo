@@ -9,28 +9,70 @@ import (
 
 	"devbox/internal/app"
 	"devbox/internal/commanderror"
+	"devbox/internal/environment"
 	"github.com/spf13/cobra"
 )
 
-func confirmDeletion(reader *bufio.Reader, out io.Writer, prompt app.DeletePrompt) (bool, error) {
+type deletionConfirmation struct {
+	reader            *bufio.Reader
+	out               io.Writer
+	defaultFolder     string
+	singleTarget      bool
+	removedContainers int
+}
+
+func (c *deletionConfirmation) confirm(prompt app.DeletePrompt) (bool, error) {
 	var text strings.Builder
+	if c.defaultFolder != "" {
+		if len(prompt.Containers) > 0 || c.removedContainers == 0 {
+			name := prompt.Containers
+			if len(name) == 0 {
+				name = prompt.Sessions
+			}
+			if len(name) == 1 {
+				local := name[0]
+				if dot := strings.LastIndexByte(local, '.'); dot >= 0 {
+					local = local[dot+1:]
+				}
+				fmt.Fprintf(&text, "Delete %s (default in %s)\n", displayCell(local), displayCell(c.defaultFolder))
+			}
+		}
+	}
 	if len(prompt.Containers) > 0 {
-		fmt.Fprintln(&text, "Delete containers:")
-		for _, name := range prompt.Containers {
-			fmt.Fprintf(&text, "  %s\n", displayCell(name))
+		if len(prompt.Containers) == 1 {
+			fmt.Fprintf(&text, "Container: %s\n", displayCell(prompt.Containers[0]))
+			text.WriteString("Remove container? [y/N] ")
+		} else {
+			fmt.Fprintln(&text, "Containers:")
+			for _, name := range prompt.Containers {
+				fmt.Fprintf(&text, "  %s\n", displayCell(name))
+			}
+			text.WriteString("Remove containers? [y/N] ")
 		}
-	}
-	if len(prompt.Sessions) > 0 {
-		fmt.Fprintln(&text, "Delete saved session data (including harness state and conversation history):")
-		for _, name := range prompt.Sessions {
-			fmt.Fprintf(&text, "  %s\n", displayCell(name))
+	} else if len(prompt.Sessions) > 0 {
+		if c.removedContainers > 0 {
+			if c.removedContainers == 1 {
+				text.WriteString("Container removed. ")
+			} else {
+				fmt.Fprintf(&text, "%d containers removed.\n", c.removedContainers)
+			}
+		} else if c.singleTarget {
+			text.WriteString("No container. ")
 		}
+		if !c.singleTarget {
+			fmt.Fprintln(&text, "Saved sessions:")
+			for _, name := range prompt.Sessions {
+				fmt.Fprintf(&text, "  %s\n", displayCell(name))
+			}
+		} else if c.defaultFolder == "" && c.removedContainers == 0 {
+			fmt.Fprintf(&text, "Saved session: %s\n", displayCell(prompt.Sessions[0]))
+		}
+		text.WriteString("Delete saved data and history? [y/N] ")
 	}
-	text.WriteString("Continue? [y/N] ")
-	if _, err := io.WriteString(out, text.String()); err != nil {
+	if _, err := io.WriteString(c.out, text.String()); err != nil {
 		return false, err
 	}
-	line, err := reader.ReadString('\n')
+	line, err := c.reader.ReadString('\n')
 	if err != nil {
 		if err == io.EOF {
 			return false, nil
@@ -38,7 +80,12 @@ func confirmDeletion(reader *bufio.Reader, out io.Writer, prompt app.DeletePromp
 		return false, err
 	}
 	answer := strings.ToLower(strings.TrimSpace(line))
-	return answer == "y" || answer == "yes", nil
+	confirmed := answer == "y" || answer == "yes"
+	if confirmed && len(prompt.Containers) > 0 {
+		// app.Delete asks about saved state only after this phase succeeds.
+		c.removedContainers = len(prompt.Containers)
+	}
+	return confirmed, nil
 }
 
 func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
@@ -64,10 +111,11 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 		options.Selection.LocalName = *localName
 		options.Confirm = nil
 		if options.Scope == "" {
-			reader := promptReader(cmd)
-			options.Confirm = func(prompt app.DeletePrompt) (bool, error) {
-				return confirmDeletion(reader, cmd.OutOrStdout(), prompt)
+			confirmation := &deletionConfirmation{reader: promptReader(cmd), out: cmd.OutOrStdout(), singleTarget: len(args) == 1}
+			if confirmation.singleTarget && *localName == "" && !environment.IsSessionTarget(args[0]) {
+				confirmation.defaultFolder = args[0]
 			}
+			options.Confirm = confirmation.confirm
 		}
 		e, err := factory(cmd)
 		if err != nil {

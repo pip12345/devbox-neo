@@ -2,7 +2,7 @@
 
 ## Interactive menus
 
-Short create/edit menus redraw on a temporary terminal screen instead of appending each step to shell output. They still use numbered choices and normal line input. When a menu is too tall or cannot be sized safely, it prints normally. A retry menu also stays on the shell screen after a creation warning, so the warning remains visible. Redirected output stays plain. The shell screen returns on exit, with final results and errors printed there.
+Short create/edit menus redraw on a temporary terminal screen instead of appending each step to shell output. They still use numbered choices and normal line input. When a menu is too tall or cannot be sized safely, it prints normally. A retry menu also stays on the shell screen after a creation warning, so the warning remains visible. Redirected output stays plain. In the `edit <folder>` overview, `*` marks the folder default beside its session even when it is stopped; container status remains separate. The shell screen returns on exit, with final results and errors printed there.
 
 ## Environment listings
 

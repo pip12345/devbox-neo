@@ -34,7 +34,7 @@ Before a stopped container starts, access commands resolve participating configu
 
 ### Creation and launch options
 
-Configure container settings through `config edit <reference>` before creation/recreation. A terminal prompts for missing creation inputs; otherwise `create` requires `--name` and at least one repeated `--config`. A fully specified create does not prompt. Session names are explicit and case-sensitive; the prompt starts blank.
+Configure container settings through `config edit <reference>` before creation/recreation. A terminal opens a creation menu where you can set or change the pending session name and add or edit config sources in either order. `--name` and repeated `--config` prefill those choices; **Create session** appears once both are present. Without a terminal, both are required. A fully specified create does not prompt. Session names are explicit and case-sensitive.
 
 | Option | Commands | Meaning |
 |---|---|---|
@@ -95,7 +95,7 @@ Explicit setup flags run directly, even in a terminal. Without flags, interactiv
 | `edit <full-name> --default` | Select that session for its recorded workspace |
 | `edit <folder\|session> --clear-default` | Clear the workspace's default without selecting another session |
 
-`--default` requires `--name` or an exact full session name. `--clear-default` cannot be combined with `--name`, `--default`, or `--show`. Selection never starts a container. Opening does not change the default.
+`--default` requires `--name` or an exact full session name. `--clear-default` cannot be combined with `--name`, `--default`, or `--show`. In the folder overview, **Exit** leaves completed source/default changes saved. Selection never starts a container. Opening does not change the default.
 
 ## SSH sharing
 
@@ -165,7 +165,7 @@ devbox-neo delete <target...> [--container|--session]
 devbox-neo delete [filters...] --container|--session
 ```
 
-Without a scope flag, interactive deletion asks about containers first, then saved data/history. Both prompts default to no. Explicit scope is required for scripts, JSON output, and dry runs, and skips prompts.
+Without a scope flag, interactive deletion identifies a folder target's saved default, then asks whether to remove selected containers immediately and separately whether to remove saved data/history. Both prompts default to no. Answering no to the second question retains saved data but does not restore containers removed at the first step. Explicit scope is required for scripts, JSON output, and dry runs, and skips prompts.
 
 | Flag | Meaning |
 |---|---|

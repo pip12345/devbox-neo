@@ -82,7 +82,7 @@ For an interactive choice:
 devbox-neo delete .
 ```
 
-Devbox first asks about removing the container, then separately asks about saved data and conversation history. Keep the saved data if you want to restore the environment later.
+A folder target selects its saved default; use `--name NAME` to delete a different session in that folder. Devbox shows the selected session and asks whether to remove its container now. If you answer yes, it removes the container before asking separately about saved session data and conversation history. Answering no to the second question keeps that data but does not restore the container. Keep the saved data if you want to restore the environment later.
 
 For an explicit, non-prompting action:
 

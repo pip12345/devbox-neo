@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -186,10 +187,91 @@ func TestDeleteCLIFlagsAndTerminalPrompts(t *testing.T) {
 					t.Fatal("invalid flags deleted container")
 				}
 			}
-			if strings.Count(out.String(), "Continue? [y/N]") != tc.prompts {
+			if strings.Count(out.String(), "[y/N]") != tc.prompts || strings.Contains(out.String(), "Continue?") {
 				t.Fatal(out.String())
 			}
+			if tc.prompts > 0 && !strings.Contains(out.String(), "Remove container? [y/N]") {
+				t.Fatal("container confirmation is unclear", out.String())
+			}
+			if tc.prompts == 2 && !strings.Contains(out.String(), "Container removed. Delete saved data and history? [y/N]") {
+				t.Fatal("saved-data confirmation is unclear", out.String())
+			}
 		})
+	}
+}
+
+func TestDeleteConfirmationNamesBulkScopeWithoutClaimingDefault(t *testing.T) {
+	for _, prompt := range []app.DeletePrompt{
+		{Containers: []string{"devbox-a.one", "devbox-b.two"}},
+		{Sessions: []string{"devbox-a.one", "devbox-b.two"}},
+	} {
+		var out bytes.Buffer
+		confirmation := deletionConfirmation{reader: bufio.NewReader(strings.NewReader("n\n")), out: &out}
+		ok, err := confirmation.confirm(prompt)
+		if err != nil || ok || strings.Contains(out.String(), "(default in ") || !strings.Contains(out.String(), "[y/N]") {
+			t.Fatal("bulk confirmation claimed a folder default or lost its scope", out.String(), err)
+		}
+		if len(prompt.Containers) > 0 && (!strings.Contains(out.String(), "Remove containers?") || !strings.Contains(out.String(), "devbox-a.one") || !strings.Contains(out.String(), "devbox-b.two")) || len(prompt.Sessions) > 0 && (!strings.Contains(out.String(), "Delete saved data and history?") || !strings.Contains(out.String(), "devbox-a.one") || !strings.Contains(out.String(), "devbox-b.two")) {
+			t.Fatal("bulk confirmation used a singular or ambiguous question", out.String())
+		}
+	}
+}
+
+func TestDeleteFolderExplainsItsSelectedDefaultAndPhases(t *testing.T) {
+	engine, daemon, name, root := inventoryCLI(t)
+	ctx := context.Background()
+	selected, err := engine.Store.Read(ctx, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := engine.Create(ctx, app.Request{Workspace: selected.Identity.Workspace, LocalName: "other", Sources: testConfigSources(engine.Store.Home, "test")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.SetDefault(ctx, selected); err != nil {
+		t.Fatal(err)
+	}
+	run := func(input string) string {
+		t.Helper()
+		master, slave := testTerminal(t)
+		if _, err := master.WriteString(input); err != nil {
+			t.Fatal(err)
+		}
+		cmd := root()
+		var out bytes.Buffer
+		cmd.SetIn(slave)
+		cmd.SetOut(&out)
+		cmd.SetErr(&out)
+		cmd.SetArgs([]string{"delete", selected.Identity.Workspace})
+		if err := cmd.ExecuteContext(ctx); err != nil {
+			t.Fatal(out.String(), err)
+		}
+		return out.String()
+	}
+	cancelled := run("n\n")
+	label := "Delete test (default in " + selected.Identity.Workspace + ")"
+	if !strings.HasPrefix(cancelled, label) || !strings.Contains(cancelled, "Container: "+name) || !strings.Contains(cancelled, "Remove container? [y/N]") || !strings.Contains(cancelled, "Cancelled.") || strings.Contains(cancelled, "Delete saved data and history?") {
+		t.Fatal("folder default selection or first phase was unclear", cancelled)
+	}
+	if _, exists := daemon.Snapshot(name); !exists {
+		t.Fatal("declining container deletion removed the selected default")
+	}
+	kept := run("y\nn\n")
+	if strings.Count(kept, label) != 1 || !strings.Contains(kept, "Container removed. Delete saved data and history? [y/N]") || strings.Contains(kept, "Saved session data (including") || !strings.Contains(kept, "Session state and image retained") {
+		t.Fatal("saved-data decision did not explain the partial outcome", kept)
+	}
+	if _, exists := daemon.Snapshot(name); exists {
+		t.Fatal("the chosen container was not removed")
+	}
+	if _, exists := daemon.Snapshot(other.Name); !exists {
+		t.Fatal("deleting the folder default removed another session")
+	}
+	if _, err := engine.Store.Read(ctx, name); err != nil {
+		t.Fatal("declining saved-data deletion removed the session", err)
+	}
+	missing := run("n\n")
+	if !strings.Contains(missing, label) || strings.Contains(missing, "Remove container?") || !strings.Contains(missing, "No container. Delete saved data and history? [y/N]") {
+		t.Fatal("missing container did not go directly to saved-data decision", missing)
 	}
 }
 

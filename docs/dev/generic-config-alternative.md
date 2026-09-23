@@ -54,10 +54,10 @@ Follow the rewrite's existing menu and settings-display components in `internal/
 - Titles say what the user is doing or selecting. Label context explicitly, such as `Folder:` and `Session:`; do not use a command name as a substitute for explaining a screen.
 - Use bold headings, aligned indented `[1]` choices, and the existing `Choose a number >` prompt. Use dim context labels, paths, and secondary instructions.
 - Selection menus show `Current selection:` above the choices and emphasize its value. Mark the selected choice with a bold name and a green `(selected)` marker. Multi-select menus use the same emphasis and green checkmarks, and summarize the selected items above the choices. Do not add selection summaries to ordinary action menus or imply a selection that has not been made.
-- Preserve the session list's distinction between running and inactive sessions: stopped/missing entries are dimmed, but a selection marker must remain prominent. Status and selection are separate facts. Errors have explicit labels and are never indicated by color alone.
+- Preserve the session list's distinction between running and inactive sessions: stopped/missing entries are dimmed, but selection markers remain prominent. The folder overview uses the same `*` as `list` to mark its default independently of container status; do not dim that marker. Errors have explicit labels and are never indicated by color alone.
 - Keep the settings dashboard's `Setting / Value / Source` columns. Show scalar values and shell commands inline, other lists underneath their setting with a source beside each entry, and empty values as `None`. Wrap long values and paths rather than truncating them; use the existing terminal-width limit.
 - Apply styling through shared terminal helpers, not command-specific ANSI fragments. Align plain text before styling so escape sequences do not shift columns. Respect output-terminal detection, `NO_COLOR`, `TERM=dumb`, and redirected output. Plain text retains `(selected)`, checkmarks, and status/error labels.
-- `[0] Back` returns to the previous step or menu. Use `[0] Cancel` when abandoning a selection or creation flow, and `[0] Done` when leaving an editor entered directly. `q` follows the displayed `[0]` action. Do not show Back when there is no previous screen.
+- `[0] Back` returns to the previous step or menu. Use `[0] Cancel` when abandoning a selection or creation flow, `[0] Exit` to leave the folder editor without undoing saved changes, and `[0] Done` when leaving an editor entered directly. `q` follows the displayed `[0]` action. Do not show Back when there is no previous screen.
 - Keep canonical line input: type a number and press Enter. Text entry uses `:back` to cancel the unfinished input, for example `New mount (:back cancels): `. Do not add Escape handling, raw-terminal controls, or a new keyboard-input system. EOF abandons incomplete input while retaining completed edits. One shared menu renderer redraws short screens in the terminal's temporary alternate screen, without changing input mode; oversized or unpredictable-width menus print normally. Restore the shell screen before printing final results or errors. Redirected output stays plain.
 - Completed setting and saved-source-chain edits save immediately. Back only navigates; there are no Save/Discard screens or extra approvals. Creation choices remain pending until the creation action; Back between creation steps preserves those choices without publishing files or a session.
 
@@ -114,21 +114,22 @@ Creation requires at least one config source and a valid combined configuration,
 
 ### Interactive creation
 
-In a terminal, `devbox create .` prompts only for the missing session inputs: the folder-local name and config source selection. Leave the name prompt blank; do not prefill or suggest `main` or another name. Require the user to enter a name. Partially specified commands prompt only for missing inputs:
+In a terminal, `devbox create .` opens a creation overview with a pending session name and source chain. Let the user set/change the name and add/edit sources in either order. Do not prefill or suggest `main` or another name; a name and at least one source are required before Create session appears. Partially specified commands prefill the supplied inputs in the overview:
 
 ```sh
-devbox create . --name main                         # choose config sources
-devbox create . --config base --config ./devconfig  # enter the local name
+devbox create . --name main                         # add config sources in the overview
+devbox create . --config base --config ./devconfig  # set the name in the overview
 ```
 
 The source picker offers existing configs under `<home>/configs/` and an option to enter the path of an existing config directory. It does not create or edit directories, select their harness, or initialize their artifacts. If no reusable configs are listed, explain how to create one with `devbox config create base`; the user can still supply an existing directory path.
 
-Name entry uses `Session name (:back cancels): ` with no prefilled text. The picker shows the ordered chain and supports adding, replacing, removing, and reordering sources before session creation. This example shows the summary after the user has entered `Main` and selected two sources; the name is not a default:
+Set/Change session name opens `Session name (:back cancels): ` without prefilled text. Back keeps the previous pending name. Invalid input leaves it unchanged and shows the validation error. The overview shows the ordered chain and supports adding, replacing, removing, and reordering sources before session creation. This example shows the draft after the user has entered `Main` and selected two sources; the name is not a default:
 
 ```text
-Create session · Main
+Create session
 
 Folder: /work/api
+Session name: Main
 
 Config sources, in order:
    1. base         fixed       ~/.devbox-neo/configs/base
@@ -137,17 +138,18 @@ Config sources, in order:
 What would you like to do?
 
    [1]  Create session
-   [2]  Add source
-   [3]  Replace source
-   [4]  Remove source
-   [5]  Reorder sources
+   [2]  Change session name
+   [3]  Add source
+   [4]  Replace source
+   [5]  Remove source
+   [6]  Reorder sources
 
    [0]  Cancel
 
    Choose a number >
 ```
 
-Plain numbered source rows show order; bracketed numbers identify selectable actions. With no sources, show only Add source and Cancel. Add source uses the existing-config picker:
+Plain numbered source rows show order; bracketed numbers identify selectable actions. With no name, show **Set session name**; with a name, show **Change session name**. With no sources, show no source-edit actions beyond Add source. Create session appears only when both the name and a source are present. Add source uses the existing-config picker:
 
 ```text
 Select a config source
@@ -243,13 +245,13 @@ Select a session to edit
 Folder:  /work/api
 Default: Main
 
-   [1]  Main          default · stopped
-   [2]  Experiment    running
+   [1]  * Main          stopped
+   [2]    Experiment    running
 
    [3]  Set folder default
    [4]  Clear folder default
 
-   [0]  Cancel
+   [0]  Exit
 
    Choose a number >
 ```
@@ -478,18 +480,18 @@ Select a session to edit
 Folder: /work/api
 Default: Main
 
-   [1]  Main          default · stopped
-   [2]  Experiment    running
+   [1]  * Main          stopped
+   [2]    Experiment    running
 
    [3]  Set folder default
    [4]  Clear folder default
 
-   [0]  Cancel
+   [0]  Exit
 
    Choose a number >
 ```
 
-This screen lists sessions, not sources. The default annotation describes folder state; it does not preselect a session in this picker. Use the session list's running/inactive styling and keep annotations readable.
+This screen lists sessions, not sources. The `*` marks the folder default; it does not preselect a session in this picker. Keep that marker prominent when its stopped/missing row is dimmed.
 
 Selecting a session opens its source-chain editor. The overview changes the default: Set opens a numbered session picker; Clear needs no selected session. An empty overview guides the user to `devbox create .` unless a stale saved default needs clearing; it never implicitly creates a session.
 

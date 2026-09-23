@@ -42,39 +42,15 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 			}
 			sources = append(sources, reference)
 		}
-		localName := *name
-		for localName == "" {
-			value, err := m.line("Session name (:back cancels): ")
-			if errors.Is(err, io.EOF) || value == ":back" {
-				fmt.Fprintln(m.out, "Cancelled. No session was created.")
-				return nil
-			}
-			if err != nil {
+		draft := sessionCreationDraft{name: *name, sources: sources}
+		if draft.name != "" {
+			if err := environment.ValidateLocalName(draft.name); err != nil {
 				return err
 			}
-			if err := environment.ValidateLocalName(value); err != nil {
-				fmt.Fprintf(m.out, "Error: %s\n", err)
-				continue
-			}
-			localName = value
-		}
-		if err := environment.ValidateLocalName(localName); err != nil {
-			return err
-		}
-		if len(sources) == 0 {
-			reference, chosen, err := picker.choose(nil, "Cancel")
-			if errors.Is(err, io.EOF) || (err == nil && !chosen) {
-				fmt.Fprintln(m.out, "Cancelled. No session was created.")
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-			sources = append(sources, reference)
 		}
 		if missing {
 			var proceed bool
-			sources, proceed, err = createSessionMenu(picker, e, localName, sources)
+			draft, proceed, err = createSessionMenu(picker, e, draft)
 			if errors.Is(err, io.EOF) || (err == nil && !proceed) {
 				fmt.Fprintln(m.out, "Cancelled. No session was created.")
 				return nil
@@ -88,15 +64,15 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		if err := m.finish(); err != nil {
 			return err
 		}
-		result, err := e.Create(cmd.Context(), app.Request{Workspace: workspace, LocalName: localName, Sources: sources})
+		result, err := e.Create(cmd.Context(), app.Request{Workspace: workspace, LocalName: draft.name, Sources: draft.sources})
 		if err != nil {
 			return err
 		}
-		cmd.Printf("\nCreated session %s\nFull name: %s\nFolder: %s\nContainer: stopped\n", localName, result.Name, displayCell(workspace))
-		if err := showSourceChain(m, e.Store.Home, workspace, sources); err != nil {
+		cmd.Printf("\nCreated session %s\nFull name: %s\nFolder: %s\nContainer: stopped\n", draft.name, result.Name, displayCell(workspace))
+		if err := showSourceChain(m, e.Store.Home, workspace, draft.sources); err != nil {
 			return err
 		}
-		selectDefault := commanderror.Next("Select it as this folder's default", "edit", args[0], "--name", localName, "--default")
+		selectDefault := commanderror.Next("Select it as this folder's default", "edit", args[0], "--name", draft.name, "--default")
 		if interactive(cmd) {
 			selectDefault = commanderror.Next("Choose this folder's default session", "edit", args[0])
 		}
@@ -111,32 +87,50 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 	return sessionNameFlag(cmd, name)
 }
 
-func createSessionMenu(p sourcePicker, e *app.Engine, name string, sources []config.Reference) ([]config.Reference, bool, error) {
+type sessionCreationDraft struct {
+	name    string
+	sources []config.Reference
+}
+
+func createSessionMenu(p sourcePicker, e *app.Engine, draft sessionCreationDraft) (sessionCreationDraft, bool, error) {
 	for {
-		if err := writeMenuTitle(p.out, "Create session · "+name); err != nil {
-			return sources, false, err
+		if err := writeMenuTitle(p.out, "Create session"); err != nil {
+			return draft, false, err
 		}
 		writeMenuHint(p.out, "Folder: "+displayCell(p.workspace))
-		if err := showSourceChain(p.menu, p.home, p.workspace, sources); err != nil {
-			return sources, false, err
+		name := "Not set"
+		if draft.name != "" {
+			name = draft.name
 		}
-		actions := []string{"Add source"}
-		if len(sources) > 0 {
-			actions = []string{"Create session", "Add source", "Replace source", "Remove source", "Reorder sources"}
+		if err := writeStyledConfigLine(p.out, "Session name: ", name, "  ", configDisplayWidth(p.out), terminalColors(p.out).strong); err != nil {
+			return draft, false, err
+		}
+		if err := showSourceChain(p.menu, p.home, p.workspace, draft.sources); err != nil {
+			return draft, false, err
+		}
+		nameAction := "Set session name"
+		if draft.name != "" {
+			nameAction = "Change session name"
+		}
+		actions := []string{nameAction, "Add source"}
+		if len(draft.sources) > 0 {
+			actions = append(actions, "Replace source", "Remove source", "Reorder sources")
 		}
 		gapBefore := -1
-		if len(sources) > 0 {
+		if draft.name != "" && len(draft.sources) > 0 {
+			actions = append([]string{"Create session"}, actions...)
 			gapBefore = 1
 		}
 		choice, err := p.menu.choose("What would you like to do?", actions, "Cancel", gapBefore)
 		if err != nil || choice < 0 {
-			return sources, false, err
+			return draft, false, err
 		}
-		if actions[choice] == "Create session" {
+		switch actions[choice] {
+		case "Create session":
 			if err := p.menu.pause(); err != nil {
-				return sources, false, err
+				return draft, false, err
 			}
-			spec, err := e.Resolve(app.Request{Workspace: p.workspace, LocalName: name, Sources: sources})
+			spec, err := e.Resolve(app.Request{Workspace: p.workspace, LocalName: draft.name, Sources: draft.sources})
 			if err != nil {
 				if len(spec.Warnings) > 0 {
 					p.menu.showNextPlain()
@@ -144,18 +138,48 @@ func createSessionMenu(p sourcePicker, e *app.Engine, name string, sources []con
 				fmt.Fprintf(p.out, "Error: %s\n", displayCell(err.Error()))
 				continue
 			}
-			return sources, true, nil
+			return draft, true, nil
+		case "Set session name", "Change session name":
+			name, changed, err := editSessionCreationName(p, draft.name)
+			if err != nil {
+				return draft, false, err
+			}
+			if changed {
+				draft.name = name
+			}
+		default:
+			updated, changed, err := editSourceChain(p, draft.sources, actions[choice])
+			if errors.Is(err, io.EOF) {
+				return draft, false, err
+			}
+			if err != nil {
+				fmt.Fprintf(p.out, "Error: %s\n", displayCell(err.Error()))
+				continue
+			}
+			if changed {
+				draft.sources = updated
+			}
 		}
-		updated, changed, err := editSourceChain(p, sources, actions[choice])
-		if errors.Is(err, io.EOF) {
-			return sources, false, err
+	}
+}
+
+func editSessionCreationName(p sourcePicker, current string) (string, bool, error) {
+	for {
+		if err := writeMenuTitle(p.out, "Session name"); err != nil {
+			return current, false, err
 		}
-		if err != nil {
-			fmt.Fprintf(p.out, "Error: %s\n", displayCell(err.Error()))
+		writeMenuHint(p.out, "Folder: "+displayCell(p.workspace))
+		if current != "" {
+			writeMenuHint(p.out, "Current name: "+current)
+		}
+		value, err := p.line("Session name (:back cancels): ")
+		if err != nil || value == ":back" {
+			return current, false, err
+		}
+		if err := environment.ValidateLocalName(value); err != nil {
+			fmt.Fprintf(p.out, "Error: %s\n", err)
 			continue
 		}
-		if changed {
-			sources = updated
-		}
+		return value, true, nil
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"devbox/internal/docker/dockertest"
 	"devbox/internal/environment"
 	"github.com/spf13/cobra"
+	"golang.org/x/sys/unix"
 )
 
 func TestSourcePickerHintsRetainExplicitHome(t *testing.T) {
@@ -166,11 +167,36 @@ func TestEditFolderMenuSetsAndClearsDefault(t *testing.T) {
 		t.Fatal(out.String(), err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "[3]  Set folder default") || !strings.Contains(text, "[4]  Clear folder default") || !strings.Contains(text, "Current selection: No default") || !strings.Contains(text, ": Second\n") || !strings.Contains(text, "Cleared default session for ") || strings.Contains(text, "Make folder default") {
+	if !strings.Contains(text, "[3]  Set folder default") || !strings.Contains(text, "[4]  Clear folder default") || !strings.Contains(text, "[0]  Exit") || strings.Contains(text, "[0]  Cancel") || !strings.Contains(text, "Current selection: No default") || !strings.Contains(text, ": Second\n") || !strings.Contains(text, "[2]  * Second") || !strings.Contains(text, "[1]    Main") || !strings.Contains(text, "Cleared default session for ") || strings.Contains(text, "default · stopped") || strings.Contains(text, "Make folder default") {
 		t.Fatal("default actions were not available in the folder menu", text)
 	}
 	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {
 		t.Fatal("folder default was not cleared", selected, err)
+	}
+}
+
+func TestEditFolderExitKeepsSavedDefault(t *testing.T) {
+	e, q, fullName := namedCLIFixture(t)
+	master, slave := testTerminal(t)
+	if _, err := master.WriteString("2\n1\n0\n"); err != nil {
+		t.Fatal(err)
+	}
+	name := ""
+	cmd := editCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+	var out bytes.Buffer
+	cmd.SetIn(slave)
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{q.Workspace})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(out.String(), err)
+	}
+	if !strings.Contains(out.String(), "[0]  Exit") || strings.Contains(out.String(), "[0]  Cancel") {
+		t.Fatal("folder overview implied that exiting rolls back edits", out.String())
+	}
+	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
+	if err != nil || selected == nil || selected.Name != fullName {
+		t.Fatal("exiting the folder overview lost its saved default", selected, err)
 	}
 }
 
@@ -209,10 +235,10 @@ func TestEditCanClearStaleDefaultWithoutSessions(t *testing.T) {
 	}
 }
 
-func TestInteractiveCreationStartsWithBlankNameAndOnlySelectsConfigs(t *testing.T) {
+func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("Fresh\n1\n1\n"); err != nil {
+	if _, err := master.WriteString("1\nFresh\n2\n1\n1\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -228,27 +254,60 @@ func TestInteractiveCreationStartsWithBlankNameAndOnlySelectsConfigs(t *testing.
 		t.Fatal(out.String(), err)
 	}
 	text := out.String()
-	for _, forbidden := range []string{"Session name (:back cancels): Main", "Select a harness", "Choose optional files", "Select the default session"} {
+	for _, forbidden := range []string{"Session name: Main", "Select a harness", "Choose optional files", "Select the default session"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatal("session creation entered another workflow or suggested a name", text)
 		}
 	}
-	if !strings.HasPrefix(text, "Session name (:back cancels): ") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "edit "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
+	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "[1]  Set session name") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "edit "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
 		t.Fatal(text)
 	}
-	pickerIndex, reviewIndex := strings.Index(text, "Select a config source"), strings.Index(text, "Create session · Fresh")
-	if pickerIndex < 0 || reviewIndex < 0 || pickerIndex > reviewIndex || !strings.Contains(text, "[1]  Create session\n\n   [2]  Add source") {
-		t.Fatal("source picker did not open first or create action was not separated", text)
+	nameIndex, pickerIndex, reviewIndex := strings.Index(text, "Session name (:back cancels): "), strings.Index(text, "Select a config source"), strings.Index(text, "[1]  Create session")
+	if nameIndex < 0 || pickerIndex < nameIndex || reviewIndex < pickerIndex || !strings.Contains(text, "[1]  Create session\n\n   [2]  Change session name") {
+		t.Fatal("creation overview did not keep pending inputs editable", text)
 	}
 	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {
 		t.Fatal("interactive creation selected a default", selected, err)
 	}
 }
 
-func TestInteractiveCreationCanCancelAtInitialSourcePicker(t *testing.T) {
+func TestInteractiveCreationRedrawsEditableNameInTerminal(t *testing.T) {
+	t.Setenv("TERM", "xterm")
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("Fresh\n0\n"); err != nil {
+	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 30, Col: 80}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := master.WriteString("1\nFresh\n2\n1\n1\n"); err != nil {
+		t.Fatal(err)
+	}
+	name := ""
+	cmd := createCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+	cmd.SetIn(slave)
+	cmd.SetOut(slave)
+	cmd.SetErr(slave)
+	cmd.SetArgs([]string{q.Workspace})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := slave.WriteString("\x00"); err != nil {
+		t.Fatal(err)
+	}
+	text, err := bufio.NewReader(master).ReadString('\x00')
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "\x1b[?1049h") || !strings.Contains(text, "\x1b[?1049l") || strings.Index(text, "\nCreated session Fresh") < strings.LastIndex(text, "\x1b[?1049l") {
+		t.Fatal("creation did not show the editable draft and restore the shell before creating", text)
+	}
+}
+
+func TestInteractiveCreationCanBackOutOfInputsAndCancelOverview(t *testing.T) {
+	e, q, _ := namedCLIFixture(t)
+	master, slave := testTerminal(t)
+	if _, err := master.WriteString("1\nFresh\n2\n0\n1\n:back\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -263,7 +322,7 @@ func TestInteractiveCreationCanCancelAtInitialSourcePicker(t *testing.T) {
 	if err := cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}
-	if !strings.Contains(out.String(), "Select a config source") || !strings.Contains(out.String(), "[0]  Cancel") || !strings.Contains(out.String(), "Cancelled. No session was created.") || strings.Contains(out.String(), "Create session · Fresh") {
+	if !strings.Contains(out.String(), "Select a config source") || !strings.Contains(out.String(), "[0]  Back") || strings.Count(out.String(), "Session name: Fresh") < 2 || !strings.Contains(out.String(), "Cancelled. No session was created.") {
 		t.Fatal(out.String())
 	}
 	identity, err := environment.Identify(q.Workspace, "Fresh")
@@ -271,7 +330,76 @@ func TestInteractiveCreationCanCancelAtInitialSourcePicker(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := e.Store.Read(ctx, identity.Name); !os.IsNotExist(err) {
-		t.Fatal("cancelling the picker created a session", err)
+		t.Fatal("cancelling the creation overview created a session", err)
+	}
+}
+
+func TestInteractiveCreationCanChooseSourcesBeforeNameAndChangeName(t *testing.T) {
+	e, q, _ := namedCLIFixture(t)
+	master, slave := testTerminal(t)
+	if _, err := master.WriteString("2\n1\n1\nbad name\nFirst\n2\n:back\n2\nRenamed\n1\n"); err != nil {
+		t.Fatal(err)
+	}
+	name := ""
+	cmd := createCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+	var out bytes.Buffer
+	cmd.SetIn(slave)
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{q.Workspace})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		t.Fatal(out.String(), err)
+	}
+	text := out.String()
+	if !strings.Contains(text, "Error: session name must be") || !strings.Contains(text, "Session name: First") || !strings.Contains(text, "Current name: First") || !strings.Contains(text, "Created session Renamed") || strings.Contains(text, "Created session First") {
+		t.Fatal("editing the pending name changed the wrong state", text)
+	}
+	for _, local := range []string{"First", "Renamed"} {
+		identity, err := environment.Identify(q.Workspace, local)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record, err := e.Store.Read(ctx, identity.Name)
+		if local == "First" && !os.IsNotExist(err) || local == "Renamed" && (err != nil || len(record.Sources) != 1) {
+			t.Fatal("creation saved the wrong pending name or sources", local, record, err)
+		}
+	}
+}
+
+func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		args       []string
+		input      string
+		wantPicker bool
+	}{
+		{"name", []string{"--name", "OnlyName"}, "2\n1\n1\n", true},
+		{"config", []string{"--config", "base"}, "1\nOnlyConfig\n1\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, q, _ := namedCLIFixture(t)
+			master, slave := testTerminal(t)
+			if _, err := master.WriteString(tc.input); err != nil {
+				t.Fatal(err)
+			}
+			name := ""
+			cmd := createCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+			var out bytes.Buffer
+			cmd.SetIn(slave)
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs(append([]string{q.Workspace}, tc.args...))
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if err := cmd.ExecuteContext(ctx); err != nil {
+				t.Fatal(out.String(), err)
+			}
+			if strings.Contains(out.String(), "Select a config source") != tc.wantPicker || !strings.Contains(out.String(), "Created session Only") {
+				t.Fatal("provided inputs were not retained in the creation overview", out.String())
+			}
+		})
 	}
 }
 
