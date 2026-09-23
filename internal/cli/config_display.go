@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -46,7 +45,7 @@ func configEntryOrigins(sources []string) []string {
 
 func configDisplayWidth(out io.Writer) int {
 	const readableWidth = 80
-	if file, ok := out.(*os.File); ok {
+	if file := menuTerminal(out); file != nil {
 		if size, err := unix.IoctlGetWinsize(int(file.Fd()), unix.TIOCGWINSZ); err == nil && size.Col > 0 {
 			return min(readableWidth, int(size.Col))
 		}

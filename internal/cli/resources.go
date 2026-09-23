@@ -98,9 +98,8 @@ func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
 				return err
 			}
 			if !direct && interactive(cmd) {
-				m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout(), cmd: cmd}
 				var proceed bool
-				options, proceed, err = configCreationMenu(m, service.Home)
+				options, proceed, err = runConfigCreationMenu(cmd, service.Home)
 				if errors.Is(err, io.EOF) || (err == nil && !proceed) {
 					cmd.Println("Cancelled. No config was created.")
 					return nil

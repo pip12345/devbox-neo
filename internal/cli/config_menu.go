@@ -14,9 +14,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner) error {
-	m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout(), cmd: cmd}
-	err := configMenu(m, s, owner)
+func runConfigCreationMenu(cmd *cobra.Command, home string) (options resource.SetupOptions, proceed bool, err error) {
+	m := newMenu(cmd)
+	defer func() { err = errors.Join(err, m.finish()) }()
+	return configCreationMenu(m, home)
+}
+
+func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner) (err error) {
+	m := newMenu(cmd)
+	defer func() { err = errors.Join(err, m.finish()) }()
+	err = configMenu(m, s, owner)
 	if errors.Is(err, io.EOF) {
 		fmt.Fprintln(m.out, "\nMenu closed. Completed changes remain saved.")
 		return nil

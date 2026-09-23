@@ -16,10 +16,11 @@ import (
 // and promptReader handles cancellation without an abandoned stdin goroutine.
 // Values remain separate from labels, so redacted display text is never saved.
 type menu struct {
-	ctx context.Context
-	in  *bufio.Reader
-	out io.Writer
-	cmd *cobra.Command
+	ctx    context.Context
+	in     *bufio.Reader
+	out    io.Writer
+	cmd    *cobra.Command
+	screen *menuScreen
 }
 
 func (m menu) commandHint(home, reason string, args ...string) error {
@@ -35,13 +36,18 @@ func (m menu) line(prompt string) (string, error) {
 	if err := m.ctx.Err(); err != nil {
 		return "", err
 	}
-	if _, err := fmt.Fprint(m.out, prompt); err != nil {
+	if err := m.showPrompt(prompt); err != nil {
 		return "", err
 	}
 	// Enter submits an operation. EOF must not submit a partially typed value.
-	line, err := m.in.ReadString('\n')
-	if err != nil {
-		return "", err
+	line, readErr := m.in.ReadString('\n')
+	if m.screen != nil {
+		if err := m.screen.afterInput(); err != nil {
+			return "", err
+		}
+	}
+	if readErr != nil {
+		return "", readErr
 	}
 	return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"), nil
 }
@@ -90,6 +96,10 @@ func menuPrefix(number int) string {
 
 func (m menu) readChoice(count int, back string) (int, error) {
 	fmt.Fprintf(m.out, "\n%s%s\n", menuPrefix(0), back)
+	var choices []byte
+	if m.screen != nil {
+		choices = m.screen.choiceFrame()
+	}
 	for {
 		line, err := m.line(menuChoicePrompt)
 		if err != nil {
@@ -103,6 +113,11 @@ func (m menu) readChoice(count int, back string) (int, error) {
 		if err == nil && n >= 1 && n <= count {
 			return n - 1, nil
 		}
-		fmt.Fprintf(m.out, "Choose 1–%d, or 0 to %s.\n", count, strings.ToLower(back))
+		hint := fmt.Sprintf("Choose 1–%d, or 0 to %s.\n", count, strings.ToLower(back))
+		if m.screen != nil {
+			m.screen.retryChoice(choices, hint)
+		} else {
+			fmt.Fprint(m.out, hint)
+		}
 	}
 }

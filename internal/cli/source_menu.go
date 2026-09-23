@@ -16,7 +16,7 @@ import (
 
 func editCommand(factory engineFactory, name *string) *cobra.Command {
 	var show, asJSON, setDefault, clearDefault bool
-	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Edit a session's sources or its folder's default selection", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Edit a session's sources or its folder's default selection", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		if asJSON && !show {
 			return fmt.Errorf("--json requires --show")
 		}
@@ -75,7 +75,8 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			}
 			return printConfigView(cmd.OutOrStdout(), view)
 		}
-		m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout(), cmd: cmd}
+		m := newMenu(cmd)
+		defer func() { runErr = errors.Join(runErr, m.finish()) }()
 		for {
 			var selected *store.Record
 			if direct {
@@ -106,7 +107,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 						if err := e.SetDefault(cmd.Context(), *chosen); err != nil {
 							return err
 						}
-						cmd.Printf("Default session for %s: %s\n", displayCell(chosen.Identity.Workspace), chosen.Identity.LocalName)
+						fmt.Fprintf(m.out, "Default session for %s: %s\n", displayCell(chosen.Identity.Workspace), chosen.Identity.LocalName)
 					}
 					continue
 				case folderEditClearDefault:
@@ -114,7 +115,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 					if err != nil {
 						return err
 					}
-					cmd.Printf("Cleared default session for %s.\n", displayCell(workspace))
+					fmt.Fprintf(m.out, "Cleared default session for %s.\n", displayCell(workspace))
 					continue
 				}
 			}
@@ -124,7 +125,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			}
 			err = sourceChainMenu(m, e, *selected, back)
 			if errors.Is(err, io.EOF) {
-				cmd.Println("Menu closed. Completed changes remain saved.")
+				fmt.Fprintln(m.out, "Menu closed. Completed changes remain saved.")
 				return nil
 			}
 			if err != nil || direct {

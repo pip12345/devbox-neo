@@ -14,7 +14,7 @@ import (
 
 func createCommand(factory engineFactory, name *string) *cobra.Command {
 	var references []string
-	cmd := &cobra.Command{Use: "create <folder>", Short: "Name a new session and select its existing config sources", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "create <folder>", Short: "Name a new session and select its existing config sources", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		missing := *name == "" || len(references) == 0
 		if missing && !interactive(cmd) {
 			return commanderror.New("creation_inputs_required", "Session creation requires --name and at least one --config without a terminal.", args[0], nil,
@@ -28,7 +28,8 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout(), cmd: cmd}
+		m := newMenu(cmd)
+		defer func() { runErr = errors.Join(runErr, m.finish()) }()
 		picker, err := newSourcePicker(m, e.Store.Home, workspace)
 		if err != nil {
 			return err
@@ -45,14 +46,14 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		for localName == "" {
 			value, err := m.line("Session name (:back cancels): ")
 			if errors.Is(err, io.EOF) || value == ":back" {
-				cmd.Println("Cancelled. No session was created.")
+				fmt.Fprintln(m.out, "Cancelled. No session was created.")
 				return nil
 			}
 			if err != nil {
 				return err
 			}
 			if err := environment.ValidateLocalName(value); err != nil {
-				cmd.Printf("Error: %s\n", err)
+				fmt.Fprintf(m.out, "Error: %s\n", err)
 				continue
 			}
 			localName = value
@@ -63,7 +64,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		if len(sources) == 0 {
 			reference, chosen, err := picker.choose(nil, "Cancel")
 			if errors.Is(err, io.EOF) || (err == nil && !chosen) {
-				cmd.Println("Cancelled. No session was created.")
+				fmt.Fprintln(m.out, "Cancelled. No session was created.")
 				return nil
 			}
 			if err != nil {
@@ -75,12 +76,17 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 			var proceed bool
 			sources, proceed, err = createSessionMenu(picker, e, localName, sources)
 			if errors.Is(err, io.EOF) || (err == nil && !proceed) {
-				cmd.Println("Cancelled. No session was created.")
+				fmt.Fprintln(m.out, "Cancelled. No session was created.")
 				return nil
 			}
 			if err != nil {
 				return err
 			}
+		}
+		// Creation may emit diagnostics to stderr. Restore the shell before
+		// running it so those messages cannot vanish with the menu screen.
+		if err := m.finish(); err != nil {
+			return err
 		}
 		result, err := e.Create(cmd.Context(), app.Request{Workspace: workspace, LocalName: localName, Sources: sources})
 		if err != nil {
@@ -127,7 +133,14 @@ func createSessionMenu(p sourcePicker, e *app.Engine, name string, sources []con
 			return sources, false, err
 		}
 		if actions[choice] == "Create session" {
-			if _, err := e.Resolve(app.Request{Workspace: p.workspace, LocalName: name, Sources: sources}); err != nil {
+			if err := p.menu.pause(); err != nil {
+				return sources, false, err
+			}
+			spec, err := e.Resolve(app.Request{Workspace: p.workspace, LocalName: name, Sources: sources})
+			if err != nil {
+				if len(spec.Warnings) > 0 {
+					p.menu.showNextPlain()
+				}
 				fmt.Fprintf(p.out, "Error: %s\n", displayCell(err.Error()))
 				continue
 			}

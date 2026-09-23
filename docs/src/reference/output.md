@@ -1,5 +1,9 @@
 # Output and errors
 
+## Interactive menus
+
+Short create/edit menus redraw on a temporary terminal screen instead of appending each step to shell output. They still use numbered choices and normal line input. When a menu is too tall or cannot be sized safely, it prints normally. A retry menu also stays on the shell screen after a creation warning, so the warning remains visible. Redirected output stays plain. The shell screen returns on exit, with final results and errors printed there.
+
 ## Environment listings
 
 `list` shows one table with each session's full name and `FOLDER` path. `list <folder>` shows that folder's path as a heading and uses local names without a `FOLDER` column. Tables also contain `NAME`, `DEFAULT`, `HARNESS`, `LAST ACTIVE`, `CONTAINER`, and ordered `CONFIGS`. `--wide` adds the last action and exact UTC activity/creation timestamps.

@@ -11,8 +11,8 @@ type terminalPaint struct{ enabled bool }
 
 func terminalColors(out io.Writer) terminalPaint {
 	_, noColor := os.LookupEnv("NO_COLOR")
-	file, ok := out.(*os.File)
-	return terminalPaint{enabled: ok && !noColor && os.Getenv("TERM") != "dumb" && terminal(file)}
+	file := menuTerminal(out)
+	return terminalPaint{enabled: file != nil && !noColor && os.Getenv("TERM") != "dumb" && terminal(file)}
 }
 
 func (p terminalPaint) dim(text string) string {
