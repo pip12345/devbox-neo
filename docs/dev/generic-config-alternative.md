@@ -210,8 +210,8 @@ Preserve the existing distinction between full `devbox-...` session targets and 
 ## List sessions
 
 ```sh
-devbox list .                 # sessions belonging to this folder
-devbox list --sort folder     # all sessions, ordered by folder path in one table
+devbox list .   # sessions belonging to this folder
+devbox list     # all sessions, ordered by folder path in one table
 ```
 
 The folder view shows local names, the default, container status, and config source order:
@@ -224,7 +224,7 @@ main         *        stopped    base → ./devconfig
 experiment            running    base → ./devconfig → ~/configs/experimental
 ```
 
-The global view shows one row per saved session with a `FOLDER` path and full session/container name; there are no folder headings. `--sort name` is the default, `--sort folder` orders folder paths then names, and `--sort last-active` orders all rows newest first. Listing includes saved sessions whose containers are missing, not just running Docker containers.
+The global view shows one row per saved session with a `FOLDER` path and full session/container name; there are no folder headings. `--sort folder` is the default and orders folder paths then names; `--sort name` orders full names, and `--sort last-active` orders all rows newest first. Listing includes saved sessions whose containers are missing, not just running Docker containers.
 
 ## Select a default
 

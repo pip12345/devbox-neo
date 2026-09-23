@@ -52,7 +52,7 @@ Mount, environment, port, and raw Docker validation rules are in [configuration]
 
 | Command | Output |
 |---|---|
-| `list [folder] [--sort name\|folder\|last-active] [--wide] [--json]` | Saved sessions, including missing containers; folder view uses local names, global view includes each folder path |
+| `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Saved sessions, including missing containers; folder view uses local names, global view includes each folder path |
 | `status <folder\|session> [--json]` | Saved details, live commands, container state, and pending configuration changes |
 | `status --all [--json]` | Container state and configuration health for all saved environments |
 

@@ -81,7 +81,7 @@ func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 	cmd := root()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"list", "--sort", "folder"})
+	cmd.SetArgs([]string{"list"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +90,13 @@ func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 	sort.Strings(folders)
 	if !strings.HasPrefix(text, "FOLDER") || strings.Index(text, folders[0]) < 0 || strings.Index(text, folders[1]) < 0 || strings.Index(text, folders[0]) >= strings.Index(text, folders[1]) || !strings.Contains(text, firstName) || !strings.Contains(text, second.Name) || strings.Contains(text, "\n\n") {
 		t.Fatal("global list did not render and sort folder rows", text)
+	}
+	cmd = root()
+	var explicit bytes.Buffer
+	cmd.SetOut(&explicit)
+	cmd.SetArgs([]string{"list", "--sort", "folder"})
+	if err := cmd.Execute(); err != nil || explicit.String() != text {
+		t.Fatal("default list order differs from --sort folder", err, explicit.String(), text)
 	}
 }
 

@@ -16,8 +16,8 @@ func sessionCommands(factory engineFactory, name *string) []*cobra.Command {
 	var listJSON, wide bool
 	var sortBy string
 	list := &cobra.Command{Use: "list [folder]", Short: "List saved sessions, defaults, config sources, and container status", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if sortBy != "name" && sortBy != "last-active" && sortBy != "folder" {
-			return fmt.Errorf("unknown session sort %q: use name, folder, or last-active", sortBy)
+		if sortBy != "folder" && sortBy != "name" && sortBy != "last-active" {
+			return fmt.Errorf("unknown session sort %q: use folder, name, or last-active", sortBy)
 		}
 		e, err := factory(cmd)
 		if err != nil {
@@ -54,7 +54,7 @@ func sessionCommands(factory engineFactory, name *string) []*cobra.Command {
 	}}
 	list.Flags().BoolVar(&listJSON, "json", false, "Print saved sessions and inventory diagnostics as JSON")
 	list.Flags().BoolVar(&wide, "wide", false, "Also show exact activity/creation timestamps and the last action")
-	list.Flags().StringVar(&sortBy, "sort", "name", "Sort sessions by name, folder, or last-active (newest first)")
+	list.Flags().StringVar(&sortBy, "sort", "folder", "Sort sessions by folder, name, or last-active (newest first)")
 	return []*cobra.Command{list, statusCommand(factory, name), deleteCommand(factory, name), transferCommand(factory, name)}
 }
 

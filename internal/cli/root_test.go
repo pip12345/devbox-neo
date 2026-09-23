@@ -49,7 +49,7 @@ func TestSessionEditorIsNotUnderConfig(t *testing.T) {
 func TestFlagHelpDescribesActions(t *testing.T) {
 	for _, tt := range []struct{ command, flag, description string }{
 		{"open", "harness-arg", "Pass an argument to the harness (repeatable)"},
-		{"list", "sort", "Sort sessions by name, folder, or last-active (newest first)"},
+		{"list", "sort", "Sort sessions by folder, name, or last-active (newest first)"},
 		{"recreate", "image", "Rebuild the image without using the build cache"},
 		{"recreate", "all", "Recreate all Devbox containers"},
 		{"open", "name", "Select the session's folder-local name"},
