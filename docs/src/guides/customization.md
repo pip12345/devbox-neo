@@ -41,14 +41,7 @@ In `config edit base`, choose **Add optional files**, then **Harness config file
 
 Edit the generated files under `~/.devbox-neo/configs/base/pi/` or `opencode/`. For example, Pi provider definitions belong in `pi/models.json`, and custom skills belong under `pi/skills/`. Use the harness's own documentation for their format.
 
-To apply managed-file changes, close active commands and restart the session:
-
-```sh
-devbox-neo stop .
-devbox-neo start .
-```
-
-Devbox synchronizes before starting a stopped container, not when opening another command in an already-running one.
+Managed-file changes apply when the container next starts. In an automatic environment, the container stops when the last attached command exits; the next `open .` starts it and synchronizes the files. If you used `start .` to keep it running, finish attached commands, then `stop .` and `start .` to restart it. Devbox does not synchronize files when you attach to a container that is already running.
 
 **Edit the source directory for lasting changes.** Ordinary managed files inside the container are overwritten at the next synchronization. Shared JSON preserves keys outside Devbox's ownership; unmanaged files and conversations remain untouched.
 

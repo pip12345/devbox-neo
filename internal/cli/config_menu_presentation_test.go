@@ -20,7 +20,7 @@ func TestEmptyListShowsOnlyAddAndBack(t *testing.T) {
 	s := menuService(t)
 	owner, _ := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
 	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
-	if err := editList(m, s, owner, field); err != nil {
+	if err := editList(m, s, owner, field, new(bool)); err != nil {
 		t.Fatal(err)
 	}
 	want := "\nNo mounts configured here.\n\nWhat would you like to do?\n   [1]  Add mount\n\n   [0]  Back\n\n   Choose a number > "
@@ -36,7 +36,7 @@ func TestListOperationsSaveWithoutApprovalSteps(t *testing.T) {
 	s.CreateConfig(context.Background(), owner, resource.SetupOptions{})
 	var out bytes.Buffer
 	m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("1\n/data:/data:ro\n0\n")), out: &out}
-	if err := editList(m, s, owner, field); err != nil {
+	if err := editList(m, s, owner, field, new(bool)); err != nil {
 		t.Fatal(err)
 	}
 	source, _ := s.ConfigSource(owner)

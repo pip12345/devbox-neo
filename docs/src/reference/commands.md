@@ -18,7 +18,7 @@ Executable: `devbox-neo`. Use `<command> --help` for command-specific help.
 |---|---|
 | `create <folder> [--name NAME] [--config REF ...]` | Name a session and select existing sources; build and leave it stopped without selecting a default |
 | `open <folder\|session> [-- harness-args...]` | Launch the recorded harness in an existing environment |
-| `start <folder\|session>` | Keep running until explicit `stop`, including automatic restart when Docker starts after reboot |
+| `start <folder\|session>` | Start and keep running until explicit `stop`, including automatic restart when Docker starts after reboot |
 | `stop <folder\|session> [--force]` | Stop and clear manual keep-running intent; `--force` permits interrupting attached commands |
 | `shell <folder\|session>` | Open the configured shell in `/workspace` |
 | `exec <folder\|session> -- <argv...>` | Run exact arguments, without implicit shell interpretation |
@@ -54,9 +54,9 @@ Mount, environment, port, and raw Docker validation rules are in [configuration]
 |---|---|
 | `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Saved sessions, including missing containers; folder view uses local names, global view includes each folder path |
 | `status <folder\|session> [--json]` | Saved details, live commands, container state, and pending configuration changes |
-| `status --all [--json]` | Container state and configuration health for all saved environments |
+| `status [--json]` | Container state and configuration health for all saved environments |
 
-`status --all` cannot be combined with a target or `--name`. Checks compare local inputs, not upstream releases. Invalid desired configuration does not hide saved session details. Unmatched managed containers are reported separately.
+Bare `status` checks all environments, like bare `list`; `--name` requires a folder target. Checks compare local inputs, not upstream releases. Invalid desired configuration does not hide saved session details. Unmatched managed containers are reported separately. Single-target status says when managed-file changes apply on container restart and suggests `recreate` for image/container changes.
 
 See [output and errors](output.md) for columns, change classifications, and JSON fields.
 
@@ -73,7 +73,7 @@ See [output and errors](output.md) for columns, change classifications, and JSON
 | `edit <full-name>` | Edit an exact session's sources directly |
 | `edit <target> --show [--json]` | Inspect combined configuration; folder targets require `--name` |
 
-Creation and source menus select existing directories; they never open another command's editor. Completed settings/source edits save immediately; **Exit** does not roll them back. After session source edits, the exit receipt gives an exact-session `status` command to check pending changes. See [editing controls](configuration.md#editing-and-inspection).
+Creation and source menus select existing directories; they never open another command's editor. The picker shows named configs as fixed references in a table; entered paths are saved as relative or fixed according to [reference rules](configuration.md#locations-and-references). Completed settings/source edits save immediately; **Exit** does not roll them back. After session source edits, the exit receipt gives an exact-session `status` command; after config directory edits, it gives bare `status` to review pending changes across environments. See [editing controls](configuration.md#editing-and-inspection).
 
 Both directory commands accept setup flags:
 

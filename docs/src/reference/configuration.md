@@ -147,4 +147,4 @@ Trees copy regular files and skip symlinks/special entries with warnings. Skippe
 
 Ordinary files use private `0600`/`0700` modes. Invalid live shared JSON blocks synchronization because undeclared keys cannot be preserved safely. See [built-in harnesses](harnesses.md#built-in-harnesses) for owned keys.
 
-Synchronization runs during creation/recreation, transfer destination creation, and before stopped-container access through `open`, `start`, `shell`, `exec`, or `ssh`. Running access does not synchronize. Changed layouts require recreation; ordinary file changes require only stop/start.
+Synchronization runs during creation/recreation, transfer destination creation, and before stopped-container access through `open`, `start`, `shell`, `exec`, or `ssh`. Running access does not synchronize. Changed layouts require recreation; ordinary file changes apply on container restart.

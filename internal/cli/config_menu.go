@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/harness"
 	"devbox/internal/resource"
@@ -22,8 +24,16 @@ func runConfigCreationMenu(cmd *cobra.Command, home string) (options resource.Se
 
 func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner) (err error) {
 	m := newMenu(cmd)
-	defer func() { err = errors.Join(err, m.finish()) }()
-	err = configMenu(m, s, owner)
+	changed := false
+	defer func() {
+		err = errors.Join(err, m.finish())
+		if changed {
+			steps := scopedSteps(cmd, []commanderror.Step{commanderror.Next("", "status")}, s.Home)
+			_, receiptErr := fmt.Fprintf(cmd.OutOrStdout(), "Config changes saved: %s\nReview pending changes:\n%s", displayCell(owner.Name), stepsText(steps))
+			err = errors.Join(err, receiptErr)
+		}
+	}()
+	err = configMenu(m, s, owner, &changed)
 	if errors.Is(err, io.EOF) {
 		fmt.Fprintln(m.out, "\nMenu closed. Completed changes remain saved.")
 		return nil
@@ -31,7 +41,7 @@ func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner
 	return err
 }
 
-func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
+func configMenu(m menu, s *resource.Service, owner resource.Owner, changed *bool) error {
 	fields := resource.ConfigFields()
 	for {
 		source, err := s.ConfigSource(owner)
@@ -92,6 +102,9 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 			}
 			options.Harness = nil
 			result, err := s.EditConfig(m.ctx, owner, options)
+			if len(result.Created) > 0 || len(result.Updated) > 0 {
+				*changed = true
+			}
 			for _, path := range result.Created {
 				fmt.Fprintf(m.out, "Created %s\n", displayCell(path))
 			}
@@ -111,7 +124,7 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 			return err
 		}
 		if field.Kind == "list" || field.Kind == "extensions" {
-			if err = editList(m, s, owner, field); err != nil {
+			if err = editList(m, s, owner, field, changed); err != nil {
 				return err
 			}
 			continue
@@ -143,7 +156,7 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner) error {
 				continue
 			}
 		}
-		if err = applyConfigChange(m, s, owner, field, source[field.Key], value, remove); err != nil {
+		if err = applyConfigChange(m, s, owner, field, source[field.Key], value, remove, changed); err != nil {
 			return err
 		}
 	}
@@ -287,7 +300,7 @@ func listItemName(key string) string {
 
 // A failed operation stays visible without closing the editor. Both callers
 // reload source before the next operation, including after a conflict.
-func applyConfigChange(m menu, s *resource.Service, owner resource.Owner, field resource.ConfigField, expected, value json.RawMessage, remove bool) error {
+func applyConfigChange(m menu, s *resource.Service, owner resource.Owner, field resource.ConfigField, expected, value json.RawMessage, remove bool, changed *bool) error {
 	if err := s.SetConfigField(m.ctx, owner, field.Key, expected, value, remove); err != nil {
 		if m.ctx.Err() != nil {
 			return m.ctx.Err()
@@ -295,11 +308,14 @@ func applyConfigChange(m menu, s *resource.Service, owner resource.Owner, field 
 		_, writeErr := fmt.Fprintf(m.out, "Not saved: %s\n", displayCell(err.Error()))
 		return writeErr
 	}
+	if !bytes.Equal(expected, value) {
+		*changed = true
+	}
 	_, err := fmt.Fprintf(m.out, "Saved %s.\n", configLabel(field.Key))
 	return err
 }
 
-func editList(m menu, s *resource.Service, owner resource.Owner, field resource.ConfigField) error {
+func editList(m menu, s *resource.Service, owner resource.Owner, field resource.ConfigField, changed *bool) error {
 	item := listItemName(field.Key)
 	for {
 		source, err := s.ConfigSource(owner)
@@ -390,7 +406,7 @@ func editList(m menu, s *resource.Service, owner resource.Owner, field resource.
 				return err
 			}
 		}
-		if err = applyConfigChange(m, s, owner, field, source[field.Key], value, remove); err != nil {
+		if err = applyConfigChange(m, s, owner, field, source[field.Key], value, remove, changed); err != nil {
 			return err
 		}
 	}

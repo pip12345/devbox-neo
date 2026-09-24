@@ -41,13 +41,6 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 		}
 	}
 	for {
-		if len(names) == 0 {
-			writeMenuHint(p.out, "No reusable configs found. Create one separately, or enter an existing directory path.")
-			if err := p.commandHint(p.home, "Create a reusable config", "config", "create", "base"); err != nil {
-				return config.Reference{}, false, err
-			}
-		}
-		choices := append(slices.Clone(names), "Enter a directory path")
 		selected := -1
 		if current != nil {
 			for i, name := range names {
@@ -61,12 +54,50 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 				}
 			}
 		}
-		var choice int
-		if current == nil {
-			choice, err = p.menu.choose("Select a config source", choices, back)
-		} else {
-			choice, err = p.selectedChoice("Replace config source", choices, selected, current.Label+" ("+current.Kind+")", back)
+		title := "Select an existing config"
+		if current != nil {
+			title = "Replace config source"
 		}
+		if err := writeMenuTitle(p.out, title); err != nil {
+			return config.Reference{}, false, err
+		}
+		if current != nil {
+			if err := writeStyledConfigLine(p.out, "Current selection: ", displayCell(current.Label)+" ("+current.Kind+")", "  ", configDisplayWidth(p.out), terminalColors(p.out).strong); err != nil {
+				return config.Reference{}, false, err
+			}
+		}
+		if len(names) > 0 {
+			nameWidth := len("NAME")
+			for _, name := range names {
+				nameWidth = max(nameWidth, len(displayCell(name)))
+			}
+			fmt.Fprintln(p.out)
+			prefix := strings.Repeat(" ", len(menuPrefix(1)))
+			if err := writeConfigLine(p.out, prefix, fmt.Sprintf("%-*s  %-5s  PATH", nameWidth, "NAME", "TYPE"), prefix, configDisplayWidth(p.out)); err != nil {
+				return config.Reference{}, false, err
+			}
+			for i, name := range names {
+				label := fmt.Sprintf("%-*s  %-5s  %s", nameWidth, displayCell(name), "fixed", displayCell(filepath.Join(p.home, "configs", name)))
+				if i == selected {
+					label += " (selected)"
+				}
+				row := menuPrefix(i + 1)
+				if err := writeConfigLine(p.out, row, label, strings.Repeat(" ", len(row)), configDisplayWidth(p.out)); err != nil {
+					return config.Reference{}, false, err
+				}
+			}
+			fmt.Fprintln(p.out)
+		} else {
+			writeMenuHint(p.out, "No named configs found. Create one separately, or enter an existing directory path.")
+			if err := p.commandHint(p.home, "Create a named config", "config", "create", "base"); err != nil {
+				return config.Reference{}, false, err
+			}
+		}
+		prefix := menuPrefix(len(names) + 1)
+		if err := writeConfigLine(p.out, prefix, "Enter a directory path", strings.Repeat(" ", len(prefix)), configDisplayWidth(p.out)); err != nil {
+			return config.Reference{}, false, err
+		}
+		choice, err := p.menu.readChoice(len(names)+1, back)
 		if err != nil || choice < 0 {
 			return config.Reference{}, false, err
 		}
@@ -115,7 +146,7 @@ func showSourceChain(m menu, home, workspace string, sources []config.Reference)
 			return err
 		}
 		prefix := fmt.Sprintf("   %d. ", i+1)
-		text := fmt.Sprintf("%-12s %-9s %s", displayCell(reference.Label), reference.Kind, displayCell(source.Path))
+		text := fmt.Sprintf("%-12s %s", displayCell(reference.Label), displayCell(source.Path))
 		if err := writeConfigLine(m.out, prefix, text, strings.Repeat(" ", len(prefix)), configDisplayWidth(m.out)); err != nil {
 			return err
 		}
@@ -136,7 +167,7 @@ func showSourceChain(m menu, home, workspace string, sources []config.Reference)
 func editSourceChain(p sourcePicker, sources []config.Reference, action string) ([]config.Reference, bool, error) {
 	updated := slices.Clone(sources)
 	index := -1
-	if action != "Add source" {
+	if action != "Add existing config" {
 		choices := make([]string, len(sources))
 		for i, reference := range sources {
 			choices[i] = reference.Label + " (" + reference.Kind + ")"
@@ -148,7 +179,7 @@ func editSourceChain(p sourcePicker, sources []config.Reference, action string) 
 		}
 	}
 	switch action {
-	case "Add source", "Replace source":
+	case "Add existing config", "Replace source":
 		var current *config.Reference
 		if index >= 0 {
 			current = &sources[index]

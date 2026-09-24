@@ -78,7 +78,7 @@ Documentation and network files are Devbox-managed runtime data. SSH runtime dat
 
 A session is identified by its canonical workspace and explicit folder-local name. Names match `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`: 1–64 ASCII characters, beginning with a letter or digit. Case is preserved; `Main` and `main` differ. Names are never truncated or normalized.
 
-The full session/container name is `devbox-<folder>-<12-hex-hash>.<local-name>`. The hash is the first 12 lowercase hex characters of SHA-256 over the canonical absolute workspace path, a NUL separator, and the exact local name. The readable folder hint is lowercased, sanitized, and capped at 32 characters; the full name is at most 117 characters. Symlink aliases of a workspace share identity.
+The full session/container name is `devbox-<folder>-<12-hex-hash>.<local-name>`. The hash is the first 12 lowercase hex characters of SHA-256 over the canonical absolute workspace path. Sessions in the same workspace share this hash; the exact local name after the dot distinguishes them. The readable folder hint is lowercased, sanitized, and capped at 32 characters; the full name is at most 117 characters. Symlink aliases of a workspace share identity.
 
 Config sources do not determine identity. Each local name needs explicit creation; a missing container does not remove the saved session. Folder-only targeting requires a default selected through `edit`, even for a sole session. Defaults pin the durable ID so reusing a deleted local name cannot silently inherit an old selection.
 

@@ -208,7 +208,7 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 		} else if err := resolved.Settings.Validate(); err != nil {
 			writeMenuHint(m.out, "Configuration error: "+displayCell(err.Error()))
 		}
-		actions := []string{"Add source"}
+		actions := []string{"Add existing config"}
 		if len(r.Sources) > 0 {
 			actions = append(actions, "Replace source", "Remove source", "Reorder sources")
 		}

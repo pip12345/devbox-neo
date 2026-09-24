@@ -56,7 +56,7 @@ Then create its environment:
 devbox-neo create .
 ```
 
-Choose **Set session name** and enter a name, then **Add source** and select `base`. You can change the name before choosing **Create session**. The name belongs to this workspace; other workspaces can use the same name.
+Choose **Set session name** and enter a name, then **Add existing config** and select `base`. You can change the name before choosing **Create session**. The name belongs to this workspace; other workspaces can use the same name.
 
 You can also use a path directly, such as `devbox-neo create /path/to/your/project`, without changing folders.
 

@@ -37,15 +37,15 @@ type Identity struct {
 var unsafeFolderCharacters = regexp.MustCompile(`[^a-z0-9_.-]+`)
 
 func ContainerName(workspace, localName string) string {
-	// The folder is a readable hint, not identity: truncation and sanitization
-	// must not change the canonical workspace or case-sensitive local name.
+	// The folder hint can be truncated or sanitized; the hash retains the full
+	// canonical workspace, while the suffix retains the exact local name.
 	folder := unsafeFolderCharacters.ReplaceAllString(strings.ToLower(filepath.Base(workspace)), "-")
 	folder = strings.Trim(folder, "-_.")
 	folder = strings.TrimRight(folder[:min(len(folder), 32)], "-_.")
 	if folder == "" {
 		folder = "workspace"
 	}
-	sum := sha256.Sum256([]byte(workspace + "\x00" + localName))
+	sum := sha256.Sum256([]byte(workspace))
 	return ContainerPrefix + folder + "-" + hex.EncodeToString(sum[:6]) + "." + localName
 }
 

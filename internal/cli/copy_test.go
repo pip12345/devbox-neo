@@ -89,14 +89,14 @@ func TestCopyCommandModes(t *testing.T) {
 			if tt.move {
 				label += " --move"
 			}
-			if out, err := run(true); err != nil || !strings.Contains(out, "Would perform "+label+":") {
-				t.Fatal(out, err)
+			if out, err := run(true); err != nil || !strings.Contains(out, "Would perform "+label+":") || !strings.Contains(out, "1. test") || !strings.Contains(out, owner.Root) || strings.Contains(out, "(fixed)") {
+				t.Fatal("copy preview should show source label and path without type", out, err)
 			}
 			if _, err = state.Read(ctx, destination.Name); !os.IsNotExist(err) {
 				t.Fatal("dry run created destination", err)
 			}
-			if out, err := run(false); err != nil || !strings.Contains(out, "Completed "+label+":") {
-				t.Fatal(out, err)
+			if out, err := run(false); err != nil || !strings.Contains(out, "Completed "+label+":") || !strings.Contains(out, "1. test") || !strings.Contains(out, owner.Root) || strings.Contains(out, "(fixed)") {
+				t.Fatal("copy result should show source label and path without type", out, err)
 			}
 			copied, err := state.Read(ctx, destination.Name)
 			if err != nil {

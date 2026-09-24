@@ -10,12 +10,13 @@ import (
 	"testing"
 )
 
-func TestContainerNameUsesFolderAndTwelveHexCharacterHash(t *testing.T) {
-	for _, slot := range []string{"Main", "main", "pi-basic", "a_b"} {
-		workspace := "/workspace/example"
-		sum := sha256.Sum256([]byte(workspace + "\x00" + slot))
-		want := "devbox-example-" + hex.EncodeToString(sum[:6]) + "." + slot
-		if got := ContainerName(workspace, slot); got != want {
+func TestContainerNameUsesWorkspaceHashAndExactLocalName(t *testing.T) {
+	workspace := "/workspace/example"
+	sum := sha256.Sum256([]byte(workspace))
+	prefix := "devbox-example-" + hex.EncodeToString(sum[:6]) + "."
+	for _, name := range []string{"Main", "main", "pi-basic", "a_b"} {
+		want := prefix + name
+		if got := ContainerName(workspace, name); got != want {
 			t.Fatalf("name = %q, want %q", got, want)
 		}
 	}
@@ -23,7 +24,7 @@ func TestContainerNameUsesFolderAndTwelveHexCharacterHash(t *testing.T) {
 		t.Fatal("different workspace paths share a name")
 	}
 	if ContainerName("/workspace/example", "project") == ContainerName("/workspace/example", "profile-project") {
-		t.Fatal("project and profile slots share a name")
+		t.Fatal("local name suffixes did not distinguish sessions")
 	}
 }
 

@@ -21,10 +21,10 @@ func TestLocalNamesAreExactAndBounded(t *testing.T) {
 	if ContainerName(workspace, "Main") == ContainerName(workspace, "main") {
 		t.Fatal("case-distinct local names share identity")
 	}
-	if got := ContainerName("/work/api", "Main"); got != "devbox-api-21d4e96b0656.Main" {
+	if got := ContainerName("/work/api", "Main"); got != "devbox-api-c24c3b6218aa.Main" {
 		t.Fatal(got)
 	}
-	if got := ContainerName("/work/api", "main"); got != "devbox-api-239c7814b3f4.main" {
+	if got := ContainerName("/work/api", "main"); got != "devbox-api-c24c3b6218aa.main" {
 		t.Fatal(got)
 	}
 	if got := ContainerName("/"+strings.Repeat("x", 80), strings.Repeat("N", 64)); len(got) != 117 {

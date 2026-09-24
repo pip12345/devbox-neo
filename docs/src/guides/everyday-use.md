@@ -10,7 +10,7 @@ List your saved environments:
 devbox-neo list
 ```
 
-The list includes running and stopped environments, plus saved environments whose containers are missing.
+The list includes running and stopped environments, plus saved environments whose containers are missing. Its `LIFETIME` column shows `automatic` or `until stop` separately from the current container state.
 
 From your project folder, open its environment. `.` means the current folder:
 

@@ -78,7 +78,8 @@ when Docker starts after reboot. Without manual start, the last attached Devbox
 command stops it. Open never changes this intent. Reboot restarts the container,
 not the prior harness process, terminal, or SSH connection.
 On the host, devbox-neo list shows saved environments with their folder paths and
-running/stopped/missing containers. Status --all checks their configuration and changed local inputs, including
+running/stopped/missing containers and whether each stays running until stop.
+Bare status checks their configuration and changed local inputs, including
 environments without containers; it does not check upstream releases. Both commands
 warn separately about managed containers without session records. Status <folder|session>
 combines saved session details, active commands, container state, and pending changes;

@@ -51,6 +51,31 @@ func runMenu(t *testing.T, s *resource.Service, owner resource.Owner, input stri
 	return out.String(), err
 }
 
+func TestConfigEditorReceiptOnlyAfterSaving(t *testing.T) {
+	s := menuService(t)
+	owner := testConfigOwner(t, s.Home, "base")
+	if _, err := s.CreateConfig(context.Background(), owner, resource.SetupOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runMenu(t, s, owner, "0\n")
+	if err != nil || strings.Contains(out, "Review pending changes") {
+		t.Fatal("unchanged config prompted for status", out, err)
+	}
+	n := fieldNumber(t, "network")
+	out, err = runMenu(t, s, owner, n+"\n1\nhost\n0\n")
+	if err != nil || !strings.Contains(out, "Saved Network.") || !strings.Contains(out, "Config changes saved: base\nReview pending changes:\n  devbox-neo status\n") {
+		t.Fatal("saved edit did not leave a status receipt", out, err)
+	}
+	out, err = runMenu(t, s, owner, n+"\n1\nhost\n0\n")
+	if err != nil || strings.Contains(out, "Review pending changes") {
+		t.Fatal("unchanged value prompted for status", out, err)
+	}
+	out, err = runMenu(t, s, owner, n+"\n1\ninvalid network!\n0\n")
+	if err != nil || strings.Contains(out, "Review pending changes") {
+		t.Fatal("failed edit prompted for status", out, err)
+	}
+}
+
 func TestConfigMenusEditAndRemoveSettingsForEachReferenceForm(t *testing.T) {
 	for _, target := range []string{"basic", filepath.Join(t.TempDir(), "local")} {
 		t.Run(target, func(t *testing.T) {
@@ -162,7 +187,7 @@ func TestMenuCancellationAndValidationDoNotWrite(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	m := menu{ctx: ctx, in: bufio.NewReader(strings.NewReader(n + "\n1\nhost\n1\n")), out: &out}
-	if err := configMenu(m, s, owner); !errors.Is(err, context.Canceled) {
+	if err := configMenu(m, s, owner, new(bool)); !errors.Is(err, context.Canceled) {
 		t.Fatal("cancellation ignored", err)
 	}
 }
@@ -184,7 +209,7 @@ func TestMenuRePromptsAndListEditing(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.in = bufio.NewReader(strings.NewReader("2\n1\nchanged\n3\n2\n0\n"))
-	if err := editList(m, s, owner, field); err != nil {
+	if err := editList(m, s, owner, field, new(bool)); err != nil {
 		t.Fatal(err)
 	}
 	source, _ := s.ConfigSource(owner)
@@ -193,7 +218,7 @@ func TestMenuRePromptsAndListEditing(t *testing.T) {
 		t.Fatal(entries, err)
 	}
 	m.in = bufio.NewReader(strings.NewReader("3\n1\n0\n"))
-	if err := editList(m, s, owner, field); err != nil {
+	if err := editList(m, s, owner, field, new(bool)); err != nil {
 		t.Fatal(err)
 	}
 	source, _ = s.ConfigSource(owner)

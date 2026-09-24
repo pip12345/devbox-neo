@@ -52,31 +52,31 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		err := root.Execute()
 		return out.String(), err
 	}
-	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.Name, "--json"}, {"status", "--all"}, {"status", "--all", "--json"}, {"status", result.Name}, {"network", "env", result.Name, "--get", "DEVBOX_HOST"}, {"logs", result.Name}} {
+	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.Name, "--json"}, {"status"}, {"status", "--json"}, {"status", result.Name}, {"network", "env", result.Name, "--get", "DEVBOX_HOST"}, {"logs", result.Name}} {
 		if out, err := run(args...); err != nil || out == "" {
 			t.Fatal(args, out, err)
 		}
 	}
-	for _, args := range [][]string{{"status"}, {"status", result.Name, "--all"}, {"status", result.Name, result.Name}, {"list", "--sort", "wrong"}, {"list", "--orphaned"}, {"list", "--older-than", "24h"}, {"session", "list"}} {
+	for _, args := range [][]string{{"status", "--all"}, {"status", result.Name, "--all"}, {"status", result.Name, result.Name}, {"list", "--sort", "wrong"}, {"list", "--orphaned"}, {"list", "--older-than", "24h"}, {"session", "list"}} {
 		if _, err := run(args...); err == nil {
 			t.Fatal("invalid list option accepted", args)
 		}
 	}
-	out, err := run("status", "--all", "--json")
+	out, err := run("status", "--json")
 	var statusViews app.InventoryReport
 	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews.Sessions) != 1 || statusViews.Sessions[0].Name != result.Name || statusViews.Sessions[0].Desired != "NoChange" {
 		t.Fatal("bulk status JSON did not include drift", out, err)
 	}
-	if out, err := run("status", "--all", "--profile", "test"); err == nil {
+	if out, err := run("status", "--profile", "test"); err == nil {
 		t.Fatal("retained removed profile selection", out)
 	}
-	if out, err := run("status", "--all", "--name", "test"); err == nil {
+	if out, err := run("status", "--name", "test"); err == nil {
 		t.Fatal("accepted a folder-local name without a folder target", out)
 	}
 	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host","env":["TOKEN=private-status-value"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"status", result.Name}, {"status", "--all"}} {
+	for _, args := range [][]string{{"status", result.Name}, {"status"}} {
 		out, err := run(args...)
 		if err != nil || !strings.Contains(out, "[container] network: default -> host") || !strings.Contains(out, "environment variable TOKEN added") || strings.Contains(out, "private-status-value") {
 			t.Fatal("status text lost reasons or leaked env", out, err)
@@ -87,7 +87,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if err != nil || json.Unmarshal([]byte(out), &single) != nil || len(single.PendingInputChanges) != 2 || strings.Contains(out, "private-status-value") || !strings.Contains(out, `"pending_input_changes":`) || strings.Contains(out, `"reasons":`) {
 		t.Fatal("single status JSON lost reasons or leaked env", out, err)
 	}
-	out, err = run("status", "--all", "--json")
+	out, err = run("status", "--json")
 	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews.Sessions) != 1 || !reflect.DeepEqual(single.PendingInputChanges, statusViews.Sessions[0].PendingInputChanges) {
 		t.Fatal("bulk and single JSON disagree", out, err)
 	}

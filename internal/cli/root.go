@@ -70,7 +70,7 @@ func New() *cobra.Command {
 	open.Flags().BoolVarP(&resume, "continue", "c", false, "Continue the previous harness session")
 	root.AddCommand(sessionNameFlag(open, &localName))
 	root.AddCommand(&cobra.Command{Use: "version", Short: "Print the Devbox version", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { cmd.Println(Version); return nil }})
-	root.AddCommand(sessionNameFlag(&cobra.Command{Use: "start <folder|session>", Short: "Keep a session running until stop, including across reboots", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	root.AddCommand(sessionNameFlag(&cobra.Command{Use: "start <folder|session>", Short: "Start and keep running until stop, including across reboots", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
 			return err

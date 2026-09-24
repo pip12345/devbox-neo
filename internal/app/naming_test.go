@@ -31,6 +31,13 @@ func TestSessionNamesAreIndependentOfDevelopmentOwnershipNamespace(t *testing.T)
 		t.Fatal("renaming changed the image namespace", r.ImageTag)
 	}
 	sum := sha256.Sum256([]byte(r.Identity.Workspace + "\x00" + r.Identity.LocalName))
+	prefix := strings.TrimSuffix(opened.Name, "."+r.Identity.LocalName)
+	prefix = prefix[:len(prefix)-12]
+	previousName := prefix + hex.EncodeToString(sum[:6]) + "." + r.Identity.LocalName
+	r.Identity.Name, r.Creation.Name = previousName, previousName
+	if err := r.Validate(previousName); err == nil {
+		t.Fatal("previous local-name hash accepted without a clean reset")
+	}
 	for _, prefix := range []string{"devbox-rewrite-", "devbox-"} {
 		oldName := prefix + hex.EncodeToString(sum[:12]) + "." + strings.ReplaceAll(r.Identity.LocalName, ":", "-")
 		r.Identity.Name, r.Creation.Name = oldName, oldName

@@ -6,7 +6,7 @@ The saved session is the top-level environment model. Docker inventory supplies 
 
 `environment.ContainerPrefix` defines the `devbox-` lookup convention independently of `docker.Namespace`, which defines `devbox-rewrite.*` labels and image tags.
 
-`environment.Identity` stores the canonical workspace, case-sensitive `local_name`, and full `name`. Full names use `devbox-<folder>-<12-hex-hash>.<local-name>`; the SHA-256 input is workspace bytes, NUL, then exact local-name bytes. Config sources never enter identity.
+`environment.Identity` stores the canonical workspace, case-sensitive `local_name`, and full `name`. Full names use `devbox-<folder>-<12-hex-hash>.<local-name>`; the SHA-256 input is the canonical workspace path's bytes. All local names in a workspace share that hash and remain distinct through their exact suffixes. Config sources never enter identity.
 
 Exact targets read that saved record. Folder plus `--name` computes the full name directly; a folder alone reads its default name and durable ID. No session-count or last-used fallback exists. Lookup does not load configuration.
 

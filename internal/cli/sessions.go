@@ -103,11 +103,7 @@ func transferCommand(factory engineFactory, name *string) *cobra.Command {
 		}
 		cmd.Printf("%s %s: %s -> %s\nSession: %s\nFolder: %s\n", action, store.TransferCommand(result.Mode), result.Source, result.Destination, result.LocalName, displayCell(result.Workspace))
 		for i, source := range result.ResolvedSources {
-			kind := ""
-			if i < len(result.Sources) {
-				kind = result.Sources[i].Kind
-			}
-			cmd.Printf("  %d. %s (%s) %s\n", i+1, displayCell(source.Label), kind, displayCell(source.Path))
+			cmd.Printf("  %d. %-12s %s\n", i+1, displayCell(source.Label), displayCell(source.Path))
 		}
 		return nil
 	}}

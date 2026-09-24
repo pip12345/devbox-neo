@@ -189,10 +189,10 @@ devbox-<folder>-<12-hex-hash>.<local-name>
 ```
 
 - `<folder>` is the existing readable workspace-basename hint: lowercase it, replace runs outside `[a-z0-9_.-]` with `-`, trim leading/trailing `-_.`, cap it at 32 characters, and trim trailing `-_.` again. Use `workspace` when the result is empty. Only this hint is sanitized or shortened.
-- `<12-hex-hash>` is the first 12 lowercase hex characters of SHA-256 over the canonical absolute workspace path, a NUL separator, and the exact case-sensitive local name. Config references and contents never enter this hash.
+- `<12-hex-hash>` is the first 12 lowercase hex characters of SHA-256 over the canonical absolute workspace path. All local names in the same workspace share this hash; config references and contents never enter it.
 - `<local-name>` is the complete user-supplied name, preserving case. The longest full name is 117 ASCII characters, leaving ample room for existing session-directory and transfer-journal filenames.
 
-For `/work/api`, `Main` produces `devbox-api-21d4e96b0656.Main`; `main` produces `devbox-api-239c7814b3f4.main`. Folder-plus-name lookup computes the full name directly; it does not scan other sessions or read config files. Validate that any loaded record matches the requested workspace and local name; an occupied or mismatching name is an error, never a reason to adopt state or silently choose another name.
+For `/work/api`, `Main` produces `devbox-api-c24c3b6218aa.Main`; `main` produces `devbox-api-c24c3b6218aa.main`. Folder-plus-name lookup computes the full name directly; it does not scan other sessions or read config files. Validate that any loaded record matches the requested workspace and local name; an occupied or mismatching name is an error, never a reason to adopt state or silently choose another name.
 
 Store the local name explicitly in session identity alongside the workspace and full name. Keep the existing durable session ID separate: recreation preserves it, and deleting then creating the same folder-local name produces a new ID. The existing Docker ownership-label and image-tag contracts remain independent of this naming scheme.
 

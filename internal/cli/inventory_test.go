@@ -107,7 +107,7 @@ func TestListAndStatusWarnWithoutInventingSessionRows(t *testing.T) {
 	if err := os.Remove(p); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"list"}, {"status", "--all"}} {
+	for _, args := range [][]string{{"list"}, {"status"}} {
 		cmd := root()
 		var out bytes.Buffer
 		cmd.SetOut(&out)

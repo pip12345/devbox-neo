@@ -8,24 +8,22 @@ import (
 	"text/tabwriter"
 
 	"devbox/internal/app"
+	"devbox/internal/commanderror"
 	"devbox/internal/environment"
 	"github.com/spf13/cobra"
 )
 
 func statusCommand(factory engineFactory, localName *string) *cobra.Command {
-	var asJSON, all bool
-	cmd := &cobra.Command{Use: "status [folder|session]", Short: "Show session details, active commands, and pending configuration changes", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if all && (len(args) != 0 || *localName != "") {
-			return fmt.Errorf("--all does not accept a target or --name")
-		}
-		if !all && len(args) != 1 {
-			return fmt.Errorf("provide a target or --all")
+	var asJSON bool
+	cmd := &cobra.Command{Use: "status [folder|session]", Short: "Show all environments or details and pending changes for one", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 && *localName != "" {
+			return fmt.Errorf("--name requires a folder target")
 		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
 		}
-		if all {
+		if len(args) == 0 {
 			report, err := e.StatusAll(cmd.Context(), "")
 			if err != nil {
 				return err
@@ -54,9 +52,9 @@ func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 		printView(cmd, view)
 		if details.Record != nil {
 			cmd.Printf("Session: %s\nHarness: %s\nImage: %s\nActive commands: %d\n", displayCell(details.SessionID), displayCell(details.Harness), displayCell(details.Record.ImageID), len(details.Active))
-			lifetime := "automatic (stop after the last attached command)"
+			lifetime := "automatic (stops after the last attached command)"
 			if details.Record.ManualStart {
-				lifetime = "manual (until stop; restarts with Docker)"
+				lifetime = "until stop (restarts with Docker)"
 			}
 			cmd.Printf("Lifetime: %s\n", lifetime)
 		}
@@ -67,10 +65,23 @@ func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 		for _, change := range view.PendingInputChanges {
 			cmd.Printf("  - [%s] %s\n", change.Scope, change)
 		}
+		if view.Error == "" && view.ConfigError == "" && view.Pending == nil {
+			switch view.Desired {
+			case environment.RuntimeSync:
+				for _, change := range view.PendingInputChanges {
+					if change.Field == "managed_config" {
+						cmd.Println("Changes apply on container restart.")
+						break
+					}
+				}
+			case environment.Recreate, environment.RebuildAndRecreate:
+				steps := scopedSteps(cmd, []commanderror.Step{commanderror.Next("To apply changes", "recreate", view.Name)}, e.Store.Home)
+				cmd.Print(stepsText(steps))
+			}
+		}
 		return nil
 	}}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print session details and status, or bulk inventory diagnostics, as JSON")
-	cmd.Flags().BoolVar(&all, "all", false, "Check all saved environments")
 	return sessionNameFlag(cmd, localName)
 }
 

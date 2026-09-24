@@ -2,11 +2,11 @@
 
 ## Interactive menus
 
-Short create/edit menus redraw on a temporary terminal screen instead of appending each step to shell output. They still use numbered choices and normal line input. When a menu is too tall or cannot be sized safely, it prints normally. A retry menu also stays on the shell screen after a creation warning, so the warning remains visible. Redirected output stays plain. **Cancel** abandons pending creation choices; **Back** navigates; **Exit** leaves completed edits saved. In the `edit <folder>` overview, `*` marks the folder default beside its session even when it is stopped; container status remains separate. The shell screen returns on exit. After session source changes, a receipt lists exact `status` commands to check what may still need applying.
+Short create/edit menus redraw on a temporary terminal screen instead of appending each step to shell output. They still use numbered choices and normal line input. When a menu is too tall or cannot be sized safely, it prints normally. A retry menu also stays on the shell screen after a creation warning, so the warning remains visible. Redirected output stays plain. **Cancel** abandons pending creation choices; **Back** navigates; **Exit** leaves completed edits saved. In the `edit <folder>` overview, `*` marks the folder default beside its session even when it is stopped; container status remains separate. The shell screen returns on exit. After session source changes, a receipt lists exact `status` commands; after config directory edits, it suggests bare `status` for all environments. No receipt appears if nothing was saved.
 
 ## Environment listings
 
-`list` shows one table with each session's full name and `FOLDER` path. `list <folder>` shows that folder's path as a heading and uses local names without a `FOLDER` column. Tables also contain `NAME`, `DEFAULT`, `HARNESS`, `LAST ACTIVE`, `CONTAINER`, and ordered `CONFIGS`. `--wide` adds the last action and exact UTC activity/creation timestamps.
+`list` shows one table with each session's full name and `FOLDER` path. `list <folder>` shows that folder's path as a heading and uses local names without a `FOLDER` column. Tables also contain `NAME`, `DEFAULT`, `HARNESS`, `LAST ACTIVE`, `CONTAINER`, `LIFETIME`, and ordered `CONFIGS`. `LIFETIME` shows the saved intent—`automatic` or `until stop`—independently of whether the container is currently running. `--wide` adds the last action and exact UTC activity/creation timestamps.
 
 - `--sort folder` is the default and orders folder paths, then names within a folder; unknown paths sort first.
 - `--sort name` orders full session names.
@@ -14,7 +14,7 @@ Short create/edit menus redraw on a temporary terminal screen instead of appendi
 - `*` in `DEFAULT` marks the selected session. In `CONTAINER`, `!` marks an error and `*` marks a pending transfer.
 - Stopped/missing rows are dimmed; default markers remain prominent and diagnostics readable. Sorting applies to the whole table.
 
-Both `list` and `status --all` report installation-managed containers without session records separately. Corrupt records remain session rows with diagnostics. Listings do not adopt, delete, or repair resources.
+Both `list` and bare `status` report installation-managed containers without session records separately. Corrupt records remain session rows with diagnostics. Listings do not adopt, delete, or repair resources.
 
 ## Status classifications
 
@@ -28,7 +28,7 @@ Container state and configuration health are independent. A missing container is
 | `Rebuild + recreate needed` | Image inputs changed; ordinary recreate builds them |
 | `Cannot check` | Invalid config/record, ownership mismatch, pending transfer, or another diagnostic prevents comparison |
 
-Single-target status includes saved session ID, harness, image, active-command count, and detailed reasons. Bulk status shows `NAME`, `CONTAINER`, and `CHANGE`, with reasons beneath affected rows. Local file/settings comparisons do not detect newer upstream releases.
+Single-target status includes saved session ID, harness, image, active-command count, and detailed reasons. It notes that pending managed-file changes apply on container restart and gives a recreation command for image/container changes. Bare `status` shows `NAME`, `CONTAINER`, and `CHANGE`, with reasons beneath affected rows. Local file/settings comparisons do not detect newer upstream releases.
 
 `open` prints image/container change reasons before startup and continues with recorded creation settings. Runtime-only changes are not presented as reasons to recreate.
 
@@ -37,10 +37,10 @@ Single-target status includes saved session ID, harness, image, active-command c
 | Command | Shape |
 |---|---|
 | `list --json` | Object with `sessions` and `unmatched_containers` arrays |
-| `status --all --json` | Same inventory shape, enriched with desired-change diagnostics |
+| `status --json` | Same inventory shape, enriched with desired-change diagnostics |
 | `status <folder\|session> --json` | One status object, plus `record` and `active` details |
 
-Bulk arrays are present even when empty. Optional `default_errors` maps workspaces to default-state diagnostics without hiding sessions. Rows include `local_name`, `default`, and desired `sources`. List session order follows `--sort`. Status fields include `desired_change`, `pending_input_changes`, `config_error`, `error`, and `pending_transfer` where applicable. Bulk rows omit full records and leases.
+Bulk arrays are present even when empty. Optional `default_errors` maps workspaces to default-state diagnostics without hiding sessions. Rows include `local_name`, `default`, `manual_start` (the lifetime choice), and desired `sources`. List session order follows `--sort`. Status fields include `desired_change`, `pending_input_changes`, `config_error`, `error`, and `pending_transfer` where applicable. Bulk rows omit full records and leases.
 
 An exact pending-transfer endpoint remains inspectable without a session record: `record` is omitted and `active` is empty. Pending transfers skip desired-config comparison. Per-row diagnostics do not fail bulk status; unavailable inventory/Docker does.
 
@@ -61,7 +61,7 @@ Public scalar changes may show before/after values. Environment changes show var
 
 JSON preserves structured values. `trace.entry_sources` gives layer names in resolved-list order, including duplicates. Env values are redacted; variable references are reported separately. A sparse configuration can be inspected before selecting a harness.
 
-Directory menus show only their own settings over built-in defaults, using generic source labels. Combined configuration is read-only. Selected choices have a current-selection summary and readable `(selected)` markers or checkmarks; color is not required to identify them.
+Directory menus show only their own settings over built-in defaults, using generic source labels. Combined configuration is read-only. Selected source summaries and copy results show ordered labels and resolved paths without a type column; the picker shows reference type while selecting. Selected choices have a current-selection summary and readable `(selected)` markers or checkmarks; color is not required to identify them.
 
 ## Deletion results
 

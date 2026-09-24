@@ -93,7 +93,8 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 		{"shell", "Open a shell in a session"},
 		{"exec", "Run a command in a session"},
 		{"recreate", "Recreate the container with current settings, keeping session data"},
-		{"status", "Show session details, active commands, and pending configuration changes"},
+		{"start", "Start and keep running until stop, including across reboots"},
+		{"status", "Show all environments or details and pending changes for one"},
 
 		{"copy", "Copy session state to another folder or local name"},
 	} {

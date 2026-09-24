@@ -129,6 +129,9 @@ func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
 			return runConfigMenu(cmd, service, owner)
 		}
 		result, err := service.EditConfig(cmd.Context(), owner, options)
+		if err == nil && !asJSON && (len(result.Created) > 0 || len(result.Updated) > 0) {
+			result.Next = []commanderror.Step{commanderror.Next("Review pending changes", "status")}
+		}
 		return renderResource(cmd, result, err, asJSON, service.Home)
 	}}
 	cmd.Flags().StringVar(&selected, "harness", "", "Set this config's persistent harness selection")

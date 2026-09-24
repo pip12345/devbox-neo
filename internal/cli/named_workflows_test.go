@@ -307,7 +307,7 @@ func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "[1]  Set session name") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "edit "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
 		t.Fatal(text)
 	}
-	nameIndex, pickerIndex, reviewIndex := strings.Index(text, "Session name (:back cancels): "), strings.Index(text, "Select a config source"), strings.Index(text, "[1]  Create session")
+	nameIndex, pickerIndex, reviewIndex := strings.Index(text, "Session name (:back cancels): "), strings.Index(text, "Select an existing config"), strings.Index(text, "[1]  Create session")
 	if nameIndex < 0 || pickerIndex < nameIndex || reviewIndex < pickerIndex || !strings.Contains(text, "[1]  Create session\n\n   [2]  Change session name") {
 		t.Fatal("creation overview did not keep pending inputs editable", text)
 	}
@@ -367,7 +367,7 @@ func TestInteractiveCreationCanBackOutOfInputsAndCancelOverview(t *testing.T) {
 	if err := cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}
-	if !strings.Contains(out.String(), "Select a config source") || !strings.Contains(out.String(), "[0]  Back") || strings.Count(out.String(), "Session name: Fresh") < 2 || !strings.Contains(out.String(), "Cancelled. No session was created.") {
+	if !strings.Contains(out.String(), "Select an existing config") || !strings.Contains(out.String(), "[0]  Back") || strings.Count(out.String(), "Session name: Fresh") < 2 || !strings.Contains(out.String(), "Cancelled. No session was created.") {
 		t.Fatal(out.String())
 	}
 	identity, err := environment.Identify(q.Workspace, "Fresh")
@@ -441,7 +441,7 @@ func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
 			if err := cmd.ExecuteContext(ctx); err != nil {
 				t.Fatal(out.String(), err)
 			}
-			if strings.Contains(out.String(), "Select a config source") != tc.wantPicker || !strings.Contains(out.String(), "Created session Only") {
+			if strings.Contains(out.String(), "Select an existing config") != tc.wantPicker || !strings.Contains(out.String(), "Created session Only") {
 				t.Fatal("provided inputs were not retained in the creation overview", out.String())
 			}
 		})

@@ -35,6 +35,25 @@ func resourceCLI(t *testing.T, home string, args ...string) (string, error) {
 	return out.String(), err
 }
 
+func TestDirectConfigEditPointsToBulkStatusOnlyWhenChanged(t *testing.T) {
+	home := t.TempDir()
+	if out, err := resourceCLI(t, home, "config", "create", "base", "--harness", "pi"); err != nil {
+		t.Fatal(out, err)
+	}
+	out, err := resourceCLI(t, home, "config", "edit", "base", "--harness", "opencode")
+	if err != nil || !strings.Contains(out, "Review pending changes:\n  devbox-neo --home "+home+" status") {
+		t.Fatal("direct edit did not point to bulk status", out, err)
+	}
+	out, err = resourceCLI(t, home, "config", "edit", "base", "--harness", "opencode")
+	if err != nil || strings.Contains(out, "Review pending changes") {
+		t.Fatal("unchanged direct edit suggested a check", out, err)
+	}
+	out, err = resourceCLI(t, home, "config", "edit", "base", "--harness", "pi", "--json")
+	if err != nil || strings.Contains(out, "Review pending changes") || !json.Valid([]byte(out)) {
+		t.Fatal("JSON edit gained human output", out, err)
+	}
+}
+
 func TestConfigDeleteRequiresConfirmationAndReportsJSON(t *testing.T) {
 	home := t.TempDir()
 	if out, err := resourceCLI(t, home, "config", "create", "base", "--json"); err != nil {

@@ -113,7 +113,7 @@ func createSessionMenu(p sourcePicker, e *app.Engine, draft sessionCreationDraft
 		if draft.name != "" {
 			nameAction = "Change session name"
 		}
-		actions := []string{nameAction, "Add source"}
+		actions := []string{nameAction, "Add existing config"}
 		if len(draft.sources) > 0 {
 			actions = append(actions, "Replace source", "Remove source", "Reorder sources")
 		}

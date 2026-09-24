@@ -103,7 +103,7 @@ func printSessionTable(out io.Writer, views []app.View, wide bool, now time.Time
 	// as visible text, which would otherwise shift columns on inactive rows.
 	var table bytes.Buffer
 	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
-	header := "NAME\tDEFAULT\tHARNESS\tLAST ACTIVE\tCONTAINER\tCONFIGS"
+	header := "NAME\tDEFAULT\tHARNESS\tLAST ACTIVE\tCONTAINER\tLIFETIME\tCONFIGS"
 	if !local {
 		header = "FOLDER\t" + header
 	}
@@ -128,7 +128,7 @@ func printSessionTable(out io.Writer, views []app.View, wide bool, now time.Time
 		if !local {
 			fmt.Fprintf(w, "%s\t", displayCell(view.Workspace))
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s", displayCell(name), marker, displayCell(view.Harness), activity, state, sourceSummary(view.Sources))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s", displayCell(name), marker, displayCell(view.Harness), activity, state, lifetimeState(view), sourceSummary(view.Sources))
 		if wide {
 			fmt.Fprintf(w, "\t%s\t%s", displayCell(view.LastAction), exactTime(view.CreatedAt))
 		}
@@ -157,6 +157,16 @@ func printUnmatchedContainers(out io.Writer, views []app.View) error {
 		}
 	}
 	return nil
+}
+
+func lifetimeState(view app.View) string {
+	if view.SessionID == "" {
+		return "-"
+	}
+	if view.ManualStart {
+		return "until stop"
+	}
+	return "automatic"
 }
 
 func containerState(view app.View) string {

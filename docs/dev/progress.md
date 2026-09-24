@@ -2,6 +2,17 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). The migration utility remains separate from runtime loading; adapting its destination model to named sessions and explicit configs is also approved.
 
+## Workspace-only session-name hash — clean development-state cutover
+
+- The 12-hex portion of a full session/container name now hashes only the canonical workspace path. Case-sensitive local names remain distinct in the suffix; sessions in one workspace display the same hash. Identity validation, lookup, creation, transfer targets, and Docker ownership checks use the shared naming function.
+- Existing rewrite sessions with names made by the previous rule are not renamed or adopted. Users must remove old development state themselves before using the new names; no reset or migration code was added. Focused naming/app/migration tests and `make test-fast` pass; live Docker acceptance remains unrun.
+
+## CLI status and config-selection UX — live Docker acceptance pending
+
+- Bare `status` now performs the existing bulk check; the redundant `--all` flag is removed. Config edits that save changes point to one bare `status` command. Single-target status gives a short container-restart note for pending managed files and a recreation hint for image/container changes.
+- Both list views show the saved automatic/keep-running lifetime apart from live container state. The config picker displays named references in a fixed-path table and keeps typed-path selection immediate, without a confirmation screen; selected source chains and transfer results display only the ordered label and resolved path. Help and user/embedded docs explain `start` as a keep-running choice.
+- Fake-backed CLI tests cover saved/unchanged editor receipts, bulk status and JSON, managed-file/recreation guidance, lifecycle lifetime display, and reference selection. `make test-fast`, integration-tag compilation, and `git diff --check` pass. Live Docker behavior is still untested.
+
 ## OpenCode 2 built-in — live Docker acceptance pending
 
 - The built-in OpenCode harness now installs from the v2 endpoint. Its launch config uses a v2 provider policy to keep the `opencode` provider disabled; sharing remains disabled. The v2.0.6 CLI was checked for the `opencode` executable, `-c` continuation flag, and environment config loading. The v2.0.6 path diagnostic reports the existing config, data, and cache targets and puts its database under the data mount; the v2 auth source still uses `auth.json` there.

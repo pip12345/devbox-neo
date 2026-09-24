@@ -36,7 +36,7 @@ devbox-neo recreate . --image
 
 This reruns installation; it does not guarantee a newer upstream base image. `status` checks local inputs, not available upstream releases.
 
-Use `status --all` to review every saved environment. Opening an environment with changed image or container settings warns and keeps using the recorded settings until you recreate it.
+Use bare `status` to review every saved environment. Opening an environment with changed image or container settings warns and keeps using the recorded settings until you recreate it.
 
 ## Recover a missing container
 

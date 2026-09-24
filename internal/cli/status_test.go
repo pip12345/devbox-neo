@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -42,8 +44,58 @@ func TestStatusTableSeparatesLiveStateFromChanges(t *testing.T) {
 	}
 }
 
+func TestSingleStatusGivesShortManagedFileAndRecreateGuidance(t *testing.T) {
+	e, _, name := namedCLIFixture(t)
+	configPath := filepath.Join(e.Store.Home, "configs", "base")
+	if err := os.MkdirAll(filepath.Join(configPath, "pi"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configPath, "pi", "custom.md"), []byte("updated"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	show := func() string {
+		t.Helper()
+		local := ""
+		cmd := statusCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &local)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetArgs([]string{name})
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+	out := show()
+	if !strings.Contains(out, "Changes: Runtime changes") || !strings.Contains(out, "Changes apply on container restart.") || strings.Contains(out, "devbox-neo stop") {
+		t.Fatal("managed file guidance was not short and accurate", out)
+	}
+	if err := os.WriteFile(filepath.Join(configPath, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out = show()
+	if !strings.Contains(out, "Changes: Recreate needed") || !strings.Contains(out, "To apply changes:\n  devbox-neo recreate "+name) || strings.Contains(out, "Changes apply on container restart.") {
+		t.Fatal("container changes need recreation, not a restart hint", out)
+	}
+}
+
+func TestStatusDoesNotSuggestRestartForLaunchArguments(t *testing.T) {
+	e, _, name := namedCLIFixture(t)
+	configPath := filepath.Join(e.Store.Home, "configs", "base", "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"version":1,"harness":"pi","harness_args":["--help"]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	local := ""
+	cmd := statusCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &local)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{name})
+	if err := cmd.Execute(); err != nil || !strings.Contains(out.String(), "Changes: Runtime changes") || strings.Contains(out.String(), "Changes apply on container restart.") {
+		t.Fatal("launch-only change was labeled as needing container restart", out.String(), err)
+	}
+}
+
 func TestStatusRejectsAmbiguousSelectionBeforeInitialization(t *testing.T) {
-	for _, args := range [][]string{{"status"}, {"status", "target", "--all"}, {"status", "one", "two"}} {
+	for _, args := range [][]string{{"status", "--name", "work"}, {"status", "target", "--all"}, {"status", "one", "two"}} {
 		root := &cobra.Command{Use: "devbox-neo", SilenceErrors: true, SilenceUsage: true}
 		profile := ""
 		root.AddCommand(sessionCommands(func(*cobra.Command) (*app.Engine, error) {
@@ -54,20 +106,5 @@ func TestStatusRejectsAmbiguousSelectionBeforeInitialization(t *testing.T) {
 		if err := root.Execute(); err == nil {
 			t.Fatal("invalid selection accepted", args)
 		}
-	}
-}
-
-func TestStatusAllCompletionDoesNotSuggestTargets(t *testing.T) {
-	root := New()
-	status, _, err := root.Find([]string{"status"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := status.Flags().Set("all", "true"); err != nil {
-		t.Fatal(err)
-	}
-	values, directive := status.ValidArgsFunction(status, nil, "")
-	if len(values) != 0 || directive != cobra.ShellCompDirectiveNoFileComp {
-		t.Fatal("--all offered exact targets", values, directive)
 	}
 }
