@@ -49,7 +49,7 @@ func (r Reference) Validate() error {
 // and source-chain repair must remain possible while directories are missing.
 func ConfigPath(home, cwd, userHome, reference string) (string, error) {
 	if reference == "" || strings.ContainsRune(reference, '\x00') {
-		return "", fmt.Errorf("configuration reference must be a nonempty name or directory path")
+		return "", fmt.Errorf("config name or directory path must be nonempty and contain no NUL")
 	}
 	switch {
 	case filepath.IsAbs(reference):

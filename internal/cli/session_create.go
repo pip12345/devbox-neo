@@ -18,7 +18,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		missing := *name == "" || len(references) == 0
 		if missing && !interactive(cmd) {
 			return commanderror.New("creation_inputs_required", "Session creation requires --name and at least one --config without a terminal.", args[0], nil,
-				commanderror.Next("Supply the session name and configs", "create", args[0], "--name", "<name>", "--config", "<reference>"))
+				commanderror.Next("Supply the session name and configs", "create", args[0], "--name", "<name>", "--config", "<name|path>"))
 		}
 		e, err := factory(cmd)
 		if err != nil {

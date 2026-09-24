@@ -16,7 +16,7 @@ Executable: `devbox-neo`. Use `<command> --help` for command-specific help.
 
 | Command | Effect |
 |---|---|
-| `create <folder> [--name NAME] [--config REF ...]` | Name a session and select existing sources; build and leave it stopped without selecting a default |
+| `create <folder> [--name NAME] [--config NAME_OR_PATH ...]` | Name a session and select existing configs; build and leave it stopped without selecting a default |
 | `open <folder\|session> [-- harness-args...]` | Launch the recorded harness in an existing environment |
 | `start <folder\|session>` | Start and keep running until explicit `stop`, including automatic restart when Docker starts after reboot |
 | `stop <folder\|session> [--force]` | Stop and clear manual keep-running intent; `--force` permits interrupting attached commands |
@@ -34,7 +34,7 @@ Before a stopped container starts, access commands resolve participating configu
 
 ### Creation and launch options
 
-Configure container settings through `config edit <reference>` before creation/recreation. A terminal opens a creation menu where you can set or change the pending session name and select ordered configs in either order. `--name` and repeated `--config` prefill those choices; **Create session** appears once both are present. Without a terminal, both are required. A fully specified create does not prompt. Session names are explicit and case-sensitive.
+Configure container settings through `config edit <name|path>` before creation/recreation. A terminal opens a creation menu where you can set or change the pending session name and select ordered configs in either order. `--name` and repeated `--config` prefill those choices; **Create session** appears once both are present. Without a terminal, both are required. A fully specified create does not prompt. Session names are explicit and case-sensitive.
 
 | Option | Commands | Meaning |
 |---|---|---|
@@ -64,14 +64,14 @@ See [output and errors](output.md) for columns, change classifications, and JSON
 
 | Command | Effect |
 |---|---|
-| `config create <reference>` | Create a config and offer initial setup; reject an existing `config.json` |
-| `config edit <reference>` | Edit an existing directory or add missing optional files |
+| `config create <name\|path>` | Create a config and offer initial setup; reject an existing `config.json` |
+| `config edit <name\|path>` | Edit an existing directory or add missing optional files |
 | `config list [--json]` | Show named configs under the selected home's `configs/` with harness and directory path; report invalid or incomplete entries; no Docker required |
 | `config delete <name> [--force] [--json]` | Delete an unreferenced named config and its files; confirm in a terminal, or use `--force` to skip confirmation (required with `--json`) |
 | `edit <folder>` | Pick a session to edit its selected configs or make it the folder default; clear a saved default from the folder menu |
 | `edit <folder> --name NAME` | Edit that session's selected configs directly |
 | `edit <full-name>` | Edit an exact session's selected configs directly |
-| `edit <target> --show [--json]` | Inspect combined configuration; folder targets require `--name` |
+| `edit <folder\|session> --show [--json]` | Inspect combined configuration; folder targets require `--name` |
 
 Creation and session-edit menus select existing directories; they never open another command's editor. The picker shows named configs as fixed references in a table; entered paths are saved as relative or fixed according to [reference rules](configuration.md#locations-and-references). Completed settings and config-selection edits save immediately; **Exit** does not roll them back. After changing a session's selected configs, the exit receipt gives an exact-session `status` command; after config directory edits, it gives bare `status` to review pending changes across environments. See [editing controls](configuration.md#editing-and-inspection).
 
@@ -90,12 +90,12 @@ Explicit setup flags run directly, even in a terminal. Without flags, interactiv
 
 | Command | Effect |
 |---|---|
-| `edit <folder>` | Pick a session to edit its sources, or choose **Set folder default** or **Clear folder default** from the folder menu |
+| `edit <folder>` | Pick a session to edit its selected configs, or choose **Set folder default** or **Clear folder default** from the folder menu |
 | `edit <folder> --name NAME --default` | Select directly without a terminal |
 | `edit <full-name> --default` | Select that session for its recorded workspace |
 | `edit <folder\|session> --clear-default` | Clear the workspace's default without selecting another session |
 
-`--default` requires `--name` or an exact full session name. `--clear-default` cannot be combined with `--name`, `--default`, or `--show`. In the folder overview, **Exit** leaves completed source/default changes saved; selecting a broken session record shows its error and lets you choose again. Selection never starts a container. Opening does not change the default.
+`--default` requires `--name` or an exact full session name. `--clear-default` cannot be combined with `--name`, `--default`, or `--show`. In the folder overview, **Exit** leaves completed config-selection/default changes saved; selecting a broken session record shows its error and lets you choose again. Selection never starts a container. Opening does not change the default.
 
 ## SSH sharing
 
@@ -161,7 +161,7 @@ An unfinished transfer blocks changes to both environments, including forced del
 ## Deletion
 
 ```sh
-devbox-neo delete <target...> [--container|--session]
+devbox-neo delete <folder|session>... [--container|--session]
 devbox-neo delete [filters...] --container|--session
 ```
 

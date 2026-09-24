@@ -71,7 +71,7 @@ func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
 	var selected, artifactHarness string
 	var artifacts []string
 	var asJSON bool
-	cmd := &cobra.Command{Use: action + " <reference>", Short: description, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: action + " <name|path>", Short: description, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		service, err := factory(cmd)
 		if err != nil {
 			return err

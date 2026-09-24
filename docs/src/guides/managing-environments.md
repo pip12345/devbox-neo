@@ -15,7 +15,7 @@ The result tells you what needs to happen:
 | Result | What to do |
 |---|---|
 | No changes | Keep working |
-| Runtime changes | Restart a running container to synchronize managed files |
+| Runtime changes | Check the listed reasons. Managed files sync on container restart; launch options and before-open scripts apply at the next `open` |
 | Recreate needed | Run `recreate` to apply container settings |
 | Rebuild + recreate needed | Run `recreate`; it also builds the changed image |
 | Cannot check | Fix the reported configuration or state problem first |
@@ -40,13 +40,13 @@ Use bare `status` to review every saved environment. Opening an environment with
 
 ## Recover a missing container
 
-An environment can still appear in `list` after its container has been removed. If its recorded image and other required inputs are available, restore it with:
+An environment can still appear in `list` after its container has been removed. If its recorded image and other required inputs are available, open it normally to restore the container:
 
 ```sh
-devbox-neo start .
+devbox-neo open .
 ```
 
-`open` can restore it too. If recovery reports unavailable inputs, use `recreate` to build from current configuration. Set environment variables in the session's selected configs, using host references for secrets.
+Use `start .` instead only when you want to keep the container running until `stop`, including across reboots. If recovery reports unavailable inputs, use `recreate` to build from current configuration. Set environment variables in the session's selected configs, using host references for secrets.
 
 ## Copy saved harness state to another folder
 

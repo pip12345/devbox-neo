@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -120,8 +121,8 @@ func TestConfigReferenceValidationDoesNotReadSources(t *testing.T) {
 	if _, err := CaptureReference("/home", "relative-workspace", "/cwd", "/user", "base"); err == nil {
 		t.Fatal("accepted noncanonical workspace")
 	}
-	if _, err := ConfigPath("/home", "/cwd", "/user", ""); err == nil {
-		t.Fatal("accepted empty reference")
+	if _, err := ConfigPath("/home", "/cwd", "/user", ""); err == nil || !strings.Contains(err.Error(), "config name or directory path") {
+		t.Fatal("empty config input did not explain name or path", err)
 	}
 	if _, err := ResolveReferences(workspace, nil); err == nil {
 		t.Fatal("accepted an empty runtime source chain")

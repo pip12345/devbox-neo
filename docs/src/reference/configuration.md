@@ -50,15 +50,15 @@ Creation, opening, and recreation require at least one source, accessible valid 
 
 | Command | Scope |
 |---|---|
-| `config create <reference>` | Create a new config and offer initial harness/artifact setup |
-| `config edit <reference>` | Edit one existing directory's settings or add missing optional files |
+| `config create <name\|path>` | Create a new config and offer initial harness/artifact setup |
+| `config edit <name\|path>` | Edit one existing directory's settings or add missing optional files |
 | `config list [--json]` | Show names, harnesses, and directory paths under `<home>/configs/`, including invalid or incomplete configs; does not discover arbitrary path-based configs |
 | `config delete <name> [--force] [--json]` | Remove a named config directory and all its files; `--force` skips confirmation, not reference checks |
 | `edit <folder>` | Pick a saved session, edit its selected configs, or change the folder default |
 | `edit <folder> --name NAME` | Edit that named session's selected configs directly |
 | `edit <full-name> --show [--json]` | Inspect combined settings and provenance |
 
-For folder-targeted `--show`, supply `--name`. JSON requires `--show`; source editing otherwise requires a terminal. Config-directory setup also supports [explicit automation flags](commands.md#configuration-commands).
+For folder-targeted `--show`, supply `--name`. JSON requires `--show`; editing a session's selected configs otherwise requires a terminal. Config-directory setup also supports [explicit automation flags](commands.md#configuration-commands).
 
 `config create` fails if `config.json` exists, including an empty or invalid file, and points to `config edit`. An existing directory without `config.json` is allowed; existing artifacts are kept. `config edit` never creates a missing config.
 

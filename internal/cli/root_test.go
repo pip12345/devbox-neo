@@ -3,11 +3,14 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"devbox/internal/commanderror"
 )
 
 func TestExecutableName(t *testing.T) {
@@ -140,6 +143,26 @@ func TestCreateAndEditHelpShowInteractiveAndDirectExamples(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestConfigHelpAndCreationHintsUseNameOrPath(t *testing.T) {
+	for _, action := range []string{"create", "edit"} {
+		cmd := New()
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetArgs([]string{"config", action, "--help"})
+		if err := cmd.Execute(); err != nil || !strings.Contains(out.String(), "config "+action+" <name|path>") || strings.Contains(out.String(), "<reference>") {
+			t.Fatal("config usage leaked an internal reference name", out.String(), err)
+		}
+	}
+	cmd := New()
+	cmd.SetIn(strings.NewReader(""))
+	cmd.SetArgs([]string{"create", t.TempDir()})
+	err := cmd.Execute()
+	var actionable *commanderror.Error
+	if !errors.As(err, &actionable) || actionable.Code != "creation_inputs_required" || len(actionable.Next) != 1 || !strings.Contains(strings.Join(actionable.Next[0].Command, " "), "--config <name|path>") {
+		t.Fatal("creation hint leaked an internal reference name", err)
 	}
 }
 

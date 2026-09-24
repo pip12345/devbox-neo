@@ -58,8 +58,8 @@ unrelated remote changes or use of host/network services.
 Do not modify /devbox: it is Devbox-owned runtime data. Do not add a Dockerfile
 to a selected config directory to persist an ad-hoc installation without approval.
 Devbox does not enforce network egress restrictions or provide an offline mode.
-On the host, config create <reference> creates a config directory; config edit
-edits that directory or adds missing optional files. Bare config names use the
+On the host, config create <name|path> creates a config directory; config edit
+<name|path> edits that directory or adds missing optional files. Bare config names use the
 selected home (normally ~/.devbox-neo/configs/); directories elsewhere are ordinary
 explicit sources too. Creation rejects existing config.json; artifact setup never
 overwrites existing files. Harness-file generation does not force harness selection.
