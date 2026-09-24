@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -84,6 +85,33 @@ func TestRegistryReportsBrokenOverridesWithoutHidingValidChoices(t *testing.T) {
 		t.Fatal("registry hid an invalid override or valid choice")
 	}
 }
+func TestBuiltinOpenCodeV2(t *testing.T) {
+	h, err := Load(t.TempDir(), "opencode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := h.Definition
+	if !strings.Contains(d.Install.Shell, "https://opencode.ai/v2/install") || d.Binary != "opencode" || len(d.Launch.Continue) != 1 || d.Launch.Continue[0] != "-c" {
+		t.Fatal("OpenCode must install and launch the v2 CLI", d)
+	}
+	var config struct {
+		Share        string `json:"share"`
+		Experimental struct {
+			Policies []struct {
+				Action   string `json:"action"`
+				Resource string `json:"resource"`
+				Effect   string `json:"effect"`
+			} `json:"policies"`
+		} `json:"experimental"`
+	}
+	if err := json.Unmarshal([]byte(d.Env["OPENCODE_CONFIG_CONTENT"]), &config); err != nil {
+		t.Fatal(err)
+	}
+	if config.Share != "disabled" || len(config.Experimental.Policies) != 1 || config.Experimental.Policies[0].Action != "provider.use" || config.Experimental.Policies[0].Resource != "opencode" || config.Experimental.Policies[0].Effect != "deny" {
+		t.Fatal("OpenCode v2 defaults must keep sharing and the OpenCode provider disabled", config)
+	}
+}
+
 func TestEmbeddedAndHostDefaultsShareRecursiveFileRules(t *testing.T) {
 	tree, err := readTree(fstest.MapFS{
 		"nested/file": {Data: []byte("value"), Mode: 0700},

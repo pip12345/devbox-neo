@@ -260,7 +260,7 @@ func TestRuntimeLayerHonorsHostIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(plan.Prepared) + string(plan.Runtime)
-	for _, want := range []string{"-u 1234", "-g 5678", "opencode.ai/install", "USER devuser"} {
+	for _, want := range []string{"-u 1234", "-g 5678", "opencode.ai/v2/install", "USER devuser"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("template missing %s", want)
 		}

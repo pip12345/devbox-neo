@@ -3,11 +3,11 @@
   "name": "opencode",
   "binary": "opencode",
   "install": {
-    "shell": "curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path",
+    "shell": "curl -fsSL https://opencode.ai/v2/install | bash -s -- --no-modify-path",
     "path": ["/home/${user}/.opencode/bin", "/home/${user}/.local/bin"]
   },
   "launch": {"args": [], "continue_args": ["-c"]},
-  "env": {"OPENCODE_CONFIG_CONTENT": "{\"share\":\"disabled\",\"disabled_providers\":[\"opencode\"]}"},
+  "env": {"OPENCODE_CONFIG_CONTENT": "{\"share\":\"disabled\",\"experimental\":{\"policies\":[{\"action\":\"provider.use\",\"resource\":\"opencode\",\"effect\":\"deny\"}]}}"},
   "stores": [
     {"name": "config", "scope": "environment", "target": "/home/devuser/.config/opencode"},
     {"name": "data", "scope": "environment", "target": "/home/devuser/.local/share/opencode"},

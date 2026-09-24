@@ -2,6 +2,11 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). The migration utility remains separate from runtime loading; adapting its destination model to named sessions and explicit configs is also approved.
 
+## OpenCode 2 built-in — live Docker acceptance pending
+
+- The built-in OpenCode harness now installs from the v2 endpoint. Its launch config uses a v2 provider policy to keep the `opencode` provider disabled; sharing remains disabled. The v2.0.6 CLI was checked for the `opencode` executable, `-c` continuation flag, and environment config loading. The v2.0.6 path diagnostic reports the existing config, data, and cache targets and puts its database under the data mount; the v2 auth source still uses `auth.json` there.
+- Existing sessions require explicit recreation for the changed image input; no automatic OpenCode state or config migration was added. `make test-fast` and integration-tag compilation pass. `make test-integration` fails because this environment has no Docker CLI/daemon; live installation, authentication, and conversation continuation remain untested.
+
 ## Folder-local sessions and explicit configs — implemented, live acceptance pending
 
 - First checkpoint adds explicit config-reference capture/expansion and folder-default persistence. Relative arguments resolve against the invoking directory and remain workspace-relative; fixed references retain their absolute target. Named references use the selected Devbox home. Runtime resolution rejects duplicate canonical directories, including symlink aliases, while saved-reference validation does not require accessible sources.
