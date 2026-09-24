@@ -34,7 +34,7 @@ Before a stopped container starts, access commands resolve participating configu
 
 ### Creation and launch options
 
-Configure container settings through `config edit <reference>` before creation/recreation. A terminal opens a creation menu where you can set or change the pending session name and add or edit config sources in either order. `--name` and repeated `--config` prefill those choices; **Create session** appears once both are present. Without a terminal, both are required. A fully specified create does not prompt. Session names are explicit and case-sensitive.
+Configure container settings through `config edit <reference>` before creation/recreation. A terminal opens a creation menu where you can set or change the pending session name and select ordered configs in either order. `--name` and repeated `--config` prefill those choices; **Create session** appears once both are present. Without a terminal, both are required. A fully specified create does not prompt. Session names are explicit and case-sensitive.
 
 | Option | Commands | Meaning |
 |---|---|---|
@@ -68,12 +68,12 @@ See [output and errors](output.md) for columns, change classifications, and JSON
 | `config edit <reference>` | Edit an existing directory or add missing optional files |
 | `config list [--json]` | Show named configs under the selected home's `configs/` with harness and directory path; report invalid or incomplete entries; no Docker required |
 | `config delete <name> [--force] [--json]` | Delete an unreferenced named config and its files; confirm in a terminal, or use `--force` to skip confirmation (required with `--json`) |
-| `edit <folder>` | Pick a session to edit its sources or make it the folder default; clear a saved default from the folder menu |
-| `edit <folder> --name NAME` | Edit that session's sources directly |
-| `edit <full-name>` | Edit an exact session's sources directly |
+| `edit <folder>` | Pick a session to edit its selected configs or make it the folder default; clear a saved default from the folder menu |
+| `edit <folder> --name NAME` | Edit that session's selected configs directly |
+| `edit <full-name>` | Edit an exact session's selected configs directly |
 | `edit <target> --show [--json]` | Inspect combined configuration; folder targets require `--name` |
 
-Creation and source menus select existing directories; they never open another command's editor. The picker shows named configs as fixed references in a table; entered paths are saved as relative or fixed according to [reference rules](configuration.md#locations-and-references). Completed settings/source edits save immediately; **Exit** does not roll them back. After session source edits, the exit receipt gives an exact-session `status` command; after config directory edits, it gives bare `status` to review pending changes across environments. See [editing controls](configuration.md#editing-and-inspection).
+Creation and session-edit menus select existing directories; they never open another command's editor. The picker shows named configs as fixed references in a table; entered paths are saved as relative or fixed according to [reference rules](configuration.md#locations-and-references). Completed settings and config-selection edits save immediately; **Exit** does not roll them back. After changing a session's selected configs, the exit receipt gives an exact-session `status` command; after config directory edits, it gives bare `status` to review pending changes across environments. See [editing controls](configuration.md#editing-and-inspection).
 
 Both directory commands accept setup flags:
 

@@ -17,7 +17,7 @@ import (
 
 func editCommand(factory engineFactory, name *string) *cobra.Command {
 	var show, asJSON, setDefault, clearDefault bool
-	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Edit a session's sources or its folder's default selection", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
+	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Edit a session's selected configs or its folder's default selection", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		if asJSON && !show {
 			return fmt.Errorf("--json requires --show")
 		}
@@ -174,7 +174,7 @@ func writeEditReceipts(m menu, home string, savedSources map[string]bool, defaul
 	for _, name := range names {
 		steps = append(steps, commanderror.Next("", "status", name))
 	}
-	if _, err := fmt.Fprintln(m.out, "Sources saved; container changes may still be pending. Check with:"); err != nil {
+	if _, err := fmt.Fprintln(m.out, "Selected configs saved; container changes may still be pending. Check with:"); err != nil {
 		return err
 	}
 	_, err := fmt.Fprint(m.out, stepsText(scopedSteps(m.cmd, steps, home)))
@@ -195,7 +195,7 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 		return saved, err
 	}
 	for {
-		if err := writeMenuTitle(m.out, "Manage config sources"); err != nil {
+		if err := writeMenuTitle(m.out, "Manage configs"); err != nil {
 			return saved, err
 		}
 		writeMenuHint(m.out, "Session: "+r.Identity.LocalName)
@@ -210,7 +210,7 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 		}
 		actions := []string{"Add existing config"}
 		if len(r.Sources) > 0 {
-			actions = append(actions, "Replace source", "Remove source", "Reorder sources")
+			actions = append(actions, "Replace config", "Remove config", "Reorder configs")
 		}
 		actions = append(actions, "Show combined configuration")
 		choice, err := m.choose("What would you like to do?", actions, back)
@@ -256,6 +256,6 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 		}
 		r = updated
 		saved = true
-		fmt.Fprintln(m.out, "Saved config sources.")
+		fmt.Fprintln(m.out, "Saved selected configs.")
 	}
 }

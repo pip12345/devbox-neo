@@ -15,7 +15,7 @@ import (
 func sessionCommands(factory engineFactory, name *string) []*cobra.Command {
 	var listJSON, wide bool
 	var sortBy string
-	list := &cobra.Command{Use: "list [folder]", Short: "List saved sessions, defaults, config sources, and container status", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	list := &cobra.Command{Use: "list [folder]", Short: "List saved sessions, defaults, selected configs, and container status", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if sortBy != "folder" && sortBy != "name" && sortBy != "last-active" {
 			return fmt.Errorf("unknown session sort %q: use folder, name, or last-active", sortBy)
 		}

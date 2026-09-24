@@ -37,7 +37,7 @@ func TestSelectedSourcesShowLabelsAndPathsWithoutTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "Config sources, in order:\n   1. base         /") || !strings.Contains(text, "\n   2. ./devconfig  /") || strings.Contains(text, "SOURCE  TYPE") || strings.Contains(text, "base         fixed") || strings.Contains(text, "./devconfig  relative") {
+	if !strings.Contains(text, "Configs, in order:\n   1. base         /") || !strings.Contains(text, "\n   2. ./devconfig  /") || strings.Contains(text, "SOURCE  TYPE") || strings.Contains(text, "base         fixed") || strings.Contains(text, "./devconfig  relative") {
 		t.Fatal("selected sources should show only label and expanded path", text)
 	}
 }

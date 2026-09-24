@@ -275,7 +275,7 @@ func TestEditFolderCanRecoverFromBrokenSessionSelection(t *testing.T) {
 	if err := cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}
-	if strings.Count(out.String(), "Select a session to edit") < 2 || !strings.Contains(out.String(), "Error: Invalid session state: unsupported session record version") || !strings.Contains(out.String(), "Manage config sources") || !strings.Contains(out.String(), "[0]  Exit") {
+	if strings.Count(out.String(), "Select a session to edit") < 2 || !strings.Contains(out.String(), "Error: Invalid session state: unsupported session record version") || !strings.Contains(out.String(), "Manage configs") || !strings.Contains(out.String(), "[0]  Exit") {
 		t.Fatal("invalid session selection closed the folder editor", out.String())
 	}
 }
@@ -310,6 +310,11 @@ func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 	nameIndex, pickerIndex, reviewIndex := strings.Index(text, "Session name (:back cancels): "), strings.Index(text, "Select an existing config"), strings.Index(text, "[1]  Create session")
 	if nameIndex < 0 || pickerIndex < nameIndex || reviewIndex < pickerIndex || !strings.Contains(text, "[1]  Create session\n\n   [2]  Change session name") {
 		t.Fatal("creation overview did not keep pending inputs editable", text)
+	}
+	for _, label := range []string{"Configs, in order:", "[3]  Add existing config", "[4]  Replace config", "[5]  Remove config", "[6]  Reorder configs"} {
+		if !strings.Contains(text, label) {
+			t.Fatal("creation menu mixed config and source labels", label, text)
+		}
 	}
 	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {
 		t.Fatal("interactive creation selected a default", selected, err)
@@ -470,10 +475,10 @@ func TestEditReportsSavedSourcesAfterExitOnlyWhenChanged(t *testing.T) {
 		return out.String()
 	}
 	changed := run("3\n1\n0\n")
-	if !strings.Contains(changed, "Saved config sources.") || !strings.Contains(changed, "Sources saved; container changes may still be pending. Check with:\n  devbox-neo status "+fullName) {
+	if !strings.Contains(changed, "Saved selected configs.") || !strings.Contains(changed, "Selected configs saved; container changes may still be pending. Check with:\n  devbox-neo status "+fullName) {
 		t.Fatal("source edit lost its saved-but-not-applied receipt", changed)
 	}
-	if unchanged := run("0\n"); strings.Contains(unchanged, "Sources saved;") {
+	if unchanged := run("0\n"); strings.Contains(unchanged, "Selected configs saved;") {
 		t.Fatal("no-op edit claimed to have saved sources", unchanged)
 	}
 }
@@ -485,7 +490,7 @@ func TestEditReceiptListsEachChangedSessionOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	if strings.Count(text, "Sources saved;") != 1 || strings.Count(text, "devbox-neo status devbox-a") != 1 || strings.Count(text, "devbox-neo status devbox-z") != 1 || strings.Index(text, "devbox-a") >= strings.Index(text, "devbox-z") {
+	if strings.Count(text, "Selected configs saved;") != 1 || strings.Count(text, "devbox-neo status devbox-a") != 1 || strings.Count(text, "devbox-neo status devbox-z") != 1 || strings.Index(text, "devbox-a") >= strings.Index(text, "devbox-z") {
 		t.Fatal("receipt lost or duplicated a changed session", text)
 	}
 }
@@ -506,8 +511,10 @@ func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T
 	if err != nil || after.ID != r.ID || len(after.Sources) != 0 || after.Applied != r.Applied {
 		t.Fatal("source edit was lost or applied container settings", after, err)
 	}
-	if !strings.Contains(out.String(), "Saved config sources.") || !strings.Contains(out.String(), "at least one configuration source") || !strings.Contains(out.String(), "[0]  Exit") {
-		t.Fatal(out.String())
+	for _, label := range []string{"Manage configs", "Configs, in order:", "Add existing config", "Replace config", "Remove config", "Reorder configs", "Select a config", "Saved selected configs.", "at least one config is required", "[0]  Exit"} {
+		if !strings.Contains(out.String(), label) {
+			t.Fatal("session editor mixed config and source labels", label, out.String())
+		}
 	}
 	for _, forbidden := range []string{"Select a harness", "Choose optional files", "Select the default session"} {
 		if strings.Contains(out.String(), forbidden) {

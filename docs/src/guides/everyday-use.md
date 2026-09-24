@@ -98,4 +98,4 @@ Add that line to your shell startup file to load completion in new terminals. De
 
 Use `devbox-neo <command> --help` for command options. Inside the container, the same documentation is available at `/devbox/docs/index.md`; `/devbox/AGENTS.md` gives the agent its container guidance.
 
-**Next:** [Config directories and session sources](configuration.md).
+**Next:** [Choose configs for a session](configuration.md).

@@ -54,8 +54,8 @@ Creation, opening, and recreation require at least one source, accessible valid 
 | `config edit <reference>` | Edit one existing directory's settings or add missing optional files |
 | `config list [--json]` | Show names, harnesses, and directory paths under `<home>/configs/`, including invalid or incomplete configs; does not discover arbitrary path-based configs |
 | `config delete <name> [--force] [--json]` | Remove a named config directory and all its files; `--force` skips confirmation, not reference checks |
-| `edit <folder>` | Pick a saved session, edit its source chain, or change the folder default |
-| `edit <folder> --name NAME` | Edit that named session's source chain directly |
+| `edit <folder>` | Pick a saved session, edit its selected configs, or change the folder default |
+| `edit <folder> --name NAME` | Edit that named session's selected configs directly |
 | `edit <full-name> --show [--json]` | Inspect combined settings and provenance |
 
 For folder-targeted `--show`, supply `--name`. JSON requires `--show`; source editing otherwise requires a terminal. Config-directory setup also supports [explicit automation flags](commands.md#configuration-commands).
@@ -64,7 +64,7 @@ For folder-targeted `--show`, supply `--name`. JSON requires `--show`; source ed
 
 `config delete` accepts only a direct named directory under the selected home's `configs/`; symlink entries and arbitrary directory paths are refused. It can remove incomplete directories, but refuses while saved sessions use the config as a desired or committed source. The blocked-deletion error lists every known session once with a command to inspect it. The interactive directory editor shows the same plain list. Invalid session state and pending transfers block deletion because use cannot be checked completely; the editor labels a partial report. This is a check of current saved state, not an atomic guarantee against concurrent session creation or source edits.
 
-Each completed setting/source-chain edit saves immediately. `0` or `q` navigates back or exits; `:back` cancels text input. Removing a setting removes its local key. List editors change only the selected directory's entries. Source-chain changes affect one session; directory changes affect all referencing sessions.
+Each completed setting/source-chain edit saves immediately. `0` or `q` navigates back or exits; `:back` cancels text input. Removing a setting removes its local key. List editors change only the selected directory's entries. Selected-config changes affect one session; directory changes affect all referencing sessions.
 
 Saves preserve expressions and unrelated fields. A stale same-field edit or changed session/source-list snapshot is rejected. The directory dashboard shows that source over built-in defaults; combined inspection is read-only. Env values are redacted, but typed input is visible.
 

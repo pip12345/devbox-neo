@@ -46,7 +46,7 @@ An environment can still appear in `list` after its container has been removed. 
 devbox-neo start .
 ```
 
-`open` can restore it too. If recovery reports unavailable inputs, use `recreate` to build from current configuration. Set environment variables in the session's config sources, using host references for secrets.
+`open` can restore it too. If recovery reports unavailable inputs, use `recreate` to build from current configuration. Set environment variables in the session's selected configs, using host references for secrets.
 
 ## Copy saved harness state to another folder
 

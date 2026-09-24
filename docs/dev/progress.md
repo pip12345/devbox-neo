@@ -10,7 +10,7 @@ The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-
 ## CLI status and config-selection UX — live Docker acceptance pending
 
 - Bare `status` now performs the existing bulk check; the redundant `--all` flag is removed. Config edits that save changes point to one bare `status` command. Single-target status gives a short container-restart note for pending managed files and a recreation hint for image/container changes.
-- Both list views show the saved automatic/keep-running lifetime apart from live container state. The config picker displays named references in a fixed-path table and keeps typed-path selection immediate, without a confirmation screen; selected source chains and transfer results display only the ordered label and resolved path. Help and user/embedded docs explain `start` as a keep-running choice.
+- Both list views show the saved automatic/keep-running lifetime apart from live container state. Create/edit menus consistently call the selected directories `configs` in headings, actions, save receipts, and repair hints. The picker displays named references in a fixed-path table and keeps typed-path selection immediate, without a confirmation screen; selected config lists and transfer results display only the ordered label and resolved path. Help and user/embedded docs explain `start` as a keep-running choice.
 - Fake-backed CLI tests cover saved/unchanged editor receipts, bulk status and JSON, managed-file/recreation guidance, lifecycle lifetime display, and reference selection. `make test-fast`, integration-tag compilation, and `git diff --check` pass. Live Docker behavior is still untested.
 
 ## OpenCode 2 built-in — live Docker acceptance pending

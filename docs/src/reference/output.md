@@ -2,7 +2,7 @@
 
 ## Interactive menus
 
-Short create/edit menus redraw on a temporary terminal screen instead of appending each step to shell output. They still use numbered choices and normal line input. When a menu is too tall or cannot be sized safely, it prints normally. A retry menu also stays on the shell screen after a creation warning, so the warning remains visible. Redirected output stays plain. **Cancel** abandons pending creation choices; **Back** navigates; **Exit** leaves completed edits saved. In the `edit <folder>` overview, `*` marks the folder default beside its session even when it is stopped; container status remains separate. The shell screen returns on exit. After session source changes, a receipt lists exact `status` commands; after config directory edits, it suggests bare `status` for all environments. No receipt appears if nothing was saved.
+Short create/edit menus redraw on a temporary terminal screen instead of appending each step to shell output. They still use numbered choices and normal line input. When a menu is too tall or cannot be sized safely, it prints normally. A retry menu also stays on the shell screen after a creation warning, so the warning remains visible. Redirected output stays plain. **Cancel** abandons pending creation choices; **Back** navigates; **Exit** leaves completed edits saved. In the `edit <folder>` overview, `*` marks the folder default beside its session even when it is stopped; container status remains separate. The shell screen returns on exit. After changes to a session's selected configs, a receipt lists exact `status` commands; after config directory edits, it suggests bare `status` for all environments. No receipt appears if nothing was saved.
 
 ## Environment listings
 
@@ -61,7 +61,7 @@ Public scalar changes may show before/after values. Environment changes show var
 
 JSON preserves structured values. `trace.entry_sources` gives layer names in resolved-list order, including duplicates. Env values are redacted; variable references are reported separately. A sparse configuration can be inspected before selecting a harness.
 
-Directory menus show only their own settings over built-in defaults, using generic source labels. Combined configuration is read-only. Selected source summaries and copy results show ordered labels and resolved paths without a type column; the picker shows reference type while selecting. Selected choices have a current-selection summary and readable `(selected)` markers or checkmarks; color is not required to identify them.
+Directory menus show only their own settings over built-in defaults, using generic source labels. Combined configuration is read-only. Selected config lists and copy results show ordered labels and resolved paths without a type column; the picker shows reference type while selecting. Selected choices have a current-selection summary and readable `(selected)` markers or checkmarks; color is not required to identify them.
 
 ## Deletion results
 

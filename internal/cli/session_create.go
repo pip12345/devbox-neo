@@ -14,11 +14,11 @@ import (
 
 func createCommand(factory engineFactory, name *string) *cobra.Command {
 	var references []string
-	cmd := &cobra.Command{Use: "create <folder>", Short: "Name a new session and select its existing config sources", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
+	cmd := &cobra.Command{Use: "create <folder>", Short: "Name a new session and select its configs", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		missing := *name == "" || len(references) == 0
 		if missing && !interactive(cmd) {
 			return commanderror.New("creation_inputs_required", "Session creation requires --name and at least one --config without a terminal.", args[0], nil,
-				commanderror.Next("Supply the session name and config sources", "create", args[0], "--name", "<name>", "--config", "<reference>"))
+				commanderror.Next("Supply the session name and configs", "create", args[0], "--name", "<name>", "--config", "<reference>"))
 		}
 		e, err := factory(cmd)
 		if err != nil {
@@ -84,7 +84,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		return nil
 	}}
 	cmd.Example = "  devbox-neo create .\n  devbox-neo create . --name work --config base"
-	cmd.Flags().StringArrayVar(&references, "config", nil, "Existing config name or directory path, in source order (repeatable)")
+	cmd.Flags().StringArrayVar(&references, "config", nil, "Existing config name or directory path, in order (repeatable)")
 	return sessionNameFlag(cmd, name)
 }
 
@@ -115,7 +115,7 @@ func createSessionMenu(p sourcePicker, e *app.Engine, draft sessionCreationDraft
 		}
 		actions := []string{nameAction, "Add existing config"}
 		if len(draft.sources) > 0 {
-			actions = append(actions, "Replace source", "Remove source", "Reorder sources")
+			actions = append(actions, "Replace config", "Remove config", "Reorder configs")
 		}
 		gapBefore := -1
 		if draft.name != "" && len(draft.sources) > 0 {

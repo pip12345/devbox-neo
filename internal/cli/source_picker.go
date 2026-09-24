@@ -54,11 +54,7 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 				}
 			}
 		}
-		title := "Select an existing config"
-		if current != nil {
-			title = "Replace config source"
-		}
-		if err := writeMenuTitle(p.out, title); err != nil {
+		if err := writeMenuTitle(p.out, "Select an existing config"); err != nil {
 			return config.Reference{}, false, err
 		}
 		if current != nil {
@@ -136,7 +132,7 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 }
 
 func showSourceChain(m menu, home, workspace string, sources []config.Reference) error {
-	fmt.Fprintln(m.out, "\nConfig sources, in order:")
+	fmt.Fprintln(m.out, "\nConfigs, in order:")
 	if len(sources) == 0 {
 		fmt.Fprintln(m.out, "   None")
 	}
@@ -173,13 +169,13 @@ func editSourceChain(p sourcePicker, sources []config.Reference, action string) 
 			choices[i] = reference.Label + " (" + reference.Kind + ")"
 		}
 		var err error
-		index, err = p.menu.choose("Select a source", choices, "Back")
+		index, err = p.menu.choose("Select a config", choices, "Back")
 		if err != nil || index < 0 {
 			return sources, false, err
 		}
 	}
 	switch action {
-	case "Add existing config", "Replace source":
+	case "Add existing config", "Replace config":
 		var current *config.Reference
 		if index >= 0 {
 			current = &sources[index]
@@ -193,9 +189,9 @@ func editSourceChain(p sourcePicker, sources []config.Reference, action string) 
 		} else {
 			updated[index] = reference
 		}
-	case "Remove source":
+	case "Remove config":
 		updated = slices.Delete(updated, index, index+1)
-	case "Reorder sources":
+	case "Reorder configs":
 		choices := make([]string, len(sources))
 		for i := range choices {
 			choices[i] = fmt.Sprintf("Position %d", i+1)

@@ -86,10 +86,10 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 	before := completionSnapshot(t, home)
 	for _, tt := range []struct{ command, description string }{
 		{"config create", "Create a config directory and offer initial setup"},
-		{"create", "Name a new session and select its existing config sources"},
+		{"create", "Name a new session and select its configs"},
 		{"version", "Print the Devbox version"},
 		{"config edit", "Edit a config directory or add missing optional files"},
-		{"edit", "Edit a session's sources or its folder's default selection"},
+		{"edit", "Edit a session's selected configs or its folder's default selection"},
 		{"shell", "Open a shell in a session"},
 		{"exec", "Run a command in a session"},
 		{"recreate", "Recreate the container with current settings, keeping session data"},

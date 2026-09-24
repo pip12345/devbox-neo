@@ -151,7 +151,7 @@ func ValidateReferenceChain(workspace string, references []Reference) error {
 // particularly because setup and before-open scripts have observable effects.
 func ResolveReferences(workspace string, references []Reference) ([]Source, error) {
 	if len(references) == 0 {
-		return nil, fmt.Errorf("at least one configuration source is required")
+		return nil, fmt.Errorf("at least one config is required")
 	}
 	sources := make([]Source, 0, len(references))
 	seen := map[string]string{}
@@ -162,17 +162,17 @@ func ResolveReferences(workspace string, references []Reference) ([]Source, erro
 		}
 		canonical, err := filepath.EvalSymlinks(source.Path)
 		if err != nil {
-			return nil, fmt.Errorf("configuration source %q (%s): %w", source.Label, source.Path, err)
+			return nil, fmt.Errorf("config %q (%s): %w", source.Label, source.Path, err)
 		}
 		info, err := os.Stat(canonical)
 		if err != nil {
-			return nil, fmt.Errorf("configuration source %q (%s): %w", source.Label, source.Path, err)
+			return nil, fmt.Errorf("config %q (%s): %w", source.Label, source.Path, err)
 		}
 		if !info.IsDir() {
-			return nil, fmt.Errorf("configuration source %q (%s) is not a directory", source.Label, source.Path)
+			return nil, fmt.Errorf("config %q (%s) is not a directory", source.Label, source.Path)
 		}
 		if previous, exists := seen[canonical]; exists {
-			return nil, fmt.Errorf("configuration sources %q and %q select the same directory: %s", previous, source.Label, canonical)
+			return nil, fmt.Errorf("configs %q and %q select the same directory: %s", previous, source.Label, canonical)
 		}
 		seen[canonical] = source.Label
 		source.Path = canonical

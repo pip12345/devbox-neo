@@ -118,22 +118,22 @@ func resolve(q Request, proposed *artifact.SourcePreview) (Spec, error) {
 	if err != nil {
 		var next []commanderror.Step
 		if q.Recorded != nil {
-			next = append(next, commanderror.Next("Repair the session's config sources", "edit", identity.Name))
+			next = append(next, commanderror.Next("Repair the session's selected configs", "edit", identity.Name))
 		}
-		return spec, commanderror.New("configuration_unavailable", "Cannot resolve config sources: "+err.Error(), identity.Name, err, next...)
+		return spec, commanderror.New("configuration_unavailable", "Cannot resolve selected configs: "+err.Error(), identity.Name, err, next...)
 	}
 	r, err := artifact.Preview(sources, proposed, q.Host)
 	if err != nil {
 		if q.Recorded != nil {
 			return spec, commanderror.New("invalid_configuration", err.Error(), identity.Name, err,
-				commanderror.Next("Inspect and repair config sources", "edit", identity.Name))
+				commanderror.Next("Inspect and repair selected configs", "edit", identity.Name))
 		}
 		return spec, err
 	}
 	if err = r.Settings.Validate(); err != nil {
 		var actionable *commanderror.Error
 		if errors.As(err, &actionable) && actionable.Code == "harness_required" {
-			step := commanderror.Next("Select a harness in a config source", "config", "edit", sources[0].Path, "--harness", "<name>")
+			step := commanderror.Next("Select a harness in a config", "config", "edit", sources[0].Path, "--harness", "<name>")
 			return spec, commanderror.New(actionable.Code, actionable.Message, identity.Name, err, step)
 		}
 		return spec, commanderror.New("invalid_configuration", "Invalid configuration: "+err.Error(), q.Workspace, err)
