@@ -53,7 +53,7 @@ func TestConfigBrowserCreatesWithoutDockerOrSelectingSession(t *testing.T) {
 	}
 }
 func TestSessionBrowserDispatchesRealLifetimeOperations(t *testing.T) {
-	input := &workflowInput{lines: []string{"6\n", "7\n", "2\n", "0\n"}}
+	input := &workflowInput{lines: []string{"10\n", "11\n", "2\n", "0\n"}}
 	f, out, _, name := frontendFixture(t, input)
 	input.before = func(step int) {
 		if step != 1 && step != 3 {

@@ -29,7 +29,10 @@ type Action struct {
 	Selected    bool
 	Checked     *bool // Non-nil gives a toggle its explicit checked/unchecked marker.
 	BreakBefore bool
-	Run         func() (done bool, err error)
+	// Group labels contiguous actions with a non-selectable heading. Each action
+	// carries it so filtering or hiding the first one preserves the heading.
+	Group string
+	Run   func() (done bool, err error)
 }
 
 // Items are browsed objects, not commands. Stable keys retain selection across
@@ -333,8 +336,14 @@ func (r *Runner) renderPlainPage(page Screen, actions []Action) error {
 		}
 	} else {
 		for i, action := range actions {
-			if action.BreakBefore {
+			newGroup := action.Group != "" && (i == 0 || action.Group != actions[i-1].Group)
+			if action.BreakBefore || newGroup && i > 0 {
 				if _, err := fmt.Fprintln(r.Out); err != nil {
+					return err
+				}
+			}
+			if newGroup {
+				if err := Hint(r.Out, Safe(action.Group)); err != nil {
 					return err
 				}
 			}

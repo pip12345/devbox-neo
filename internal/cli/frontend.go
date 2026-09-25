@@ -239,41 +239,54 @@ func (f *frontend) session(v app.View) error {
 		run := func(title string, op func(context.Context) error) func() error {
 			return func() error { return f.foreground(title, op) }
 		}
-		start := f.action("Start", "Keep running until stopped", run("Start", func(ctx context.Context) error { _, err := f.e.Start(ctx, v.Name, ""); return err }))
-		start.BreakBefore = true
-		actions := []cliui.Action{
+		var actions []cliui.Action
+		addGroup := func(label string, entries ...cliui.Action) {
+			for _, entry := range entries {
+				entry.Group = label
+				actions = append(actions, entry)
+			}
+		}
+		addGroup("Harness",
 			f.action("Open", "Launch the recorded harness", run("Open", func(ctx context.Context) error { _, err := f.e.Open(ctx, app.Request{Workspace: v.Name}); return err })),
 			f.action("Continue", "Resume the harness conversation", run("Continue", func(ctx context.Context) error {
 				_, err := f.e.Open(ctx, app.Request{Workspace: v.Name, Continue: true})
 				return err
 			})),
+			f.action("Open with options", "Continuation and one-off harness arguments", func() error { return f.openWithOptions(v.Name) }),
+		)
+		addGroup("Commands & access",
 			f.action("Shell", "Attach to the configured shell", run("Shell", func(ctx context.Context) error { return f.e.Exec(ctx, v.Name, "", nil, true) })),
-			f.action("Status", "Live state, active commands and pending changes", func() error { return f.status(v.Name) }),
-			f.action("Edit selected configs", sourceSummary(v.Sources), func() error { return f.editSession(v.Name) }),
-			start,
-			f.action("Stop", "", func() error { return f.stop(v.Name) }),
-			f.action("Recreate", "Replace the container using current settings", func() error { return f.recreate(v.Name) }),
-			f.action("Logs", "", func() error { return f.logs(v.Name) }),
-			f.action("Networks", "", func() error { return f.networks(v.Name) }),
 			f.action("Exec", "Run a command with exact arguments", func() error { return f.exec(v.Name) }),
 			f.action("SSH", "Share an authenticated SSH connection", func() error { return f.ssh(v.Name) }),
-			f.action("Open with options", "Continuation and one-off harness arguments", func() error { return f.openWithOptions(v.Name) }),
-			{Label: "Copy or move", Description: "Destination, name, preview and explicit transfer", Run: func() (bool, error) {
+		)
+		addGroup("Inspect",
+			f.action("Status", "Live state, active commands and pending changes", func() error { return f.status(v.Name) }),
+			f.action("Logs", "", func() error { return f.logs(v.Name) }),
+			f.action("Networks", "", func() error { return f.networks(v.Name) }),
+		)
+		addGroup("Container lifecycle",
+			f.action("Start", "Keep running until stopped", run("Start", func(ctx context.Context) error { _, err := f.e.Start(ctx, v.Name, ""); return err })),
+			f.action("Stop", "", func() error { return f.stop(v.Name) }),
+			f.action("Recreate", "Replace the container using current settings", func() error { return f.recreate(v.Name) }),
+		)
+		addGroup("Manage session",
+			f.action("Edit selected configs", sourceSummary(v.Sources), func() error { return f.editSession(v.Name) }),
+			f.defaultAction(v),
+			cliui.Action{Label: "Copy or move", Description: "Destination, name, preview and explicit transfer", Run: func() (bool, error) {
 				moved, err := f.transfer(v.Name)
 				if err != nil {
 					return false, f.m.report(err)
 				}
 				return moved, nil
 			}},
-			f.defaultAction(v),
-		}
-		actions = append(actions, cliui.Action{Label: "Delete", Description: "Container first; saved data/history separately", Danger: true, Run: func() (bool, error) {
-			if err := f.delete([]string{v.Name}); err != nil {
-				return false, f.m.report(err)
-			}
-			_, err := f.e.Store.Read(f.m.Context, v.Name)
-			return os.IsNotExist(err), nil
-		}})
+			cliui.Action{Label: "Delete", Description: "Container first; saved data/history separately", Danger: true, Run: func() (bool, error) {
+				if err := f.delete([]string{v.Name}); err != nil {
+					return false, f.m.report(err)
+				}
+				_, err := f.e.Store.Read(f.m.Context, v.Name)
+				return os.IsNotExist(err), nil
+			}},
+		)
 		label := v.LocalName
 		if label == "" {
 			label = v.Name
@@ -386,7 +399,6 @@ func (f *frontend) defaultAction(v app.View) cliui.Action {
 		return err
 	})
 	a.Hidden = v.SessionID == ""
-	a.BreakBefore = true
 	return a
 }
 

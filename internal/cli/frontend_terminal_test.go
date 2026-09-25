@@ -99,7 +99,7 @@ func TestNativeFrontendHandsInputToAttachmentAndResumes(t *testing.T) {
 		return f.session(app.View{Name: name})
 	})
 	p.wait("Shell")
-	p.send("\x1b[B\x1b[B\r")
+	p.send("\x1b[B\x1b[B\x1b[B\r")
 	p.wait("FOREGROUND INPUT READY")
 	p.send("owned by attachment\n")
 	p.wait("Press Enter")

@@ -63,7 +63,7 @@ func TestForegroundSIGINTReturnsToMenu(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- command.Wait() }()
 	p.wait("Shell")
-	p.send("\x1b[B\x1b[B\r")
+	p.send("\x1b[B\x1b[B\x1b[B\r")
 	p.wait("WAITING FOR FOREGROUND SIGINT")
 	p.send("\x03")
 	p.wait("Press Enter")

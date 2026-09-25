@@ -600,8 +600,12 @@ func (m *terminalModel) actionList(w, h int, active bool) string {
 	labelWidth = min(labelWidth, max(8, w/2))
 	for pos, index := range indices {
 		a := m.req.page.Actions[index]
-		if a.BreakBefore && len(rows) > 0 {
+		newGroup := a.Group != "" && (pos == 0 || a.Group != m.req.page.Actions[indices[pos-1]].Group)
+		if (a.BreakBefore || newGroup) && len(rows) > 0 {
 			rows = append(rows, "")
+		}
+		if newGroup {
+			rows = append(rows, tint(Safe(a.Group), tuiMuted))
 		}
 		if pos == cursor {
 			selectedRow = len(rows)
@@ -685,7 +689,7 @@ func (m *terminalModel) browserContent(w, h int) string {
 	}
 	actionH := min(len(m.req.page.Actions), max(3, h/2))
 	detailH := 2
-	previewH := max(1, h-actionH-detailH-4)
+	previewH := min(lg.Height(preview)+1, max(1, h-actionH-detailH-4))
 	return fit(preview, w, previewH, m.scroll) + "\n" + heading("Application actions", w, !m.objects) + "\n" + m.actionList(w, actionH, !m.objects) + "\n" + m.actionDetail(w, detailH)
 }
 func (m *terminalModel) workflowContent(w, h int) string {
