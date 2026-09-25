@@ -8,7 +8,7 @@ Executable: `devbox-neo`. Use `<command> --help` for command-specific help.
 |---|---|
 | `--home PATH` | Select the Devbox home; overrides `DEVBOX_HOME`, then `~/.devbox-neo` |
 
-`<folder|session>` accepts a workspace folder or the full saved session/container name from `list`. For single-session operations, a folder plus `--name NAME` selects that local name; a folder alone requires its saved default. Exact full names work from any folder. There is no sole-session fallback or implicit creation. A local name by itself is not a session target.
+`<folder|session>` accepts a workspace folder or the full saved session/container name from `list --wide` or single-target `status`. For single-session operations, a folder plus `--name NAME` selects that local name; a folder alone requires its saved default. Exact full names work from any folder. There is no sole-session fallback or implicit creation. A local name by itself is not a session target.
 
 `config create` and `config edit` address independent config directories, not environments. Bare references use `<home>/configs/`; path references follow the [config reference rules](configuration.md#locations-and-references).
 
@@ -52,7 +52,7 @@ Mount, environment, port, and raw Docker validation rules are in [configuration]
 
 | Command | Output |
 |---|---|
-| `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Saved sessions, including missing containers; folder view uses local names, global view includes each folder path |
+| `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Saved sessions with local names, including missing containers; global view includes folder paths; `--wide` adds full container names |
 | `status <folder\|session> [--json]` | Saved details, live commands, container state, and pending configuration changes |
 | `status [--json]` | Container state and configuration health for all saved environments |
 

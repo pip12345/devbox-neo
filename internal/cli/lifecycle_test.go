@@ -134,8 +134,18 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 			t.Fatal("session JSON ignored sorting", out)
 		}
 		table, err := run("list", "--sort", order)
-		if err != nil || !strings.Contains(table, "LAST ACTIVE") || !strings.Contains(table, "CONTAINER") || !strings.Contains(table, views[0].Name) || !strings.Contains(table, views[1].Name) || (views[0].Workspace == views[1].Workspace && strings.Index(table, views[0].Name) > strings.Index(table, views[1].Name)) {
-			t.Fatal("session text and JSON disagree", table, err)
+		if err != nil || !strings.Contains(table, "LAST ACTIVE") || !strings.Contains(table, "CONTAINER") {
+			t.Fatal("session table lost columns", table, err)
+		}
+		rows := strings.Split(strings.TrimSpace(table), "\n")[1:]
+		if len(rows) != len(views) {
+			t.Fatal("session text and JSON counts disagree", table)
+		}
+		for i, view := range views {
+			fields := strings.Fields(rows[i])
+			if len(fields) < 2 || fields[0] != view.Workspace || fields[1] != view.LocalName || strings.Contains(table, view.Name) {
+				t.Fatal("session text and JSON identities/order disagree", table, views)
+			}
 		}
 	}
 	if _, err := run("copy", result.Name, "--move", "--from", "test"); err == nil {
@@ -147,7 +157,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if out, err := run("delete", result.Name, "--container"); err != nil || !strings.Contains(out, "retained") {
 		t.Fatal(out, err)
 	}
-	if out, err := run("list"); err != nil || !strings.Contains(out, result.Name) || !strings.Contains(out, "missing") {
+	if out, err := run("list", "--wide"); err != nil || !strings.Contains(out, result.Name) || !strings.Contains(out, "missing") {
 		t.Fatal("session list hid a missing container", out, err)
 	}
 	if out, err := run("delete", "--session", "--orphaned", "--dry-run"); err != nil || !strings.Contains(out, "Would delete") {

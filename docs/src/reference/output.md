@@ -6,7 +6,7 @@ Short create/edit menus redraw on a temporary terminal screen instead of appendi
 
 ## Environment listings
 
-`list` shows one table with each session's full name and `FOLDER` path. `list <folder>` shows that folder's path as a heading and uses local names without a `FOLDER` column. Tables also contain `NAME`, `DEFAULT`, `HARNESS`, `LAST ACTIVE`, `CONTAINER`, `LIFETIME`, and ordered `CONFIGS`. `LIFETIME` shows the saved intent—`automatic` or `until stop`—independently of whether the container is currently running. `--wide` adds the last action and exact UTC activity/creation timestamps.
+`list` shows one table with each session's local `NAME` and `FOLDER` path. `list <folder>` shows that folder's path as a heading and uses the same local names without a `FOLDER` column. Tables also contain `NAME`, `DEFAULT`, `HARNESS`, `LAST ACTIVE`, `CONTAINER`, `LIFETIME`, and ordered `CONFIGS`. `LIFETIME` shows the saved intent—`automatic` or `until stop`—independently of whether the container is currently running. `--wide` adds `FULL NAME` (the exact session/container name), the last action, and exact UTC activity/creation timestamps. Records without a local name retain their full name for diagnosis.
 
 - `--sort folder` is the default and orders folder paths, then names within a folder; unknown paths sort first.
 - `--sort name` orders full session names.
@@ -28,7 +28,7 @@ Container state and configuration health are independent. A missing container is
 | `Rebuild + recreate needed` | Image inputs changed; ordinary recreate builds them |
 | `Cannot check` | Invalid config/record, ownership mismatch, pending transfer, or another diagnostic prevents comparison |
 
-Single-target status includes saved session ID, harness, image, active-command count, and detailed reasons. It notes that pending managed-file changes apply on container restart and gives a recreation command for image/container changes. Bare `status` shows `NAME`, `CONTAINER`, and `CHANGE`, with reasons beneath affected rows. Local file/settings comparisons do not detect newer upstream releases.
+Single-target status displays the exact session/container name and includes saved session ID, harness, image, active-command count, and detailed reasons. It notes that pending managed-file changes apply on container restart and gives a recreation command for image/container changes. Bare `status` shows `NAME`, `CONTAINER`, and `CHANGE`, with reasons beneath affected rows. Local file/settings comparisons do not detect newer upstream releases.
 
 `open` prints image/container change reasons before startup and continues with recorded creation settings. Runtime-only changes are not presented as reasons to recreate.
 
@@ -40,7 +40,7 @@ Single-target status includes saved session ID, harness, image, active-command c
 | `status --json` | Same inventory shape, enriched with desired-change diagnostics |
 | `status <folder\|session> --json` | One status object, plus `record` and `active` details |
 
-Bulk arrays are present even when empty. Optional `default_errors` maps workspaces to default-state diagnostics without hiding sessions. Rows include `local_name`, `default`, `manual_start` (the lifetime choice), and desired `sources`. Both bulk and single-target `default` flags match the saved name and durable ID. Single-target status adds `default_error` when default state cannot be read, without hiding explicitly selected session details. List session order follows `--sort`. Status fields include `desired_change`, `pending_input_changes`, `config_error`, `error`, and `pending_transfer` where applicable. Bulk rows omit full records and leases.
+Bulk arrays are present even when empty. Optional `default_errors` maps workspaces to default-state diagnostics without hiding sessions. Rows retain the full session/container identifier in `name` and include `local_name`, `default`, `manual_start` (the lifetime choice), and desired `sources`. Both bulk and single-target `default` flags match the saved name and durable ID. Single-target status adds `default_error` when default state cannot be read, without hiding explicitly selected session details. List session order follows `--sort`. Status fields include `desired_change`, `pending_input_changes`, `config_error`, `error`, and `pending_transfer` where applicable. Bulk rows omit full records and leases.
 
 An exact pending-transfer endpoint remains inspectable without a session record: `record` is omitted and `active` is empty. Pending transfers skip desired-config comparison. Per-row diagnostics do not fail bulk status; unavailable inventory/Docker does.
 

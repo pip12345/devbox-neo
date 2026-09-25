@@ -2,6 +2,11 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). The migration utility remains separate from runtime loading; adapting its destination model to named sessions and explicit configs is also approved.
 
+## Readable session listings — implemented, manual acceptance pending
+
+- Compact global and folder lists show local session names; wide lists add `FULL NAME`. Exact identifiers remain in single-target status, JSON, and diagnostics, with identity and sorting unchanged.
+- Final `make test-fast` passes, covering compact/wide global and folder views, duplicate local names, JSON/status identity, ordering, and escaped display values. Manual host-terminal acceptance remains unrun.
+
 ## Claude Code built-in — implemented, live acceptance pending
 
 - Promoted the existing Claude definition and defaults into `internal/harness/builtin/claude/` unchanged. Registry discovery, config setup, completion, runtime storage, and recorded recovery use the existing generic mechanisms; harness selection still starts unset and user overrides retain precedence.

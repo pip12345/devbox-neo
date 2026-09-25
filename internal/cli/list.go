@@ -108,13 +108,13 @@ func printSessionTable(out io.Writer, views []app.View, wide bool, now time.Time
 		header = "FOLDER\t" + header
 	}
 	if wide {
-		header += "\tLAST ACTION\tCREATED"
+		header += "\tLAST ACTION\tCREATED\tFULL NAME"
 	}
 	fmt.Fprintln(w, header)
 	for _, view := range views {
 		state := containerState(view)
 		name := view.Name
-		if local && view.LocalName != "" {
+		if view.LocalName != "" {
 			name = view.LocalName
 		}
 		marker := ""
@@ -130,7 +130,7 @@ func printSessionTable(out io.Writer, views []app.View, wide bool, now time.Time
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s", displayCell(name), marker, displayCell(view.Harness), activity, state, lifetimeState(view), sourceSummary(view.Sources))
 		if wide {
-			fmt.Fprintf(w, "\t%s\t%s", displayCell(view.LastAction), exactTime(view.CreatedAt))
+			fmt.Fprintf(w, "\t%s\t%s\t%s", displayCell(view.LastAction), exactTime(view.CreatedAt), displayCell(view.Name))
 		}
 		fmt.Fprintln(w)
 	}

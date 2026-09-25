@@ -53,7 +53,7 @@ func sessionCommands(factory engineFactory, name *string) []*cobra.Command {
 		return printUnmatchedContainers(cmd.OutOrStdout(), report.UnmatchedContainers)
 	}}
 	list.Flags().BoolVar(&listJSON, "json", false, "Print saved sessions and inventory diagnostics as JSON")
-	list.Flags().BoolVar(&wide, "wide", false, "Also show exact activity/creation timestamps and the last action")
+	list.Flags().BoolVar(&wide, "wide", false, "Also show full container names, exact activity/creation timestamps, and the last action")
 	list.Flags().StringVar(&sortBy, "sort", "folder", "Sort sessions by folder, name, or last-active (newest first)")
 	return []*cobra.Command{list, statusCommand(factory, name), deleteCommand(factory, name), transferCommand(factory, name)}
 }

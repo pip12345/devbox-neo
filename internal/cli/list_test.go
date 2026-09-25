@@ -3,12 +3,14 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"devbox/internal/app"
 	"devbox/internal/store"
+	"github.com/spf13/cobra"
 )
 
 func TestListDetailsAndSorting(t *testing.T) {
@@ -38,7 +40,7 @@ func TestListDetailsAndSorting(t *testing.T) {
 	if err := printSessionList(&out, views, true, now); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"HARNESS", "opencode", "LAST ACTION", "CREATED", "2026-09-01T10:00:00Z", "2026-08-31T12:00:00Z", "open"} {
+	for _, want := range []string{"HARNESS", "opencode", "LAST ACTION", "CREATED", "FULL NAME", "2026-09-01T10:00:00Z", "2026-08-31T12:00:00Z", "open"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing wide detail %q: %s", want, out.String())
 		}
@@ -110,7 +112,7 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
 	}
-	names := []string{"recent", "older", "broken", "separate"}
+	names := []string{"recent", "basic", "broken", "separate"}
 	for i := 1; i < len(names); i++ {
 		if strings.Index(out.String(), names[i-1]) >= strings.Index(out.String(), names[i]) {
 			t.Fatal("last-active sort did not apply across folders", out.String())
@@ -124,6 +126,92 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	}
 }
 
+func TestListUsesLocalNamesAndWideIncludesFullNames(t *testing.T) {
+	views := []app.View{
+		{Name: "devbox-alpha-111111111111.work", LocalName: "work", Workspace: "/projects/alpha"},
+		{Name: "devbox-beta-222222222222.work", LocalName: "work", Workspace: "/projects/beta"},
+	}
+	for _, local := range []bool{false, true} {
+		for _, wide := range []bool{false, true} {
+			rows := views
+			nameColumn := 1
+			if local {
+				rows = views[:1]
+				nameColumn = 0
+			}
+			var out bytes.Buffer
+			if err := printSessionTable(&out, rows, wide, time.Now(), local); err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+			if strings.Contains(lines[0], "FULL NAME") != wide || strings.Contains(lines[0], "FOLDER") == local {
+				t.Fatal("wrong columns", out.String())
+			}
+			for i, view := range rows {
+				fields := strings.Fields(lines[i+1])
+				if fields[nameColumn] != view.LocalName || strings.Contains(lines[i+1], view.Name) != wide {
+					t.Fatal("full name replaced the local name or leaked into the compact row", out.String())
+				}
+				if !local && fields[0] != view.Workspace {
+					t.Fatal("duplicate local names lost their folder context", out.String())
+				}
+			}
+		}
+	}
+}
+
+func TestListNamePresentationDoesNotChangeJSONOrStatus(t *testing.T) {
+	e, q, fullName := namedCLIFixture(t)
+	factory := func(*cobra.Command) (*app.Engine, error) { return e, nil }
+	for _, folder := range []string{"", q.Workspace} {
+		for _, wide := range []bool{false, true} {
+			localName := ""
+			cmd := sessionCommands(factory, &localName)[0]
+			args := []string{}
+			if folder != "" {
+				args = append(args, folder)
+			}
+			if wide {
+				args = append(args, "--wide")
+			}
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetArgs(args)
+			if err := cmd.ExecuteContext(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(out.String(), fullName) != wide || !strings.Contains(out.String(), q.LocalName) {
+				t.Fatal("list command did not apply name presentation", out.String())
+			}
+		}
+	}
+	localName := ""
+	cmd := sessionCommands(factory, &localName)[0]
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--json"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var report app.InventoryReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Sessions) != 1 || report.Sessions[0].Name != fullName || report.Sessions[0].LocalName != q.LocalName {
+		t.Fatal("list JSON lost exact identity", out.String())
+	}
+	out.Reset()
+	cmd = statusCommand(factory, &localName)
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{q.Workspace, "--name", q.LocalName})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out.String(), fullName+"  ") {
+		t.Fatal("status must retain the exact container name", out.String())
+	}
+}
+
 func TestListTimesAndUnsafeCells(t *testing.T) {
 	now := time.Now()
 	for _, tt := range []struct {
@@ -134,7 +222,7 @@ func TestListTimesAndUnsafeCells(t *testing.T) {
 			t.Fatalf("got %s, want %s", got, tt.want)
 		}
 	}
-	views := []app.View{{Name: "test", Harness: "pi\nforged", Workspace: "/work/\nforged\t\x1b[31m"}}
+	views := []app.View{{Name: "full\x1b[31m", LocalName: "local\nforged", Harness: "pi\nforged", Workspace: "/work/\nforged\t\x1b[31m"}}
 	var out bytes.Buffer
 	if err := printSessionList(&out, views, true, now); err != nil {
 		t.Fatal(err)

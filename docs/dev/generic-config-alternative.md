@@ -227,7 +227,7 @@ main         *        stopped    base → ./devconfig
 experiment            running    base → ./devconfig → ~/configs/experimental
 ```
 
-The global view shows one row per saved session with a `FOLDER` path and full session/container name; there are no folder headings. `--sort folder` is the default and orders folder paths then names; `--sort name` orders full names, and `--sort last-active` orders all rows newest first. Listing includes saved sessions whose containers are missing, not just running Docker containers.
+The global view shows one row per saved session with a `FOLDER` path and local session name; there are no folder headings. Both list views add the exact session/container identifier in a `FULL NAME` column with `--wide`; single-target `status` also shows that identifier. JSON retains both `name` and `local_name`. `--sort folder` is the default and orders folder paths then names; `--sort name` orders full names, and `--sort last-active` orders all rows newest first. Listing includes saved sessions whose containers are missing, not just running Docker containers.
 
 ## Select a default
 

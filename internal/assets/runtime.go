@@ -72,7 +72,7 @@ same setup as config create. Back preserves the session draft; completed config
 creation remains saved independently of that draft. Scripts supply --name NAME and
 repeated --config REF. Creation never selects a default. Use edit <folder> to choose
 one, open <folder> --name NAME for an explicit local name, or a full session name
-from list for exact targeting anywhere. Even a sole session needs an explicit
+from list --wide or status for exact targeting anywhere. Even a sole session needs an explicit
 folder default. Edit <folder|session> manages a session's saved source references;
 it offers shared config creation but does not open existing-directory editors.
 Combined configuration has a read-only screen with Back. Config edits do not rename sessions.
@@ -83,8 +83,10 @@ Manual start keeps a container running until stop, including automatic restart
 when Docker starts after reboot. Without manual start, the last attached Devbox
 command stops it. Open never changes this intent. Reboot restarts the container,
 not the prior harness process, terminal, or SSH connection.
-On the host, devbox-neo list shows saved environments with their folder paths and
-running/stopped/missing containers and whether each stays running until stop.
+On the host, devbox-neo list shows saved environments with local session names,
+folder paths, running/stopped/missing containers, and whether each stays running
+until stop. List --wide adds the exact session/container name in FULL NAME;
+JSON keeps both name (full) and local_name.
 Bare status checks their configuration and changed local inputs, including
 environments without containers; it does not check upstream releases. Both commands
 warn separately about managed containers without session records. Status <folder|session>
