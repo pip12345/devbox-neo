@@ -28,7 +28,7 @@ Create an ordinary config directory in your workspace:
 devbox-neo config create ./devconfig
 ```
 
-Choose **Leave unset** if another selected config already chooses your harness, then **Continue**. Edit the directory when you need settings such as extra mounts or ports:
+Leave **Harness** unset if another selected config already chooses your harness, then choose **Create config**. Edit the directory when you need settings such as extra mounts or ports:
 
 ```sh
 devbox-neo config edit ./devconfig

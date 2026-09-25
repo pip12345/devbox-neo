@@ -49,7 +49,7 @@ func TestCreateSessionAlwaysVisibleAndReportsMissingInputs(t *testing.T) {
 func TestConfigCreationReusesStandaloneSetupAndPreservesDraft(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	var nested bytes.Buffer
-	m := testMenu(context.Background(), strings.NewReader("4\nfresh\n1\n2\n5\n0\n"), &nested)
+	m := testMenu(context.Background(), strings.NewReader("4\n1\nfresh\n2\n1\n3\n2\n5\n4\n0\n"), &nested)
 	p, err := newSourcePicker(m, e.Store.Home, q.Workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestConfigCreationReusesStandaloneSetupAndPreservesDraft(t *testing.T) {
 
 	// Exercise the actual config create command with the same setup choices.
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("1\n2\n5\n"); err != nil {
+	if _, err := master.WriteString("2\n1\n3\n2\n5\n4\n"); err != nil {
 		t.Fatal(err)
 	}
 	service := &resource.Service{Home: e.Store.Home}
@@ -100,7 +100,7 @@ func TestConfigCreationReusesStandaloneSetupAndPreservesDraft(t *testing.T) {
 			t.Fatal("standalone and nested setup differ", file.name, err)
 		}
 	}
-	for _, screen := range []string{"Select a harness", "Choose optional files", "Current selection:"} {
+	for _, screen := range []string{"Create config", "Name/location:", "Optional files:", "Select a harness", "Choose optional files", "Current selection:"} {
 		if !strings.Contains(nested.String(), screen) || !strings.Contains(standalone.String(), screen) {
 			t.Fatal("creation entry points did not share screens", screen)
 		}
@@ -112,10 +112,10 @@ func TestConfigCreationReusesStandaloneSetupAndPreservesDraft(t *testing.T) {
 
 func TestCancelledAndFailedConfigSetupLeaveParentDraftUntouched(t *testing.T) {
 	for _, tc := range []struct{ name, input string }{
-		{"name-back", "4\n:back\n0\n"},
-		{"setup-cancel", "4\nfresh\n0\n0\n"},
-		{"optional-back", "4\nfresh\n1\n2\n0\n0\n0\n"},
-		{"existing-config", "4\nbase\n:back\n0\n"},
+		{"name-back", "4\n1\n:back\n0\n0\n"},
+		{"setup-cancel", "4\n1\nfresh\n0\n0\n"},
+		{"optional-back", "4\n1\nfresh\n3\n2\n0\n0\n0\n"},
+		{"existing-config", "4\n1\nbase\n:back\n0\n0\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, q, _ := namedCLIFixture(t)
@@ -146,7 +146,7 @@ func TestEmptyPickerCreatesNamedAndRelativeConfigsInSelectedHome(t *testing.T) {
 			s := menuService(t)
 			cwd, workspace := t.TempDir(), t.TempDir()
 			var out bytes.Buffer
-			p := sourcePicker{menu: testMenu(context.Background(), strings.NewReader("2\n"+input+"\n1\n5\n"), &out), home: s.Home, cwd: cwd, workspace: workspace, userHome: t.TempDir()}
+			p := sourcePicker{menu: testMenu(context.Background(), strings.NewReader("2\n1\n"+input+"\n2\n1\n4\n"), &out), home: s.Home, cwd: cwd, workspace: workspace, userHome: t.TempDir()}
 			ref, selected, err := p.choose(nil, "Back")
 			if err != nil || !selected {
 				t.Fatal(ref, selected, err, out.String())

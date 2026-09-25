@@ -26,32 +26,24 @@ func availableHarnesses(m menu, home string) ([]string, error) {
 	return names, nil
 }
 
-func configCreationMenu(m menu, home string) (resource.SetupOptions, bool, error) {
-	var options resource.SetupOptions
+func chooseConfigHarness(m menu, home string, selected *string) (*string, error) {
 	names, err := availableHarnesses(m, home)
 	if err != nil {
-		return options, false, err
+		return selected, err
 	}
-	for {
-		current, summary := len(names), "Unset"
-		if options.Harness != nil {
-			current, summary = slices.Index(names, *options.Harness), *options.Harness
-		}
-		choice, err := m.SelectCurrent("Select a harness", append(slices.Clone(names), "Leave unset"), current, summary, "Cancel")
-		if err != nil || choice < 0 {
-			return options, false, err
-		}
-		options.Harness = nil
-		if choice < len(names) {
-			value := names[choice]
-			options.Harness = &value
-		}
-		var proceed bool
-		options, proceed, err = optionalFilesMenu(m, home, options)
-		if err != nil || proceed {
-			return options, proceed, err
-		}
+	current, summary := len(names), "Unset"
+	if selected != nil {
+		current, summary = slices.Index(names, *selected), *selected
 	}
+	choice, err := m.SelectCurrent("Select a harness", append(slices.Clone(names), "Leave unset"), current, summary, "Back")
+	if err != nil || choice < 0 {
+		return selected, err
+	}
+	if choice == len(names) {
+		return nil, nil
+	}
+	value := names[choice]
+	return &value, nil
 }
 
 func optionalFilesMenu(m menu, home string, options resource.SetupOptions) (resource.SetupOptions, bool, error) {

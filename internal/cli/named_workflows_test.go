@@ -163,7 +163,7 @@ func TestEditFolderMenuSetsAndClearsDefault(t *testing.T) {
 		t.Fatal(out.String(), err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "[3]  Set folder default") || !strings.Contains(text, "[4]  Clear folder default") || !strings.Contains(text, "[0]  Exit") || strings.Contains(text, "[0]  Cancel") || !strings.Contains(text, "Current selection: No default") || !strings.Contains(text, ": Second\n") || !strings.Contains(text, "[2]  * Second") || !strings.Contains(text, "[1]    Main") || !strings.Contains(text, "Cleared default session for ") || strings.Contains(text, "default · stopped") || strings.Contains(text, "Make folder default") {
+	if !strings.Contains(text, "[3]  Set folder default") || !strings.Contains(text, "[4]  Clear folder default") || !strings.Contains(text, "[0]  Exit") || strings.Contains(text, "[0]  Cancel") || !strings.Contains(text, "Default: No default") || !strings.Contains(text, ": Second\n") || !strings.Contains(text, "[2]  * Second") || !strings.Contains(text, "[1]    Main") || !strings.Contains(text, "Cleared default session for ") || strings.Contains(text, "default · stopped") || strings.Contains(text, "Make folder default") {
 		t.Fatal("default actions were not available in the folder menu", text)
 	}
 	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {

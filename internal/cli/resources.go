@@ -64,14 +64,23 @@ func configListCommand(factory resourceFactory) *cobra.Command {
 }
 
 func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
-	action, description := "edit", "Edit a config directory or add missing optional files"
+	use, description := "edit <name|path>", "Edit a config directory or add missing optional files"
+	validateArgs := cobra.ExactArgs(1)
 	if create {
-		action, description = "create", "Create a config directory and offer initial setup"
+		use, description = "create [name|path]", "Create a config directory and offer initial setup"
+		validateArgs = cobra.MaximumNArgs(1)
 	}
 	var selected, artifactHarness string
 	var artifacts []string
 	var asJSON bool
-	cmd := &cobra.Command{Use: action + " <name|path>", Short: description, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: use, Short: description, Args: validateArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		direct := cmd.Flags().Changed("harness") || cmd.Flags().Changed("artifact") || cmd.Flags().Changed("artifact-harness") || asJSON
+		input := ""
+		if len(args) > 0 {
+			input = args[0]
+		} else if direct || !interactive(cmd) {
+			return fmt.Errorf("config create requires a name or path outside interactive setup")
+		}
 		service, err := factory(cmd)
 		if err != nil {
 			return err
@@ -88,10 +97,9 @@ func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
 		if cmd.Flags().Changed("harness") {
 			options.Harness = &selected
 		}
-		direct := cmd.Flags().Changed("harness") || cmd.Flags().Changed("artifact") || cmd.Flags().Changed("artifact-harness") || asJSON
 		if create && !direct && interactive(cmd) {
 			m := newMenu(cmd)
-			_, result, created, createErr := createConfig(m, service, args[0], cwd, userHome)
+			_, result, created, createErr := createConfig(m, service, input, cwd, userHome)
 			if finishErr := m.Finish(); finishErr != nil {
 				return errors.Join(createErr, finishErr)
 			}
@@ -101,7 +109,7 @@ func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
 			}
 			return renderResource(cmd, result, createErr, asJSON, service.Home)
 		}
-		owner, err := service.ConfigDirectory(args[0], cwd, userHome)
+		owner, err := service.ConfigDirectory(input, cwd, userHome)
 		if err != nil {
 			return err
 		}

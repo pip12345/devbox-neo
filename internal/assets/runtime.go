@@ -58,8 +58,11 @@ unrelated remote changes or use of host/network services.
 Do not modify /devbox: it is Devbox-owned runtime data. Do not add a Dockerfile
 to a selected config directory to persist an ad-hoc installation without approval.
 Devbox does not enforce network egress restrictions or provide an offline mode.
-On the host, config create <name|path> creates a config directory; config edit
-<name|path> edits that directory or adds missing optional files. Bare config names use the
+On the host, config create [name|path] opens a creation overview with editable
+Name/location, Harness, and Optional files. Only Create config writes the config;
+Cancel writes nothing. A supplied destination prefills the overview. Outside
+interactive setup (including setup flags/JSON), a name/path is required.
+Config edit <name|path> edits that directory or adds missing optional files. Bare config names use the
 selected home (normally ~/.devbox-neo/configs/); directories elsewhere are ordinary
 explicit sources too. Creation rejects existing config.json; artifact setup never
 overwrites existing files. Harness-file generation does not force harness selection.
@@ -73,7 +76,9 @@ creation remains saved independently of that draft. Scripts supply --name NAME a
 repeated --config REF. Creation never selects a default. Use edit <folder> to choose
 one, open <folder> --name NAME for an explicit local name, or a full session name
 from list --wide or status for exact targeting anywhere. Even a sole session needs an explicit
-folder default. Edit <folder|session> manages a session's saved source references;
+folder default. Set/Clear folder default stay in the folder overview; the picker
+keeps the same folder header, row positions, statuses, and default marker.
+Edit <folder|session> manages a session's saved source references;
 it offers shared config creation but does not open existing-directory editors.
 Combined configuration has a read-only screen with Back. Config edits do not rename sessions.
 Open/start require existing sessions, with recorded missing-container recovery.

@@ -64,7 +64,7 @@ See [output and errors](output.md) for columns, change classifications, and JSON
 
 | Command | Effect |
 |---|---|
-| `config create <name\|path>` | Create a config and offer initial setup; reject an existing `config.json` |
+| `config create [name\|path]` | Open the creation overview; supplied names/paths prefill it; reject an existing `config.json` |
 | `config edit <name\|path>` | Edit an existing directory or add missing optional files |
 | `config list [--json]` | Show named configs under the selected home's `configs/` with harness and directory path; report invalid or incomplete entries; no Docker required |
 | `config delete <name> [--force] [--json]` | Delete an unreferenced named config and its files; confirm in a terminal, or use `--force` to skip confirmation (required with `--json`) |
@@ -84,7 +84,7 @@ Both directory commands accept setup flags:
 | `--artifact-harness NAME` | Select the file-generation target without changing Harness; requires `harness-config` |
 | `--json` | Print the operation result and never prompt |
 
-Explicit setup flags run directly, even in a terminal. Without flags, interactive create/edit open their own menus. Non-interactive creation can create the minimal config; non-interactive editing requires an explicit operation. Harness-file generation uses `--artifact-harness`, otherwise the config's own selection, and fails if neither supplies a target. Other artifacts need no harness. Existing files are preserved.
+Explicit setup flags run directly, even in a terminal. Without flags, interactive create/edit open their own menus. A name/path is required for non-interactive or explicit-flag creation. Without setup flags, non-interactive creation writes the minimal config; non-interactive editing requires an explicit operation. Harness-file generation uses `--artifact-harness`, otherwise the config's own selection, and fails if neither supplies a target. Other artifacts need no harness. Existing files are preserved.
 
 ## Folder defaults
 
@@ -94,6 +94,8 @@ Explicit setup flags run directly, even in a terminal. Without flags, interactiv
 | `edit <folder> --name NAME --default` | Select directly without a terminal |
 | `edit <full-name> --default` | Select that session for its recorded workspace |
 | `edit <folder\|session> --clear-default` | Clear the workspace's default without selecting another session |
+
+**Set folder default** opens a picker with the same folder header, row positions, statuses, and default marker as the overview. Choose a session to save, or **Back** to leave the default unchanged. Set and Clear remain folder-level actions.
 
 `--default` requires `--name` or an exact full session name. `--clear-default` cannot be combined with `--name`, `--default`, or `--show`. In the folder overview, **Exit** leaves completed config-selection/default changes saved; selecting a broken session record shows its error and lets you choose again. Selection never starts a container. Opening does not change the default.
 

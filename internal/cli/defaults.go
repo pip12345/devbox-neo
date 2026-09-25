@@ -27,32 +27,20 @@ func folderEditMenu(m menu, e *app.Engine, folder string, open func(store.Record
 		}
 		selected, defaultErr := e.Store.ReadDefault(m.Context, workspace)
 		states := folderSessionStates(m, e, workspace)
-		current, summary := -1, "No default"
-		if selected != nil {
-			summary = "Unavailable: " + selected.Name
-			for i, entry := range entries {
-				if entry.Name == selected.Name && entry.Record.ID == selected.ID {
-					current, summary = i, entry.Record.Identity.LocalName
-				}
-			}
-		}
-		if defaultErr != nil {
-			summary = "Unavailable"
-		}
+		page := folderSessionScreen(workspace, entries, selected, defaultErr, states)
 		canSet := false
-		var actions []cliui.Action
-		for _, entry := range entries {
+		for i, entry := range entries {
 			if entry.Err == nil {
 				canSet = true
 			}
-			actions = append(actions, cliui.Action{Label: sessionPickerLabel(entry, states), Run: func() (bool, error) {
+			page.Actions[i].Run = func() (bool, error) {
 				if entry.Err != nil {
 					return false, m.report(entry.Err)
 				}
 				return false, open(entry.Record)
-			}})
+			}
 		}
-		actions = append(actions,
+		page.Actions = append(page.Actions,
 			cliui.Action{Label: "Set folder default", Hidden: !canSet, BreakBefore: true, Run: func() (bool, error) {
 				chosen, err := chooseFolderDefault(m, e, folder)
 				if err != nil || chosen == nil {
@@ -63,7 +51,6 @@ func folderEditMenu(m menu, e *app.Engine, folder string, open func(store.Record
 				}
 				message := fmt.Sprintf("Default session for %s: %s", displayCell(chosen.Identity.Workspace), chosen.Identity.LocalName)
 				changed(message)
-				m.Notice(message)
 				return false, nil
 			}},
 			cliui.Action{Label: "Clear folder default", Hidden: selected == nil, BreakBefore: !canSet, Run: func() (bool, error) {
@@ -77,45 +64,68 @@ func folderEditMenu(m menu, e *app.Engine, folder string, open func(store.Record
 					fmt.Fprintln(m.Out, "No sessions for this folder.")
 					return true, m.commandHint(e.Store.Home, "Create a session", "create", folder)
 				}
-				m.Notice(message)
 				return false, nil
 			}},
 		)
-		return cliui.Screen{Title: "Select a session to edit", Back: "Exit", Actions: actions, Body: func(out io.Writer) error {
-			if defaultErr != nil {
-				writeMenuHint(out, "Default selection unavailable: "+displayCell(defaultErr.Error()))
-			}
-			writeMenuHint(out, "Folder: "+displayCell(workspace))
-			return writeStyledConfigLine(out, "Default: ", displayCell(summary), "  ", configDisplayWidth(out), terminalColors(out).strong)
-		}, Rows: func(out io.Writer, actions []cliui.Action) error {
-			fmt.Fprintln(out)
-			paint := terminalColors(out)
-			for i, action := range actions {
-				if action.BreakBefore {
-					fmt.Fprintln(out)
-				}
-				label := action.Label
-				var style func(string) string
-				prefix := menuPrefix(i + 1)
-				if i < len(entries) {
-					inactive := states[entries[i].Name] != "running"
-					if inactive {
-						style = paint.dim
-					}
-					if i == current {
-						label = "* " + label
-						style = defaultRowStyle(paint, prefix, inactive)
-					} else {
-						label = "  " + label
-					}
-				}
-				if err := writeStyledConfigLine(out, prefix, label, strings.Repeat(" ", len(prefix)), configDisplayWidth(out), style); err != nil {
-					return err
-				}
-			}
-			return nil
-		}}, nil
+		return page, nil
 	})
+}
+
+// Both folder interactions keep the same header and session rows. Selecting a
+// default changes the action attached to a row, not its position or styling.
+// Successful changes appear in this header and the exit receipt, rather than
+// transient notices above the screen that would move the session rows.
+func folderSessionScreen(workspace string, entries []store.Entry, selected *store.DefaultSession, defaultErr error, states map[string]string) cliui.Screen {
+	current, summary := -1, "No default"
+	if selected != nil {
+		summary = "Unavailable: " + selected.Name
+		for i, entry := range entries {
+			if entry.Name == selected.Name && entry.Record.ID == selected.ID {
+				current, summary = i, entry.Record.Identity.LocalName
+			}
+		}
+	}
+	if defaultErr != nil {
+		summary = "Unavailable"
+	}
+	actions := make([]cliui.Action, len(entries))
+	for i, entry := range entries {
+		actions[i].Label = sessionPickerLabel(entry, states)
+	}
+	return cliui.Screen{Title: "Select a session to edit", Back: "Exit", Actions: actions, Body: func(out io.Writer) error {
+		if defaultErr != nil {
+			writeMenuHint(out, "Default selection unavailable: "+displayCell(defaultErr.Error()))
+		}
+		writeMenuHint(out, "Folder: "+displayCell(workspace))
+		return writeStyledConfigLine(out, "Default: ", displayCell(summary), "  ", configDisplayWidth(out), terminalColors(out).strong)
+	}, Rows: func(out io.Writer, actions []cliui.Action) error {
+		fmt.Fprintln(out)
+		paint := terminalColors(out)
+		for i, action := range actions {
+			if action.BreakBefore {
+				fmt.Fprintln(out)
+			}
+			label := action.Label
+			var style func(string) string
+			prefix := menuPrefix(i + 1)
+			if i < len(entries) {
+				inactive := states[entries[i].Name] != "running"
+				if inactive {
+					style = paint.dim
+				}
+				if i == current {
+					label = "* " + label
+					style = defaultRowStyle(paint, prefix, inactive)
+				} else {
+					label = "  " + label
+				}
+			}
+			if err := writeStyledConfigLine(out, prefix, label, strings.Repeat(" ", len(prefix)), configDisplayWidth(out), style); err != nil {
+				return err
+			}
+		}
+		return nil
+	}}
 }
 
 func chooseFolderDefault(m menu, e *app.Engine, folder string) (*store.Record, error) {
@@ -128,21 +138,12 @@ func chooseFolderDefault(m menu, e *app.Engine, folder string) (*store.Record, e
 		return nil, err
 	}
 	states := folderSessionStates(m, e, workspace)
-	choices := make([]string, len(entries))
-	current, summary := -1, "No default"
-	if selected != nil {
-		summary = "Unavailable: " + selected.Name
-	}
-	for i, entry := range entries {
-		choices[i] = sessionPickerLabel(entry, states)
-		if selected != nil && entry.Name == selected.Name && entry.Record.ID == selected.ID {
-			current, summary = i, entry.Record.Identity.LocalName
-		}
-	}
 	if len(entries) == 0 {
 		return nil, fmt.Errorf("no sessions available to select as the folder default")
 	}
-	choice, err := m.SelectCurrent("Set folder default · "+displayCell(workspace), choices, current, summary, "Back")
+	page := folderSessionScreen(workspace, entries, selected, nil, states)
+	page.Title, page.Back = "Select the folder default", "Back"
+	choice, err := m.Choose(page)
 	if err != nil || choice < 0 {
 		return nil, err
 	}

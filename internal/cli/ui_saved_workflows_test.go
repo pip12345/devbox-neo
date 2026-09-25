@@ -15,7 +15,7 @@ func TestSavedSessionCanCreateAndAddConfigWithoutApplyingRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	m := testMenu(context.Background(), strings.NewReader("2\nfresh\n1\n5\n0\n"), &out)
+	m := testMenu(context.Background(), strings.NewReader("2\n1\nfresh\n2\n1\n4\n0\n"), &out)
 	saved, err := sourceChainMenu(m, e, before, "Exit")
 	if err != nil || !saved {
 		t.Fatal(saved, err, out.String())

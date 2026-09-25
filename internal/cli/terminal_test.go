@@ -197,7 +197,7 @@ func TestConfigCreationUsesStyledMenusForNamesAndPaths(t *testing.T) {
 				target, input := "basic", ""
 				for i, entry := range registry.Valid {
 					if entry.Definition.Name == name {
-						input = fmt.Sprintf("%d\n5\n", i+1)
+						input = fmt.Sprintf("2\n%d\n4\n", i+1)
 					}
 				}
 				if input == "" {
@@ -226,7 +226,7 @@ func TestConfigCreationUsesStyledMenusForNamesAndPaths(t *testing.T) {
 					defer cancel()
 					return cmd.ExecuteContext(ctx)
 				})
-				for _, want := range []string{"\x1b[1mSelect a harness\x1b[0m", "\x1b[1mChoose optional files\x1b[0m", "\x1b[32m(selected)\x1b[0m"} {
+				for _, want := range []string{"\x1b[1mSelect a harness\x1b[0m", "\x1b[1mCreate config\x1b[0m", "\x1b[32m(selected)\x1b[0m"} {
 					if !strings.Contains(text, want) {
 						t.Fatalf("init missing %q: %q", want, text)
 					}

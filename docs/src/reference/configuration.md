@@ -50,7 +50,7 @@ Creation, opening, and recreation require at least one source, accessible valid 
 
 | Command | Scope |
 |---|---|
-| `config create <name\|path>` | Create a new config and offer initial harness/artifact setup |
+| `config create [name\|path]` | Open a new-config overview; a supplied name/path prefills it |
 | `config edit <name\|path>` | Edit one existing directory's settings or add missing optional files |
 | `config list [--json]` | Show names, harnesses, and directory paths under `<home>/configs/`, including invalid or incomplete configs; does not discover arbitrary path-based configs |
 | `config delete <name> [--force] [--json]` | Remove a named config directory and all its files; `--force` skips confirmation, not reference checks |
@@ -59,6 +59,8 @@ Creation, opening, and recreation require at least one source, accessible valid 
 | `edit <full-name> --show [--json]` | Inspect combined settings and provenance |
 
 For folder-targeted `--show`, supply `--name`. JSON requires `--show`; editing a session's selected configs otherwise requires a terminal. Config-directory setup also supports [explicit automation flags](commands.md#configuration-commands). Session menus reuse that setup through **Create config** and append the result; existing config files are never overwritten. **Show combined configuration** opens a read-only screen with **Back**.
+
+Interactive creation keeps **Name/location**, **Harness**, and **Optional files** editable until **Create config** is selected. Harness starts unset and optional files start empty; neither picker must be visited. **Cancel** writes nothing. A name/path is required outside interactive setup, including when setup flags or `--json` are supplied.
 
 `config create` fails if `config.json` exists, including an empty or invalid file, and points to `config edit`. An existing directory without `config.json` is allowed; existing artifacts are kept. `config edit` never creates a missing config.
 

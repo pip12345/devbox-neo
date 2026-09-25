@@ -2,6 +2,12 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). The migration utility remains separate from runtime loading; adapting its destination model to named sessions and explicit configs is also approved.
 
+## Config creation overview and stable default picker — implemented, manual acceptance pending
+
+- Standalone and nested config creation share an editable destination/harness/files overview with an explicit Create config action. Bare `config create` opens it; supplied destinations prefill it. Automation still requires a destination and never prompts.
+- Default selection reuses the folder overview's header, session layout, status styling, and default marker. Set/Clear remain folder-level actions; successful changes update the header/marker and exit receipt without shifting rows with a notice.
+- Final `make test-fast` passes, including draft preservation, no pre-create writes, bare/named/path-based entry points, automation requirements, shared nested setup, and plain/styled default-picker row alignment and cancellation. Manual host-terminal acceptance remains unrun.
+
 ## Readable session listings — implemented, manual acceptance pending
 
 - Compact global and folder lists show local session names; wide lists add `FULL NAME`. Exact identifiers remain in single-target status, JSON, and diagnostics, with identity and sorting unchanged.

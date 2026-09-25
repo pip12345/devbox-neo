@@ -152,8 +152,12 @@ func TestConfigHelpAndCreationHintsUseNameOrPath(t *testing.T) {
 		var out bytes.Buffer
 		cmd.SetOut(&out)
 		cmd.SetArgs([]string{"config", action, "--help"})
-		if err := cmd.Execute(); err != nil || !strings.Contains(out.String(), "config "+action+" <name|path>") || strings.Contains(out.String(), "<reference>") {
-			t.Fatal("config usage leaked an internal reference name", out.String(), err)
+		argument := "<name|path>"
+		if action == "create" {
+			argument = "[name|path]"
+		}
+		if err := cmd.Execute(); err != nil || !strings.Contains(out.String(), "config "+action+" "+argument) || strings.Contains(out.String(), "<reference>") {
+			t.Fatal("config usage has the wrong destination requirement or terminology", out.String(), err)
 		}
 	}
 	cmd := New()

@@ -40,7 +40,7 @@ Create a config named `base`:
 devbox-neo config create base
 ```
 
-Choose your harness, then choose **Continue** to skip optional files for now. The built-in Claude harness bypasses Claude's permission prompts; see [built-in launch settings](../reference/harnesses.md#built-in-harnesses). You can add them later through `config edit base`. This config lives in `~/.devbox-neo/configs/base/`; creating it does not create a session.
+In the overview, choose **Harness** and select your coding tool, then choose **Create config**. Leave **Optional files** at **None** for now; you can add files later through `config edit base`. The built-in Claude harness bypasses Claude's permission prompts; see [built-in launch settings](../reference/harnesses.md#built-in-harnesses). This config lives in `~/.devbox-neo/configs/base/`; creating it does not create a session. You can also run `devbox-neo config create` without a name and set **Name/location** in the same overview.
 
 ## 3. Create an environment
 

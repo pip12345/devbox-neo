@@ -38,7 +38,7 @@ Each interactive workflow has one command entry point:
 
 | Command | Responsibility |
 |---|---|
-| `config create <reference>` | Create a config directory and offer its initial setup |
+| `config create [reference]` | Open the config creation overview, prefilling any supplied reference |
 | `config edit <reference>` | Edit an existing config directory and add missing optional files |
 | `config list [--json]` | List named configs under the selected home's `configs/`, including invalid or incomplete entries; path-based configs are not registered here |
 | `config delete <name>` | Remove an unreferenced named config under the selected home's `configs/` after confirmation; refuse desired or committed session users and list every known user |
@@ -257,7 +257,7 @@ Default: Main
    Choose a number >
 ```
 
-Selecting a session opens its source editor; selecting Set folder default opens a numbered session picker. Choosing Clear folder default saves the clear and returns to the overview. A folder without sessions still offers clearing when it has a stale saved default. `--default` requires `--name` or an exact full session name, while `--clear-default` accepts a folder or exact session target and cannot be combined with `--name`. Default changes never start, stop, or open a session.
+Selecting a session opens its source editor; selecting Set folder default opens a numbered session picker. That picker reuses the overview's folder header, row positions, status labels, spacing, and default marker; its instruction becomes Select the folder default and Back leaves the selection unchanged. Saved default changes update the header/marker and exit receipt without a transient notice shifting the rows. Choosing Clear folder default saves the clear and returns to the overview. A folder without sessions still offers clearing when it has a stale saved default. `--default` requires `--name` or an exact full session name, while `--clear-default` accepts a folder or exact session target and cannot be combined with `--name`. Default changes never start, stop, or open a session.
 
 After selecting `myenv1` as the default:
 
@@ -338,23 +338,23 @@ Config creation neither creates a session nor selects a default. A newly created
 
 ### Config creation menus
 
-Harness selection uses the shared numbered menu. A new config starts unset; returning from the optional-files step shows the pending harness choice. This is not a setup menu for an existing config. The unset option permits reusable overlays that do not choose a harness themselves:
+Bare `config create` opens a creation overview. A supplied name or path prefills its destination; nested config creation opens the same overview. Outside interactive setup, including invocations with setup flags or JSON, a destination argument is required.
 
 ```text
-Select a harness
+Create config
 
-Current selection: Unset
+   [1]  Name/location: base
+   [2]  Harness: Unset
+   [3]  Optional files: None
 
-   [1]  opencode
-   [2]  pi
-   [3]  Leave unset (selected)
+   [4]  Create config
 
    [0]  Cancel
 
    Choose a number >
 ```
 
-Choosing a harness or explicitly leaving it unset advances to optional files. Do not force each source to choose a harness; validate that the combined session configuration selects one when creating or opening the session.
+The three fields can be changed in any order. Name/location validates a name or path without writing files; invalid input or Back keeps the prior destination. Selecting Create config without a destination explains what is missing. Harness opens the shared numbered picker with the pending selection marked, Leave unset, and Back. Selecting a harness returns to the overview rather than forcing optional files. Do not force each config to choose a harness; validate that the combined session configuration selects one when creating or opening the session.
 
 Select optional files one number at a time. Each submitted number toggles that item and redraws the menu with updated styling and selection summary. Do not require comma-separated numbers. This example shows two files already selected:
 
@@ -379,7 +379,7 @@ Keep item numbers stable while toggling. Selected names are emphasized and check
 
 Harness config files are available even when this config leaves its Harness setting unset. Turning that item on opens a numbered `Choose which harness's config files to add` picker. Show the pending/configured harness as the initial file-generation target when available, but allow choosing any available harness. Back cancels that unfinished selection. The chosen target appears beside the artifact item and in the selection summary; it controls only the generated directory and files, not the config's Harness setting. An overlay can therefore contain `pi/` files without selecting Pi for every session that uses it. Choosing another file-generation target does not change the persistent harness choice. Use the same artifact-target picker from Add optional files in `config edit`, not a second harness-settings editor.
 
-Continue accepts the choices, creates the new config, and adds missing selected artifacts without replacing existing files. Back returns to harness selection with pending choices retained; toggling does not write files. Cancel from the first step creates nothing. After completion, print the created/kept file report and exit, without opening the settings editor or session creation. If artifact setup fails after `config.json` was created, report that the config now exists and direct the user to `config edit` to finish adding files; do not suggest repeating `config create`.
+Continue accepts the optional-file choices and returns to the creation overview; Back discards that optional-file edit and retains the previous overview choices. Neither action writes files. Only Create config in the overview publishes the config and missing selected artifacts without replacing existing files. Cancel from the overview creates nothing. After completion, print the created/kept file report and exit, without opening the settings editor or session creation. If artifact setup fails after `config.json` was created, report that the config now exists and direct the user to `config edit` to finish adding files; do not suggest repeating `config create`.
 
 ### Edit a config directory
 
