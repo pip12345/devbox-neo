@@ -181,4 +181,4 @@ The adapter applies root-owned read-only permissions for `devuser`, excluding th
 
 Network commands inspect actual attachments under the operation lock. Secondary-network changes cannot detach the configured primary and do not change creation fingerprints. Managed changes refresh in-container facts while running; external Docker changes appear on the next refresh.
 
-Pi/OpenCode inherit the `devbox` skill through harness defaults. Artifact setup leaves it inherited, while explicit config-directory overrides use normal tree resolution. The asset content hash is a runtime input, not an image input, so updated guidance does not itself require an image rebuild.
+Pi/OpenCode inherit the `devbox` skill through harness defaults. Artifact setup leaves it inherited, while explicit config-directory overrides use normal tree resolution. Claude inherits a `CLAUDE.md` that imports `/devbox/AGENTS.md`; its optional harness-file setup includes that import. The asset content hash is a runtime input, not an image input, so updated guidance does not itself require an image rebuild.

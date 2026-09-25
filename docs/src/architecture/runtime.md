@@ -42,7 +42,7 @@ All package paths below are under `internal/`.
 | `assets` | Embedded container guidance and docs bundle | Produces runtime content, not session authority |
 | `commanderror` | Typed failures and actionable next steps | Carries causes separately from serialized diagnostics |
 
-Pi, OpenCode, and custom definitions use the same engine. Installation, stores, auth overlays, merge keys, preparation commands, and continuation arguments are data in a harness definition.
+Pi, OpenCode, Claude Code, and custom definitions use the same engine. Installation, stores, auth overlays, merge keys, preparation commands, and continuation arguments are data in a harness definition.
 
 ## Core invariants
 

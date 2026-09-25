@@ -1,6 +1,6 @@
 # Devbox
 
-Devbox runs coding harnesses such as Pi and OpenCode alongside your development tools in a Docker container, with your project folder mounted inside. You can leave and return to the same environment, reuse settings across projects, and rebuild the container without losing saved conversation history.
+Devbox runs coding harnesses such as Pi, OpenCode, and Claude Code alongside your development tools in a Docker container, with your project folder mounted inside. You can leave and return to the same environment, reuse settings across projects, and rebuild the container without losing saved conversation history.
 
 ## Learn to use Devbox
 

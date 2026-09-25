@@ -2,6 +2,12 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). The migration utility remains separate from runtime loading; adapting its destination model to named sessions and explicit configs is also approved.
 
+## Claude Code built-in — implemented, live acceptance pending
+
+- Promoted the existing Claude definition and defaults into `internal/harness/builtin/claude/` unchanged. Registry discovery, config setup, completion, runtime storage, and recorded recovery use the existing generic mechanisms; harness selection still starts unset and user overrides retain precedence.
+- The supplied launch bypasses Claude permission prompts and continuation uses `--continue`. Its environment store is `.claude`; `.credentials.json` and `.claude.json` use separate shared auth mounts. Bundled settings own `tui`/`pluginConfigs`, and `CLAUDE.md` imports runtime guidance.
+- Final `make test-fast` passes, including definition/defaults, completion, interactive setup, artifact generation, and fake-backed lifecycle/storage/recovery coverage. Native installer execution, live authentication, Claude's fullscreen/plugin behavior, and live conversation continuation/copy remain unverified; fake-backed tests do not establish those upstream behaviors.
+
 ## Shared synchronous CLI screens — implemented, manual acceptance pending
 
 - `internal/cliui` owns the command-scoped reader, terminal lifecycle, screen dispatch, selection/toggle markers, text validation, and confirmations. Main CLI and migrator menus use handler-bound actions; workflows retain ordinary local state and service-owned mutations.

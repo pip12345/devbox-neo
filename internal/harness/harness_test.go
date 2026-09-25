@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -81,10 +83,55 @@ func TestRegistryReportsBrokenOverridesWithoutHidingValidChoices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(registry.Valid) != 2 || registry.Valid[0].Definition.Name != "opencode" || registry.Valid[1].Definition.Name != "third" || len(registry.Invalid) != 1 || registry.Invalid[0].Name != "pi" {
-		t.Fatal("registry hid an invalid override or valid choice")
+	var names []string
+	for _, entry := range registry.Valid {
+		names = append(names, entry.Definition.Name)
+	}
+	if !slices.Equal(names, []string{"claude", "opencode", "third"}) || len(registry.Invalid) != 1 || registry.Invalid[0].Name != "pi" {
+		t.Fatal("registry hid an invalid override or valid choice", registry)
 	}
 }
+func TestBuiltinClaude(t *testing.T) {
+	h, err := Load(t.TempDir(), "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := h.Definition
+	if h.Origin != "builtin" || d.Binary != "claude" || !strings.Contains(d.Install.Shell, "https://claude.ai/install.sh") || !slices.Equal(d.Install.Path, []string{"/home/devuser/.local/bin"}) {
+		t.Fatal("Claude must load and install through the built-in definition", h)
+	}
+	if !slices.Equal(d.Launch.Args, []string{"--dangerously-skip-permissions"}) || !slices.Equal(d.Launch.Continue, []string{"--continue"}) || !d.Session.Clone || !d.Session.Relocate {
+		t.Fatal("Claude launch or transfer declarations changed", d)
+	}
+	if !reflect.DeepEqual(d.Stores, []Store{{Name: "home", Scope: "environment", Target: "/home/devuser/.claude"}}) || d.Config != (Config{Store: "home", Path: "."}) {
+		t.Fatal("Claude state must use its declared environment store", d)
+	}
+	wantAuth := []Auth{
+		{Source: ".credentials.json", Target: "/home/devuser/.claude/.credentials.json", Kind: "file", Create: true},
+		{Source: ".claude.json", Target: "/home/devuser/.claude.json", Kind: "file", Create: true},
+	}
+	if !reflect.DeepEqual(d.Auth, wantAuth) || !reflect.DeepEqual(d.Merge, []Merge{{Path: "settings.json", Strategy: "json-keys", Keys: []string{"tui", "pluginConfigs"}}}) {
+		t.Fatal("Claude auth or managed-key declarations changed", d)
+	}
+	if len(h.Defaults) != 2 || strings.TrimSpace(string(h.Defaults["CLAUDE.md"].Data)) != "@/devbox/AGENTS.md" {
+		t.Fatal("Claude must inherit embedded Devbox guidance", h.Defaults)
+	}
+	var settings struct {
+		TUI     string `json:"tui"`
+		Plugins map[string]struct {
+			Options struct {
+				InstructionFiles string `json:"instructionFiles"`
+			} `json:"options"`
+		} `json:"pluginConfigs"`
+	}
+	if err := json.Unmarshal(h.Defaults["settings.json"].Data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings.TUI != "fullscreen" || settings.Plugins["agents-md@builtin"].Options.InstructionFiles != "claude-md-and-agents-md" {
+		t.Fatal("Claude defaults lost fullscreen or instruction-file settings", settings)
+	}
+}
+
 func TestBuiltinOpenCodeV2(t *testing.T) {
 	h, err := Load(t.TempDir(), "opencode")
 	if err != nil {

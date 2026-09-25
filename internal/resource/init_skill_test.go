@@ -4,12 +4,35 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"devbox/internal/artifact"
 	"devbox/internal/config"
 	"devbox/internal/harness"
 )
+
+func TestClaudeArtifactSetupIncludesInstructionImport(t *testing.T) {
+	s := fixture(t)
+	owner, err := s.ConfigDirectory("basic", t.TempDir(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.CreateConfig(context.Background(), owner, SetupOptions{ArtifactHarness: "claude", Artifacts: []string{"harness-config"}})
+	if err != nil {
+		t.Fatal(result, err)
+	}
+	if got := strings.TrimSpace(string(get(t, filepath.Join(owner.Root, "claude", "CLAUDE.md")))); got != "@/devbox/AGENTS.md" {
+		t.Fatal("generated Claude guidance lost the runtime import", got)
+	}
+	if _, err := os.Stat(filepath.Join(owner.Root, "claude", "settings.json")); err != nil {
+		t.Fatal(err)
+	}
+	source, err := s.ConfigSource(owner)
+	if err != nil || source["harness"] != nil {
+		t.Fatal("generating Claude files selected a harness", source, err)
+	}
+}
 
 func TestArtifactSetupLeavesDevboxSkillInheritedAndOverridable(t *testing.T) {
 	for _, name := range []string{"pi", "opencode"} {

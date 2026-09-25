@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "name": "claude",
+  "binary": "claude",
+  "install": {
+    "shell": "curl -fsSL https://claude.ai/install.sh | bash && test -x /home/${user}/.local/bin/claude",
+    "path": ["/home/${user}/.local/bin"]
+  },
+  "launch": {
+    "args": ["--dangerously-skip-permissions"],
+    "continue_args": ["--continue"]
+  },
+  "env": {},
+  "stores": [
+    {
+      "name": "home",
+      "scope": "environment",
+      "target": "/home/devuser/.claude"
+    }
+  ],
+  "config": {
+    "store": "home",
+    "path": "."
+  },
+  "config_merge": [
+    {
+      "path": "settings.json",
+      "strategy": "json-keys",
+      "owned_keys": ["tui", "pluginConfigs"]
+    }
+  ],
+  "auth": [
+    {
+      "source": ".credentials.json",
+      "target": "/home/devuser/.claude/.credentials.json",
+      "kind": "file",
+      "create": true
+    },
+    {
+      "source": ".claude.json",
+      "target": "/home/devuser/.claude.json",
+      "kind": "file",
+      "create": true
+    }
+  ],
+  "session": {
+    "relocate": true,
+    "clone": true
+  },
+  "prepare": []
+}

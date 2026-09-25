@@ -26,7 +26,7 @@ func seedThird(t *testing.T, home string) {
 	write(t, filepath.Join(home, "harnesses/third/defaults/settings.json"), `{"controlled":true}`)
 }
 func TestBuiltinAndCustomHarnessesShareLifecycleAndStorage(t *testing.T) {
-	for _, name := range []string{"pi", "opencode", "third"} {
+	for _, name := range []string{"claude", "pi", "opencode", "third"} {
 		t.Run(name, func(t *testing.T) {
 			e, d, q := fixture(t)
 			ctx := context.Background()

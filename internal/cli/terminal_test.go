@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"devbox/internal/app"
+	"devbox/internal/harness"
 	"devbox/internal/resource"
 	"devbox/internal/store"
 	"golang.org/x/sys/unix"
@@ -185,47 +186,61 @@ func TestMenusSharePresentationAndPreserveSelections(t *testing.T) {
 
 func TestConfigCreationUsesStyledMenusForNamesAndPaths(t *testing.T) {
 	enableTerminalColors(t)
-	for _, kind := range []string{"named", "path"} {
-		t.Run(kind, func(t *testing.T) {
-			home := t.TempDir()
-			target, input := "basic", "1\n5\n"
-			configPath := filepath.Join(home, "configs/basic/config.json")
-			if kind == "path" {
-				target = filepath.Join(t.TempDir(), "config")
-				configPath = filepath.Join(target, "config.json")
-			}
-			master, slave := testTerminal(t)
-			before, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := master.WriteString(input); err != nil {
-				t.Fatal(err)
-			}
-			text := terminalOutput(t, 80, func(out *os.File) error {
-				cmd := New()
-				cmd.SetIn(slave)
-				cmd.SetOut(out)
-				cmd.SetErr(out)
-				cmd.SetArgs([]string{"--home", home, "config", "create", target})
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-				defer cancel()
-				return cmd.ExecuteContext(ctx)
-			})
-			for _, want := range []string{"\x1b[1mSelect a harness\x1b[0m", "\x1b[1mChoose optional files\x1b[0m", "\x1b[32m(selected)\x1b[0m"} {
-				if !strings.Contains(text, want) {
-					t.Fatalf("init missing %q: %q", want, text)
+	for _, name := range []string{"claude", "opencode", "pi"} {
+		for _, kind := range []string{"named", "path"} {
+			t.Run(name+"/"+kind, func(t *testing.T) {
+				home := t.TempDir()
+				registry, err := harness.Enumerate(home)
+				if err != nil {
+					t.Fatal(err)
 				}
-			}
-			data, err := os.ReadFile(configPath)
-			if err != nil || !strings.Contains(string(data), `"opencode"`) {
-				t.Fatal("styled init did not save selected harness", string(data), err)
-			}
-			after, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)
-			if err != nil || *before != *after {
-				t.Fatal("init changed terminal mode", err)
-			}
-		})
+				target, input := "basic", ""
+				for i, entry := range registry.Valid {
+					if entry.Definition.Name == name {
+						input = fmt.Sprintf("%d\n5\n", i+1)
+					}
+				}
+				if input == "" {
+					t.Fatal("built-in harness missing from setup", name)
+				}
+				configPath := filepath.Join(home, "configs/basic/config.json")
+				if kind == "path" {
+					target = filepath.Join(t.TempDir(), "config")
+					configPath = filepath.Join(target, "config.json")
+				}
+				master, slave := testTerminal(t)
+				before, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := master.WriteString(input); err != nil {
+					t.Fatal(err)
+				}
+				text := terminalOutput(t, 80, func(out *os.File) error {
+					cmd := New()
+					cmd.SetIn(slave)
+					cmd.SetOut(out)
+					cmd.SetErr(out)
+					cmd.SetArgs([]string{"--home", home, "config", "create", target})
+					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+					defer cancel()
+					return cmd.ExecuteContext(ctx)
+				})
+				for _, want := range []string{"\x1b[1mSelect a harness\x1b[0m", "\x1b[1mChoose optional files\x1b[0m", "\x1b[32m(selected)\x1b[0m"} {
+					if !strings.Contains(text, want) {
+						t.Fatalf("init missing %q: %q", want, text)
+					}
+				}
+				data, err := os.ReadFile(configPath)
+				if err != nil || !strings.Contains(string(data), `"`+name+`"`) {
+					t.Fatal("styled init did not save selected harness", string(data), err)
+				}
+				after, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)
+				if err != nil || *before != *after {
+					t.Fatal("init changed terminal mode", err)
+				}
+			})
+		}
 	}
 }
 

@@ -1,6 +1,6 @@
 # Harness definitions
 
-A harness is a coding tool Devbox launches, such as Pi or OpenCode. Its definition specifies installation, launch commands, persistent files, and configuration management. Pi and OpenCode definitions are built in.
+A harness is a coding tool Devbox launches, such as Pi or OpenCode. Its definition specifies installation, launch commands, persistent files, and configuration management. Pi, OpenCode, and Claude Code definitions are built in.
 
 ## Built-in harnesses
 
@@ -8,6 +8,7 @@ A harness is a coding tool Devbox launches, such as Pi or OpenCode. Its definiti
 |---|---|---|---|
 | Pi | `pi --tui-mode fullscreen` | `-c` | `/home/devuser/.pi/agent` |
 | OpenCode 2 | `opencode` | `-c` | `/home/devuser/.config/opencode` |
+| Claude Code | `claude --dangerously-skip-permissions` | `--continue` | `/home/devuser/.claude` |
 
 Configured `harness_args` follow built-in launch arguments. Configured arguments require `harness` in the same file; layers naming other harnesses contribute no arguments. `open --continue` adds continuation arguments; one-off `--harness-arg` values and arguments after `--` follow, without being saved. For Pi regular mode, set `harness_args` to `["--tui-mode", "regular"]` or pass those arguments after `open <folder|session> --`. The built-in fullscreen flag takes precedence over Pi's saved `tuiMode` setting.
 
@@ -19,6 +20,8 @@ Pi's shared JSON ownership is:
 | `models.json` | `providers` |
 
 The whole `providers` object follows the selected desired file; providers are not deep-merged. Other top-level keys remain under Pi's control. OpenCode declares no shared-JSON key merges. The built-in OpenCode definition installs OpenCode 2 and disables sharing and the `opencode` provider through launch environment config. Existing sessions using the previous built-in definition require `recreate` to install OpenCode 2; Devbox does not convert OpenCode's own configuration or history.
+
+Claude Code uses its native installer and launches with permission prompts bypassed (`--dangerously-skip-permissions`). Its bundled `settings.json` sets `tui` to `fullscreen` and configures `agents-md@builtin` to read both `CLAUDE.md` and `AGENTS.md`; Devbox owns the `tui` and `pluginConfigs` top-level keys and preserves other settings. The bundled `CLAUDE.md` imports `/devbox/AGENTS.md`.
 
 Pi's managed executable is installed in the image under `/home/devuser/.pi/image/`, separate from the persistent config mount at `/home/devuser/.pi/agent/`. Recreating an image does not move Pi's session configuration.
 

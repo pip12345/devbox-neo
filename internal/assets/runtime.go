@@ -117,6 +117,15 @@ absolute. Config directories are not copied. Whole-session deletion and move cle
 clear a matching source default without selecting a replacement. Container-only
 deletion leaves defaults intact. Session lookup and source-chain repair do not require working config directories.
 
+Pi, OpenCode, and Claude Code are built in. Claude's config and session store is
+/home/devuser/.claude, backed by sessions/<container>/harnesses/claude/stores/home/
+under the selected host Devbox home. Managed auth/claude/.credentials.json overlays
+/home/devuser/.claude/.credentials.json; auth/claude/.claude.json mounts at
+/home/devuser/.claude.json. These auth files are shared across Claude sessions
+and excluded from session transfers. Claude launches with
+--dangerously-skip-permissions and uses --continue for continuation. Its bundled
+CLAUDE.md imports this /devbox/AGENTS.md; settings.json owns only tui and pluginConfigs.
+
 The built-in Pi launch defaults to --tui-mode fullscreen (upstream experimental).
 A later --tui-mode regular in harness_args or one-off harness arguments overrides it.
 Configured harness_args must name their harness in the same config file; arguments

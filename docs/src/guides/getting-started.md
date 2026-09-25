@@ -1,6 +1,6 @@
 # Getting started
 
-This guide takes you from a checkout of Devbox to running Pi or OpenCode in your project.
+This guide takes you from a checkout of Devbox to running Pi, OpenCode, or Claude Code in your project.
 
 You need Linux, Docker, and a non-root account that can run Docker commands. Run the commands below on the host, not inside a Devbox container.
 
@@ -32,7 +32,7 @@ devbox-neo version
 
 ## 2. Choose your harness
 
-A **harness** is the coding tool Devbox launches, such as Pi or OpenCode. A **config directory** supplies reusable settings and optional customization files.
+A **harness** is the coding tool Devbox launches, such as Pi, OpenCode, or Claude Code. A **config directory** supplies reusable settings and optional customization files.
 
 Create a config named `base`:
 
@@ -40,7 +40,7 @@ Create a config named `base`:
 devbox-neo config create base
 ```
 
-Choose your harness, then choose **Continue** to skip optional files for now. You can add them later through `config edit base`. This config lives in `~/.devbox-neo/configs/base/`; creating it does not create a session.
+Choose your harness, then choose **Continue** to skip optional files for now. The built-in Claude harness bypasses Claude's permission prompts; see [built-in launch settings](../reference/harnesses.md#built-in-harnesses). You can add them later through `config edit base`. This config lives in `~/.devbox-neo/configs/base/`; creating it does not create a session.
 
 ## 3. Create an environment
 

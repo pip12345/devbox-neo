@@ -46,18 +46,23 @@ Temporary work uses `.build-*` and `.runtime-*` under the home, private same-dir
 
 ## Built-in storage mappings
 
-Targets are inside the container. Auth sources are `<home>/auth/<harness>/auth.json`.
+Targets are inside the container. Auth sources use the listed filenames beneath `<home>/auth/<harness>/`.
 
 | Harness | Kind / store | Target |
 |---|---|---|
 | Pi | Environment: `home` | `/home/devuser/.pi/agent` |
 | Pi | Cache: `npm-global` | `/home/devuser/.local` |
 | Pi | Cache: `npm-cache` | `/home/devuser/.npm` |
-| Pi | Auth file | `/home/devuser/.pi/agent/auth.json` |
+| Pi | Auth: `auth.json` | `/home/devuser/.pi/agent/auth.json` |
 | OpenCode | Environment: `config` | `/home/devuser/.config/opencode` |
 | OpenCode | Environment: `data` | `/home/devuser/.local/share/opencode` |
 | OpenCode | Cache: `cache` | `/home/devuser/.cache/opencode` |
-| OpenCode | Auth file | `/home/devuser/.local/share/opencode/auth.json` |
+| OpenCode | Auth: `auth.json` | `/home/devuser/.local/share/opencode/auth.json` |
+| Claude Code | Environment: `home` | `/home/devuser/.claude` |
+| Claude Code | Auth: `.credentials.json` | `/home/devuser/.claude/.credentials.json` |
+| Claude Code | Shared auth/client state: `.claude.json` | `/home/devuser/.claude.json` |
+
+Claude's two auth files are shared across Claude sessions in the selected Devbox home and excluded from session copies. Its `.claude` environment store retains session state; it declares no shared cache.
 
 Paths outside declared mounts remain container-local. For example, OpenCode's `/home/devuser/.local/state` is not a declared persistent store.
 
