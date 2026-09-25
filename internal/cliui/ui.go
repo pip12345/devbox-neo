@@ -34,6 +34,7 @@ type Action struct {
 // inventory refreshes. Open runs only after an explicit selection.
 type Item struct {
 	Key, Label, Description, Status string
+	Activity                        string
 	Depth                           int
 	Selected, Folder                bool
 	Fields                          []Field
@@ -154,6 +155,15 @@ func (r *Runner) ReviewOutput() error {
 // Notice belongs to the next interaction, not to a partially rendered parent
 // screen. A child can return feedback without drawing its parent underneath it.
 func (r *Runner) Notice(text string) { r.notices = append(r.notices, text) }
+
+// RefreshNavigation updates the shared workflow frame, including parents that
+// resume after a child returns. Presented snapshots are deep copies, so the UI
+// goroutine never observes a collection changing underneath it.
+func (r *Runner) RefreshNavigation(collection Collection) {
+	if r.navigation != nil && r.navigation.Collection.Title == collection.Title {
+		r.navigation.Collection = collection
+	}
+}
 
 func (r *Runner) Run(build func() (Screen, error)) error {
 	cursor, query := -1, ""

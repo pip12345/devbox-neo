@@ -1,96 +1,56 @@
 # Choose configs for a session
 
-A **config directory** contains settings and optional Dockerfiles, scripts, and harness files. Several sessions can share it. Each session explicitly selects an ordered list of config directories; files are not discovered automatically in your workspace.
+A config directory holds settings and optional customization files. Several sessions can share one. Each session uses the configs you explicitly select, in order.
 
-Named configs live under `~/.devbox-neo/configs/`. You can also keep configs anywhere on the host, including beside your project files. To see the named configs in your selected Devbox home, including their directory paths and ones that need repair, run `devbox-neo config list`. Configs stored elsewhere appear in a session's config list, not in this inventory.
+## Change shared settings
 
-## Edit a config
-
-Run `devbox-neo config` to browse named configs, create one, or enter a directory path. Selecting a config opens its editor; eligible named configs also have a **Delete config** action with the same usage checks as the delete command.
-
-To go straight to a known directory:
+Run `devbox-neo config`, select `base`, and press **Enter**. Or go straight to it:
 
 ```sh
 devbox-neo config edit base
 ```
 
-The editor shows the directory's path and every saved session using it. Choose a setting and enter its value. Each valid edit saves immediately. Use arrows and **Enter** to select, and **Esc** to go back or cancel text entry. **Page Up/Down** scrolls long details.
+Choose a setting to edit it. Changes save immediately; leaving the editor does not undo them. **Remove this setting** removes the value from this config, allowing an earlier config or the built-in default to supply it.
 
-**Remove this setting** removes the key from this config. It does not write a built-in or another config's value into the file. The dashboard shows only this directory over built-in defaults; its list editors change only entries stored here.
+Editing `base` affects every session using it. The editor lists those sessions.
 
-Use **Add optional files** to add missing customization files without overwriting existing ones. Adding harness files does not force a harness selection: an overlay can supply Pi files while leaving its Harness setting unset.
+## Add settings for one project
 
-To remove an unused named config and all its files, run `devbox-neo config delete base` and confirm. Devbox refuses while saved sessions still select it, use a config inside it, or need its committed files, and lists every affected session. Remove this config from those sessions and recreate them (or delete the sessions) first. This command does not remove configs at arbitrary paths outside the selected home's `configs/` directory.
-
-## Add workspace-specific settings
-
-Create an ordinary config directory in your workspace:
+From your project folder, create a separate config:
 
 ```sh
 devbox-neo config create ./devconfig
 ```
 
-Leave **Harness** unset if another selected config already chooses your harness, then choose **Create config**. Edit the directory when you need settings such as extra mounts or ports:
+Leave **Harness** unset when `base` already selects your coding tool. Choose **Create config**, then edit its settings:
 
 ```sh
 devbox-neo config edit ./devconfig
 ```
 
-This directory does not affect a session until you select it there.
+The directory only takes effect after you select it in a session.
 
-## Change a session's configs
+## Select the configs to use
 
-From the workspace, open the session picker:
+Open the session's menu in `devbox-neo`, then **Edit selected configs**. Choose **Add existing config** and enter `./devconfig`.
 
-```sh
-devbox-neo edit .
-```
+Keep `base` first and `./devconfig` second. Later scalar settings replace earlier ones; most lists append. For example, the project config can change the shared network setting without choosing another harness.
 
-Select a session, choose **Add existing config**, and enter `./devconfig`. If you haven't created the config yet, choose **Create config** instead: complete the usual config setup and Devbox adds it to this session. The folder menu also lets you choose **Set folder default** or **Clear folder default**. Keep `base` before it if you want the workspace config's explicit scalar values to override the shared config. Lists generally append; [the reference](../reference/configuration.md#config-fields) describes field-specific rules.
+Use the same menu to replace, remove, or reorder configs. **Show combined configuration** shows the final values and where they came from. See the [field table](../reference/configuration.md#config-fields) for exact merge rules.
 
-Adding, replacing, removing, or reordering selected configs saves immediately. **Exit** does not undo those changes. The editor prints an exact-session `status` command on exit so you can check whether the container needs updating. Editing a config directory prints bare `status` instead, to review changes across environments. It changes this session only, without renaming it or copying the directories. Editing a shared directory instead affects every session that uses it.
+## Choose where configs live
 
-Choose **Show combined configuration** to see effective values and which configs supplied them. Use **Back** to return to managing configs. For non-interactive inspection, provide the local name explicitly:
+- `base` refers to `~/.devbox-neo/configs/base/`. It stays at that fixed path when a session is copied or moved.
+- `./devconfig` is selected relative to your current directory and follows the session's workspace during a transfer.
 
-```sh
-devbox-neo edit . --name Main --show
-```
+Config directories themselves are not copied. [Reference rules](../reference/configuration.md#locations-and-references) cover other path forms.
 
-Missing configs remain visible so you can replace or remove them. You can save an incomplete config list during repair, but opening or recreating requires at least one config and a valid combined configuration, including a harness.
+## Apply your changes
 
-## Choose portable or fixed references
+Saving settings does not replace a container. Choose **Status** in the session menu to see what needs applying.
 
-Relative arguments initially resolve against the directory where you run the command. They are then stored relative to the session's workspace. For example, `./devconfig` follows the workspace when you copy or move the session.
+Managed harness files apply when the container next starts. Container settings and build changes need **Recreate**. Recreation preserves saved harness state but loses files and tools stored only inside the container.
 
-Bare names such as `base`, absolute paths, and home-relative paths such as `~/configs/personal` are fixed references. They keep using the same absolute directory after a transfer. Devbox does not copy config directories for you.
-
-## Pass environment variables
-
-You can edit a directory's `config.json` directly. This example passes a token from the host without storing its value in the file:
-
-```json
-{
-  "version": 1,
-  "env": ["WORK_TOKEN=${env:WORK_TOKEN}"]
-}
-```
-
-Set `WORK_TOKEN` in your host environment before running Devbox. An unset reference is an error. Prefer environment references for credentials: menu input is visible, and ordinary settings such as argv and paths are not secret fields.
-
-## Apply changes
-
-Saving config does not replace an existing container. Check its pending changes:
-
-```sh
-devbox-neo status . --name Main
-```
-
-Use the local name of the session you edited (or the exact command printed when you exit). Managed harness files synchronize when the container next starts; they do not require recreation. For a container deliberately kept running with `start`, stop it after attached commands finish and start it again. Container settings, image inputs, and setup changes require:
-
-```sh
-devbox-neo recreate . --name Main
-```
-
-Container-local files and tools are lost during recreation. See [managing environments](managing-environments.md#apply-configuration-changes) before replacing a customized container.
+If you no longer need a named config, use **Delete config** in its editor. Devbox refuses while sessions still use it; follow the listed sessions to remove the dependency first.
 
 **Next:** [Customize your environment](customization.md).

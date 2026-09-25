@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"devbox/internal/app"
 	"devbox/internal/cliui"
@@ -139,13 +140,8 @@ func (f *frontend) browse(configs bool) error {
 	})
 }
 func sessionFields(v app.View) []cliui.Field {
-	selected := "Not this session"
-	if v.Default {
-		selected = "This session"
-	}
 	fields := []cliui.Field{{Label: "Folder", Value: v.Workspace}, {Label: "Harness", Value: v.Harness},
-		{Label: "Container", Value: strings.TrimRight(containerState(v), "!*"), Status: true}, {Label: "Lifetime", Value: lifetimeState(v)},
-		{Label: "Default", Value: selected}}
+		{Label: "Container", Value: strings.TrimRight(containerState(v), "!*"), Status: true}, {Label: "Lifetime", Value: lifetimeState(v)}}
 	if v.Pending != nil {
 		fields = append(fields, cliui.Field{Label: "Transfer", Value: "Pending — use Copy or move", Warning: true})
 	}
@@ -153,7 +149,7 @@ func sessionFields(v app.View) []cliui.Field {
 	for i, ref := range v.Sources {
 		sources = append(sources, fmt.Sprintf("%d. %s", i+1, ref.Label))
 	}
-	fields = append(fields, cliui.Field{Label: "Configs", Value: strings.Join(sources, "\n")}, cliui.Field{Label: "Last active", Value: exactTime(v.LastActivity)}, cliui.Field{Label: "Full name", Value: v.Name})
+	fields = append(fields, cliui.Field{Label: "Configs", Value: strings.Join(sources, "\n")}, cliui.Field{Label: "Last active", Value: activityAge(v.LastActivity, time.Now())}, cliui.Field{Label: "Full name", Value: v.Name})
 	if v.Error != "" {
 		fields = append(fields, cliui.Field{Label: "Error", Value: v.Error, Warning: true})
 	}
@@ -189,7 +185,7 @@ func (f *frontend) sessionCollection(report app.InventoryReport, sortBy string) 
 			state = "error"
 		}
 		return cliui.Item{Key: v.Name, Label: label, Description: v.Workspace + " " + v.Harness, Depth: depth,
-			Status: state, Selected: v.Default, Fields: sessionFields(v),
+			Status: state, Activity: activityAge(v.LastActivity, time.Now()), Selected: v.Default, Fields: sessionFields(v),
 			Open: func() error { return f.m.report(f.session(v)) }}
 	}
 	for _, v := range ungrouped {
@@ -243,6 +239,8 @@ func (f *frontend) session(v app.View) error {
 		run := func(title string, op func(context.Context) error) func() error {
 			return func() error { return f.foreground(title, op) }
 		}
+		start := f.action("Start", "Keep running until stopped", run("Start", func(ctx context.Context) error { _, err := f.e.Start(ctx, v.Name, ""); return err }))
+		start.BreakBefore = true
 		actions := []cliui.Action{
 			f.action("Open", "Launch the recorded harness", run("Open", func(ctx context.Context) error { _, err := f.e.Open(ctx, app.Request{Workspace: v.Name}); return err })),
 			f.action("Continue", "Resume the harness conversation", run("Continue", func(ctx context.Context) error {
@@ -252,7 +250,14 @@ func (f *frontend) session(v app.View) error {
 			f.action("Shell", "Attach to the configured shell", run("Shell", func(ctx context.Context) error { return f.e.Exec(ctx, v.Name, "", nil, true) })),
 			f.action("Status", "Live state, active commands and pending changes", func() error { return f.status(v.Name) }),
 			f.action("Edit selected configs", sourceSummary(v.Sources), func() error { return f.editSession(v.Name) }),
-			f.action("Container actions", "Start, stop, recreate, logs and networks", func() error { return f.container(v.Name) }),
+			start,
+			f.action("Stop", "", func() error { return f.stop(v.Name) }),
+			f.action("Recreate", "Replace the container using current settings", func() error { return f.recreate(v.Name) }),
+			f.action("Logs", "", func() error { return f.logs(v.Name) }),
+			f.action("Networks", "", func() error { return f.networks(v.Name) }),
+			f.action("Exec", "Run a command with exact arguments", func() error { return f.exec(v.Name) }),
+			f.action("SSH", "Share an authenticated SSH connection", func() error { return f.ssh(v.Name) }),
+			f.action("Open with options", "Continuation and one-off harness arguments", func() error { return f.openWithOptions(v.Name) }),
 			{Label: "Copy or move", Description: "Destination, name, preview and explicit transfer", Run: func() (bool, error) {
 				moved, err := f.transfer(v.Name)
 				if err != nil {
@@ -260,7 +265,6 @@ func (f *frontend) session(v app.View) error {
 				}
 				return moved, nil
 			}},
-			f.action("Exec, SSH and launch arguments", "", func() error { return f.access(v.Name) }),
 			f.defaultAction(v),
 		}
 		actions = append(actions, cliui.Action{Label: "Delete", Description: "Container first; saved data/history separately", Danger: true, Run: func() (bool, error) {
@@ -274,7 +278,7 @@ func (f *frontend) session(v app.View) error {
 		if label == "" {
 			label = v.Name
 		}
-		return cliui.Screen{Title: "Session · " + displayCell(label), Back: "Back", Actions: actions, Fields: sessionFields(v), Navigation: navigation}, nil
+		return cliui.Screen{Title: "Session · " + displayCell(label), Back: "Back", Actions: actions, Fields: []cliui.Field{{Label: "Folder", Value: v.Workspace}, {Label: "Harness", Value: v.Harness}, {Label: "Container", Value: strings.TrimRight(containerState(v), "!*"), Status: true}}, Navigation: navigation}, nil
 	})
 }
 func (f *frontend) foreground(title string, operation func(context.Context) error) error {
@@ -299,7 +303,16 @@ func (f *frontend) foreground(title string, operation func(context.Context) erro
 	if f.m.Context.Err() != nil {
 		return f.m.Context.Err()
 	}
-	return errors.Join(err, f.m.ReviewOutput())
+	reviewErr := f.m.ReviewOutput()
+	if f.e != nil && f.m.Context.Err() == nil {
+		report, refreshErr := f.e.List(f.m.Context, "")
+		if refreshErr != nil {
+			f.m.Notice("Could not refresh session state; displayed inventory may be stale: " + displayCell(refreshErr.Error()))
+		} else {
+			f.m.RefreshNavigation(*f.sessionCollection(report, f.sortBy))
+		}
+	}
+	return errors.Join(err, reviewErr)
 }
 func (f *frontend) jsonView(title string, value any) error {
 	return f.m.View(title, func(out io.Writer) error {
@@ -498,7 +511,7 @@ func (f *frontend) createSessionIn(folder string) error {
 		}
 		var failure *commanderror.Error
 		if errors.As(err, &failure) && failure.Code == "create_stop_failed" {
-			f.m.Notice("Session created, but stopping it failed. Use Stop in Container actions.")
+			f.m.Notice("Session created, but stopping it failed. Use Stop in the session menu.")
 			return true, nil
 		}
 		return false, f.m.report(err)

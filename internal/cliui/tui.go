@@ -485,10 +485,21 @@ func (m *terminalModel) objectList(c Collection, key, query string, w, h int, ac
 		}
 	}
 	capacity := max(1, h-3)
-	start := max(0, cursor-capacity+1)
+	stateWidth, activityWidth := 0, 0
+	for _, item := range c.Items {
+		stateWidth = max(stateWidth, ansi.StringWidth(Safe(item.Status)))
+		if item.Activity != "" {
+			activityWidth = max(activityWidth, len("Last active"), ansi.StringWidth(Safe(item.Activity)))
+		}
+	}
+	if activityWidth > 0 {
+		stateWidth = max(stateWidth, len("State"))
+	}
+	stackActivity := activityWidth > 0 && w-2-stateWidth-activityWidth-4 < 8
 	var rows []string
-	for pos := start; pos < min(len(indices), start+capacity); pos++ {
-		item := c.Items[indices[pos]]
+	selectedEnd := 0
+	for pos, index := range indices {
+		item := c.Items[index]
 		prefix := "  "
 		if pos == cursor {
 			if active {
@@ -510,15 +521,28 @@ func (m *terminalModel) objectList(c Collection, key, query string, w, h int, ac
 			color = tuiMint
 		}
 		focused := active && pos == cursor
-		badge := ""
-		if item.Status != "" {
-			badge = rowText(Safe(item.Status), statusColor(item.Status), focused, false)
+		trailing := ""
+		if !item.Folder {
+			if activityWidth > 0 && !stackActivity {
+				state := Safe(item.Status)
+				trailing = rowText(state+strings.Repeat(" ", max(0, stateWidth-ansi.StringWidth(state))), statusColor(item.Status), focused, false)
+				trailing += rowText("  "+Safe(item.Activity), tuiMuted, focused, false)
+				trailing += rowText(strings.Repeat(" ", max(0, activityWidth-ansi.StringWidth(Safe(item.Activity)))), tuiMuted, focused, false)
+			} else if item.Status != "" {
+				trailing = rowText(Safe(item.Status), statusColor(item.Status), focused, false)
+			}
 		}
-		text := rowText(prefix, tuiMint, focused, false) + rowText(clip(label, max(4, w-ansi.StringWidth(badge)-len(marker)-3)), color, focused, true) + rowText(marker, tuiMint, focused, true)
-		if badge != "" {
-			text += rowText(strings.Repeat(" ", max(1, w-ansi.StringWidth(text)-ansi.StringWidth(badge))), tuiWhite, focused, false) + badge
+		text := rowText(prefix, tuiMint, focused, false) + rowText(clip(label, max(4, w-ansi.StringWidth(trailing)-len(marker)-3)), color, focused, true) + rowText(marker, tuiMint, focused, true)
+		if trailing != "" {
+			text += rowText(strings.Repeat(" ", max(1, w-ansi.StringWidth(text)-ansi.StringWidth(trailing))), tuiWhite, focused, false) + trailing
 		}
 		rows = append(rows, row(text, w, focused))
+		if stackActivity && item.Activity != "" {
+			rows = append(rows, row(rowText("    "+Safe(item.Activity), tuiMuted, focused, false), w, focused))
+		}
+		if pos == cursor {
+			selectedEnd = len(rows)
+		}
 	}
 	if len(indices) == 0 {
 		rows = append(rows, tint("No matches", tuiMuted))
@@ -529,7 +553,19 @@ func (m *terminalModel) objectList(c Collection, key, query string, w, h int, ac
 	} else if m.query != "" && active {
 		search = tint("/ "+Safe(m.query), tuiMuted)
 	}
-	return heading(c.Title, w, active) + "\n" + fit(strings.Join(rows, "\n"), w, capacity, 0) + "\n" + clip(search, w)
+	title := heading(c.Title, w, active)
+	if stackActivity {
+		title = heading(c.Title+" · Last active", w, active)
+	}
+	if activityWidth > 0 && !stackActivity {
+		labelWidth := w - stateWidth - activityWidth - 4
+		color := tuiMuted
+		if active {
+			color = tuiMint
+		}
+		title = row(strong(clip(c.Title, labelWidth), color), labelWidth, false) + "  " + row(tint("State", tuiMuted), stateWidth, false) + "  " + row(tint("Last active", tuiMuted), activityWidth, false) + "\n" + tint(strings.Repeat("─", w), tuiLine)
+	}
+	return title + "\n" + fit(strings.Join(rows, "\n"), w, capacity, max(0, selectedEnd-capacity)) + "\n" + clip(search, w)
 }
 func (m *terminalModel) actionList(w, h int, active bool) string {
 	if h <= 0 {
@@ -732,6 +768,9 @@ func (m *terminalModel) View() tea.View {
 		}
 		if c != nil && len(c.Items) > 0 && w >= 84 {
 			left := min(48, max(28, w*36/100))
+			if c.Title == "Sessions" {
+				left = min(56, max(38, w*40/100))
+			}
 			nav := m.objectList(*c, key, query, left, bodyH, m.objects)
 			right := fit(content(w-left-3, bodyH), w-left-3, bodyH, 0)
 			separator := strings.TrimSuffix(strings.Repeat(" │ \n", bodyH), "\n")

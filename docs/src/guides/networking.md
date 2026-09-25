@@ -1,61 +1,54 @@
 # Networking
 
-A container has its own network view by default. The address you use depends on where the service runs: inside the environment, on your host, or in another container.
+Choose the section for where your service runs. Commands marked “host” run outside the Devbox container.
 
 ## Open a development server in your browser
 
-Publish a port when creating the environment:
+Run `devbox-neo config` and open a config used by your session. Choose **Port forwards** → **Add port forward**:
 
-```sh
-devbox-neo create . --port 127.0.0.1:8080:8080
+```text
+127.0.0.1:8080:8080
 ```
 
-Start your server inside the container, listening on `0.0.0.0:8080`. Then open `http://127.0.0.1:8080` in your host browser.
+This maps host port `8080` to container port `8080`, accessible only from your host. Choose **Recreate** in the session menu to apply the mapping.
 
-The first address and port belong to the host; the last port belongs to the container. Binding the host side to `127.0.0.1` keeps it local to your machine.
+Start your server inside the container, listening on `0.0.0.0:8080`. Open `http://127.0.0.1:8080` in your host browser.
 
-For an existing environment, add the mapping to `ports` in one of its selected config directories and run `recreate`. Publishing ports is a container setting; stopping and starting does not change it.
+For a new session, configure the mapping before creating it. Port changes require recreation, not just stop/start.
 
 ## Reach a service on your host
 
-Inside the container, load Devbox's network variables:
+Inside the container:
 
 ```sh
 source /devbox/network/env
 curl "http://$DEVBOX_HOST:8080"
 ```
 
-The host service must listen on an interface reachable from Docker. A service bound only to host `127.0.0.1` normally cannot be reached from a bridge-network container. Configure a reachable bind address and allow the connection through your firewall.
+The host service must listen on an interface Docker can reach. A host service bound only to `127.0.0.1` normally cannot be reached from a bridge-network container. Adjust its bind address and firewall as needed.
 
-## Connect to another Docker container
+## Reach another container
 
-If the other container uses an existing Docker network named `backend`, join it from the host:
+Join an existing shared Docker network from the host. Here `.` selects your project folder's default session:
 
 ```sh
 devbox-neo network connect backend .
 ```
 
-You can then use the other container's network name and service port. To leave:
+Use the other container's network name and service port. The attachment survives stop/start but not recreation. Set **Network** in your config if `backend` should be the primary network instead.
 
-```sh
-devbox-neo network disconnect backend .
-```
+To detach, use `devbox-neo network disconnect backend .`.
 
-These extra attachments survive stop/start but are lost on recreation. If this should be your environment's primary network, set `network` to `backend` in its configuration instead. Devbox expects the network to exist.
+## Check the addresses
 
-## Inspect the connection
-
-From the host:
+From the host, use **Networks** in the session menu or:
 
 ```sh
 devbox-neo network inspect .
-devbox-neo network env . --get DEVBOX_DEFAULT_GATEWAY_IP
 ```
 
-Inside the container, `/devbox/network/inspect.json` contains the inspected addresses, gateways, and attachments. Use those facts rather than guessing Docker subnet addresses.
+Inside the container, read `/devbox/network/inspect.json`. Use these facts instead of guessing subnet addresses.
 
-## Use host networking when needed
+[Network reference](../reference/commands.md#networks) covers exports and host-network restrictions.
 
-Set `network` to `host` and recreate if your workflow needs the host's network namespace. This removes the normal network separation. Published ports and secondary Docker-network attachments are unavailable in this mode.
-
-See the [network command reference](../reference/commands.md#networks) for syntax, or [SSH sharing](ssh.md) for authenticated access to remote machines.
+**Next:** [Share SSH access](ssh.md).

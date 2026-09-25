@@ -81,7 +81,7 @@ Last activity means recorded Devbox operations, not filesystem activity or only 
 
 ## Deletion transaction
 
-`app.Delete` owns both runtime and saved-data phases. Explicit `--container` or `--session` selects scope without prompts. Interactive deletion supplies two default-no callbacks; non-interactive, JSON, and dry-run calls must provide scope.
+`app.Delete` owns both runtime and saved-data phases. Explicit CLI `--container` or `--session` selects scope without a confirmation callback. The unscoped interactive command supplies a default-no callback for each phase. The frontend combines an explicit scope with that callback: container-only never asks about or removes saved data; whole-session deletion confirms each applicable phase separately. Preview and execution share the selected scope, and dry runs never call confirmations. Non-interactive and JSON calls must provide scope.
 
 ```mermaid
 flowchart TD

@@ -21,6 +21,11 @@ func TestRuntimeBundleContainsGuidanceAndLocalDocTargets(t *testing.T) {
 	if !bytes.Contains(files["AGENTS.md"], []byte("/workspace")) {
 		t.Fatal("missing workspace guidance")
 	}
+	for _, target := range regexp.MustCompile(`/devbox/(docs/[a-z/.-]+\.md)`).FindAllStringSubmatch(AgentGuide, -1) {
+		if len(files[target[1]]) == 0 {
+			t.Errorf("agent guide points to missing documentation: %s", target[0])
+		}
+	}
 	links := regexp.MustCompile(`\]\(([^)]+)\)`)
 	for name, data := range files {
 		for _, match := range links.FindAllSubmatch(data, -1) {

@@ -1,72 +1,44 @@
 # Getting started
 
-This guide takes you from a checkout of Devbox to running Pi, OpenCode, or Claude Code in your project.
+Run these commands on your **Linux host**, not inside a Devbox container. You need Docker access from a non-root account and Go 1.24.2+ for the build.
 
-You need Linux, Docker, and a non-root account that can run Docker commands. Run the commands below on the host, not inside a Devbox container.
+## Build and launch
 
-## 1. Build the CLI
-
-From the Devbox repository:
+From the repository checkout:
 
 ```sh
 make build
-```
-
-For Bash, add this to `~/.bashrc`, replacing `/path/to/devbox` with your checkout's location:
-
-```bash
-# Devbox
-export PATH="/path/to/devbox/bin:$PATH"
-alias dbx="devbox-neo"
-source <(devbox-neo completion bash)
-```
-
-This makes Devbox available from any folder, adds an optional `dbx` shortcut, and enables tab completion. The program's command is `devbox-neo`.
-
-Reload your shell configuration and check the CLI:
-
-```bash
-source ~/.bashrc
-devbox-neo version
-```
-
-## 2. Create your first session
-
-Go to your project and open Devbox:
-
-```sh
+export PATH="$PWD/bin:$PATH"
 cd /path/to/your/project
 devbox-neo
 ```
 
-With no sessions, **Create session** starts selected. Press **Enter**. The overview shows your current folder; **Change folder** lets you choose another. Choose **Set session name** and enter a name such as `work`. Names belong to a workspace, so other workspaces can use the same name.
+If Go is missing, run `make install-go` before building. The PATH change above applies to this terminal; [shell setup](../reference/commands.md#completion) covers future terminals.
 
-Choose **Create config**. A **config directory** supplies reusable settings and optional customization files. Set **Name/location** to `base`, then choose **Harness** and select your coding tool. A harness is what Devbox launches, such as Pi, OpenCode, or Claude Code. Leave **Optional files** at **None** for now. The built-in Claude harness bypasses Claude's permission prompts; see [built-in launch settings](../reference/harnesses.md#built-in-harnesses).
+## Create a session
 
-Choose **Create config** to save it. Devbox returns to your session draft with `base` already added. If you have an existing config instead, use **Add existing config**. A config already created remains saved even if you cancel the session draft.
+A session is a saved environment for one project folder. With no sessions yet, **Create session** is selected. Press **Enter**.
 
-Review the folder, name, and selected configs, then choose **Create session**. Devbox builds the image, installs the selected harness, and prepares the container. The first build can take a while. Build failures return to your entered choices; follow any recovery instructions before retrying.
+1. Check the folder. Use **Change folder** if needed.
+2. Choose **Set session name** and enter `work`.
+3. Choose **Create config** to make a reusable set of settings.
+4. Set **Name/location** to `base`. Under **Harness** (the coding tool to launch), choose Pi, OpenCode, or Claude Code.
+5. Leave **Optional files** at **None**, then choose **Create config**.
 
-Your project appears at `/workspace` inside the container. Changes there are changes to your real project files.
+Devbox adds the new config to your session draft automatically. Choose **Create session** to build the environment; the first build can take a while.
 
-## 3. Open it
+**Claude Code runs with its permission prompts bypassed.** See [harness defaults](../reference/harnesses.md#built-in-harnesses) before choosing it.
 
-After creation, acknowledge the result to enter the new session's menu. The session is stopped, with **Open** selected. Press **Enter** to launch the harness, then follow its login or provider setup when prompted. Devbox keeps managed authentication on the host for reuse.
+## Open it
 
-You do not need a folder default to open the session from this menu. **Make folder default** is available if you want folder-only commands to select it later. Creation never sets a default or launches a harness automatically.
+After the build, acknowledge the result. The new session's menu opens with **Open** selected. Press **Enter**, then follow the harness's login or provider setup.
 
-When the last attached Devbox command exits, the container stops by default. Your project files and saved harness state remain. Acknowledge the result to return to the menu.
+Your project is at `/workspace` inside the container. **Edits there change your real project files.**
 
-## 4. Come back later
+When you leave the harness, the container normally stops. Project files and saved harness history remain. Acknowledge the result to return to Devbox.
 
-Run `devbox-neo`, highlight your session on the left, and press **Enter** to open its menu. Choose **Continue** to resume its previous conversation, **Open** for a normal launch, or **Shell** for a terminal inside the container. Use **Esc** to return to browsing and **Tab** to switch to configs.
+## Return later
 
-Direct commands remain available. If you made this session the folder default, from its project folder you can run:
-
-```sh
-devbox-neo open . --continue
-```
-
-Here `.` means the current folder. You can use `-c` instead of `--continue`. Without a saved default, add `--name work` to select the session explicitly. You only need to create each session once.
+Run `devbox-neo`, highlight your session, and press **Enter**. Choose **Continue** to resume the conversation or **Open** for a normal launch. **Esc** goes back; **Tab** switches to configs while browsing.
 
 **Next:** [Everyday use](everyday-use.md).

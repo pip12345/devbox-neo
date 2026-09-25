@@ -20,8 +20,24 @@ import (
 func (f *frontend) form(title string, build func() []cliui.Action) error {
 	return f.m.Run(func() (cliui.Screen, error) { return cliui.Screen{Title: title, Back: "Back", Actions: build()}, nil })
 }
+
+// Submit completes an operation form only on success. Errors leave its local
+// inputs intact; foreground has already refreshed any changed inventory.
+func (f *frontend) submit(label, description string, run func() error) cliui.Action {
+	return cliui.Action{Label: label, Description: description, Run: func() (bool, error) {
+		if err := run(); err != nil {
+			return false, f.m.report(err)
+		}
+		return true, nil
+	}}
+}
+func (f *frontend) value(label, value string, run func() error) cliui.Action {
+	a := f.action(label, "", run)
+	a.Value = value
+	return a
+}
 func (f *frontend) text(label string, value *string, validate func(string) error) cliui.Action {
-	return f.action(label, displayCell(*value), func() error {
+	return f.value(label, displayCell(*value), func() error {
 		next, ok, err := f.m.Text(label+": ", validate)
 		if err == nil && ok {
 			*value = next
@@ -82,24 +98,12 @@ func (f *frontend) arguments(title string, args *[]string) error {
 		return actions
 	})
 }
-func (f *frontend) container(target string) error {
-	return f.form("Container actions", func() []cliui.Action {
-		return []cliui.Action{
-			f.action("Start — keep running until stop", "Also sets keep-running intent on an already running container", func() error {
-				return f.foreground("Start", func(ctx context.Context) error { _, err := f.e.Start(ctx, target, ""); return err })
-			}),
-			f.action("Stop", "Clear keep-running intent; force is always explicit", func() error {
-				force := false
-				return f.form("Stop container", func() []cliui.Action {
-					return []cliui.Action{f.toggle("Force: allow interruption of active commands", &force), f.action("Stop container", "", func() error {
-						return f.foreground("Stop", func(ctx context.Context) error { return f.e.Stop(ctx, target, "", force) })
-					})}
-				})
-			}),
-			f.action("Recreate", "Inspect changes and choose cache behavior", func() error { return f.recreate(target) }),
-			f.action("Logs", "Tail count and optional streaming", func() error { return f.logs(target) }),
-			f.action("Networks", "Inspect, export variables, connect and disconnect", func() error { return f.networks(target) }),
-		}
+func (f *frontend) stop(target string) error {
+	force := false
+	return f.form("Stop container", func() []cliui.Action {
+		return []cliui.Action{f.toggle("Force: allow interruption of active commands", &force), f.submit("Stop container", "", func() error {
+			return f.foreground("Stop", func(ctx context.Context) error { return f.e.Stop(ctx, target, "", force) })
+		})}
 	})
 }
 func (f *frontend) recreate(target string) error {
@@ -108,12 +112,12 @@ func (f *frontend) recreate(target string) error {
 		return []cliui.Action{
 			f.action("Inspect pending changes", "", func() error { return f.status(target) }),
 			f.toggle("Rebuild image without cache", &noCache),
-			f.action("Recreate", "Replaces container-local changes; preserves saved session state", func() error {
+			{Label: "Recreate", Description: "Replaces container-local changes; preserves saved session state", Run: func() (bool, error) {
 				yes, err := f.m.Confirm("Recreate with current settings? Container-local changes will be lost. [y/N] ")
 				if err != nil || !yes {
-					return err
+					return false, err
 				}
-				return f.foreground("Recreate", func(ctx context.Context) error {
+				err = f.foreground("Recreate", func(ctx context.Context) error {
 					if target == "" {
 						_, err := f.e.RecreateAll(ctx, noCache, app.Request{})
 						return err
@@ -121,7 +125,11 @@ func (f *frontend) recreate(target string) error {
 					_, err := f.e.Recreate(ctx, app.Request{Workspace: target}, noCache)
 					return err
 				})
-			}),
+				if err != nil {
+					return false, f.m.report(err)
+				}
+				return true, nil
+			}},
 		}
 	})
 }
@@ -141,7 +149,7 @@ func (f *frontend) logs(target string) error {
 	return f.form("Docker logs", func() []cliui.Action {
 		return []cliui.Action{
 			f.text("Tail", &tail, validateTail), f.toggle("Follow until interrupted", &follow),
-			f.action("Read logs", "These are Docker logs, not attached harness output", func() error {
+			f.submit("Read logs", "These are Docker logs, not attached harness output", func() error {
 				return f.foreground("Docker logs", func(ctx context.Context) error { return f.e.Logs(ctx, target, "", follow, tail) })
 			}),
 		}
@@ -184,12 +192,12 @@ func (f *frontend) networks(target string) error {
 				}
 				return f.form("Network environment", func() []cliui.Action { return actions })
 			}),
-			f.action("Connect network", "Attach an existing secondary network", func() error { return f.networkChange(target, true) }),
-			f.action("Disconnect network", "The primary network cannot be removed", func() error { return f.networkChange(target, false) }),
+			{Label: "Connect network", Description: "Attach an existing secondary network", Run: func() (bool, error) { return f.networkChange(target, true) }},
+			{Label: "Disconnect network", Description: "The primary network cannot be removed", Run: func() (bool, error) { return f.networkChange(target, false) }},
 		}
 	})
 }
-func (f *frontend) networkChange(target string, connect bool) error {
+func (f *frontend) networkChange(target string, connect bool) (bool, error) {
 	name, ok, err := f.m.Text("Existing Docker network: ", func(value string) error {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("enter a network name")
@@ -197,65 +205,68 @@ func (f *frontend) networkChange(target string, connect bool) error {
 		return nil
 	})
 	if err != nil || !ok {
-		return err
+		return false, err
 	}
-	return f.foreground("Change network attachment", func(ctx context.Context) error { return f.e.ChangeNetwork(ctx, target, "", name, connect) })
+	err = f.foreground("Change network attachment", func(ctx context.Context) error { return f.e.ChangeNetwork(ctx, target, "", name, connect) })
+	return err == nil, f.m.report(err)
 }
-func (f *frontend) access(target string) error {
-	return f.form("Access tools", func() []cliui.Action {
+func (f *frontend) openWithOptions(target string) error {
+	resume := false
+	var harnessArgs, args []string
+	return f.form("Open with options", func() []cliui.Action {
 		return []cliui.Action{
-			f.action("Open with options", "Continuation and one-off harness arguments", func() error {
-				resume := false
-				var harnessArgs, args []string
-				return f.form("Launch options", func() []cliui.Action {
-					return []cliui.Action{f.toggle("Continue previous conversation", &resume), f.action("Harness arguments", fmt.Sprint(harnessArgs), func() error { return f.arguments("Harness arguments", &harnessArgs) }), f.action("Trailing arguments", fmt.Sprint(args), func() error { return f.arguments("Arguments appended last", &args) }), f.action("Open", "Invocation-only options; nothing saved", func() error {
-						return f.foreground("Open", func(ctx context.Context) error {
-							_, err := f.e.Open(ctx, app.Request{Workspace: target, Continue: resume, HarnessArgs: harnessArgs, Args: args})
-							return err
-						})
-					})}
-				})
-			}),
-			f.action("Exec", "Executable and exact arguments; no implicit shell", func() error {
-				executable := ""
-				var args []string
-				return f.form("Execute a command", func() []cliui.Action {
-					run := f.action("Run command", "Terminal ownership returns after the command exits", func() error {
-						return f.foreground("Exec", func(ctx context.Context) error {
-							return f.e.Exec(ctx, target, "", append([]string{executable}, args...), false)
-						})
-					})
-					if executable == "" {
-						run.Blocked = "Enter an executable first."
-					}
-					return []cliui.Action{f.text("Executable", &executable, func(value string) error {
-						if value == "" {
-							return fmt.Errorf("enter an executable")
-						}
-						return nil
-					}), f.action("Arguments", fmt.Sprint(args), func() error { return f.arguments("Command arguments", &args) }), run}
-				})
-			}),
-			f.action("SSH connection sharing", "Foreground authenticated connection; Ctrl-C disconnects", func() error {
-				destination := ""
-				host := false
-				return f.form("SSH sharing", func() []cliui.Action {
-					connect := f.action("Connect", "Keep this foreground connection open while sharing", func() error {
-						return f.foreground("SSH sharing", func(ctx context.Context) error {
-							input, err := prepareSSH(f.cmd.InOrStdin(), f.cmd.ErrOrStderr(), destination, host)
-							if err != nil {
-								return err
-							}
-							return sshInteraction(ctx, input, f.cmd.ErrOrStderr(), f.e, target, "", destination, host)
-						})
-					})
-					if destination == "" {
-						connect.Blocked = "Enter a destination first."
-					}
-					return []cliui.Action{f.text("Destination", &destination, sshshare.Validate), f.toggle("Use host SSH master", &host), connect}
+			f.toggle("Continue previous conversation", &resume),
+			f.value("Harness arguments", fmt.Sprint(harnessArgs), func() error { return f.arguments("Harness arguments", &harnessArgs) }),
+			f.value("Trailing arguments", fmt.Sprint(args), func() error { return f.arguments("Arguments appended last", &args) }),
+			f.submit("Open", "Invocation-only options; nothing saved", func() error {
+				return f.foreground("Open", func(ctx context.Context) error {
+					_, err := f.e.Open(ctx, app.Request{Workspace: target, Continue: resume, HarnessArgs: harnessArgs, Args: args})
+					return err
 				})
 			}),
 		}
+	})
+}
+func (f *frontend) exec(target string) error {
+	executable := ""
+	var args []string
+	return f.form("Execute a command", func() []cliui.Action {
+		run := f.submit("Run command", "", func() error {
+			return f.foreground("Exec", func(ctx context.Context) error {
+				return f.e.Exec(ctx, target, "", append([]string{executable}, args...), false)
+			})
+		})
+		if executable == "" {
+			run.Blocked = "Enter an executable first."
+		}
+		return []cliui.Action{
+			f.text("Executable", &executable, func(value string) error {
+				if value == "" {
+					return fmt.Errorf("enter an executable")
+				}
+				return nil
+			}),
+			f.value("Arguments", fmt.Sprint(args), func() error { return f.arguments("Command arguments", &args) }), run,
+		}
+	})
+}
+func (f *frontend) ssh(target string) error {
+	destination := ""
+	host := false
+	return f.form("SSH sharing", func() []cliui.Action {
+		connect := f.submit("Connect", "Keep this foreground connection open while sharing", func() error {
+			return f.foreground("SSH sharing", func(ctx context.Context) error {
+				input, err := prepareSSH(f.cmd.InOrStdin(), f.cmd.ErrOrStderr(), destination, host)
+				if err != nil {
+					return err
+				}
+				return sshInteraction(ctx, input, f.cmd.ErrOrStderr(), f.e, target, "", destination, host)
+			})
+		})
+		if destination == "" {
+			connect.Blocked = "Enter a destination first."
+		}
+		return []cliui.Action{f.text("Destination", &destination, sshshare.Validate), f.toggle("Use host SSH master", &host), connect}
 	})
 }
 func (f *frontend) transfer(target string) (moved bool, err error) {
@@ -366,14 +377,22 @@ func (f *frontend) chooseDeleteTargets(targets *[]string) error {
 	})
 }
 func (f *frontend) delete(targets []string) error {
-	options := app.DeleteOptions{Selection: app.Selection{Targets: slices.Clone(targets)}}
+	options := app.DeleteOptions{Selection: app.Selection{Targets: slices.Clone(targets)}, Scope: app.DeleteContainer}
 	age := ""
-	scope := app.DeleteContainer
 	bulk := len(targets) == 0
-	return f.form("Delete environments", func() []cliui.Action {
+	title := "Delete sessions"
+	var fields []cliui.Field
+	if len(targets) == 1 {
+		title = "Delete · " + displayCell(targets[0])
+		if record, err := f.e.Store.Read(f.m.Context, targets[0]); err == nil {
+			title = "Delete · " + displayCell(record.Identity.LocalName)
+			fields = []cliui.Field{{Label: "Folder", Value: record.Identity.Workspace}}
+		}
+	}
+	return f.m.Run(func() (cliui.Screen, error) {
 		var actions []cliui.Action
 		if bulk {
-			actions = append(actions, f.action("Choose exact targets", fmt.Sprintf("%d selected", len(options.Selection.Targets)), func() error {
+			actions = append(actions, f.value("Choose exact targets", fmt.Sprintf("%d selected", len(options.Selection.Targets)), func() error {
 				if err := f.chooseDeleteTargets(&options.Selection.Targets); err != nil {
 					return err
 				}
@@ -401,23 +420,34 @@ func (f *frontend) delete(targets []string) error {
 				}))
 			}
 		}
-		actions = append(actions, f.toggle("Force: permit interrupting attached commands", &options.Force), f.action("Preview scope", string(scope), func() error {
-			i, err := f.m.Select("Preview deletion scope", []string{"Container only", "Whole saved environment"}, "Back")
+		scopes := []string{"Container only", "Container and saved data/history"}
+		selected := 0
+		if options.Scope == app.DeleteSession {
+			selected = 1
+		}
+		choice := f.value("Delete", scopes[selected], func() error {
+			i, err := f.m.SelectCurrent("What to delete", scopes, selected, scopes[selected], "Back")
 			if err == nil && i >= 0 {
-				scope = app.DeleteContainer
+				options.Scope = app.DeleteContainer
 				if i == 1 {
-					scope = app.DeleteSession
+					options.Scope = app.DeleteSession
 				}
 			}
 			return err
-		}))
+		})
+		forceValue := "Off"
+		if options.Force {
+			forceValue = "On"
+		}
+		force := f.value("Force", forceValue, func() error { options.Force = !options.Force; return nil })
+		force.Description = "Allow interrupting attached commands; saved data still requires idle sessions"
+		actions = append(actions, choice, force)
 		blocked := ""
 		if len(options.Selection.Targets) == 0 && !options.Selection.All && !options.Selection.Stopped && !options.Orphaned && options.OlderThan == 0 {
 			blocked = "Select exact targets or at least one filter."
 		}
-		preview := f.action("Preview deletion", "Read-only; execution rechecks the selection while locked", func() error {
+		preview := f.action("Preview deletion", "Review what will be removed", func() error {
 			q := options
-			q.Scope = scope
 			q.DryRun = true
 			result, err := f.e.Delete(f.m.Context, q)
 			if err != nil {
@@ -426,11 +456,10 @@ func (f *frontend) delete(targets []string) error {
 			return f.m.View("Deletion preview", func(out io.Writer) error { return printDeleteResult(out, result) })
 		})
 		preview.Blocked = blocked
-		execute := cliui.Action{Label: "Delete…", Description: "Confirm containers and saved data separately", Run: func() (bool, error) {
+		execute := cliui.Action{Label: "Delete…", Run: func() (bool, error) {
 			var result app.DeleteResult
-			err := f.foreground("Delete environments", func(ctx context.Context) error {
+			err := f.foreground(title, func(ctx context.Context) error {
 				q := options
-				q.Scope = ""
 				confirmation := deletionConfirmation{ui: f.m.Runner, singleTarget: len(q.Selection.Targets) == 1}
 				q.Confirm = confirmation.confirm
 				var err error
@@ -447,6 +476,7 @@ func (f *frontend) delete(targets []string) error {
 		}}
 		execute.Danger = true
 		execute.Blocked = blocked
-		return append(actions, preview, execute)
+		preview.BreakBefore = true
+		return cliui.Screen{Title: title, Fields: fields, Back: "Back", Actions: append(actions, preview, execute)}, nil
 	})
 }

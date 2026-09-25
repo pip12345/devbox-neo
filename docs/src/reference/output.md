@@ -2,94 +2,115 @@
 
 ## Interactive menus
 
-Full-terminal menus use a persistent alternate screen with keyboard navigation, filtering, scrollable context, and a single-pane layout on narrower terminals. Use arrows or `j`/`k`, **Enter**, **Esc** (or `q`) to go back, `/` to filter, and **Page Up/Down** for details. The left pane contains objects, not commands. **Enter** opens the selected object's menu/editor on the right; **Right/Left** moves between browsing and application actions. Structured details distinguish labels, values, status, and warnings. **Tab** switches the top Sessions/Configs tabs while browsing, not inside nested forms; `n` creates, `r` refreshes, and `a` opens all-session operations in the session browser. **Ctrl-C** exits menus. Text fields use **Esc** to cancel; literal `:back` is accepted as text in the native UI. Confirmations default to **No** and require **Enter**. `NO_COLOR` removes color without removing state markers. Redirected/dumb-terminal prompts remain plain and numbered, with `:back` cancelling text entry. Bare root/config commands show help when a full terminal is unavailable.
+| Key | Action |
+|---|---|
+| Up/Down or `j`/`k` | Move through the list |
+| Enter | Open the selected menu, edit a field, or run an action |
+| Esc or `q` | Go back; first clears an active filter |
+| Left/Right | Switch between browser objects and application actions |
+| Tab | Switch Sessions/Configs while browsing |
+| `/` | Filter the current list |
+| Page Up/Down | Scroll details |
+| `n`, `r`, `a` | Create, Refresh, All-session operations in the browser |
+| Ctrl-C | Exit menus; interrupt a foreground operation without closing the browser |
 
-Foreground operations own the normal terminal until they finish. Results and warnings remain visible until you acknowledge them; then menus resume. During a foreground operation, **Ctrl-C** cancels that operation rather than the browser; **SIGTERM** cancels the whole command. **Cancel** abandons the current pending creation choices; **Back** navigates; **Exit** leaves completed edits saved. Nested config setup and failed browser builds preserve the parent session draft. The session menu offers Make folder default or Clear folder default directly; the `*` marker updates after saving. Configs already created remain saved independently of that draft. Read-only menu views wait for **Back** before returning to their parent. The `edit <folder>` overview and default picker share their folder header, session-row positions, status labels, and `*` default marker, including for stopped sessions. The picker changes the instruction to **Select the folder default**. Saved defaults update the header and marker without inserting a notice above the list. The shell screen returns on exit. After changes to a session's selected configs, a receipt lists exact `status` commands; after config directory edits, it suggests bare `status` for all environments. No receipt appears if nothing was saved.
+Text fields use Esc to cancel; `q` and `:back` are literal text there. Confirmations start on **No** and require Enter. SIGTERM cancels the whole command.
+
+Successful operation forms close; failed forms keep their inputs. Completed edits stay saved when you leave. Configs already created remain saved if you cancel a session draft.
+
+Session rows and previews show relative **Last active**, not exclusively last opened. `*` marks the folder default. Narrow layouts show the active pane or put activity beneath the name.
+
+Without full terminal input/output, bare browsers show help. Other redirected/dumb-terminal prompts use numbered choices: `0`/`q` goes back and `:back` cancels text entry.
 
 ## Environment listings
 
-`list` shows one table with each session's local `NAME` and `FOLDER` path. `list <folder>` shows that folder's path as a heading and uses the same local names without a `FOLDER` column. Tables also contain `NAME`, `DEFAULT`, `HARNESS`, `LAST ACTIVE`, `CONTAINER`, `LIFETIME`, and ordered `CONFIGS`. `LIFETIME` shows the saved intent—`automatic` or `until stop`—independently of whether the container is currently running. `--wide` adds `FULL NAME` (the exact session/container name), the last action, and exact UTC activity/creation timestamps. Records without a local name retain their full name for diagnosis.
+| Column / marker | Meaning |
+|---|---|
+| NAME | Folder-local session name |
+| FOLDER | Workspace; global list only |
+| DEFAULT `*` | Selected folder default |
+| HARNESS | Recorded coding tool |
+| LAST ACTIVE | Recorded Devbox activity, not filesystem activity |
+| CONTAINER | Running, stopped, or missing; `!` indicates an error, `*` a pending transfer |
+| LIFETIME | `automatic` or `until stop`, independent of current state |
+| CONFIGS | Selected configs, in order |
+| FULL NAME (`--wide`) | Exact session/container identifier |
 
-- `--sort folder` is the default and orders folder paths, then names within a folder; unknown paths sort first.
-- `--sort name` orders full session names.
-- `--sort last-active` is newest first across all folders, then name; unknown activity sorts last.
-- `*` in `DEFAULT` marks the selected session. In `CONTAINER`, `!` marks an error and `*` marks a pending transfer.
-- Stopped/missing rows are dimmed; default markers remain prominent and diagnostics readable. Sorting applies to the whole table.
+Wide output also includes last action and exact UTC timestamps. `--sort folder` orders folders then names; `name` orders full names; `last-active` is newest first. Sorting applies to the whole command-line table.
 
-Both `list` and bare `status` report installation-managed containers without session records separately. Corrupt records remain session rows with diagnostics. Listings do not adopt, delete, or repair resources.
+Missing containers remain listed. Corrupt records show diagnostics; managed containers without records are reported separately.
 
 ## Status classifications
 
-Container state and configuration health are independent. A missing container is not automatically a configuration error.
-
-| Change | Meaning |
+| Result | Meaning |
 |---|---|
-| `No changes` | Compared local inputs match |
-| `Runtime changes` | Launch, hook, docs, or managed-file inputs changed |
-| `Recreate needed` | Container inputs changed |
-| `Rebuild + recreate needed` | Image inputs changed; ordinary recreate builds them |
-| `Cannot check` | Invalid config/record, ownership mismatch, pending transfer, or another diagnostic prevents comparison |
+| No changes | Compared local inputs match |
+| Runtime changes | Launch settings, hooks, docs, or managed files changed |
+| Recreate needed | Container settings changed |
+| Rebuild + recreate needed | Image inputs changed; Recreate also builds |
+| Cannot check | A config/state problem prevents comparison |
 
-Single-target status displays the exact session/container name and includes saved session ID, harness, image, active-command count, and detailed reasons. It notes that pending managed-file changes apply on container restart and gives a recreation command for image/container changes. Bare `status` shows `NAME`, `CONTAINER`, and `CHANGE`, with reasons beneath affected rows. Local file/settings comparisons do not detect newer upstream releases.
-
-`open` prints image/container change reasons before startup and continues with recorded creation settings. Runtime-only changes are not presented as reasons to recreate.
+Status compares local inputs, not available upstream releases. A missing container and invalid configuration are separate conditions. Single-session status shows detailed reasons and relevant next commands.
 
 ## Inventory and status JSON
 
 | Command | Shape |
 |---|---|
-| `list --json` | Object with `sessions` and `unmatched_containers` arrays |
-| `status --json` | Same inventory shape, enriched with desired-change diagnostics |
-| `status <folder\|session> --json` | One status object, plus `record` and `active` details |
+| `list --json` | `sessions` and `unmatched_containers` arrays |
+| `status --json` | Same inventory shape, with change diagnostics |
+| `status <target> --json` | One status object, plus `record` and `active` details |
 
-Bulk arrays are present even when empty. Optional `default_errors` maps workspaces to default-state diagnostics without hiding sessions. Rows retain the full session/container identifier in `name` and include `local_name`, `default`, `manual_start` (the lifetime choice), and desired `sources`. Both bulk and single-target `default` flags match the saved name and durable ID. Single-target status adds `default_error` when default state cannot be read, without hiding explicitly selected session details. List session order follows `--sort`. Status fields include `desired_change`, `pending_input_changes`, `config_error`, `error`, and `pending_transfer` where applicable. Bulk rows omit full records and leases.
+| Common field | Meaning |
+|---|---|
+| `name`, `local_name` | Full and local session names |
+| `default` | Matches the saved folder default |
+| `manual_start` | Keep-running intent |
+| `sources` | Desired config references |
+| `desired_change`, `pending_input_changes` | Configuration differences |
+| `config_error`, `error` | Available diagnostics |
+| `pending_transfer` | Reserved transfer endpoint information |
+| `default_errors` | Bulk map of folder-default errors |
+| `default_error` | Single-session default error |
 
-An exact pending-transfer endpoint remains inspectable without a session record: `record` is omitted and `active` is empty. Pending transfers skip desired-config comparison. Per-row diagnostics do not fail bulk status; unavailable inventory/Docker does.
+Bulk arrays are present when empty. Bulk rows omit full records and leases. Pending endpoints without a record remain inspectable; `record` is omitted and `active` is empty. Per-row errors do not fail bulk status, but unavailable inventory/Docker does.
 
 ### Input-change entries
 
-Each `pending_input_changes` entry contains `scope`, `code`, and `field`, with optional `key`, `path`, `before`, and `after`.
+Entries contain `scope`, `code`, and `field`; optional fields are `key`, `path`, `before`, and `after`.
 
-| Field | Values |
-|---|---|
-| `scope` | `image`, `container`, `runtime` |
-| `code` | `value_changed`, `input_changed`, `entry_added`, `entry_removed`, `order_changed`, `file_added`, `file_removed`, `file_content_changed`, `file_kind_changed`, `file_mode_changed` |
+- Scope: `image`, `container`, `runtime`.
+- Code: `value_changed`, `input_changed`, `entry_added`, `entry_removed`, `order_changed`, `file_added`, `file_removed`, `file_content_changed`, `file_kind_changed`, `file_mode_changed`.
 
-Public scalar changes may show before/after values. Environment changes show variable names, never values or hashes. File contents are not printed.
+Public values may appear before/after. Env changes show variable names, never values or hashes. File contents are not printed.
 
 ## Configuration output
 
-`edit <full-name> --show` (or a folder with `--name`) reports combined settings, participating sources, ordered artifacts, and harness origin. Lists show per-entry sources; nested fields use dotted names such as `vscode.extensions`. Human output wraps at up to 80 columns or the narrower terminal width.
+`edit <target> --show` reports combined settings and contributing configs; folder targets need `--name`. Lists retain per-entry provenance in `trace.entry_sources`. JSON preserves value types; env values are redacted.
 
-JSON preserves structured values. `trace.entry_sources` gives layer names in resolved-list order, including duplicates. Env values are redacted; variable references are reported separately. A sparse configuration can be inspected before selecting a harness.
-
-Directory menus show only their own settings over built-in defaults, using generic source labels. Combined configuration is read-only. Selected config lists and copy results show ordered labels and resolved paths without a type column; the picker shows reference type while selecting. Selected choices have a current-selection summary and readable current-selection markers or checkmarks; color is not required to identify them.
+Directory editors show one config over built-in defaults. Combined configuration is read-only. Save receipts point to Status; saving a config does not itself apply container changes.
 
 ## Deletion results
 
-Session deletion JSON contains `containers`, `sessions`, `retained_sessions`, `dry_run`, and `cancelled`. Explicit `--container` or `--session` scope is required with `--json`. `config delete <name> --force --json` returns the deleted config directory in `path` and `deleted`; `--force` only skips the confirmation prompt. If saved sessions block deletion, the error's `next_steps` names every known user once with a `status` command. A partial inventory blocks deletion and adds an inventory-inspection step.
+Session deletion JSON contains `containers`, `sessions`, `retained_sessions`, `dry_run`, and `cancelled`. Use explicit `--container` or `--session` with `--json`.
+
+`config delete <name> --force --json` returns `path` and `deleted`. Blocked deletion reports known users in `next_steps`; incomplete usage information remains an error.
 
 ## Errors and next steps
 
-Human failures go to stderr with a short `Error:` message, optional `Target:` context, and labeled next commands. Suggestions never execute automatically. `Then` marks a sequence; `Or` marks an alternative.
+Human errors go to stderr with an explanation, target, and suggested commands. Suggestions never execute automatically. **Then** means a sequence; **Or** means an alternative.
 
-Commands supporting `--json` emit one error object on stdout and exit nonzero:
+JSON-capable commands emit an error object on stdout and exit nonzero:
 
 | Field | Meaning |
 |---|---|
-| `error` | Stable error code |
-| `message` | Safe human-readable explanation |
-| `operation` | Failed operation |
-| `target` | Target when known |
-| `next_steps` | Suggested commands as structured argv and reasons |
-| `related_errors` | Additional joined failures |
+| `error` | Error code |
+| `message` | Safe explanation |
+| `operation`, `target` | Failed operation and known target |
+| `next_steps` | Commands as argv plus reasons |
+| `related_errors` | Additional failures |
 
-Common codes include `invalid_configuration`, `configuration_unavailable`, `harness_required`, `config_missing`, `config_exists`, `config_in_use`, `config_usage_unknown`, `session_missing`, `session_exists`, `sessions_missing`, `default_missing`, `default_unavailable`, `sources_changed`, `session_changed`, `container_missing`, `session_busy`, `ownership_mismatch`, `container_mismatch`, `managed_config_conflict`, `recovery_unavailable`, `pending_transfer`, `transfer_failed`, and `docker_unavailable`.
-
-Child output is passed through. `open`, `shell`, `exec`, and `ssh` do not provide JSON wrappers. Child/Docker exit status is preserved even if cleanup also fails; cancellation and deadlines remain nonzero. Flag errors do not echo rejected values.
-
-Suggested commands retain an explicit `--home` and exact known targets. Generic creation hints use `create <folder>` with normal configuration selection rather than replaying invocation flags. Missing-environment hints preserve the folder spelling you entered. Transfer retries retain recorded endpoint selectors.
+Open, Shell, Exec, and SSH pass child output through without JSON wrappers. Child/Docker exit status is preserved; cancellation and deadlines are nonzero. Suggested commands retain an explicit home and exact transfer targets.
 
 ## Color
 
-Human styling is disabled for non-terminal output, `NO_COLOR`, or `TERM=dumb`. This does not change input rules or JSON structure.
+`NO_COLOR`, redirected output, or `TERM=dumb` disables human styling. State markers and JSON structure remain available without color.

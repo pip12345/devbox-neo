@@ -27,8 +27,9 @@ build-migrate:
 docs-build:
 	docker run --rm --user "$$(id -u):$$(id -g)" -v "$(CURDIR):/docs" $(DOCS_IMAGE) build
 docs-serve:
-	docker run --rm --user "$$(id -u):$$(id -g)" -v "$(CURDIR):/docs" \
-		-p 127.0.0.1:3000:8000 $(DOCS_IMAGE) serve --dev-addr 0.0.0.0:8000
+	@printf 'Open docs in your browser: http://localhost:3000\n'
+	@docker run --rm --user "$$(id -u):$$(id -g)" -v "$(CURDIR):/docs" \
+		-p 127.0.0.1:3000:3000 $(DOCS_IMAGE) serve --dev-addr 0.0.0.0:3000
 check: fmt test test-race build
 tidy:
 	$(GO) mod tidy

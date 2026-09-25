@@ -53,14 +53,14 @@ func TestConfigBrowserCreatesWithoutDockerOrSelectingSession(t *testing.T) {
 	}
 }
 func TestSessionBrowserDispatchesRealLifetimeOperations(t *testing.T) {
-	input := &workflowInput{lines: []string{"6\n", "1\n", "2\n", "2\n", "0\n", "0\n", "0\n"}}
+	input := &workflowInput{lines: []string{"6\n", "7\n", "2\n", "0\n"}}
 	f, out, _, name := frontendFixture(t, input)
 	input.before = func(step int) {
-		if step != 2 && step != 4 {
+		if step != 1 && step != 3 {
 			return
 		}
 		r, err := f.e.Store.Read(context.Background(), name)
-		if err != nil || r.ManualStart != (step == 2) {
+		if err != nil || r.ManualStart != (step == 1) {
 			t.Fatal("UI did not persist actual lifetime intent", step, r.ManualStart, err)
 		}
 	}
@@ -113,7 +113,7 @@ func TestFrontendCopyAndMoveUseDurableTransfer(t *testing.T) {
 	}
 }
 func TestFrontendDeletionRetainsHistoryWhenDeclined(t *testing.T) {
-	f, out, _, name := frontendFixture(t, strings.NewReader("4\ny\nn\n"))
+	f, out, _, name := frontendFixture(t, strings.NewReader("1\n2\n4\ny\nn\n"))
 	before, err := f.e.Store.Read(context.Background(), name)
 	if err != nil {
 		t.Fatal(err)

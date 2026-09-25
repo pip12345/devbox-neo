@@ -1,27 +1,23 @@
-# Devbox
+# Devbox Neo
 
-Devbox runs coding harnesses such as Pi, OpenCode, and Claude Code alongside your development tools in a Docker container, with your project folder mounted inside. You can leave and return to the same environment, reuse settings across projects, and rebuild the container without losing saved conversation history.
+Run your coding tool and development tools in Docker, with your project mounted inside. A saved **session** lets you return to that environment and keep its harness history when you rebuild the container.
 
-## Learn to use Devbox
+## Learn
 
-Start with the basics, then add what your work needs:
+Follow the basics, then choose what you need:
 
-1. [Getting started](guides/getting-started.md) — create an environment and launch your harness.
-2. [Everyday use](guides/everyday-use.md) — return to work, open a shell, and run commands.
-3. [Choose configs for a session](guides/configuration.md) — share settings and choose each session's configuration.
-4. [Customize your environment](guides/customization.md) — add tools, harness configuration, and startup scripts.
-5. [Networking](guides/networking.md) — expose a development server and connect to other services.
-6. [Share SSH access](guides/ssh.md) — authenticate once and let your agent use the connection.
-7. [Manage environments](guides/managing-environments.md) — apply changes, copy saved state, and clean up.
+1. [Getting started](guides/getting-started.md) — create and open your first session.
+2. [Everyday use](guides/everyday-use.md) — resume work, use a shell, and select a default.
+3. [Configs](guides/configuration.md) — reuse and change settings.
+4. [Customization](guides/customization.md) — install tools and add scripts.
+5. [Networking](guides/networking.md) — reach your dev server and other services.
+6. [SSH sharing](guides/ssh.md) — let the agent use a connection you authenticate.
+7. [Manage environments](guides/managing-environments.md) — recreate, copy, recover, and delete.
 
-## Look something up
+## Look up
 
-- [Commands](reference/commands.md)
-- [Configuration](reference/configuration.md)
-- [Harness definitions](reference/harnesses.md)
-- [State and sessions](reference/state-and-sessions.md)
-- [Output and errors](reference/output.md)
+[Commands](reference/commands.md) · [Configuration](reference/configuration.md) · [Harnesses](reference/harnesses.md) · [Persistence](reference/state-and-sessions.md) · [Output and errors](reference/output.md)
 
-## Understand the implementation
+## Contribute
 
-[Architecture](architecture/runtime.md) covers the component layout, lifecycle, configuration pipeline, persistent state, and SSH connection management.
+[Architecture](architecture/runtime.md) explains the implementation. User workflows start in the guides above.

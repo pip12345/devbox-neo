@@ -2,6 +2,19 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). The migration utility remains separate from runtime loading; adapting its destination model to named sessions and explicit configs is also approved.
 
+## Documentation reset — complete
+
+- Rewrote the full repository agent guide as a short development contract and reading map. Reduced the installed agent guide to container boundaries, persistence, tools, managed files, network/SSH entry points, and on-demand docs links. Pi/OpenCode skills now point to that guide without repeating it; Claude keeps its one-line import.
+- Reassessed every published page. Rewrote README, the docs index, all seven guides, and all five reference pages. Guides follow a progressive task sequence; reference keeps command/field lookup without duplicating walkthroughs. Contributor detail remains in architecture, with terminal ownership moved out of the overview into its own page.
+- Corrected the obsolete `create --port` example, aligned navigation labels, and checked local file/heading links. Pinned Zensical site build succeeds in strict mode. `make test-fast` passes, including embedded documentation targets. Local file and heading links pass across all 21 published/contributor-entry pages.
+
+## Session operations and deletion UX — implemented, host/live acceptance pending
+
+- Checkpoint `dc90780` preserves the first object-based frontend. This follow-up removes category menus in favor of direct session operations, returns successful one-shot forms to their parent, and refreshes shared navigation after both successful and failed foreground work. Failed forms keep their inputs.
+- Session rows and previews use relative Last active times; the default marker remains without a duplicate session detail. Narrow panes place activity beneath the name.
+- Deletion names the target and displays scope/Force inline. Preview and execution use the same scope. The existing service now combines explicit scope and optional per-phase confirmation without releasing its operation-lock set; direct CLI flags and all deletion safeguards remain intact.
+- Validation passes: `make test-fast`, race tests for app/cliui/cli/migrator, both builds, and `git diff --check`. Tests cover scoped confirmation/retention/preflight/locks, direct actions, nested snapshot refresh, relative activity layout, and PTY recreation success/partial failure. Rendered session-browser, direct-menu, and deletion-scope captures were inspected. Live Docker/harness/SSH and manual host-terminal acceptance remain unrun.
+
 ## Real Bubble Tea frontend — implemented, host/live acceptance pending
 
 - Host review rejected the first generic action-list presentation. The revised browser separates folder/session/config objects from application actions, previews structured details, and opens object-specific menus with Enter. Navigation snapshots retain the left collection; stable keys preserve selection across refreshes. Top tabs own the Tab hint, shortcuts appear only beside their options, and the UI uses Devbox Neo branding without slogans or background rectangles.

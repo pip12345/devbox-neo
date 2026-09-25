@@ -31,7 +31,10 @@ type DeleteOptions struct {
 	OlderThan time.Duration
 	Force     bool
 	DryRun    bool
-	Confirm   func(DeletePrompt) (bool, error)
+	// Confirm asks about each destructive phase within Scope while locks remain
+	// held. A nil callback with an explicit scope is non-interactive; dry runs
+	// never confirm. An empty scope retains the interactive two-stage choice.
+	Confirm func(DeletePrompt) (bool, error)
 }
 
 type DeleteResult struct {
@@ -158,7 +161,7 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (DeleteResul
 			return result, err
 		}
 	}
-	if options.Scope == "" && len(containers) > 0 {
+	if options.Confirm != nil && !options.DryRun && len(containers) > 0 {
 		ok, err := options.Confirm(DeletePrompt{Containers: containers})
 		if err != nil {
 			return result, err
@@ -175,7 +178,7 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (DeleteResul
 	if err != nil {
 		return result, err
 	}
-	if options.Scope == "" && len(sessionLocks) > 0 {
+	if options.Confirm != nil && !options.DryRun && options.Scope != DeleteContainer && len(sessionLocks) > 0 {
 		include, err = options.Confirm(DeletePrompt{Sessions: result.Retained})
 		if err != nil {
 			return result, err

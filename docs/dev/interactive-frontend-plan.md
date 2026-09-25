@@ -16,18 +16,19 @@ The header uses **Devbox Neo**, with Sessions/Configs tabs and the Tab hint besi
 - Tab switches collections while browsing, not while filling a form or using a nested editor.
 - Narrow terminals show the active pane. Filtering, scrolling, and all operations remain available by keyboard.
 
-Details use aligned muted labels, emphasized values, colored status, ordered config entries, and distinct warnings. Full container identity remains available as a secondary detail. Do not repeat Home/Version in every object's details. Use consistent terminal backgrounds; only a focused row needs a selection background.
+Details use aligned muted labels, emphasized values, colored status, ordered config entries, and distinct warnings. Session rows and previews show relative Last active times from recorded activity, not a separate last-opened field. Keep the default marker beside the name; omit the redundant Default detail. Session action menus use a compact folder/harness/container summary to leave room for operations. Full container identity remains available as a secondary detail. Do not repeat Home/Version in every object's details. Use consistent terminal backgrounds; only a focused row needs a selection background.
 
 ## Sessions and folder defaults
 
 Enter on a session opens its menu, with Open focused:
 
 - Open, Continue, Shell, Status, and Edit selected configs.
-- Container actions: Start, Stop, Recreate, Logs, Networks.
-- Copy or move.
-- Exec, SSH and launch arguments.
+- Start, Stop, Recreate, Logs, Networks.
+- Exec, SSH, Open with options, and Copy or move.
 - **Make folder default**, replaced by **Clear folder default** when this session is the default.
 - Delete.
+
+These are direct menu entries, separated visually rather than hidden behind category menus. Forms collect actual inputs or confirmations.
 
 Setting a default already has an exact session and folder target. It needs no second picker. Clear belongs at the same menu level. After either operation, refresh the marker and details immediately; preserve the current keyboard location. Selecting a session by itself never changes defaults.
 
@@ -66,13 +67,13 @@ Direct `create <folder>` keeps its explicit target, streamed build, receipt, and
 
 Application actions include creation, Refresh, Help/completion scripts, and all-session operations. Bulk status, recreate-all, and deletion remain distinct from single-session actions. Sort changes sessions within their folder groups; direct `list --sort` keeps its whole-table semantics.
 
-Forms collect only the missing arguments for an operation. Exact argv editing includes empty/control-character arguments without implicit shell parsing. Copy/move previews endpoints before confirmation; pending transfers pin their recorded endpoints/mode. Deletion preserves the existing two stages and explicit force rules.
+Forms collect only the missing arguments for an operation. Exact argv editing includes empty/control-character arguments without implicit shell parsing. Copy/move previews endpoints before confirmation; pending transfers pin their recorded endpoints/mode. Deletion names the selected session and folder (or uses a bulk title), and displays Delete and Force values inline. Both preview and execution consume the same scope: Container only or Container and saved data/history. A scoped confirmation callback runs inside the service's existing operation-lock set. Whole-session deletion retains separate default-no questions for container and saved-data removal; container-only never asks about or deletes saved data. Existing force, ownership, transfer, preflight, and idle checks remain in force.
 
 ## Terminal ownership
 
 One command-scoped Bubble Tea program owns menu input and rendering. Synchronous workflow functions own navigation and call existing application/resource/store services. Object collections, action lists, and structured detail fields are explicit presentation data, not a combined generic command list. Screen snapshots passed to the UI contain no domain handlers.
 
-Nested functions share the runner. Navigation snapshots keep the parent collection visible; they do not introduce a router, domain event bus, or second inventory owner. Inventory is refreshed on entry/actions or explicit Refresh, not in a background loop.
+Nested functions share the runner. Navigation snapshots keep the parent collection visible; they do not introduce a router, domain event bus, or second inventory owner. Inventory is refreshed on entry, after foreground operations, or explicit Refresh, not in a background loop. Update the shared workflow navigation frame after both successful and failed operations; a failure may still have changed resources. Immutable presented snapshots remain separate. Nested menus cannot restore an older sidebar when returning to their parent. Report refresh failure separately from the operation outcome. Successful one-shot forms return to the session menu; failed forms retain their inputs.
 
 `Pause` releases both renderer and input reader before foreground programs, streaming output, confirmations' audit output, and acknowledgements. Restore terminal flags before reviewing an operation's result, then return to the same menu. Foreground Ctrl-C cancels the operation rather than the browser; menu Ctrl-C and SIGTERM cancel the command. Confirmation starts on No.
 

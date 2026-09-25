@@ -15,6 +15,7 @@ func TestDeleteSeparatesConfirmationAndSavedData(t *testing.T) {
 		name                       string
 		include, missing, dryRun   bool
 		answers                    []bool
+		scope                      DeleteScope
 		containerGone, sessionGone bool
 		prompts                    int
 	}{
@@ -23,7 +24,14 @@ func TestDeleteSeparatesConfirmationAndSavedData(t *testing.T) {
 		{name: "decline container", answers: []bool{false}, prompts: 1},
 		{name: "keep session", answers: []bool{true, false}, containerGone: true, prompts: 2},
 		{name: "delete both", answers: []bool{true, true}, containerGone: true, sessionGone: true, prompts: 2},
-		{name: "explicit scope skips prompts", include: true, answers: []bool{false}, containerGone: true, sessionGone: true},
+		{name: "scoped whole confirms", scope: DeleteSession, answers: []bool{true, true}, prompts: 2, containerGone: true, sessionGone: true},
+		{name: "scoped container confirms only container", scope: DeleteContainer, answers: []bool{true}, prompts: 1, containerGone: true},
+		{name: "scoped container declined", scope: DeleteContainer, answers: []bool{false}, prompts: 1},
+		{name: "scoped whole container declined", scope: DeleteSession, answers: []bool{false}, prompts: 1},
+		{name: "scoped whole history declined", scope: DeleteSession, answers: []bool{true, false}, prompts: 2, containerGone: true},
+		{name: "scoped whole missing container", scope: DeleteSession, missing: true, answers: []bool{true}, prompts: 1, containerGone: true, sessionGone: true},
+		{name: "scoped container missing", scope: DeleteContainer, missing: true, answers: []bool{}, containerGone: true},
+		{name: "scoped dry run never confirms", scope: DeleteSession, dryRun: true, answers: []bool{}},
 		{name: "missing container prompt", missing: true, answers: []bool{true}, containerGone: true, sessionGone: true, prompts: 1},
 		{name: "missing container default", missing: true, containerGone: true},
 		{name: "missing container explicit", missing: true, include: true, containerGone: true, sessionGone: true},
@@ -48,6 +56,9 @@ func TestDeleteSeparatesConfirmationAndSavedData(t *testing.T) {
 			}
 			if tc.include {
 				options.Scope = DeleteSession
+			}
+			if tc.scope != "" {
+				options.Scope = tc.scope
 			}
 			prompts := []DeletePrompt{}
 			if tc.answers != nil {
@@ -130,16 +141,23 @@ func TestDeleteForceNeverImpliesSavedDataDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	lock.Close()
-	options := DeleteOptions{Selection: Selection{Targets: []string{created.Name}}, Force: true, Scope: DeleteSession}
+	prompts := 0
+	options := DeleteOptions{Selection: Selection{Targets: []string{created.Name}}, Force: true, Scope: DeleteSession, Confirm: func(p DeletePrompt) (bool, error) {
+		prompts++
+		if len(p.Sessions) > 0 {
+			t.Fatal("container scope asked about saved state")
+		}
+		return true, nil
+	}}
 	if _, err := e.Delete(ctx, options); err == nil {
 		t.Fatal("force bypassed saved-state idle protection")
 	}
-	if _, exists := d.Snapshot(created.Name); !exists {
-		t.Fatal("explicit deletion mutated before saved-state preflight")
+	if _, exists := d.Snapshot(created.Name); !exists || prompts != 0 {
+		t.Fatal("explicit deletion mutated or confirmed before saved-state preflight")
 	}
 	options.Scope = DeleteContainer
 	result, err := e.Delete(ctx, options)
-	if err != nil || len(result.Containers) != 1 || len(result.Sessions) != 0 {
+	if err != nil || len(result.Containers) != 1 || len(result.Sessions) != 0 || prompts != 1 {
 		t.Fatal(result, err)
 	}
 	if _, err := e.Store.Read(ctx, created.Name); err != nil {
@@ -203,29 +221,33 @@ func TestDeleteCancellationAfterContainerKeepsSession(t *testing.T) {
 }
 
 func TestDeleteKeepsEndpointLockAcrossBothPrompts(t *testing.T) {
-	e, _, q := fixture(t)
-	ctx := context.Background()
-	created, err := e.Create(ctx, q)
-	if err != nil {
-		t.Fatal(err)
-	}
-	calls := 0
-	_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.Name}}, Confirm: func(DeletePrompt) (bool, error) {
-		calls++
-		attempt, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
-		defer cancel()
-		lock, err := e.Store.Lock(attempt, created.Name)
-		if err == nil {
-			lock.Close()
-			t.Fatal("another operation acquired the endpoint during confirmation")
-		}
-		if !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatal(err)
-		}
-		return true, nil
-	}})
-	if err != nil || calls != 2 {
-		t.Fatal(calls, err)
+	for _, scope := range []DeleteScope{"", DeleteSession} {
+		t.Run(string(scope), func(t *testing.T) {
+			e, _, q := fixture(t)
+			ctx := context.Background()
+			created, err := e.Create(ctx, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.Name}}, Scope: scope, Confirm: func(DeletePrompt) (bool, error) {
+				calls++
+				attempt, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
+				defer cancel()
+				lock, err := e.Store.Lock(attempt, created.Name)
+				if err == nil {
+					lock.Close()
+					t.Fatal("another operation acquired the endpoint during confirmation")
+				}
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatal(err)
+				}
+				return true, nil
+			}})
+			if err != nil || calls != 2 {
+				t.Fatal(calls, err)
+			}
+		})
 	}
 }
 

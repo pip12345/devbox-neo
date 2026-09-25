@@ -1,18 +1,12 @@
 # Customize your environment
 
-Start with a [config directory](configuration.md), then add only the files you need. These examples customize the shared `base` config. For workspace-specific customization, edit a directory such as `./devconfig` and select it in the session's config list.
+Open `devbox-neo config edit base` and choose **Add optional files**. Add only what you need; existing files are kept.
+
+These examples change the shared `base` config. Use a [project config](configuration.md#add-settings-for-one-project) when the customization belongs to one workspace.
 
 ## Add tools
 
-For a quick experiment, open a shell and install a tool inside the container. That installation survives stop/start, but not recreation.
-
-For tools you want every time, open the config editor:
-
-```sh
-devbox-neo config edit base
-```
-
-Choose **Add optional files**, toggle **Dockerfile**, then **Continue**. Edit `~/.devbox-neo/configs/base/Dockerfile`, for example:
+For a quick experiment, install a tool from **Shell**. For an installation that survives recreation, add **Dockerfile**, choose **Continue**, and edit `~/.devbox-neo/configs/base/Dockerfile`:
 
 ```dockerfile
 ARG DEVBOX_BASE
@@ -23,40 +17,28 @@ RUN sudo apt-get update \
     && sudo rm -rf /var/lib/apt/lists/*
 ```
 
-Your Dockerfile runs as the development user. Use sudo for system packages; install user tools without it. Common tools such as Bash, Git, curl, Vim, jq, zip, and unzip are already included. Devbox installs the selected harness afterward.
+Keep `FROM ${DEVBOX_BASE}` so your image extends Devbox's prepared environment. Use `sudo` for system packages and normal user permissions for user tools.
 
-Keep `FROM ${DEVBOX_BASE}`. Choose another upstream image through the config's **Base image** setting; see [base-image requirements](../reference/configuration.md#image-inputs).
+Choose **Recreate** in the session menu to apply the Dockerfile. **Container-local changes will be lost.**
 
-Apply the change to the workspace's default session:
+For alternate base images, build contexts, and ignore files, see [image inputs](../reference/configuration.md#image-inputs).
 
-```sh
-devbox-neo recreate .
-```
+## Configure the harness
 
-Use `--name NAME` to address another session. Dockerfiles build in the session's config order, each extending the previous image. Each Dockerfile's directory is its own build context. Add a `.dockerignore` to exclude unrelated files from that context.
+Add **Harness config files**, choose the harness, and continue. Edit the generated directory under `~/.devbox-neo/configs/base/`: `pi/`, `opencode/`, or `claude/`.
 
-## Configure your harness
+For example, Pi's provider definitions go in `pi/models.json` and its skills under `pi/skills/`. Use the harness's documentation for file formats.
 
-In `config edit base`, choose **Add optional files**, then **Harness config files**. Choose which harness's files to add and continue. Existing files are kept; this choice does not change the config's Harness setting.
+These files synchronize when the container next starts. Finish attached commands before stopping a kept-running container to apply them. **Edit the host config directory for lasting changes**—Devbox overwrites its managed copies inside the container.
 
-Edit the generated files under `~/.devbox-neo/configs/base/pi/` or `opencode/`. For example, Pi provider definitions belong in `pi/models.json`, and custom skills belong under `pi/skills/`. Use the harness's own documentation for their format.
+## Prepare the workspace
 
-Managed-file changes apply when the container next starts. In an automatic environment, the container stops when the last attached command exits; the next `open .` starts it and synchronizes the files. If you used `start .` to keep it running, finish attached commands, then `stop .` and `start .` to restart it. Devbox does not synchronize files when you attach to a container that is already running.
+Add **setup.sh** for tasks needing the mounted project, such as installing dependencies. It runs during container creation and recreation. Changes to this script require recreation; keep reusable tool installation in the Dockerfile instead.
 
-**Edit the config directory for lasting changes.** Ordinary managed files inside the container are overwritten at the next synchronization. Shared JSON preserves keys outside Devbox's ownership; unmanaged files and conversations remain untouched.
+## Run something before each launch
 
-Only regular files are copied from harness config trees. If dependency symlinks were skipped, install those dependencies inside the container instead.
+Add **before-open.sh** for work needed before every harness launch. It runs inside `/workspace`; keep it quick.
 
-## Run setup once per container
+Both script types run in config order. A failure stops the chain, but does not undo completed work. See [artifacts](../reference/configuration.md#artifacts) for the complete rules.
 
-Use `setup.sh` for preparation needing the mounted workspace, such as installing project dependencies. In the directory editor's **Add optional files** menu, select **setup.sh** and continue.
-
-Edit `~/.devbox-neo/configs/base/setup.sh`. Scripts run in the selected config order inside the container during creation and recreation. Failure stops the chain. Setup changes require recreation; keep reusable tool installation in Dockerfiles so it can be cached.
-
-## Run a script each time you open
-
-Add **before-open.sh** through the same optional-file menu, then edit `~/.devbox-neo/configs/base/before-open.sh`.
-
-Scripts run in the selected config order inside the container before each harness launch through `open`. Keep them quick. Each script is a separate process; its completed side effects are not rolled back if a later script fails.
-
-See [configuration artifacts](../reference/configuration.md#artifacts) for exact lifecycle rules and [harness definitions](../reference/harnesses.md) to integrate another harness.
+**Next:** [Networking](networking.md).
