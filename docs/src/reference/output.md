@@ -4,7 +4,7 @@
 
 | Key | Action |
 |---|---|
-| Up/Down or `j`/`k` | Move through the list |
+| Up/Down or `j`/`k` | Move through the list, wrapping at either end |
 | Enter | Open the selected menu, edit a field, or run an action |
 | Esc or `q` | Go back; first clears an active filter |
 | Left/Right | Switch between browser objects and application actions |

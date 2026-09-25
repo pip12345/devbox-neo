@@ -2,6 +2,7 @@ package cliui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -13,6 +14,73 @@ func key(m *terminalModel, code rune, text string) { m.Update(tea.KeyPressMsg{Co
 func request(actions ...Action) *screenRequest {
 	return &screenRequest{page: Screen{Title: "Workspace", Back: "Back", Actions: actions}, reply: make(chan screenReply, 1), cursor: -1}
 }
+func TestNativeSelectionWrapsWithinDisplayedList(t *testing.T) {
+	for _, mode := range []string{"actions", "objects", "filtered-actions", "filtered-objects", "single", "confirmation"} {
+		for _, vim := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/vim=%t", mode, vim), func(t *testing.T) {
+				req := request(Action{Label: "match first"}, Action{Label: "other"}, Action{Label: "match last"})
+				switch mode {
+				case "objects", "filtered-objects":
+					req.page.Collection = &Collection{Items: []Item{{Key: "first", Label: "match first"}, {Key: "other", Label: "other"}, {Key: "last", Label: "match last"}}}
+				case "single":
+					req.page.Actions = req.page.Actions[:1]
+				case "confirmation":
+					req.page.Actions = []Action{{Label: "No"}, {Label: "Yes"}}
+					req.confirm = true
+				}
+				if strings.HasPrefix(mode, "filtered-") {
+					req.query = "match"
+				}
+				m := newTerminalModel(req, false)
+				up, down := rune(tea.KeyUp), rune(tea.KeyDown)
+				upText, downText := "", ""
+				if vim {
+					up, down, upText, downText = 'k', 'j', "k", "j"
+				}
+				indices := m.matches()
+				m.scroll = 4
+				key(m, up, upText)
+				if m.cursor != len(indices)-1 || m.scroll != 0 {
+					t.Fatal("up did not wrap to the last displayed choice", m.cursor, m.scroll)
+				}
+				key(m, down, downText)
+				if m.cursor != 0 {
+					t.Fatal("down did not wrap to the first displayed choice", m.cursor)
+				}
+				key(m, up, upText)
+				select {
+				case <-req.reply:
+					t.Fatal("navigation submitted a choice without Enter")
+				default:
+				}
+				key(m, tea.KeyEnter, "")
+				if reply := <-req.reply; reply.index != indices[len(indices)-1] || reply.item != m.objects {
+					t.Fatal("wrapped selection dispatched the wrong item", reply)
+				}
+			})
+		}
+	}
+}
+
+func TestNativeEmptySelectionStillScrollsDetails(t *testing.T) {
+	for _, filtered := range []bool{false, true} {
+		req := request()
+		if filtered {
+			req.page.Actions = []Action{{Label: "other"}}
+			req.query = "no matches"
+		}
+		m := newTerminalModel(req, false)
+		key(m, tea.KeyUp, "")
+		if m.scroll != 0 {
+			t.Fatal("details scrolled above the top", m.scroll)
+		}
+		key(m, tea.KeyDown, "")
+		if m.scroll != 1 || m.cursor != 0 {
+			t.Fatal("empty selection stopped scrolling", m.scroll, m.cursor)
+		}
+	}
+}
+
 func TestNativeSelectionUsesFilteredSnapshot(t *testing.T) {
 	req := request(Action{Label: "first"}, Action{Label: "second", Description: "api"}, Action{Label: "third", Description: "api"})
 	m := newTerminalModel(req, false)

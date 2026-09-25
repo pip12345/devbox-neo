@@ -273,14 +273,14 @@ func (m *terminalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(indices) == 0 {
 				m.scroll = max(0, m.scroll-1)
 			} else {
-				m.cursor = max(0, m.cursor-1)
+				m.cursor = (m.cursor + len(indices) - 1) % len(indices)
 				m.scroll = 0
 			}
 		case "down", "j":
 			if len(indices) == 0 {
 				m.scroll++
 			} else {
-				m.cursor = min(max(0, len(indices)-1), m.cursor+1)
+				m.cursor = (m.cursor + 1) % len(indices)
 				m.scroll = 0
 			}
 		case "pgdown":

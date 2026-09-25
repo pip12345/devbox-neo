@@ -4,7 +4,7 @@ The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-
 
 ## CLI/TUI alignment and editing UX — implemented, host/live acceptance pending
 
-Implemented the [alignment plan](cli-tui-alignment-plan.md): ordered config replacement and inspection, improved text editing, and consistent failure reporting.
+Implemented the [alignment plan](cli-tui-alignment-plan.md): ordered config replacement and inspection, improved text editing, and consistent failure reporting. Selection keys wrap at list boundaries.
 
 Validation: `make test-fast`, app/CLI/UI/importer race tests, both builds, and `git diff --check` pass. Live Docker and manual host-terminal acceptance remain unrun.
 
