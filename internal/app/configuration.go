@@ -71,6 +71,11 @@ func (e *Engine) ClearDefault(ctx context.Context, target string) (string, error
 // UpdateSources compares only durable identity and the desired chain displayed
 // to the editor. Unrelated activity and applied inputs are reloaded and retained.
 func (e *Engine) UpdateSources(ctx context.Context, shown store.Record, sources []config.Reference) (store.Record, error) {
+	// Drafts may be empty, but a saved selection must be replaceable without
+	// passing through an unconfigured state. This does not require runnable inputs.
+	if len(sources) == 0 {
+		return store.Record{}, commanderror.New("configs_required", "Select at least one config; replace the final config instead of removing it.", shown.Identity.Name, nil)
+	}
 	if err := config.ValidateReferenceChain(shown.Identity.Workspace, sources); err != nil {
 		return store.Record{}, err
 	}
@@ -84,7 +89,7 @@ func (e *Engine) UpdateSources(ctx context.Context, shown store.Record, sources 
 		return store.Record{}, err
 	}
 	if !reflect.DeepEqual(current.Sources, shown.Sources) {
-		return store.Record{}, commanderror.New("sources_changed", "Config sources changed while the editor was open; review them and retry.", shown.Identity.Name, nil)
+		return store.Record{}, commanderror.New("sources_changed", "Selected configs changed; review the current selection and retry.", shown.Identity.Name, nil)
 	}
 	current.Sources = slices.Clone(sources)
 	return current, lock.Save(current)

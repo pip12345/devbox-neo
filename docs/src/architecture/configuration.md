@@ -23,7 +23,7 @@ flowchart TD
 
 `config.Reference` preserves relative/fixed intent. CLI capture resolves relative arguments against the invoking cwd, then records them relative to the canonical workspace. `ResolveReferences` expands the saved chain at the runtime boundary, requires its directories, and rejects duplicate canonical paths. Composition receives absolute `config.Source` inputs. There is no discovery, global baseline, or inheritance cutoff.
 
-Source-chain edits validate structure and duplicates without requiring complete runnable settings. They compare the displayed session ID and source list under the operation lock, preserve unrelated latest fields, and save only desired references. Startup/recreation resolve from the reread locked record, not a pre-lock source snapshot.
+`app.UpdateSources` requires a nonempty chain, validates references, and compares session ID plus the displayed chain under the operation lock. It preserves unrelated latest fields and saves only desired references; runnable settings are not required. Creation drafts and record reads can still be empty. Startup/recreation resolve from the reread locked record, not a pre-lock source snapshot.
 
 ### Merging settings and artifacts
 
@@ -37,7 +37,7 @@ Dockerfiles, `setup.sh`, and `before-open.sh` form ordered chains. Harness files
 
 `artifact.Trace` records sources, ordered artifact paths, aggregate contributors, and `EntrySources`. Each list contribution adds labels in the same order as values. Duplicate entries remain distinct; shell replacement replaces its sources too. Trace labels are diagnostic, not session identity.
 
-Menus and `--show` consume this trace rather than guessing ownership from matching values or local key presence. Human output uses dotted paths for nested fields; JSON preserves value structure and exposes `entry_sources`. Display rows never feed configuration saves.
+Menus, `config show`, and session `edit --show` consume this trace rather than guessing ownership from matching values or local key presence. Human output uses dotted paths for nested fields; JSON preserves value structure and exposes `entry_sources`. Display rows never feed configuration saves.
 
 ## Host substitution and sensitive values
 
@@ -55,9 +55,9 @@ The Docker adapter renders creation env through a private `0600` temporary file.
 
 Creation checks for `config.json` before prompts, repeats the check under the owner lock, validates setup, and claims the config file with no-replace publication before adding artifacts. Existing directories are allowed, but an existing config file is never replaced. Optional-file planning/publication is shared with editing and adds only missing files. A generation target may differ from, or exist without, the persistent harness setting.
 
-Named-config deletion holds that owner lock, scans all saved desired and committed session sources, then removes the directory and syncs its parent. A source at or beneath the directory blocks recursive deletion; both the saved path and its canonical target are checked so deleting an alias cannot break a reference unnoticed. The same usage scan finds selected and committed users, but the directory editor and blocked-deletion error present each saved session once, without exposing that internal distinction. It returns known users alongside any inventory errors; symlink entries, corrupt session state, and pending transfers still block deletion, while an incomplete config directory can be deleted. Session creation and source edits do not take the config lock, so the reference check is a current-state safeguard rather than a concurrency guarantee.
+Named-config deletion holds that owner lock, scans all saved desired and committed session sources, then removes the directory and syncs its parent. A source at or beneath the directory blocks recursive deletion; both the saved path and its canonical target are checked so deleting an alias cannot break a reference unnoticed. The same usage scan finds selected and committed users, but the directory editor, `config users`, and blocked-deletion error present each saved session once, without exposing that internal distinction. It returns known users alongside any inventory errors; symlink entries, corrupt session state, and pending transfers still block deletion, while an incomplete config directory can be deleted. Session creation and source edits do not take the config lock, so the reference check is a current-state safeguard rather than a concurrency guarantee.
 
-Prompts hold no owner locks. Back/cancellation retain only pending creation choices. Once creation publishes its config, an artifact failure is reported as partial setup and repaired through `config edit`, not repeated creation. The standalone importer uses `artifact.SourceTree` to capture source artifacts/build contexts without flattening effective defaults.
+Prompts hold no owner locks. Cancellation discards pending text or creation choices, not completed saves. Once creation publishes its config, an artifact failure is reported as partial setup and repaired through `config edit`, not repeated creation. The standalone importer uses `artifact.SourceTree` to capture source artifacts/build contexts without flattening effective defaults.
 
 ### Immediate field edits
 
@@ -69,7 +69,7 @@ The CLI keeps raw local JSON separate from effective/redacted display data. Each
 4. Patch only that field, or remove its source key.
 5. Validate source shape/literal constraints and save.
 
-List editors reload before operations and after failures. Rejected edits are not retained as a draft or retried implicitly. Effective-resolution failures do not disable local repair; cross-field and runtime-resource constraints remain the resolver/runtime's responsibility.
+List editors reload before operations. Validation/write failures retain unsaved input for explicit retry; `ErrConfigChanged` instead reloads current state without replay. Effective-resolution failures do not disable local repair; cross-field and runtime-resource constraints remain the resolver/runtime's responsibility.
 
 ## Declarative harnesses
 

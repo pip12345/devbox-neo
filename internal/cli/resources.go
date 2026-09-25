@@ -17,8 +17,8 @@ import (
 type resourceFactory func(*cobra.Command) (*resource.Service, error)
 
 func configCommands(factory resourceFactory) *cobra.Command {
-	group := &cobra.Command{Use: "config", Short: "Browse configs interactively or use create/edit/list/delete", Long: "Open the named-config browser in a terminal. Tab switches to sessions.\nExplicit create, edit, list, and delete commands remain direct entry points.\nWithout an interactive terminal, this command shows help."}
-	group.AddCommand(directoryCommand(factory, true), directoryCommand(factory, false), configListCommand(factory), configDeleteCommand(factory))
+	group := &cobra.Command{Use: "config", Short: "Browse, create, edit, inspect, or delete configs", Long: "Open the named-config browser in a terminal. Tab switches to sessions.\nUse create, edit, list, show, users, and delete directly; config files can also be edited with a text editor.\nWithout an interactive terminal, this command shows help."}
+	group.AddCommand(directoryCommand(factory, true), directoryCommand(factory, false), configListCommand(factory), configShowCommand(factory), configUsersCommand(factory), configDeleteCommand(factory))
 	return group
 }
 

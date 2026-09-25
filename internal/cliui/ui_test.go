@@ -90,7 +90,7 @@ func TestNestedControlsShareBufferedInput(t *testing.T) {
 	err := ui.Run(func() (Screen, error) {
 		return Screen{Title: "Parent", Back: "Exit", Actions: []Action{{Label: "Edit", Run: func() (bool, error) {
 			var err error
-			value, _, err = ui.Text("Value: ", nil)
+			value, _, err = ui.Text(TextRequest{Prompt: "Value: "})
 			if err != nil {
 				return false, err
 			}
@@ -111,12 +111,12 @@ func TestTextBackEOFAndValidation(t *testing.T) {
 	} {
 		var out bytes.Buffer
 		ui := New(context.Background(), strings.NewReader(tc.input), &out)
-		value, accepted, err := ui.Text("Value: ", func(value string) error {
+		value, accepted, err := ui.Text(TextRequest{Prompt: "Value: ", Validate: func(value string) error {
 			if value == "bad" {
 				return errors.New("not allowed")
 			}
 			return nil
-		})
+		}})
 		if value != tc.value || accepted != tc.accepted || !errors.Is(err, tc.err) {
 			t.Fatal(value, accepted, err)
 		}

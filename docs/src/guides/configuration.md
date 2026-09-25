@@ -36,7 +36,15 @@ Open the session's menu in `devbox-neo`, then **Edit selected configs**. Choose 
 
 Keep `base` first and `./devconfig` second. Later scalar settings replace earlier ones; most lists append. For example, the project config can change the shared network setting without choosing another harness.
 
-Use the same menu to replace, remove, or reorder configs. **Show combined configuration** shows the final values and where they came from. See the [field table](../reference/configuration.md#config-fields) for exact merge rules.
+Use the same menu to replace, remove, or reorder configs. Use **Replace config** when changing the only selected config. **Show combined configuration** shows the final values and where they came from.
+
+To replace the entire selection without a menu:
+
+```sh
+devbox-neo edit . --name work --config base --config ./devconfig
+```
+
+Include every config you want to keep: this replaces the list, never appends. See the [field table](../reference/configuration.md#config-fields) for exact merge rules.
 
 ## Choose where configs live
 
@@ -47,7 +55,7 @@ Config directories themselves are not copied. [Reference rules](../reference/con
 
 ## Apply your changes
 
-Saving settings does not replace a container. Choose **Status** in the session menu to see what needs applying.
+Saving settings or config selections does not replace a container. Choose **Status** in the session menu to see what needs applying.
 
 Managed harness files apply when the container next starts. Container settings and build changes need **Recreate**. Recreation preserves saved harness state but loses files and tools stored only inside the container.
 

@@ -141,6 +141,12 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 		}
 		result, err := e.Delete(cmd.Context(), options)
 		if err != nil {
+			if !result.DryRun && len(result.Containers)+len(result.Sessions) > 0 {
+				if !asJSON {
+					err = errors.Join(err, printDeleteResult(cmd.OutOrStdout(), result))
+				}
+				return &partialResultError{cause: err, result: result}
+			}
 			return err
 		}
 		if asJSON {

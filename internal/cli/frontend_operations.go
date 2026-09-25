@@ -7,7 +7,6 @@ import (
 	"io"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -38,7 +37,7 @@ func (f *frontend) value(label, value string, run func() error) cliui.Action {
 }
 func (f *frontend) text(label string, value *string, validate func(string) error) cliui.Action {
 	return f.value(label, displayCell(*value), func() error {
-		next, ok, err := f.m.Text(label+": ", validate)
+		next, ok, err := f.m.Text(cliui.TextRequest{Prompt: label + ": ", Initial: *value, Validate: validate})
 		if err == nil && ok {
 			*value = next
 		}
@@ -65,7 +64,7 @@ func (f *frontend) arguments(title string, args *[]string) error {
 					*args = slices.Delete(*args, i, i+1)
 					return nil
 				}
-				value, ok, err := f.m.Text("Exact argument (empty is allowed): ", nil)
+				value, ok, err := f.m.Text(cliui.TextRequest{Prompt: "Exact argument (empty is allowed): ", Initial: arg})
 				if err == nil && ok {
 					(*args)[i] = value
 				}
@@ -73,7 +72,7 @@ func (f *frontend) arguments(title string, args *[]string) error {
 			}))
 		}
 		actions = append(actions, f.action("Add argument", "Each entry is one exact argv value; no implicit shell parsing", func() error {
-			value, ok, err := f.m.Text("Exact argument (empty is allowed): ", nil)
+			value, ok, err := f.m.Text(cliui.TextRequest{Prompt: "Exact argument (empty is allowed): "})
 			if err == nil && ok {
 				*args = append(*args, value)
 			}
@@ -81,7 +80,12 @@ func (f *frontend) arguments(title string, args *[]string) error {
 		}))
 		actions = append(actions, f.action("Set arguments from JSON", "Paste an exact string array; escapes preserve tabs/newlines", func() error {
 			var next []string
-			_, accepted, err := f.m.Text("JSON array of arguments: ", func(value string) error {
+			current := *args
+			if current == nil {
+				current = []string{}
+			}
+			initial, _ := json.Marshal(current)
+			_, accepted, err := f.m.Text(cliui.TextRequest{Prompt: "JSON array of arguments: ", Initial: string(initial), Validate: func(value string) error {
 				if err := json.Unmarshal([]byte(value), &next); err != nil {
 					return err
 				}
@@ -89,7 +93,7 @@ func (f *frontend) arguments(title string, args *[]string) error {
 					return fmt.Errorf("enter a JSON string array; use [] to clear")
 				}
 				return nil
-			})
+			}})
 			if err == nil && accepted {
 				*args = next
 			}
@@ -133,16 +137,6 @@ func (f *frontend) recreate(target string) error {
 		}
 	})
 }
-func validateTail(value string) error {
-	if value == "all" {
-		return nil
-	}
-	n, err := strconv.Atoi(value)
-	if err != nil || n < 0 {
-		return fmt.Errorf("use all or a non-negative count")
-	}
-	return nil
-}
 func (f *frontend) logs(target string) error {
 	tail := "100"
 	follow := false
@@ -178,16 +172,13 @@ func (f *frontend) networks(target string) error {
 				sort.Strings(keys)
 				actions := []cliui.Action{f.action("All exports", "", func() error {
 					return f.m.View("Network environment", func(out io.Writer) error {
-						for _, key := range keys {
-							fmt.Fprintf(out, "export %s=%s\n", key, shellQuote(values[key]))
-						}
-						return nil
+						return printNetworkEnv(out, values, "")
 					})
 				})}
 				for _, key := range keys {
 					key := key
 					actions = append(actions, f.action(key, "", func() error {
-						return f.m.View(key, func(out io.Writer) error { _, err := fmt.Fprintln(out, values[key]); return err })
+						return f.m.View(key, func(out io.Writer) error { return printNetworkEnv(out, values, key) })
 					}))
 				}
 				return f.form("Network environment", func() []cliui.Action { return actions })
@@ -198,12 +189,12 @@ func (f *frontend) networks(target string) error {
 	})
 }
 func (f *frontend) networkChange(target string, connect bool) (bool, error) {
-	name, ok, err := f.m.Text("Existing Docker network: ", func(value string) error {
+	name, ok, err := f.m.Text(cliui.TextRequest{Prompt: "Existing Docker network: ", Validate: func(value string) error {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("enter a network name")
 		}
 		return nil
-	})
+	}})
 	if err != nil || !ok {
 		return false, err
 	}

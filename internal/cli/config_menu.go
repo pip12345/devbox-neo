@@ -23,8 +23,7 @@ func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner
 	defer func() {
 		err = errors.Join(err, m.Finish())
 		if changed {
-			steps := scopedSteps(cmd, []commanderror.Step{commanderror.Next("", "status")}, s.Home)
-			_, receiptErr := fmt.Fprintf(cmd.OutOrStdout(), "Config changes saved: %s\nReview pending changes:\n%s", displayCell(owner.Name), stepsText(steps))
+			_, receiptErr := fmt.Fprint(cmd.OutOrStdout(), configSaveReceipt(cmd, s.Home, owner.Name))
 			err = errors.Join(err, receiptErr)
 		}
 	}()
@@ -34,6 +33,11 @@ func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner
 		return nil
 	}
 	return err
+}
+
+func configSaveReceipt(cmd *cobra.Command, home, name string) string {
+	steps := scopedSteps(cmd, []commanderror.Step{commanderror.Next("Review pending changes", "status")}, home)
+	return fmt.Sprintf("Config changes saved: %s\n%s", displayCell(name), stepsText(steps))
 }
 
 func configMenu(m menu, s *resource.Service, owner resource.Owner, changed *bool, back string) error {
@@ -152,15 +156,29 @@ func editConfigField(m menu, s *resource.Service, owner resource.Owner, field re
 	if err != nil || selected < 0 {
 		return err
 	}
-	remove := selected == 1
-	var value json.RawMessage
-	if !remove {
-		value, err = readConfigValue(m, s, field, source[field.Key])
+	if selected == 1 {
+		if err := applyConfigChange(m, s, owner, field, source[field.Key], nil, true, changed); err != nil {
+			_, err = configEditFailure(m, err)
+			return err
+		}
+		return nil
+	}
+	pending := source[field.Key]
+	for {
+		value, err := readConfigValue(m, s, field, pending)
 		if err != nil || value == nil {
 			return err
 		}
+		if err := applyConfigChange(m, s, owner, field, source[field.Key], value, false, changed); err != nil {
+			retry, err := configEditFailure(m, err)
+			if err != nil || !retry {
+				return err
+			}
+			pending = value
+			continue
+		}
+		return nil
 	}
-	return applyConfigChange(m, s, owner, field, source[field.Key], value, remove, changed)
 }
 
 func configActionFields(row configDisplayRow) []cliui.Field {
@@ -292,7 +310,9 @@ func readConfigValue(m menu, s *resource.Service, field resource.ConfigField, cu
 			}
 		}
 		if value == nil {
-			text, accepted, err := m.Text("New value (:back cancels): ", nil)
+			var initial string
+			_ = json.Unmarshal(current, &initial)
+			text, accepted, err := m.Text(cliui.TextRequest{Prompt: "New value (:back cancels): ", Initial: initial, Sensitive: field.Sensitive})
 			if err != nil || !accepted {
 				return nil, err
 			}
@@ -320,15 +340,21 @@ func listItemName(key string) string {
 	}
 }
 
-// The service compares the displayed field snapshot under its owner lock.
-// On conflict the next screen reloads; failed writes never advance UI state.
+// A conflict invalidates the snapshot behind the pending edit; return to the
+// refreshed field rather than replaying it over another writer's value. Other
+// failures retain the pending input, but only another submission may retry it.
+func configEditFailure(m menu, err error) (retry bool, fatal error) {
+	if m.Context.Err() != nil {
+		return false, m.Context.Err()
+	}
+	m.Notice("Not saved: " + displayCell(err.Error()))
+	return !errors.Is(err, resource.ErrConfigChanged), nil
+}
+
+// Persistence returns before the next prompt, so no owner lock spans input.
 func applyConfigChange(m menu, s *resource.Service, owner resource.Owner, field resource.ConfigField, expected, value json.RawMessage, remove bool, changed *bool) error {
 	if err := s.SetConfigField(m.Context, owner, field.Key, expected, value, remove); err != nil {
-		if m.Context.Err() != nil {
-			return m.Context.Err()
-		}
-		m.Notice("Not saved: " + displayCell(err.Error()))
-		return nil
+		return err
 	}
 	if !bytes.Equal(expected, value) {
 		*changed = true
@@ -352,7 +378,7 @@ func editList(m menu, s *resource.Service, owner resource.Owner, field resource.
 		for i, entry := range entries {
 			labels[i] = configEntryLabel(entry, field)
 		}
-		save := func(updated []string, remove bool) (bool, error) {
+		persist := func(updated []string, remove bool) error {
 			var value json.RawMessage
 			if !remove {
 				var input any = updated
@@ -361,10 +387,17 @@ func editList(m menu, s *resource.Service, owner resource.Owner, field resource.
 				}
 				value, err = json.Marshal(input)
 				if err != nil {
-					return false, err
+					return err
 				}
 			}
-			return false, applyConfigChange(m, s, owner, field, source[field.Key], value, remove, changed)
+			return applyConfigChange(m, s, owner, field, source[field.Key], value, remove, changed)
+		}
+		save := func(updated []string, remove bool) (bool, error) {
+			if err := persist(updated, remove); err != nil {
+				_, err = configEditFailure(m, err)
+				return false, err
+			}
+			return false, nil
 		}
 		edit := func(existing bool) func() (bool, error) {
 			return func() (bool, error) {
@@ -376,22 +409,36 @@ func editList(m menu, s *resource.Service, owner resource.Owner, field resource.
 						return false, err
 					}
 				}
-				text, accepted, err := m.Text("New "+item+" (:back cancels): ", func(value string) error {
-					if strings.ContainsRune(value, '\x00') {
-						return fmt.Errorf("Entries cannot contain NUL.")
-					}
-					return nil
-				})
-				if err != nil || !accepted {
-					return false, err
-				}
-				updated := slices.Clone(entries)
+				pending := ""
 				if existing {
-					updated[index] = text
-				} else {
-					updated = append(updated, text)
+					pending = entries[index]
 				}
-				return save(updated, false)
+				for {
+					text, accepted, err := m.Text(cliui.TextRequest{Prompt: "New " + item + " (:back cancels): ", Initial: pending, Sensitive: field.Sensitive, Validate: func(value string) error {
+						if strings.ContainsRune(value, '\x00') {
+							return fmt.Errorf("Entries cannot contain NUL.")
+						}
+						return nil
+					}})
+					if err != nil || !accepted {
+						return false, err
+					}
+					updated := slices.Clone(entries)
+					if existing {
+						updated[index] = text
+					} else {
+						updated = append(updated, text)
+					}
+					if err := persist(updated, false); err != nil {
+						retry, err := configEditFailure(m, err)
+						if err != nil || !retry {
+							return false, err
+						}
+						pending = text
+						continue
+					}
+					return false, nil
+				}
 			}
 		}
 		return cliui.Screen{Title: fmt.Sprintf("%s (%s)", configLabel(field.Key), field.Key), Back: "Back", Body: func(out io.Writer) error {

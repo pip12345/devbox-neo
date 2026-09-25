@@ -107,7 +107,7 @@ func TestConfigDeleteRefusesDesiredAndCommittedSessionSources(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := e.UpdateSources(ctx, shown, nil); err != nil {
+			if _, err := e.UpdateSources(ctx, shown, testConfigSources(e.Store.Home, "unavailable")); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -153,7 +153,7 @@ func TestConfigDeleteProtectsNestedSources(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := e.UpdateSources(ctx, shown, nil); err != nil {
+				if _, err := e.UpdateSources(ctx, shown, testConfigSources(e.Store.Home, "unavailable")); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -187,7 +187,7 @@ func TestConfigUsageReportsEveryDesiredAndCommittedSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.UpdateSources(ctx, secondRecord, nil); err != nil {
+	if _, err := e.UpdateSources(ctx, secondRecord, testConfigSources(e.Store.Home, "unavailable")); err != nil {
 		t.Fatal(err)
 	}
 	alt, err := service.ConfigDirectory("alternate", t.TempDir(), t.TempDir())

@@ -16,11 +16,11 @@
 
 Text fields use Esc to cancel; `q` and `:back` are literal text there. Confirmations start on **No** and require Enter. SIGTERM cancels the whole command.
 
-Successful operation forms close; failed forms keep their inputs. Completed edits stay saved when you leave. Configs already created remain saved if you cancel a session draft.
+Successful operation forms close; failed forms keep their inputs. Text edits prefill source values; conflicts reload current values rather than retry. Sensitive input is masked. Completed edits stay saved when you leave. Configs already created remain saved if you cancel a session draft.
 
 Session rows and previews show relative **Last active**, not exclusively last opened. `*` marks the folder default. Narrow layouts show the active pane or put activity beneath the name.
 
-Without full terminal input/output, bare browsers show help. Other redirected/dumb-terminal prompts use numbered choices: `0`/`q` goes back and `:back` cancels text entry.
+Without full terminal input/output, bare browsers show help. Other redirected/dumb-terminal prompts use numbered choices: `0`/`q` goes back and `:back` cancels text entry. Plain text prompts show non-sensitive current values as context; blank input submits an empty replacement.
 
 ## Environment listings
 
@@ -87,11 +87,18 @@ Public values may appear before/after. Env changes show variable names, never va
 
 `edit <target> --show` reports combined settings and contributing configs; folder targets need `--name`. Lists retain per-entry provenance in `trace.entry_sources`. JSON preserves value types; env values are redacted.
 
-Directory editors show one config over built-in defaults. Combined configuration is read-only. Save receipts point to Status; saving a config does not itself apply container changes.
+`config show` and directory editors show one config over built-in defaults. Combined configuration is read-only. Save receipts point to Status; saving does not itself apply container changes.
+
+| JSON command | Fields |
+|---|---|
+| `edit <target> --config REF --json` | `name`, `workspace`, ordered `sources`, `next_steps` |
+| `config users <name\|path> --json` | `path`, `users` (full session names), `complete` |
+
+Incomplete usage scans exit nonzero with known users in `partial_result` and `complete: false`.
 
 ## Deletion results
 
-Session deletion JSON contains `containers`, `sessions`, `retained_sessions`, `dry_run`, and `cancelled`. Use explicit `--container` or `--session` with `--json`.
+Session deletion JSON contains `containers`, `sessions`, `retained_sessions`, `dry_run`, and `cancelled`. Use explicit `--container` or `--session` with `--json`. On partial failure, completed work is still reported; JSON places it in `partial_result` and exits nonzero.
 
 `config delete <name> --force --json` returns `path` and `deleted`. Blocked deletion reports known users in `next_steps`; incomplete usage information remains an error.
 
@@ -108,6 +115,7 @@ JSON-capable commands emit an error object on stdout and exit nonzero:
 | `operation`, `target` | Failed operation and known target |
 | `next_steps` | Commands as argv plus reasons |
 | `related_errors` | Additional failures |
+| `partial_result` | Completed deletions or an incomplete config-usage report |
 
 Open, Shell, Exec, and SSH pass child output through without JSON wrappers. Child/Docker exit status is preserved; cancellation and deadlines are nonzero. Suggested commands retain an explicit home and exact transfer targets.
 

@@ -70,7 +70,7 @@ func TestConfigEditorReceiptOnlyAfterSaving(t *testing.T) {
 	if err != nil || strings.Contains(out, "Review pending changes") {
 		t.Fatal("unchanged value prompted for status", out, err)
 	}
-	out, err = runMenu(t, s, owner, n+"\n1\ninvalid network!\n0\n")
+	out, err = runMenu(t, s, owner, n+"\n1\ninvalid network!\n:back\n0\n")
 	if err != nil || strings.Contains(out, "Review pending changes") {
 		t.Fatal("failed edit prompted for status", out, err)
 	}
@@ -174,7 +174,7 @@ func TestMenuCancellationAndValidationDoNotWrite(t *testing.T) {
 	path := filepath.Join(owner.Root, "config.json")
 	before, _ := os.ReadFile(path)
 	n := fieldNumber(t, "network")
-	for _, input := range []string{"", "0\n", n + "\n0\n0\n", n + "\n1\n:back\n0\n", n + "\n1\n", n + "\n1\nhost", n + "\n1\nnot a network\n0\n"} {
+	for _, input := range []string{"", "0\n", n + "\n0\n0\n", n + "\n1\n:back\n0\n", n + "\n1\n", n + "\n1\nhost", n + "\n1\nnot a network\n:back\n0\n"} {
 		if out, err := runMenu(t, s, owner, input); err != nil {
 			t.Fatal(out, err)
 		}

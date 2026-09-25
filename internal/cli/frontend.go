@@ -91,7 +91,7 @@ func (f *frontend) browse(configs bool) error {
 			create.Shortcut = "n"
 			create.BreakBefore = true
 			page.Actions = append(page.Actions, create, f.action("Edit a directory by path", "", func() error {
-				path, ok, err := f.m.Text("Config name or directory: ", nil)
+				path, ok, err := f.m.Text(cliui.TextRequest{Prompt: "Config name or directory: "})
 				if err != nil || !ok {
 					return err
 				}
@@ -119,7 +119,7 @@ func (f *frontend) browse(configs bool) error {
 			all := f.action("All-session operations", "Status, recreate and filtered deletion", f.allSessions)
 			all.Shortcut = "a"
 			page.Actions = append(page.Actions, create, all, f.action("Open folder by path", "", func() error {
-				folder, ok, err := f.m.Text("Workspace folder: ", nil)
+				folder, ok, err := f.m.Text(cliui.TextRequest{Prompt: "Workspace folder: "})
 				if err != nil || !ok {
 					return err
 				}
@@ -472,7 +472,7 @@ func (f *frontend) editConfig(ref string) error {
 	changed := false
 	err = configMenu(f.m, f.s, owner, &changed, "Back")
 	if changed {
-		f.m.Receipt("Config changes saved: " + displayCell(owner.Name) + ". Run devbox-neo status to review affected sessions.")
+		f.m.Receipt(configSaveReceipt(f.cmd, f.s.Home, owner.Name))
 	}
 	return err
 }

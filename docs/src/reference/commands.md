@@ -73,11 +73,16 @@ Checks compare local inputs, not upstream releases. See [output formats](output.
 | `config create [name\|path]` | Create a config through the overview; supplied destination prefills it |
 | `config edit <name\|path>` | Edit settings or add optional files |
 | `config list [--json]` | Named configs under the selected home, including invalid entries |
+| `config show <name\|path> [--json]` | One config over built-in defaults, with provenance and redaction |
+| `config users <name\|path> [--json]` | Saved sessions using the config directory |
 | `config delete <name> [--force] [--json]` | Delete an unused named config and its files |
 | `edit <folder>` | Choose a session's configs or change the folder default |
 | `edit <folder> --name NAME` | Edit a folder-local session's selected configs |
 | `edit <full-name>` | Edit an exact session's selected configs |
 | `edit <target> --show [--json]` | Combined settings; folder targets require `--name` |
+| `edit <target> --config REF [--config REF…] [--json]` | Replace the entire ordered config selection; folder targets require `--name` |
+
+`--config` requires at least one reference and replaces the list in flag order. It cannot combine with `--show`, `--default`, or `--clear-default`.
 
 Settings edits save immediately. Nested config creation adds its result to the session draft; that config remains saved if the draft is cancelled. [Config reference](configuration.md) covers paths and merge rules.
 
@@ -103,7 +108,7 @@ Supplying setup flags runs directly. A destination is required outside interacti
 | `edit <full-name> --default` | Select that exact session |
 | `edit <target> --clear-default` | Clear without selecting a replacement |
 
-The browser offers Make/Clear folder default in the session menu. Selection does not launch anything. `--clear-default` cannot combine with `--name`, `--default`, or `--show`.
+The browser offers Make/Clear folder default in the session menu. Selection does not launch anything. `--clear-default` cannot combine with `--name`, `--default`, `--show`, or `--config`.
 
 ## SSH sharing
 

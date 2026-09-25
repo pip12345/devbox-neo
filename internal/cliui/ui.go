@@ -5,12 +5,14 @@ package cliui
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 type Action struct {
@@ -76,7 +78,17 @@ type Screen struct {
 	FocusItem  string
 }
 
+// TextRequest describes one pending edit. Validators must return safe messages;
+// persistence and conflict handling remain in the calling workflow.
+type TextRequest struct {
+	Prompt    string
+	Initial   string
+	Validate  func(string) error
+	Sensitive bool
+}
+
 type Runner struct {
+	inputFile  *os.File
 	Context    context.Context
 	Input      *bufio.Reader
 	Out        io.Writer
@@ -93,6 +105,7 @@ func New(ctx context.Context, in io.Reader, out io.Writer) *Runner {
 	r := &Runner{Context: ctx, Out: out}
 	inputFile, inputTTY := in.(*os.File)
 	if inputTTY && IsTerminal(inputFile) {
+		r.inputFile = inputFile
 		in = terminalReader{ctx: ctx, file: inputFile}
 	}
 	if reader, ok := in.(*bufio.Reader); ok {
@@ -434,7 +447,7 @@ func (r *Runner) Line(prompt string) (string, error) {
 		return "", err
 	}
 	if r.screen != nil {
-		value, accepted, err := r.terminalText(prompt)
+		value, accepted, err := r.terminalText(TextRequest{Prompt: prompt})
 		if err == nil && !accepted {
 			return "", io.EOF
 		}
@@ -451,29 +464,51 @@ func (r *Runner) Line(prompt string) (string, error) {
 	return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"), nil
 }
 
-func (r *Runner) Text(prompt string, validate func(string) error) (string, bool, error) {
+func (r *Runner) Text(request TextRequest) (string, bool, error) {
+	// Single-line widgets sanitize control characters. Make their representation
+	// explicit rather than silently changing an existing argument on submission.
+	encoded := strings.ContainsFunc(request.Initial, unicode.IsControl)
+	if encoded {
+		data, _ := json.Marshal(request.Initial)
+		request.Initial = string(data)
+		request.Prompt += "Edit as a JSON string (escapes preserve control characters): "
+	}
 	for {
 		var value string
 		var err error
 		accepted := true
 		if r.screen != nil {
-			value, accepted, err = r.terminalText(prompt)
+			value, accepted, err = r.terminalText(request)
 		} else {
-			value, err = r.Line(prompt)
+			value, err = r.plainText(request)
 			accepted = value != ":back"
 		}
 		if err != nil || !accepted {
 			return "", false, err
 		}
-		if validate != nil {
-			if err := validate(value); err != nil {
-				if r.screen != nil {
-					r.Notice("Error: " + Safe(err.Error()))
-				} else if _, writeErr := fmt.Fprintf(r.Out, "Error: %s\n", Safe(err.Error())); writeErr != nil {
-					return "", false, writeErr
-				}
-				continue
+		request.Initial = value
+		if encoded {
+			var decoded *string
+			if json.Unmarshal([]byte(value), &decoded) != nil || decoded == nil {
+				err = fmt.Errorf("enter a JSON string")
+			} else {
+				value = *decoded
 			}
+		}
+		if err == nil && request.Validate != nil {
+			err = request.Validate(value)
+		}
+		if err != nil {
+			message := Safe(err.Error())
+			if request.Sensitive {
+				message = "Invalid value; correct the input and submit again."
+			}
+			if r.screen != nil {
+				r.Notice("Error: " + message)
+			} else if _, writeErr := fmt.Fprintf(r.Out, "Error: %s\n", message); writeErr != nil {
+				return "", false, writeErr
+			}
+			continue
 		}
 		return value, true, nil
 	}

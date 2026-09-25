@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 
@@ -12,15 +13,45 @@ import (
 
 type engineFactory func(*cobra.Command) (*app.Engine, error)
 
+func validateTail(value string) error {
+	if value == "all" {
+		return nil
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 0 {
+		return fmt.Errorf("tail must be all or a non-negative count")
+	}
+	return nil
+}
+
+func printNetworkEnv(out io.Writer, values map[string]string, key string) error {
+	if key != "" {
+		value, ok := values[key]
+		if !ok {
+			return fmt.Errorf("unknown network variable")
+		}
+		_, err := fmt.Fprintln(out, value)
+		return err
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if _, err := fmt.Fprintf(out, "export %s=%s\n", key, shellQuote(values[key])); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func containerCommands(factory engineFactory, localName *string) []*cobra.Command {
 	var follow bool
 	var tail string
 	logs := &cobra.Command{Use: "logs <folder|session>", Short: "Read the container's Docker logs", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if tail != "all" {
-			n, err := strconv.Atoi(tail)
-			if err != nil || n < 0 {
-				return fmt.Errorf("--tail must be all or a non-negative count")
-			}
+		if err := validateTail(tail); err != nil {
+			return err
 		}
 		e, err := factory(cmd)
 		if err != nil {
@@ -56,24 +87,7 @@ func networkCommands(factory engineFactory, localName *string) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		values := facts.Env()
-		if key != "" {
-			value, ok := values[key]
-			if !ok {
-				return fmt.Errorf("unknown network variable")
-			}
-			cmd.Println(value)
-			return nil
-		}
-		keys := make([]string, 0, len(values))
-		for name := range values {
-			keys = append(keys, name)
-		}
-		sort.Strings(keys)
-		for _, name := range keys {
-			cmd.Printf("export %s=%s\n", name, shellQuote(values[name]))
-		}
-		return nil
+		return printNetworkEnv(cmd.OutOrStdout(), facts.Env(), key)
 	}}
 	env.Flags().StringVar(&key, "get", "", "Print one variable's value without shell syntax")
 	group.AddCommand(sessionNameFlag(inspect, localName), sessionNameFlag(env, localName))

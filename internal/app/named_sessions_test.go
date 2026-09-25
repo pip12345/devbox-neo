@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"devbox/internal/commanderror"
+	"devbox/internal/config"
 	"devbox/internal/store"
 )
 
@@ -29,28 +30,46 @@ func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
 		t.Fatal(err)
 	}
 	lock.Close()
-	empty, err := e.UpdateSources(ctx, shown, nil)
-	if err != nil || empty.ID != shown.ID || empty.Action != "exec" || empty.Applied != shown.Applied {
-		t.Fatal("source edit lost unrelated state or rejected an incomplete chain", empty, err)
+	var required *commanderror.Error
+	if _, err := e.UpdateSources(ctx, shown, nil); !errors.As(err, &required) || required.Code != "configs_required" {
+		t.Fatal("accepted an empty saved selection", err)
+	}
+	missing := []config.Reference{{Label: "missing", Kind: config.ReferenceFixed, Path: filepath.Join(e.Store.Home, "configs", "missing")}}
+	incomplete, err := e.UpdateSources(ctx, shown, missing)
+	if err != nil || incomplete.ID != shown.ID || incomplete.Action != "exec" || incomplete.Applied != shown.Applied {
+		t.Fatal("source edit lost unrelated state or rejected an incomplete chain", incomplete, err)
 	}
 	var conflict *commanderror.Error
 	if _, err := e.UpdateSources(ctx, shown, shown.Sources[:1]); !errors.As(err, &conflict) || conflict.Code != "sources_changed" {
 		t.Fatal("stale source editor overwrote another edit", err)
 	}
-	if err := e.SetDefault(ctx, empty); err != nil {
+	if err := e.SetDefault(ctx, incomplete); err != nil {
 		t.Fatal("incomplete config blocked default selection", err)
 	}
 	if _, err := e.Locate(ctx, q.Workspace, ""); err != nil {
 		t.Fatal("incomplete config blocked saved lookup", err)
 	}
 	if _, err := e.Open(ctx, Request{Workspace: made.Name}); err == nil {
-		t.Fatal("empty chain became runnable")
+		t.Fatal("missing config became runnable")
 	}
 	if err := e.Stop(ctx, made.Name, "", false); err != nil {
-		t.Fatal("empty chain blocked stop", err)
+		t.Fatal("missing config blocked stop", err)
 	}
+	// Existing empty records remain readable and repairable. The nonempty rule
+	// belongs to saved edits, not record decoding or creation drafts.
+	lock, err = e.Store.Lock(ctx, made.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	incomplete.Sources = nil
+	err = lock.Save(incomplete)
+	lock.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty := record(t, e, made.Name)
 	if _, err := e.UpdateSources(ctx, empty, shown.Sources); err != nil {
-		t.Fatal("could not repair an incomplete chain", err)
+		t.Fatal("could not repair an empty chain", err)
 	}
 }
 

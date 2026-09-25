@@ -54,7 +54,7 @@ func createConfig(m menu, s *resource.Service, input, cwd, userHome string) (res
 		}
 		return cliui.Screen{Title: "Create config", Back: "Cancel", Actions: []cliui.Action{
 			{Label: "Name/location", Value: name, Run: func() (bool, error) {
-				_, _, err := m.Text("Config name or directory (:back returns): ", locate)
+				_, _, err := m.Text(cliui.TextRequest{Prompt: "Config name or directory (:back returns): ", Initial: owner.Name, Validate: locate})
 				return false, err
 			}},
 			{Label: "Harness", Value: selectedHarness, Run: func() (bool, error) {

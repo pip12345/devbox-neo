@@ -162,7 +162,11 @@ func editOwner(ui *cliui.Runner, j *migration.Journal, c *migration.MergeChoices
 	case "profile":
 		actions = []cliui.Action{
 			{Label: "Choose a different destination config name", Run: func() (bool, error) {
-				name, accepted, err := ui.Text("Destination config name (:back cancels): ", nil)
+				initial := item.Name
+				if name, ok := c.Rename[item.Name]; ok {
+					initial = name
+				}
+				name, accepted, err := ui.Text(cliui.TextRequest{Prompt: "Destination config name (:back cancels): ", Initial: initial})
 				if err != nil || !accepted {
 					return true, err
 				}

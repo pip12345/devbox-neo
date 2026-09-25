@@ -48,7 +48,7 @@ Commands translate requests; they do not implement lifecycle policy. Docker cons
 
 Owners return `commanderror.Error` with a code, safe message, target, cause, and optional `Step` values. Preserve filesystem absence through wrapping until the owning layer can distinguish it from corrupt state. Use `errors.Is`; never classify failures by display text.
 
-`cli.Execute` renders errors. Human failures go to stderr; JSON-capable commands emit a structured object on stdout. Child streams pass through, and a child/Docker exit status stays authoritative when cleanup also fails.
+`cli.Execute` renders errors. Human failures go to stderr; JSON-capable commands emit a structured object on stdout. Child streams pass through, and a child/Docker exit status stays authoritative when cleanup also fails. CLI-owned partial-result errors retain confirmed deletions or incomplete usage scans alongside the cause. JSON includes `partial_result` in the error document.
 
 `Step.Reason` labels a shell-quoted command. `Then` expresses a sequence and `Or` an alternative. Suggestions are data, never automatic recovery actions or permission to add Force.
 

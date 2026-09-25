@@ -39,7 +39,7 @@ Empty additive lists do not erase earlier values. Conflicting mounts/ports fail.
 
 All selected configs participate. Later scalar values replace earlier ones; most lists append. Config selection does not rename the session.
 
-Creation, Open, and Recreate require valid configs and a final harness selection. The config-selection editor can save an incomplete list for repair. Broken configs do not prevent selecting a session or opening its repair menu.
+Creation, Open, and Recreate require valid configs and a final harness selection. Saving a config selection requires at least one reference, not runnable settings. Broken configs remain accessible for repair.
 
 ## Editing and inspection
 
@@ -48,7 +48,10 @@ Creation, Open, and Recreate require valid configs and a final harness selection
 | Create a config | `config create [name\|path]` |
 | Edit one directory | `config edit <name\|path>` |
 | List named configs | `config list [--json]` |
-| Change a session's selected configs | `edit <folder> --name NAME` |
+| Inspect one config over defaults | `config show <name\|path> [--json]` |
+| List saved-session users | `config users <name\|path> [--json]` |
+| Change a session's selected configs interactively | `edit <folder> --name NAME` |
+| Replace the complete ordered selection | `edit <folder> --name NAME --config REF [--config REF…] [--json]` |
 | Inspect combined values | `edit <folder> --name NAME --show [--json]` |
 | Delete an unused named config | `config delete <name>` |
 
@@ -73,7 +76,7 @@ Use host variables in JSON string values:
 
 Set the variable on the host before running Devbox. Unset variables fail; empty values are allowed. Expansion is single-pass and does not read `.env` files or execute shell commands. Editing preserves expressions.
 
-**Env/auth values are sensitive; names, paths, argv, and ordinary settings are not.** Do not put credentials in public fields. Menu input is visible.
+**Env/auth values are sensitive; names, paths, argv, and ordinary settings are not.** Do not put credentials in public fields. Environment-value input is masked in terminal editors; ordinary fields remain visible.
 
 ### Environment precedence
 

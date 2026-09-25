@@ -19,7 +19,18 @@ type errorReport struct {
 	Target    string              `json:"target,omitempty"`
 	Next      []commanderror.Step `json:"next_steps,omitempty"`
 	Related   []errorReport       `json:"related_errors,omitempty"`
+	Partial   any                 `json:"partial_result,omitempty"`
 }
+
+// Partial results are presentation data supplied by the command that knows
+// which work completed. They never replace the underlying failure or exit code.
+type partialResultError struct {
+	cause  error
+	result any
+}
+
+func (e *partialResultError) Error() string { return e.cause.Error() }
+func (e *partialResultError) Unwrap() error { return e.cause }
 
 // Execute is the process presentation boundary. Handlers return errors rather
 // than printing them, so JSON failures and human failures are each emitted once.
@@ -85,6 +96,11 @@ func humanErrorText(report errorReport) string {
 }
 
 func describeError(err error) errorReport {
+	if partial, ok := err.(*partialResultError); ok {
+		r := describeError(partial.cause)
+		r.Partial = partial.result
+		return r
+	}
 	if joined, ok := err.(interface{ Unwrap() []error }); ok {
 		causes := joined.Unwrap()
 		r := describeError(causes[0])

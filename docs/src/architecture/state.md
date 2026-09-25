@@ -29,7 +29,7 @@ Images carry installation ownership and final session tags. Removing a tag requi
 - complete applied image/container/runtime inputs and fingerprints;
 - creation time, last recorded activity, and last action.
 
-Schema `5` requires reference structure and complete applied input snapshots. Desired `sources` may be empty during repair. Applied `inputs.sources` retains absolute committed source directories, so editing desired references cannot change which env files authorize recorded recovery. [Lifecycle](lifecycle.md#one-input-model) describes their contents and fingerprint rules. Older development records require a clean reset; there is no migration reader.
+Schema `5` requires reference structure and complete applied input snapshots. Saved-selection edits require a config; the reader still accepts empty `sources` for repair. Applied `inputs.sources` retains absolute committed source directories, so editing desired references cannot change which env files authorize recorded recovery. [Lifecycle](lifecycle.md#one-input-model) describes their contents and fingerprint rules. Older development records require a clean reset; there is no migration reader.
 
 Records contain public settings, paths, modes, and hashes, not file contents or env/auth values. Raw env diagnostics are redacted. Records are atomically replaced with restrictive permissions; invalid records remain errors rather than being treated as missing.
 

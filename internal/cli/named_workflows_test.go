@@ -446,6 +446,12 @@ func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
 
 func TestEditReportsSavedSourcesAfterExitOnlyWhenChanged(t *testing.T) {
 	e, _, fullName := namedCLIFixture(t)
+	if out, err := resourceCLI(t, e.Store.Home, "config", "create", "incomplete", "--json"); err != nil {
+		t.Fatal(out, err)
+	}
+	if out, err := runSourcesCLI(t, e, fullName, "--config", "base", "--config", "incomplete"); err != nil {
+		t.Fatal(out, err)
+	}
 	factory := func(*cobra.Command) (*app.Engine, error) { return e, nil }
 	run := func(input string) string {
 		t.Helper()
@@ -488,6 +494,12 @@ func TestEditReceiptListsEachChangedSessionOnce(t *testing.T) {
 
 func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T) {
 	e, _, fullName := namedCLIFixture(t)
+	if out, err := resourceCLI(t, e.Store.Home, "config", "create", "incomplete", "--json"); err != nil {
+		t.Fatal(out, err)
+	}
+	if out, err := runSourcesCLI(t, e, fullName, "--config", "base", "--config", "incomplete"); err != nil {
+		t.Fatal(out, err)
+	}
 	r, err := e.Store.Read(context.Background(), fullName)
 	if err != nil {
 		t.Fatal(err)
@@ -499,10 +511,10 @@ func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T
 		t.Fatal(out.String(), saved, err)
 	}
 	after, err := e.Store.Read(context.Background(), fullName)
-	if err != nil || after.ID != r.ID || len(after.Sources) != 0 || after.Applied != r.Applied {
+	if err != nil || after.ID != r.ID || len(after.Sources) != 1 || after.Sources[0].Label != "incomplete" || after.Applied != r.Applied {
 		t.Fatal("source edit was lost or applied container settings", after, err)
 	}
-	for _, label := range []string{"Manage configs", "Configs, in order:", "Add existing config", "Replace config", "Remove config", "Select a config", "Saved selected configs.", "at least one config is required", "[0]  Exit"} {
+	for _, label := range []string{"Manage configs", "Configs, in order:", "Add existing config", "Replace config", "Remove config", "Select a config", "Saved selected configs.", "Configuration error:", "[0]  Exit"} {
 		if !strings.Contains(out.String(), label) {
 			t.Fatal("session editor mixed config and source labels", label, out.String())
 		}

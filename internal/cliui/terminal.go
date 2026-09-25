@@ -264,11 +264,11 @@ func snapshotCollection(c *Collection) *Collection {
 	return &snapshot
 }
 
-func (r *Runner) terminalText(prompt string) (string, bool, error) {
+func (r *Runner) terminalText(request TextRequest) (string, bool, error) {
 	context := r.screen.take()
 	notice := strings.Join(r.notices, "\n")
 	r.notices = nil
-	reply, err := r.screen.present(&screenRequest{page: Screen{Title: "Enter a value", Back: "Back", Navigation: snapshotNavigation(r.navigation)}, body: ansi.Strip(context), notice: notice, input: true, prompt: strings.ReplaceAll(prompt, ":back", "Esc")})
+	reply, err := r.screen.present(&screenRequest{page: Screen{Title: "Enter a value", Back: "Back", Navigation: snapshotNavigation(r.navigation)}, body: ansi.Strip(context), notice: notice, input: true, initial: request.Initial, sensitive: request.Sensitive, prompt: strings.ReplaceAll(request.Prompt, ":back", "Esc")})
 	return reply.value, !reply.back && err == nil, err
 }
 func (r *Runner) terminalConfirm(prompt string) (bool, error) {

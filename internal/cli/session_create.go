@@ -152,10 +152,10 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 				return false, err
 			}},
 		}
-		actions = append(actions, p.chainActions(draft.sources, func(updated []config.Reference) error { draft.sources = updated; return nil })...)
+		actions = append(actions, p.chainActions(draft.sources, false, func(updated []config.Reference) error { draft.sources = updated; return nil })...)
 		if draft.workspace != "" {
 			actions = append(actions, cliui.Action{Label: "Change folder", Run: func() (bool, error) {
-				folder, ok, err := p.Text("Workspace folder: ", func(value string) error { _, err := environment.CanonicalWorkspace(value); return err })
+				folder, ok, err := p.Text(cliui.TextRequest{Prompt: "Workspace folder: ", Initial: draft.workspace, Validate: func(value string) error { _, err := environment.CanonicalWorkspace(value); return err }})
 				if err == nil && ok {
 					draft.workspace, err = environment.CanonicalWorkspace(folder)
 				}
@@ -213,7 +213,7 @@ func editSessionCreationName(p sourcePicker, current string) (string, bool, erro
 	if current != "" {
 		writeMenuHint(p.Out, "Current name: "+current)
 	}
-	name, changed, err := p.Text("Session name (:back cancels): ", environment.ValidateLocalName)
+	name, changed, err := p.Text(cliui.TextRequest{Prompt: "Session name (:back cancels): ", Initial: current, Validate: environment.ValidateLocalName})
 	if !changed {
 		return current, false, err
 	}

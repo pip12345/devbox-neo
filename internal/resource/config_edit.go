@@ -31,7 +31,7 @@ func ConfigFields() []ConfigField {
 		{Key: "harness_args", Kind: "list", Help: "Arguments for the harness named in this config, one per entry. Matching harness layers append; other harness arguments are ignored."},
 		{Key: "docker_args", Kind: "list", Help: "Docker options added by this config. Earlier options are kept. Use --option=value for options with values."},
 		{Key: "mounts", Kind: "list", Help: "Mounts added by this config. Earlier mounts are kept. Format: SOURCE:/absolute/target[:options]."},
-		{Key: "env", Kind: "list", Help: "KEY=VALUE entries added by this config. Later assignments to the same variable win. Prefer ${env:NAME}; typed input is visible.", Sensitive: true},
+		{Key: "env", Kind: "list", Help: "KEY=VALUE entries added by this config. Later assignments to the same variable win. Prefer ${env:NAME}; terminal input is masked.", Sensitive: true},
 		{Key: "ports", Kind: "list", Help: "Port forwards added by this config. Earlier forwards are kept. Format: [HOST_IP:]HOST_PORT:CONTAINER_PORT."},
 		{Key: "vscode", Kind: "extensions", Help: "VS Code extension IDs added by this config. Earlier extensions are kept."},
 		{Key: "base_image", Kind: "string", Help: "Debian/Ubuntu-compatible upstream image; Devbox prepares the development user before customization."},

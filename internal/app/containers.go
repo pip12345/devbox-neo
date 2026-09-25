@@ -254,6 +254,8 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection
 		if err = e.Docker.Remove(ctx, item.container, item.owner); err != nil {
 			return removed, err
 		}
+		// Docker removal has committed even if recording activity fails next.
+		removed = append(removed, item.lock.Name)
 		if item.record.ID != "" {
 			item.record.Action = "delete-container"
 			item.record.Activity = time.Now().UTC()
@@ -261,7 +263,6 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection
 				return removed, err
 			}
 		}
-		removed = append(removed, item.lock.Name)
 	}
 	return removed, nil
 }

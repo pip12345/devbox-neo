@@ -19,9 +19,14 @@ import (
 
 func editCommand(factory engineFactory, name *string) *cobra.Command {
 	var show, asJSON, setDefault, clearDefault bool
+	var references []string
 	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Edit a session's selected configs or its folder's default selection", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
-		if asJSON && !show {
-			return fmt.Errorf("--json requires --show")
+		replace := cmd.Flags().Changed("config")
+		if replace && (show || setDefault || clearDefault) {
+			return fmt.Errorf("use --config alone, not with --show, --default, or --clear-default")
+		}
+		if asJSON && !show && !replace {
+			return fmt.Errorf("--json requires --show or --config")
 		}
 		if setDefault && clearDefault {
 			return fmt.Errorf("use --default or --clear-default, not both")
@@ -39,12 +44,18 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 		if setDefault && !direct {
 			return fmt.Errorf("--default requires --name or an exact full session name")
 		}
-		if !show && !setDefault && !clearDefault && !interactive(cmd) {
-			return fmt.Errorf("editing requires a terminal; use --name NAME --show to inspect or --name NAME --default to select without prompting")
+		if replace && !direct {
+			return fmt.Errorf("--config requires --name or an exact full session name")
+		}
+		if !show && !setDefault && !clearDefault && !replace && !interactive(cmd) {
+			return fmt.Errorf("editing requires a terminal; use --name NAME with --config to replace selected configs, --show to inspect, or --default to select without prompting")
 		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
+		}
+		if replace {
+			return replaceSessionConfigs(cmd, e, args[0], *name, references, asJSON)
 		}
 		if clearDefault {
 			workspace, err := e.ClearDefault(cmd.Context(), args[0])
@@ -110,9 +121,10 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 		}
 		return err
 	}}
-	cmd.Example = "  devbox-neo edit .\n  devbox-neo edit . --name work --default"
+	cmd.Example = "  devbox-neo edit .\n  devbox-neo edit . --name work --default\n  devbox-neo edit . --name work --config base --config ./project-config"
 	cmd.Flags().BoolVar(&show, "show", false, "Show combined settings and their sources without editing")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "Print --show output as JSON")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Print --show or --config results as JSON; never prompt")
+	cmd.Flags().StringArrayVar(&references, "config", nil, "Replace the entire selected config list, in order (repeatable; never additive)")
 	cmd.Flags().BoolVar(&setDefault, "default", false, "Select this session as its folder's default without prompting")
 	cmd.Flags().BoolVar(&clearDefault, "clear-default", false, "Clear the folder's default without selecting another session")
 	return sessionNameFlag(cmd, name)
@@ -183,7 +195,7 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 		if configErr == nil {
 			configErr = resolved.Settings.Validate()
 		}
-		actions := picker.chainActions(r.Sources, apply)
+		actions := picker.chainActions(r.Sources, true, apply)
 		actions = append(actions, cliui.Action{Label: "Show combined configuration", Run: func() (bool, error) {
 			view, err := combinedView(e, r)
 			if err != nil {

@@ -84,7 +84,11 @@ func TestEditUsesNativeMenuAndSavesDefault(t *testing.T) {
 	})
 	p.wait("Set folder default")
 	p.send("\x1b[B\r")
+	p.wait("the folder default")
 	p.send("\r")
+	// The saved-state reload may outlast a fixed inter-key delay. Wait for
+	// the refreshed parent controls before sending its exit key.
+	p.wait("Clear folder default")
 	p.send("q")
 	p.finish(done)
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)

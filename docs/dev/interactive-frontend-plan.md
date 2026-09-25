@@ -34,7 +34,7 @@ Setting a default already has an exact session and folder target. It needs no se
 
 Folder entries offer Create session here and Clear folder default. Folder-level clearing also handles a saved default whose session is no longer selectable. Open folder by path reaches folders absent from the inventory. The browser has no separate routine Set-default picker.
 
-The explicit `edit <folder>` command retains its folder/config editor, including the aligned Set/Clear picker. Its flags and scripting contract are unchanged.
+The explicit `edit <folder>` command retains its folder/config editor, including the aligned Set/Clear picker. The follow-up [CLI/TUI alignment plan](cli-tui-alignment-plan.md) extends it with direct whole-list `--config` replacement and requires nonempty saved selections, while keeping empty creation drafts valid.
 
 Operational preconditions remain service-owned. Preserve missing-container recovery only where the underlying command supports it, ownership checks, explicit force, active-command protections, exact transfer endpoints, and separate container/history deletion decisions. A menu error must not silently change an operation's meaning.
 

@@ -14,6 +14,8 @@ import (
 type screenRequest struct {
 	page                   Screen
 	body, notice, prompt   string
+	initial                string
+	sensitive              bool
 	input, confirm, canTab bool
 	cursor                 int
 	itemKey, query         string
@@ -54,6 +56,11 @@ func (m *terminalModel) load(req *screenRequest) tea.Cmd {
 	m.query = req.query
 	m.input = textinput.New()
 	m.input.Prompt = "› "
+	if req.sensitive {
+		m.input.EchoMode = textinput.EchoPassword
+	}
+	m.input.SetValue(req.initial)
+	m.input.CursorEnd()
 	m.input.SetWidth(max(10, m.width-16))
 	m.objects = req.page.Collection != nil && len(req.page.Collection.Items) > 0 && (req.cursor < 0 || req.page.FocusItem != "")
 	target := req.itemKey

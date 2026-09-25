@@ -110,7 +110,28 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 			actions = append(actions, cliui.Action{Label: fmt.Sprintf("%-*s  %-5s  %s", nameWidth, displayCell(name), "fixed", displayCell(filepath.Join(p.home, "configs", name))), Selected: selected, Run: func() (bool, error) { return accept(name) }})
 		}
 		actions = append(actions, cliui.Action{Label: "Enter a directory path", BreakBefore: len(names) > 0, Run: func() (bool, error) {
-			input, accepted, err := p.Text("Config directory (:back cancels): ", nil)
+			initial := ""
+			if current != nil {
+				source, err := current.Expand(p.workspace)
+				if err != nil {
+					return false, err
+				}
+				initial = source.Path
+				if current.Kind == config.ReferenceRelative {
+					cwd, err := config.CanonicalPath(p.cwd)
+					if err != nil {
+						return false, err
+					}
+					initial, err = filepath.Rel(cwd, source.Path)
+					if err != nil {
+						return false, err
+					}
+					if !strings.Contains(initial, "/") {
+						initial = "./" + initial
+					}
+				}
+			}
+			input, accepted, err := p.Text(cliui.TextRequest{Prompt: "Config directory (:back cancels): ", Initial: initial})
 			if err != nil || !accepted {
 				return false, err
 			}
@@ -178,7 +199,11 @@ func showSourceChain(m menu, home, workspace string, sources []config.Reference)
 
 // Chain controls do not own persistence. Creation replaces its draft; editing
 // saves through UpdateSources with its existing identity/conflict checks.
-func (p sourcePicker) chainActions(sources []config.Reference, apply func([]config.Reference) error) []cliui.Action {
+func (p sourcePicker) chainActions(sources []config.Reference, requireConfig bool, apply func([]config.Reference) error) []cliui.Action {
+	removeBlocked := ""
+	if requireConfig && len(sources) == 1 {
+		removeBlocked = "Keep at least one config; use Replace config instead."
+	}
 	save := func(updated []config.Reference) (bool, error) {
 		if err := config.ValidateReferenceChain(p.workspace, updated); err != nil {
 			return false, p.report(err)
@@ -223,7 +248,7 @@ func (p sourcePicker) chainActions(sources []config.Reference, apply func([]conf
 			updated[index] = reference
 			return save(updated)
 		}},
-		{Label: "Remove config", Hidden: len(sources) == 0, Run: func() (bool, error) {
+		{Label: "Remove config", Hidden: len(sources) == 0, Blocked: removeBlocked, Run: func() (bool, error) {
 			index, err := selectIndex()
 			if err != nil || index < 0 {
 				return false, err

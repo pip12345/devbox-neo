@@ -20,6 +20,8 @@ Drafts remain local until explicit submission. Optional-file drafts copy slices 
 
 Browser creation supplies a materialization callback so build errors return to the populated form. A committed creation whose final Stop failed opens the saved session for recovery rather than retrying Create. Other successful one-shot forms close; failures retain inputs.
 
+`cliui.TextRequest` supplies initial source values, validation, and sensitivity. Pending text belongs to the workflow. Control characters use JSON-string input because the single-line widget sanitizes them. Sensitive input is masked; plain prompts suppress echo and restore termios.
+
 Saved edits are not rolled back by Back/Exit. Session-config receipts point to exact Status targets without implying container settings were applied. Provenance comes from the resolver, not comparisons of displayed values.
 
 ## One terminal reader
