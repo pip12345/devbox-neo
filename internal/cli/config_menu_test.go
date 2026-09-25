@@ -186,7 +186,7 @@ func TestMenuCancellationAndValidationDoNotWrite(t *testing.T) {
 	var out bytes.Buffer
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	m := menu{ctx: ctx, in: bufio.NewReader(strings.NewReader(n + "\n1\nhost\n1\n")), out: &out}
+	m := testMenu(ctx, bufio.NewReader(strings.NewReader(n+"\n1\nhost\n1\n")), &out)
 	if err := configMenu(m, s, owner, new(bool)); !errors.Is(err, context.Canceled) {
 		t.Fatal("cancellation ignored", err)
 	}
@@ -194,8 +194,8 @@ func TestMenuCancellationAndValidationDoNotWrite(t *testing.T) {
 
 func TestMenuRePromptsAndListEditing(t *testing.T) {
 	var out bytes.Buffer
-	m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("bad\n99\n1\n")), out: &out}
-	if n, err := m.choose("Pick", []string{"first"}, "Back"); err != nil || n != 0 || !strings.Contains(out.String(), "Choose 1") {
+	m := testMenu(context.Background(), bufio.NewReader(strings.NewReader("bad\n99\n1\n")), &out)
+	if n, err := m.Select("Pick", []string{"first"}, "Back"); err != nil || n != 0 || !strings.Contains(out.String(), "Choose 1") {
 		t.Fatal(out.String(), n, err)
 	}
 	s := menuService(t)
@@ -205,10 +205,10 @@ func TestMenuRePromptsAndListEditing(t *testing.T) {
 		t.Fatal(err)
 	}
 	field := resource.ConfigField{Key: "harness_args", Kind: "list"}
-	if err := s.SetConfigField(m.ctx, owner, field.Key, nil, json.RawMessage(`["first","second"]`), false); err != nil {
+	if err := s.SetConfigField(m.Context, owner, field.Key, nil, json.RawMessage(`["first","second"]`), false); err != nil {
 		t.Fatal(err)
 	}
-	m.in = bufio.NewReader(strings.NewReader("2\n1\nchanged\n3\n2\n0\n"))
+	m.Input = bufio.NewReader(strings.NewReader("2\n1\nchanged\n3\n2\n0\n"))
 	if err := editList(m, s, owner, field, new(bool)); err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestMenuRePromptsAndListEditing(t *testing.T) {
 	if err != nil || strings.Join(entries, ",") != "changed" {
 		t.Fatal(entries, err)
 	}
-	m.in = bufio.NewReader(strings.NewReader("3\n1\n0\n"))
+	m.Input = bufio.NewReader(strings.NewReader("3\n1\n0\n"))
 	if err := editList(m, s, owner, field, new(bool)); err != nil {
 		t.Fatal(err)
 	}
@@ -226,8 +226,8 @@ func TestMenuRePromptsAndListEditing(t *testing.T) {
 	if err != nil || entries == nil || len(entries) != 0 {
 		t.Fatal("removing the last entry did not save an empty list", entries, err)
 	}
-	m.in = bufio.NewReader(strings.NewReader(""))
-	if _, err = m.choose("Pick", []string{"first"}, "Back"); !errors.Is(err, io.EOF) {
+	m.Input = bufio.NewReader(strings.NewReader(""))
+	if _, err = m.Select("Pick", []string{"first"}, "Back"); !errors.Is(err, io.EOF) {
 		t.Fatal("EOF was treated as a retry", err)
 	}
 }

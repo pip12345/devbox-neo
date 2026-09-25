@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"devbox/internal/cliui"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -153,7 +154,7 @@ func TestStageMenuShowsWarningsBeforeConfirmation(t *testing.T) {
 	cmd.SetIn(strings.NewReader("3\nn\n0\n"))
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	if err := stageMenu(cmd, fake, v, migration.Selection{}); err != nil {
+	if err := stageMenu(cliui.New(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout()), cmd, fake, v, migration.Selection{}); err != nil {
 		t.Fatal(err)
 	}
 	text := out.String()

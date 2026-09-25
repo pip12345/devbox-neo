@@ -1,26 +1,23 @@
 package cli
 
 import (
-	"bufio"
-	"context"
 	"fmt"
 	"io"
-	"strconv"
-	"strings"
 
+	"devbox/internal/cliui"
 	"devbox/internal/commanderror"
 	"github.com/spf13/cobra"
 )
 
-// Menus stay in canonical terminal mode: the terminal provides line editing,
-// and promptReader handles cancellation without an abandoned stdin goroutine.
-// Values remain separate from labels, so redacted display text is never saved.
+// menu adds command-scoped guidance to the domain-independent UI runtime.
+// Child workflows receive the same runner and therefore the same input buffer.
 type menu struct {
-	ctx    context.Context
-	in     *bufio.Reader
-	out    io.Writer
-	cmd    *cobra.Command
-	screen *menuScreen
+	*cliui.Runner
+	cmd *cobra.Command
+}
+
+func newMenu(cmd *cobra.Command) menu {
+	return menu{Runner: cliui.New(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout()), cmd: cmd}
 }
 
 func (m menu) commandHint(home, reason string, args ...string) error {
@@ -28,96 +25,24 @@ func (m menu) commandHint(home, reason string, args ...string) error {
 	if m.cmd != nil {
 		steps = scopedSteps(m.cmd, steps, home)
 	}
-	_, err := fmt.Fprint(m.out, stepsText(steps))
+	_, err := fmt.Fprint(m.Out, stepsText(steps))
 	return err
 }
 
-func (m menu) line(prompt string) (string, error) {
-	if err := m.ctx.Err(); err != nil {
-		return "", err
-	}
-	if err := m.showPrompt(prompt); err != nil {
-		return "", err
-	}
-	// Enter submits an operation. EOF must not submit a partially typed value.
-	line, readErr := m.in.ReadString('\n')
-	if m.screen != nil {
-		if err := m.screen.afterInput(); err != nil {
-			return "", err
-		}
-	}
-	if readErr != nil {
-		return "", readErr
-	}
-	return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"), nil
-}
+func writeMenuTitle(out io.Writer, title string) error { return cliui.Title(out, title) }
+func writeMenuHint(out io.Writer, text string) error   { return cliui.Hint(out, text) }
+func menuPrefix(n int) string                          { return cliui.Prefix(n) }
 
-func writeMenuTitle(out io.Writer, title string) error {
-	if _, err := fmt.Fprintln(out); err != nil {
-		return err
-	}
-	return writeStyledConfigLine(out, "", title, "", configDisplayWidth(out), terminalColors(out).strong)
-}
+const menuChoicePrompt = cliui.ChoicePrompt
 
-func writeMenuHint(out io.Writer, text string) error {
-	return writeStyledConfigLine(out, "", text, "", configDisplayWidth(out), terminalColors(out).dim)
-}
-
-func writeMenuChoices(out io.Writer, title string, choices []string, gapBefore ...int) error {
-	if err := writeMenuTitle(out, title); err != nil {
-		return err
+// Domain failures can be retried only while the command itself is alive.
+func (m menu) report(err error) error {
+	if err == nil {
+		return nil
 	}
-	for i, choice := range choices {
-		if len(gapBefore) > 0 && i == gapBefore[0] {
-			if _, err := fmt.Fprintln(out); err != nil {
-				return err
-			}
-		}
-		prefix := menuPrefix(i + 1)
-		if err := writeConfigLine(out, prefix, choice, strings.Repeat(" ", len(prefix)), configDisplayWidth(out)); err != nil {
-			return err
-		}
+	if m.Context.Err() != nil {
+		return m.Context.Err()
 	}
+	m.Notice("Error: " + displayCell(err.Error()))
 	return nil
-}
-
-const menuChoicePrompt = "\n   Choose a number > "
-
-func (m menu) choose(title string, choices []string, back string, gapBefore ...int) (int, error) {
-	if err := writeMenuChoices(m.out, title, choices, gapBefore...); err != nil {
-		return -1, err
-	}
-	return m.readChoice(len(choices), back)
-}
-
-func menuPrefix(number int) string {
-	return fmt.Sprintf("   %-4s ", fmt.Sprintf("[%d]", number))
-}
-
-func (m menu) readChoice(count int, back string) (int, error) {
-	fmt.Fprintf(m.out, "\n%s%s\n", menuPrefix(0), back)
-	var choices []byte
-	if m.screen != nil {
-		choices = m.screen.choiceFrame()
-	}
-	for {
-		line, err := m.line(menuChoicePrompt)
-		if err != nil {
-			return -1, err
-		}
-		line = strings.TrimSpace(line)
-		if line == "0" || line == "q" {
-			return -1, nil
-		}
-		n, err := strconv.Atoi(line)
-		if err == nil && n >= 1 && n <= count {
-			return n - 1, nil
-		}
-		hint := fmt.Sprintf("Choose 1–%d, or 0 to %s.\n", count, strings.ToLower(back))
-		if m.screen != nil {
-			m.screen.retryChoice(choices, hint)
-		} else {
-			fmt.Fprint(m.out, hint)
-		}
-	}
 }

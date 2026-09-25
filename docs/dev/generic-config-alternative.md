@@ -45,11 +45,11 @@ Each interactive workflow has one command entry point:
 | `create <folder>` | Name a session and select existing config sources |
 | `edit <folder|session>` | Manage a session's source chain, inspect combined configuration, and select or clear its folder default |
 
-Keep directory creation/editing out of session creation and source-chain menus. Those menus may print the exact command to run next, but must not launch another command's menu. Reuse the existing underlying configuration mechanisms without duplicating their interactive entry points. Top-level `edit` replaces the bare `config <folder|session>` form; do not retain the old `config sources` command as an alias or add a root-level `sources` command.
+Session creation and source-chain menus offer config creation through the exact same workflow as `config create`, returning the result to the selected chain. They do not open existing-directory editors. Reuse the workflow directly with the command's existing UI runner; never invoke another Cobra command or duplicate its setup logic. Top-level `edit` replaces the bare `config <folder|session>` form; do not retain the old `config sources` command as an alias or add a root-level `sources` command.
 
 ## Shared menu presentation and controls
 
-Follow the rewrite's existing menu and settings-display components in `internal/cli/menu.go` and `internal/cli/config_display.go`, with the terminal conventions used by `internal/cli/list.go` and `internal/cli/terminal.go`. The examples below are plain-text layouts; terminal styling is part of the contract, not decoration left to each command.
+Use the synchronous screen runner in `internal/cliui` and the domain settings-display components in `internal/cli/config_display.go`. One runner owns input and terminal rendering for a command; ordinary nested workflow functions share it. Screens bind actions to handlers, with separate visibility conditions and blocking reasons. Custom table layouts do not own input or dispatch. The examples below are plain-text layouts; terminal styling is part of the contract, not decoration left to each command.
 
 - Titles say what the user is doing or selecting. Label context explicitly, such as `Folder:` and `Session:`; do not use a command name as a substitute for explaining a screen.
 - Use bold headings, aligned indented `[1]` choices, and the existing `Choose a number >` prompt. Use dim context labels, paths, and secondary instructions.
@@ -59,7 +59,7 @@ Follow the rewrite's existing menu and settings-display components in `internal/
 - Apply styling through shared terminal helpers, not command-specific ANSI fragments. Align plain text before styling so escape sequences do not shift columns. Respect output-terminal detection, `NO_COLOR`, `TERM=dumb`, and redirected output. Plain text retains `(selected)`, checkmarks, and status/error labels.
 - `[0] Back` returns to the previous step or menu. Use `[0] Cancel` when abandoning a selection or creation flow and `[0] Exit` to leave any immediate-save editor without undoing saved changes. `q` follows the displayed `[0]` action. Do not show Back when there is no previous screen.
 - Keep canonical line input: type a number and press Enter. Text entry uses `:back` to cancel the unfinished input, for example `New mount (:back cancels): `. Do not add Escape handling, raw-terminal controls, or a new keyboard-input system. EOF abandons incomplete input while retaining completed edits. One shared menu renderer redraws short screens in the terminal's temporary alternate screen, without changing input mode; oversized or unpredictable-width menus print normally. Restore the shell screen before printing final results or errors. Redirected output stays plain.
-- Completed setting and saved-source-chain edits save immediately. Back only navigates; there are no Save/Discard screens or extra approvals. Creation choices remain pending until the creation action; Back between creation steps preserves those choices without publishing files or a session.
+- Completed setting and saved-source-chain edits save immediately. Back only navigates; there are no Save/Discard screens or extra approvals. Each creation workflow keeps its choices pending until its own creation action. Back preserves its parent's choices. A config successfully created from a session menu is independently saved; cancelling the session does not remove it.
 
 ## Create sessions
 
@@ -114,14 +114,14 @@ Creation requires at least one config source and a valid combined configuration,
 
 ### Interactive creation
 
-In a terminal, `devbox create .` opens a creation overview with a pending session name and source chain. Let the user set/change the name and add/edit sources in either order. Do not prefill or suggest `main` or another name; a name and at least one source are required before Create session appears. Partially specified commands prefill the supplied inputs in the overview:
+In a terminal, `devbox create .` opens a creation overview with a pending session name and source chain. Let the user set/change the name and add/edit sources in either order. Do not prefill or suggest `main` or another name; Create session is always visible and reports a missing name and/or config when selected. Partially specified commands prefill the supplied inputs in the overview:
 
 ```sh
 devbox create . --name main                         # add config sources in the overview
 devbox create . --config base --config ./devconfig  # set the name in the overview
 ```
 
-The source picker offers existing configs under `<home>/configs/` and an option to enter the path of an existing config directory. It does not create or edit directories, select their harness, or initialize their artifacts. If no reusable configs are listed, explain how to create one with `devbox config create base`; the user can still supply an existing directory path.
+The source picker offers existing configs under `<home>/configs/` and an option to enter an existing directory path. An empty picker also offers Create and add config, calling the shared config-creation workflow. The session overview offers Create config directly. On success the new config is appended without another picker or approval. Cancelled or failed setup preserves the session draft; completed config publication remains saved.
 
 Set/Change session name opens `Session name (:back cancels): ` without prefilled text. Back keeps the previous pending name. Invalid input leaves it unchanged and shows the validation error. The overview shows the ordered chain and supports adding, replacing, removing, and reordering sources before session creation. This example shows the draft after the user has entered `Main` and selected two sources; the name is not a default:
 
@@ -139,17 +139,18 @@ What would you like to do?
 
    [1]  Create session
    [2]  Change session name
-   [3]  Add source
-   [4]  Replace source
-   [5]  Remove source
-   [6]  Reorder sources
+   [3]  Add existing config
+   [4]  Create config
+   [5]  Replace config
+   [6]  Remove config
+   [7]  Reorder configs
 
    [0]  Cancel
 
    Choose a number >
 ```
 
-Plain numbered source rows show order; bracketed numbers identify selectable actions. With no name, show **Set session name**; with a name, show **Change session name**. With no sources, show no source-edit actions beyond Add source. Create session appears only when both the name and a source are present. Add source uses the existing-config picker:
+Plain numbered source rows show order; bracketed numbers identify selectable actions. With no name, show **Set session name**; with a name, show **Change session name**. With no sources, offer Add existing config and Create config. Show Replace/Remove with at least one config, and Reorder only with at least two. Create session stays at its fixed first position even when inputs are missing. Add source uses the existing-config picker:
 
 ```text
 Select a config source
@@ -165,7 +166,7 @@ Select a config source
 
 There is no preselected source when adding one. Replacement shows the current source above the choices and marks it when listed. Directory entry uses `Config directory (:back cancels): `. Reordering selects a source and then its new position through numbered choices, with Back to cancel an unfinished operation.
 
-The interactive flow creates no session or container until the user selects Create session. It never creates or edits config directories. A fully specified command does not require a redundant confirmation. Without a terminal, missing required inputs produce an actionable error rather than prompting.
+The interactive flow creates no session or container until the user selects Create session. Config creation is a separate nested workflow with independent persistence; the session flow does not edit existing config directories. A fully specified command does not require a redundant confirmation. Without a terminal, missing required inputs produce an actionable error rather than prompting.
 
 Successful creation leaves the container stopped and does not select a default. Print the local name, full session/container name, and resolved config sources in order, followed by concrete commands to select a default and open it. The user then runs `edit` to choose a default or opens the new session explicitly by name; do not launch the editor from session creation.
 
@@ -519,22 +520,23 @@ Sources, in order:
 
 What would you like to do?
 
-   [1]  Add source
-   [2]  Replace source
-   [3]  Remove source
-   [4]  Reorder sources
-   [5]  Show combined configuration
+   [1]  Add existing config
+   [2]  Create config
+   [3]  Replace config
+   [4]  Remove config
+   [5]  Reorder configs
+   [6]  Show combined configuration
 
    [0]  Back
 
    Choose a number >
 ```
 
-Back returns to the folder overview. When entered directly with `--name` or an exact session target, use Exit instead because there is no previous picker. Default controls live only in the folder overview. Add/replace and reordering use the same source-selection controls described under session creation, but each completed operation here immediately saves the session's desired source chain. Hide remove/replace/reorder actions when there are no sources. On exit after source changes, report the affected exact session names once with `status` commands to check whether container changes are still pending.
+Back returns to the folder overview. When entered directly with `--name` or an exact session target, use Exit instead because there is no previous picker. Default controls live only in the folder overview. Add/replace and reordering use the same source-selection controls described under session creation, but each completed operation here immediately saves the session's desired source chain. Hide remove/replace actions with no sources and reorder with fewer than two. On exit after source changes, report the affected exact session names once with `status` commands to check whether container changes are still pending.
 
-Show combined configuration uses the existing read-only renderer, including scalar and per-entry provenance, not a second editable settings dashboard.
+Show combined configuration opens a separate Back-only screen using the existing read-only renderer, including scalar and per-entry provenance. Its parent menu resumes only after Back; it is not a second editable settings dashboard.
 
-Source rows describe references; they do not open directory editors. Show an exact `devbox config edit <reference>` command when the user needs to edit a source, using a path that resolves correctly from the invoking directory. Add source selects an existing config directory. Replace source lets the user repair a moved or missing directory reference without editing the other sources. Missing configs are created separately with `devbox config create <reference>`; source-chain operations never enter that workflow.
+Source rows describe references; they do not open directory editors. Show an exact `devbox config edit <reference>` command when the user needs to edit a source, using a path that resolves correctly from the invoking directory. Add source selects an existing config directory. Replace source lets the user repair a moved or missing directory reference without editing the other sources. Create config enters the same setup as `devbox config create <reference>` and adds the successful result. Cancelling setup returns to the source-chain menu without changing its selection.
 
 Distinguish these operations clearly:
 

@@ -2,44 +2,14 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 
+	"devbox/internal/cliui"
 	"devbox/internal/harness"
 	"devbox/internal/resource"
 )
-
-func (m menu) selectedChoice(title string, choices []string, selected int, summary, back string) (int, error) {
-	if err := writeMenuTitle(m.out, title); err != nil {
-		return -1, err
-	}
-	paint := terminalColors(m.out)
-	if summary == "" {
-		summary = "None"
-		if selected >= 0 && selected < len(choices) {
-			summary = choices[selected]
-		}
-	}
-	if err := writeStyledConfigLine(m.out, "Current selection: ", displayCell(summary), "  ", configDisplayWidth(m.out), paint.strong); err != nil {
-		return -1, err
-	}
-	fmt.Fprintln(m.out)
-	for i, choice := range choices {
-		text := displayCell(choice)
-		var style func(string) string
-		if i == selected {
-			text += " (selected)"
-			style = func(line string) string {
-				return strings.ReplaceAll(paint.strong(line), "(selected)", paint.green("(selected)"))
-			}
-		}
-		prefix := menuPrefix(i + 1)
-		if err := writeStyledConfigLine(m.out, prefix, text, strings.Repeat(" ", len(prefix)), configDisplayWidth(m.out), style); err != nil {
-			return -1, err
-		}
-	}
-	return m.readChoice(len(choices), back)
-}
 
 func availableHarnesses(m menu, home string) ([]string, error) {
 	registry, err := harness.Enumerate(home)
@@ -47,7 +17,7 @@ func availableHarnesses(m menu, home string) ([]string, error) {
 		return nil, err
 	}
 	for _, issue := range registry.Invalid {
-		fmt.Fprintf(m.out, "Unavailable harness %s: %s\n", displayCell(issue.Name), displayCell(issue.Err.Error()))
+		m.Notice(fmt.Sprintf("Unavailable harness %s: %s", displayCell(issue.Name), displayCell(issue.Err.Error())))
 	}
 	var names []string
 	for _, h := range registry.Valid {
@@ -67,7 +37,7 @@ func configCreationMenu(m menu, home string) (resource.SetupOptions, bool, error
 		if options.Harness != nil {
 			current, summary = slices.Index(names, *options.Harness), *options.Harness
 		}
-		choice, err := m.selectedChoice("Select a harness", append(slices.Clone(names), "Leave unset"), current, summary, "Cancel")
+		choice, err := m.SelectCurrent("Select a harness", append(slices.Clone(names), "Leave unset"), current, summary, "Cancel")
 		if err != nil || choice < 0 {
 			return options, false, err
 		}
@@ -86,82 +56,65 @@ func configCreationMenu(m menu, home string) (resource.SetupOptions, bool, error
 
 func optionalFilesMenu(m menu, home string, options resource.SetupOptions) (resource.SetupOptions, bool, error) {
 	labels := []string{"Harness config files", "setup.sh", "before-open.sh", "Dockerfile"}
-	for {
-		if err := writeMenuTitle(m.out, "Choose optional files"); err != nil {
-			return options, false, err
-		}
-		summary := []string{}
+	proceed := false
+	err := m.Run(func() (cliui.Screen, error) {
+		var summary []string
+		actions := make([]cliui.Action, 0, len(labels)+1)
 		for i, artifact := range resource.SetupArtifacts {
-			if slices.Contains(options.Artifacts, artifact) {
-				label := labels[i]
-				if artifact == "harness-config" {
-					label += " (" + options.ArtifactHarness + ")"
-				}
+			label := labels[i]
+			selected := slices.Contains(options.Artifacts, artifact)
+			if selected && artifact == "harness-config" {
+				label += " (" + options.ArtifactHarness + ")"
+			}
+			if selected {
 				summary = append(summary, label)
 			}
-		}
-		text := "None"
-		if len(summary) > 0 {
-			text = strings.Join(summary, ", ")
-		}
-		paint := terminalColors(m.out)
-		if err := writeStyledConfigLine(m.out, "Current selection: ", displayCell(text), "  ", configDisplayWidth(m.out), paint.strong); err != nil {
-			return options, false, err
-		}
-		fmt.Fprintln(m.out)
-		for i, artifact := range resource.SetupArtifacts {
-			label := "  " + labels[i]
-			var style func(string) string
-			if slices.Contains(options.Artifacts, artifact) {
-				label = "✓ " + labels[i]
-				if artifact == "harness-config" {
-					label += " (" + options.ArtifactHarness + ")"
+			actions = append(actions, cliui.Action{Label: label, Checked: &selected, Run: func() (bool, error) {
+				if index := slices.Index(options.Artifacts, artifact); index >= 0 {
+					options.Artifacts = slices.Delete(options.Artifacts, index, index+1)
+					return false, nil
 				}
-				style = func(line string) string { return strings.ReplaceAll(paint.strong(line), "✓", paint.green("✓")) }
-			}
-			prefix := menuPrefix(i + 1)
-			if err := writeStyledConfigLine(m.out, prefix, displayCell(label), strings.Repeat(" ", len(prefix)), configDisplayWidth(m.out), style); err != nil {
-				return options, false, err
-			}
+				if artifact == "harness-config" {
+					names, err := availableHarnesses(m, home)
+					if err != nil {
+						return false, err
+					}
+					if len(names) == 0 {
+						m.Notice("No harness definitions are available for file generation.")
+						return false, nil
+					}
+					target := options.ArtifactHarness
+					if target == "" && options.Harness != nil {
+						target = *options.Harness
+					}
+					index, err := m.SelectCurrent("Choose which harness's config files to add", names, slices.Index(names, target), "", "Back")
+					if err != nil || index < 0 {
+						return false, err
+					}
+					options.ArtifactHarness = names[index]
+				}
+				options.Artifacts = append(options.Artifacts, artifact)
+				return false, nil
+			}})
 		}
-		fmt.Fprintf(m.out, "\n%sContinue\n", menuPrefix(len(labels)+1))
-		choice, err := m.readChoice(len(labels)+1, "Back")
-		if err != nil || choice < 0 {
-			return options, false, err
-		}
-		if choice == len(labels) {
+		actions = append(actions, cliui.Action{Label: "Continue", BreakBefore: true, Run: func() (bool, error) {
 			if !slices.Contains(options.Artifacts, "harness-config") {
 				options.ArtifactHarness = ""
 			}
-			return options, true, nil
-		}
-		artifact := resource.SetupArtifacts[choice]
-		if index := slices.Index(options.Artifacts, artifact); index >= 0 {
-			options.Artifacts = slices.Delete(options.Artifacts, index, index+1)
-			continue
-		}
-		if artifact == "harness-config" {
-			names, err := availableHarnesses(m, home)
-			if err != nil {
-				return options, false, err
+			proceed = true
+			return true, nil
+		}})
+		return cliui.Screen{Title: "Choose optional files", Back: "Back", Actions: actions, Body: func(out io.Writer) error {
+			text := "None"
+			if len(summary) > 0 {
+				text = strings.Join(summary, ", ")
 			}
-			if len(names) == 0 {
-				fmt.Fprintln(m.out, "No harness definitions are available for file generation.")
-				continue
+			if err := writeStyledConfigLine(out, "Current selection: ", displayCell(text), "  ", configDisplayWidth(out), terminalColors(out).strong); err != nil {
+				return err
 			}
-			target := options.ArtifactHarness
-			if target == "" && options.Harness != nil {
-				target = *options.Harness
-			}
-			index, err := m.selectedChoice("Choose which harness's config files to add", names, slices.Index(names, target), "", "Back")
-			if err != nil {
-				return options, false, err
-			}
-			if index < 0 {
-				continue
-			}
-			options.ArtifactHarness = names[index]
-		}
-		options.Artifacts = append(options.Artifacts, artifact)
-	}
+			_, err := fmt.Fprintln(out)
+			return err
+		}}, nil
+	})
+	return options, proceed, err
 }

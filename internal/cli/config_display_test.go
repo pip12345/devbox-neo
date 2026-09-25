@@ -180,8 +180,8 @@ func TestConfigShowUsesMultilineValuesAndLeavesJSONUnchanged(t *testing.T) {
 func TestListSelectionWrapsWithoutChangingInputOrLeakingControls(t *testing.T) {
 	long := "/data/" + strings.Repeat("long/", 60) + "file"
 	var out bytes.Buffer
-	m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("2\n")), out: &out}
-	n, err := m.choose("Select entry", []string{configEntryLabel("/data/\x1b[31m", resource.ConfigField{}), long}, "Back")
+	m := testMenu(context.Background(), bufio.NewReader(strings.NewReader("2\n")), &out)
+	n, err := m.Select("Select entry", []string{configEntryLabel("/data/\x1b[31m", resource.ConfigField{}), long}, "Back")
 	if err != nil || n != 1 {
 		t.Fatal("wrapping changed selection indices", n, err)
 	}

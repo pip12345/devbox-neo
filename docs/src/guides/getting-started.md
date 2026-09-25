@@ -56,7 +56,7 @@ Then create its environment:
 devbox-neo create .
 ```
 
-Choose **Set session name** and enter a name, then **Add existing config** and select `base`. You can change the name before choosing **Create session**. The name belongs to this workspace; other workspaces can use the same name.
+Choose **Set session name** and enter a name, then **Add existing config** and select `base`. If you skipped config setup, **Create config** opens that same setup here and adds the result. The config stays saved even if you later cancel session creation. You can change the pending name and configs before choosing **Create session**; selecting it too early tells you what's missing. The name belongs to this workspace; other workspaces can use the same name.
 
 You can also use a path directly, such as `devbox-neo create /path/to/your/project`, without changing folders.
 

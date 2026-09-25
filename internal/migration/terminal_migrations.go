@@ -1,10 +1,8 @@
 package migration
 
 import (
+	"devbox/internal/cliui"
 	"io"
-	"os"
-
-	"golang.org/x/sys/unix"
 )
 
 type reportPaint struct{ enabled bool }
@@ -12,13 +10,7 @@ type reportPaint struct{ enabled bool }
 // Detect the output terminal, not stdin: redirected output and saved reports
 // must stay plain even when the user is answering prompts in a terminal.
 func reportColors(out io.Writer) reportPaint {
-	_, noColor := os.LookupEnv("NO_COLOR")
-	file, ok := out.(*os.File)
-	if !ok || noColor || os.Getenv("TERM") == "dumb" {
-		return reportPaint{}
-	}
-	_, err := unix.IoctlGetTermios(int(file.Fd()), unix.TCGETS)
-	return reportPaint{enabled: err == nil}
+	return reportPaint{enabled: cliui.Colors(out).Enabled()}
 }
 
 func (p reportPaint) style(code, text string) string {

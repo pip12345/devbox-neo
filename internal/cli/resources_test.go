@@ -389,27 +389,22 @@ func TestResourceAutomationDoesNotPromptAndScopesNextSteps(t *testing.T) {
 
 func TestPromptParsingAndCancellation(t *testing.T) {
 	var out bytes.Buffer
-	m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("2\n")), out: &out}
-	choice, err := m.selectedChoice("Harness", []string{"pi", "opencode"}, 0, "", "Cancel")
+	m := testMenu(context.Background(), bufio.NewReader(strings.NewReader("2\n")), &out)
+	choice, err := m.SelectCurrent("Harness", []string{"pi", "opencode"}, 0, "", "Cancel")
 	if err != nil || choice != 1 || !strings.Contains(out.String(), "pi (selected)") || !strings.Contains(out.String(), "Current selection: pi") {
 		t.Fatal(choice, err, out.String())
 	}
 	out.Reset()
-	m.in = bufio.NewReader(strings.NewReader("2\n2\n4\n5\n"))
+	m.Input = bufio.NewReader(strings.NewReader("2\n2\n4\n5\n"))
 	options, proceed, err := optionalFilesMenu(m, t.TempDir(), resource.SetupOptions{})
 	if err != nil || !proceed || !slices.Equal(options.Artifacts, []string{"Dockerfile"}) || strings.Contains(out.String(), "comma") || !strings.Contains(out.String(), "✓ Dockerfile") {
 		t.Fatal(options, proceed, err, out.String())
 	}
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.Close()
-	defer w.Close()
+	_, slave := testTerminal(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
-	reader := terminalReader{ctx: ctx, file: r}
-	if _, err = reader.Read(make([]byte, 1)); err != context.DeadlineExceeded {
+	ui := testMenu(ctx, slave, &out)
+	if _, err = ui.Line("Waiting: "); err != context.DeadlineExceeded {
 		t.Fatal("prompt ignored cancellation", err)
 	}
 }

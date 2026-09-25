@@ -1,21 +1,20 @@
 package cli
 
 import (
-	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"devbox/internal/app"
+	"devbox/internal/cliui"
 	"devbox/internal/commanderror"
 	"devbox/internal/environment"
 	"github.com/spf13/cobra"
 )
 
 type deletionConfirmation struct {
-	reader            *bufio.Reader
-	out               io.Writer
+	ui                *cliui.Runner
 	defaultFolder     string
 	singleTarget      bool
 	removedContainers int
@@ -69,18 +68,10 @@ func (c *deletionConfirmation) confirm(prompt app.DeletePrompt) (bool, error) {
 		}
 		text.WriteString("Delete saved data and history? [y/N] ")
 	}
-	if _, err := io.WriteString(c.out, text.String()); err != nil {
-		return false, err
-	}
-	line, err := c.reader.ReadString('\n')
+	confirmed, err := c.ui.Confirm(text.String())
 	if err != nil {
-		if err == io.EOF {
-			return false, nil
-		}
 		return false, err
 	}
-	answer := strings.ToLower(strings.TrimSpace(line))
-	confirmed := answer == "y" || answer == "yes"
 	if confirmed && len(prompt.Containers) > 0 {
 		// app.Delete asks about saved state only after this phase succeeds.
 		c.removedContainers = len(prompt.Containers)
@@ -91,7 +82,7 @@ func (c *deletionConfirmation) confirm(prompt app.DeletePrompt) (bool, error) {
 func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 	var options app.DeleteOptions
 	var container, session, asJSON bool
-	cmd := &cobra.Command{Use: "delete [folder|session...]", Short: "Delete containers, optionally also deleting saved session data", Args: cobra.ArbitraryArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "delete [folder|session...]", Short: "Delete containers, optionally also deleting saved session data", Args: cobra.ArbitraryArgs, RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		if container && session {
 			return fmt.Errorf("choose --container or --session, not both")
 		}
@@ -111,7 +102,8 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 		options.Selection.LocalName = *localName
 		options.Confirm = nil
 		if options.Scope == "" {
-			confirmation := &deletionConfirmation{reader: promptReader(cmd), out: cmd.OutOrStdout(), singleTarget: len(args) == 1}
+			confirmation := &deletionConfirmation{ui: cliui.New(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout()), singleTarget: len(args) == 1}
+			defer func() { runErr = errors.Join(runErr, confirmation.ui.Finish()) }()
 			if confirmation.singleTarget && *localName == "" && !environment.IsSessionTarget(args[0]) {
 				confirmation.defaultFolder = args[0]
 			}

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"golang.org/x/sys/unix"
+	"devbox/internal/cliui"
 )
 
 // Display rows never serve as editable source. Menus supply redacted source or
@@ -43,15 +43,7 @@ func configEntryOrigins(sources []string) []string {
 	return origins
 }
 
-func configDisplayWidth(out io.Writer) int {
-	const readableWidth = 80
-	if file := menuTerminal(out); file != nil {
-		if size, err := unix.IoctlGetWinsize(int(file.Fd()), unix.TIOCGWINSZ); err == nil && size.Col > 0 {
-			return min(readableWidth, int(size.Col))
-		}
-	}
-	return readableWidth
-}
+func configDisplayWidth(out io.Writer) int { return cliui.Width(out) }
 
 // Hard wrapping preserves every character, including whitespace in argv and
 // paths. Continuations have no bullet/number so they cannot look like new items.
@@ -60,26 +52,7 @@ func writeConfigLine(out io.Writer, prefix, text, continuation string, width int
 }
 
 func writeStyledConfigLine(out io.Writer, prefix, text, continuation string, width int, style func(string) string) error {
-	printLine := func(line string) error {
-		if style != nil {
-			line = style(line)
-		}
-		_, err := fmt.Fprintln(out, line)
-		return err
-	}
-	runes := []rune(prefix + text)
-	width = max(1, width)
-	for len(runes) > width {
-		if err := printLine(string(runes[:width])); err != nil {
-			return err
-		}
-		padding := []rune(continuation)
-		if len(padding) >= width {
-			padding = padding[:width-1]
-		}
-		runes = append(append([]rune(nil), padding...), runes[width:]...)
-	}
-	return printLine(string(runes))
+	return cliui.WriteLine(out, prefix, text, continuation, width, style)
 }
 
 func configScalar(value any, listItem bool) string {
@@ -276,24 +249,24 @@ func writeConfigValue(out io.Writer, prefix, text, origin, continuation string, 
 	return nil
 }
 
-func (m menu) chooseConfig(rows []configDisplayRow, actions ...string) (int, error) {
-	fmt.Fprintln(m.out)
+func printConfigActions(out io.Writer, rows []configDisplayRow, actions []cliui.Action) error {
+	fmt.Fprintln(out)
 	numbered := make([]configDisplayRow, len(rows))
 	for i, row := range rows {
 		numbered[i] = row
 		numbered[i].label = menuPrefix(i+1) + row.label
 	}
-	if err := renderConfigRows(m.out, numbered, "        ", configDisplayWidth(m.out), true); err != nil {
-		return -1, err
+	if err := renderConfigRows(out, numbered, "        ", configDisplayWidth(out), true); err != nil {
+		return err
 	}
-	if len(actions) > 0 {
-		fmt.Fprintln(m.out)
-		for i, action := range actions {
-			prefix := menuPrefix(len(rows) + i + 1)
-			if err := writeConfigLine(m.out, prefix, action, strings.Repeat(" ", len(prefix)), configDisplayWidth(m.out)); err != nil {
-				return -1, err
+	if len(actions) > len(rows) {
+		fmt.Fprintln(out)
+		for i := len(rows); i < len(actions); i++ {
+			prefix := menuPrefix(i + 1)
+			if err := writeConfigLine(out, prefix, actions[i].Label, strings.Repeat(" ", len(prefix)), configDisplayWidth(out)); err != nil {
+				return err
 			}
 		}
 	}
-	return m.readChoice(len(rows)+len(actions), "Exit")
+	return nil
 }

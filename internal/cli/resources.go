@@ -84,30 +84,28 @@ func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		owner, err := service.ConfigDirectory(args[0], cwd, userHome)
-		if err != nil {
-			return err
-		}
 		options := resource.SetupOptions{Artifacts: artifacts, ArtifactHarness: artifactHarness}
 		if cmd.Flags().Changed("harness") {
 			options.Harness = &selected
 		}
 		direct := cmd.Flags().Changed("harness") || cmd.Flags().Changed("artifact") || cmd.Flags().Changed("artifact-harness") || asJSON
+		if create && !direct && interactive(cmd) {
+			m := newMenu(cmd)
+			_, result, created, createErr := createConfig(m, service, args[0], cwd, userHome)
+			if finishErr := m.Finish(); finishErr != nil {
+				return errors.Join(createErr, finishErr)
+			}
+			if (errors.Is(createErr, io.EOF) && len(result.Created) == 0) || (createErr == nil && !created) {
+				cmd.Println("Cancelled. No config was created.")
+				return nil
+			}
+			return renderResource(cmd, result, createErr, asJSON, service.Home)
+		}
+		owner, err := service.ConfigDirectory(args[0], cwd, userHome)
+		if err != nil {
+			return err
+		}
 		if create {
-			if err := service.CheckConfigCreation(owner); err != nil {
-				return err
-			}
-			if !direct && interactive(cmd) {
-				var proceed bool
-				options, proceed, err = runConfigCreationMenu(cmd, service.Home)
-				if errors.Is(err, io.EOF) || (err == nil && !proceed) {
-					cmd.Println("Cancelled. No config was created.")
-					return nil
-				}
-				if err != nil {
-					return err
-				}
-			}
 			result, err := service.CreateConfig(cmd.Context(), owner, options)
 			return renderResource(cmd, result, err, asJSON, service.Home)
 		}

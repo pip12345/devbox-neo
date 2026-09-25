@@ -28,7 +28,7 @@ func TestSelectedSourcesShowLabelsAndPathsWithoutTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	m := menu{out: &out}
+	m := testMenu(context.Background(), strings.NewReader(""), &out)
 	sources := []config.Reference{
 		{Label: "base", Kind: config.ReferenceFixed, Path: owner.Root},
 		{Label: "./devconfig", Kind: config.ReferenceRelative, Path: "devconfig"},
@@ -65,7 +65,7 @@ func TestSourcePickerShowsReferenceTypeWithoutAnotherConfirmation(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			var out bytes.Buffer
 			p := sourcePicker{
-				menu: menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader(test.input)), out: &out},
+				menu: testMenu(context.Background(), bufio.NewReader(strings.NewReader(test.input)), &out),
 				home: s.Home, workspace: workspace, cwd: workspace, userHome: t.TempDir(),
 			}
 			reference, chosen, err := p.choose(nil, "Back")

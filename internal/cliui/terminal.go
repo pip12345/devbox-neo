@@ -1,22 +1,20 @@
-package cli
+package cliui
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 )
 
-// menuScreen owns the terminal for one interactive command. Menus write their
+// terminalScreen owns the terminal for one interactive command. Menus write their
 // next frame into pending; only line input displays it. Long frames leave the
 // alternate screen and print normally, preserving access to every choice.
-type menuScreen struct {
+type terminalScreen struct {
 	terminal      *os.File
 	pending       bytes.Buffer
 	active        bool
@@ -24,40 +22,31 @@ type menuScreen struct {
 	showNextPlain bool
 }
 
-func (s *menuScreen) Write(p []byte) (int, error) {
+func (s *terminalScreen) Write(p []byte) (int, error) {
 	if s.closed {
 		return s.terminal.Write(p)
 	}
 	return s.pending.Write(p)
 }
 
-func (s *menuScreen) choiceFrame() []byte {
+func (s *terminalScreen) choiceFrame() []byte {
 	return bytes.Clone(s.pending.Bytes())
 }
 
-func (s *menuScreen) retryChoice(frame []byte, hint string) {
+func (s *terminalScreen) retryChoice(frame []byte, hint string) {
 	s.pending.Write(frame)
 	s.pending.WriteString(hint)
 }
 
-func menuTerminal(out io.Writer) *os.File {
-	if s, ok := out.(*menuScreen); ok {
+func Terminal(out io.Writer) *os.File {
+	if s, ok := out.(*terminalScreen); ok {
 		return s.terminal
 	}
 	file, _ := out.(*os.File)
 	return file
 }
 
-func newMenu(cmd *cobra.Command) menu {
-	m := menu{ctx: cmd.Context(), in: promptReader(cmd), out: cmd.OutOrStdout(), cmd: cmd}
-	if file := menuTerminal(m.out); interactive(cmd) && file != nil && terminal(file) && os.Getenv("TERM") != "dumb" {
-		m.screen = &menuScreen{terminal: file}
-		m.out = m.screen
-	}
-	return m
-}
-
-func (s *menuScreen) leave() error {
+func (s *terminalScreen) leave() error {
 	if !s.active {
 		return nil
 	}
@@ -66,7 +55,7 @@ func (s *menuScreen) leave() error {
 	return err
 }
 
-func (s *menuScreen) finish() error {
+func (s *terminalScreen) finish() error {
 	if s.closed {
 		return nil
 	}
@@ -78,33 +67,10 @@ func (s *menuScreen) finish() error {
 	return err
 }
 
-func (m menu) finish() error {
-	if m.screen != nil {
-		return m.screen.finish()
-	}
-	return nil
-}
-
-// Operations that can write outside the menu must run on the shell screen.
-func (m menu) pause() error {
-	if m.screen != nil {
-		return m.screen.leave()
-	}
-	return nil
-}
-
-// Keep a warning and its retry menu together on the shell screen. The next
-// interaction can resume redraw after the user has seen the warning.
-func (m menu) showNextPlain() {
-	if m.screen != nil {
-		m.screen.showNextPlain = true
-	}
-}
-
-func (s *menuScreen) show(prompt string) error {
+func (s *terminalScreen) show(prompt string) error {
 	frame := s.pending.String() + prompt
 	size, err := unix.IoctlGetWinsize(int(s.terminal.Fd()), unix.TIOCGWINSZ)
-	fits := err == nil && size.Row > 2 && size.Col > 0 && menuFrameFits(frame, int(size.Row)-2, int(size.Col)) && !s.showNextPlain
+	fits := err == nil && size.Row > 2 && size.Col > 0 && FrameFits(frame, int(size.Row)-2, int(size.Col)) && !s.showNextPlain
 	s.showNextPlain = false
 	if !fits {
 		if err := s.leave(); err != nil {
@@ -128,7 +94,7 @@ func (s *menuScreen) show(prompt string) error {
 	return nil
 }
 
-func (s *menuScreen) afterInput() error {
+func (s *terminalScreen) afterInput() error {
 	if !s.active {
 		return nil
 	}
@@ -141,7 +107,7 @@ func (s *menuScreen) afterInput() error {
 // Conservatively count non-ASCII glyphs as two cells. Combining, format,
 // control, and non-SGR escape sequences use ordinary scrolling output rather
 // than risking an underestimated frame size.
-func menuFrameFits(frame string, maxRows, width int) bool {
+func FrameFits(frame string, maxRows, width int) bool {
 	if !utf8.ValidString(frame) || strings.Count(frame, "\n")+1 > maxRows {
 		return false
 	}
@@ -179,12 +145,4 @@ func menuFrameFits(frame string, maxRows, width int) bool {
 		}
 	}
 	return true
-}
-
-func (m menu) showPrompt(prompt string) error {
-	if m.screen != nil {
-		return m.screen.show(prompt)
-	}
-	_, err := fmt.Fprint(m.out, prompt)
-	return err
 }

@@ -65,13 +65,17 @@ explicit sources too. Creation rejects existing config.json; artifact setup neve
 overwrites existing files. Harness-file generation does not force harness selection.
 Config delete removes a named directory only when saved sessions do not reference
 it or configs beneath it, including committed sources needed for recovery.
-Devbox-neo create <folder> asks for an explicit local session name and existing
-config sources, then prepares a stopped container. Scripts supply --name NAME and
+Devbox-neo create <folder> asks for an explicit local session name and selected
+configs, then prepares a stopped container. Create session stays visible and
+reports missing inputs. Session menus can create and add a config through the
+same setup as config create. Back preserves the session draft; completed config
+creation remains saved independently of that draft. Scripts supply --name NAME and
 repeated --config REF. Creation never selects a default. Use edit <folder> to choose
 one, open <folder> --name NAME for an explicit local name, or a full session name
 from list for exact targeting anywhere. Even a sole session needs an explicit
 folder default. Edit <folder|session> manages a session's saved source references;
-it does not open config directory editors. Config edits do not rename sessions.
+it offers shared config creation but does not open existing-directory editors.
+Combined configuration has a read-only screen with Back. Config edits do not rename sessions.
 Open/start require existing sessions, with recorded missing-container recovery.
 Lasting settings belong in config directories; open accepts continuation and
 invocation-only harness arguments.

@@ -44,11 +44,11 @@ From the workspace, open the session picker:
 devbox-neo edit .
 ```
 
-Select a session, choose **Add existing config**, and enter `./devconfig`. The folder menu also lets you choose **Set folder default** or **Clear folder default**. Keep `base` before it if you want the workspace config's explicit scalar values to override the shared config. Lists generally append; [the reference](../reference/configuration.md#config-fields) describes field-specific rules.
+Select a session, choose **Add existing config**, and enter `./devconfig`. If you haven't created the config yet, choose **Create config** instead: complete the usual config setup and Devbox adds it to this session. The folder menu also lets you choose **Set folder default** or **Clear folder default**. Keep `base` before it if you want the workspace config's explicit scalar values to override the shared config. Lists generally append; [the reference](../reference/configuration.md#config-fields) describes field-specific rules.
 
 Adding, replacing, removing, or reordering selected configs saves immediately. **Exit** does not undo those changes. The editor prints an exact-session `status` command on exit so you can check whether the container needs updating. Editing a config directory prints bare `status` instead, to review changes across environments. It changes this session only, without renaming it or copying the directories. Editing a shared directory instead affects every session that uses it.
 
-Choose **Show combined configuration** to see effective values and which configs supplied them. For non-interactive inspection, provide the local name explicitly:
+Choose **Show combined configuration** to see effective values and which configs supplied them. Use **Back** to return to managing configs. For non-interactive inspection, provide the local name explicitly:
 
 ```sh
 devbox-neo edit . --name Main --show

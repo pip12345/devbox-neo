@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"devbox/internal/cliui"
 	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/harness"
@@ -16,17 +17,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func runConfigCreationMenu(cmd *cobra.Command, home string) (options resource.SetupOptions, proceed bool, err error) {
-	m := newMenu(cmd)
-	defer func() { err = errors.Join(err, m.finish()) }()
-	return configCreationMenu(m, home)
-}
-
 func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner) (err error) {
 	m := newMenu(cmd)
 	changed := false
 	defer func() {
-		err = errors.Join(err, m.finish())
+		err = errors.Join(err, m.Finish())
 		if changed {
 			steps := scopedSteps(cmd, []commanderror.Step{commanderror.Next("", "status")}, s.Home)
 			_, receiptErr := fmt.Fprintf(cmd.OutOrStdout(), "Config changes saved: %s\nReview pending changes:\n%s", displayCell(owner.Name), stepsText(steps))
@@ -35,7 +30,7 @@ func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner
 	}()
 	err = configMenu(m, s, owner, &changed)
 	if errors.Is(err, io.EOF) {
-		fmt.Fprintln(m.out, "\nMenu closed. Completed changes remain saved.")
+		fmt.Fprintln(m.Out, "\nMenu closed. Completed changes remain saved.")
 		return nil
 	}
 	return err
@@ -43,20 +38,14 @@ func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner
 
 func configMenu(m menu, s *resource.Service, owner resource.Owner, changed *bool) error {
 	fields := resource.ConfigFields()
-	for {
+	return m.Run(func() (cliui.Screen, error) {
 		source, err := s.ConfigSource(owner)
 		if err != nil {
-			return err
+			return cliui.Screen{}, err
 		}
 		view, resolveErr := s.ShowOwner(owner)
-		if err := writeMenuTitle(m.out, configMenuTitle(owner)); err != nil {
-			return err
-		}
-		if resolveErr != nil {
-			fmt.Fprintf(m.out, "Effective configuration unavailable: %s\nShowing values configured here; you can still edit them.\n", displayCell(resolveErr.Error()))
-
-		}
 		rows := make([]configDisplayRow, len(fields))
+		actions := make([]cliui.Action, 0, len(fields)+1)
 		for i, field := range fields {
 			value := source[field.Key]
 			origin := owner.Name
@@ -68,8 +57,7 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner, changed *bool
 				}
 				origin = configSourceLabel(view.Trace.Sources[key])
 				entrySources = view.Trace.EntrySources[key]
-				effective := view.Values[field.Key]
-				value, _ = json.Marshal(effective)
+				value, _ = json.Marshal(view.Values[field.Key])
 			}
 			rows[i] = configDisplayRow{label: configLabel(field.Key), value: menuConfigValue(value, field), origin: origin, command: field.Key == "shell"}
 			if resolveErr != nil {
@@ -83,89 +71,71 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner, changed *bool
 				rows[i].value = "Unavailable"
 				rows[i].origin = "unknown"
 			}
+			actions = append(actions, cliui.Action{Label: configLabel(field.Key), Run: func() (bool, error) {
+				return false, editConfigField(m, s, owner, field, source, changed)
+			}})
 		}
-		n, err := m.chooseConfig(rows, "Add optional files")
-		if err != nil || n < 0 {
-			return err
-		}
-		if n == len(fields) {
+		actions = append(actions, cliui.Action{Label: "Add optional files", BreakBefore: true, Run: func() (bool, error) {
 			var configured *string
 			if raw := source["harness"]; raw != nil {
 				_ = json.Unmarshal(raw, &configured)
 			}
 			options, proceed, err := optionalFilesMenu(m, s.Home, resource.SetupOptions{Harness: configured})
-			if err != nil {
-				return err
-			}
-			if !proceed || len(options.Artifacts) == 0 {
-				continue
+			if err != nil || !proceed || len(options.Artifacts) == 0 {
+				return false, err
 			}
 			options.Harness = nil
-			result, err := s.EditConfig(m.ctx, owner, options)
+			result, err := s.EditConfig(m.Context, owner, options)
 			if len(result.Created) > 0 || len(result.Updated) > 0 {
 				*changed = true
 			}
 			for _, path := range result.Created {
-				fmt.Fprintf(m.out, "Created %s\n", displayCell(path))
+				m.Notice("Created " + displayCell(path))
 			}
 			for _, path := range result.Skipped {
-				fmt.Fprintf(m.out, "Kept existing %s\n", displayCell(path))
+				m.Notice("Kept existing " + displayCell(path))
 			}
-			if err != nil {
-				fmt.Fprintf(m.out, "Error: %s\n", displayCell(err.Error()))
-			}
-			continue
-		}
-		field := fields[n]
-		if err := writeMenuTitle(m.out, fmt.Sprintf("%s (%s)", configLabel(field.Key), field.Key)); err != nil {
-			return err
-		}
-		if err := writeMenuHint(m.out, field.Help); err != nil {
-			return err
-		}
-		if field.Kind == "list" || field.Kind == "extensions" {
-			if err = editList(m, s, owner, field, changed); err != nil {
+			return false, m.report(err)
+		}})
+		return cliui.Screen{Title: configMenuTitle(owner), Back: "Exit", Actions: actions, Body: func(out io.Writer) error {
+			if resolveErr != nil {
+				_, err := fmt.Fprintf(out, "Effective configuration unavailable: %s\nShowing values configured here; you can still edit them.\n", displayCell(resolveErr.Error()))
 				return err
 			}
-			continue
+			return nil
+		}, Rows: func(out io.Writer, actions []cliui.Action) error { return printConfigActions(out, rows, actions) }}, nil
+	})
+}
+
+func editConfigField(m menu, s *resource.Service, owner resource.Owner, field resource.ConfigField, source map[string]json.RawMessage, changed *bool) error {
+	if field.Kind == "list" || field.Kind == "extensions" {
+		return editList(m, s, owner, field, changed)
+	}
+	actions := []cliui.Action{{Label: "Edit value"}, {Label: "Remove this setting", Hidden: source[field.Key] == nil}}
+	selected, err := m.Choose(cliui.Screen{Title: fmt.Sprintf("%s (%s)", configLabel(field.Key), field.Key), Back: "Back", Actions: actions, Body: func(out io.Writer) error {
+		if err := writeMenuHint(out, field.Help); err != nil {
+			return err
 		}
 		if raw, exists := source[field.Key]; exists {
-			if err := printConfigRows(m.out, []configDisplayRow{{label: "Configured here", value: menuConfigValue(raw, field)}}, "  ", configDisplayWidth(m.out)); err != nil {
-				return err
-			}
+			return printConfigRows(out, []configDisplayRow{{label: "Configured here", value: menuConfigValue(raw, field)}}, "  ", configDisplayWidth(out))
 		}
-		actions := []string{"Edit value"}
-		if _, exists := source[field.Key]; exists {
-			actions = append(actions, "Remove this setting")
-		}
-		action, err := m.choose(configLabel(field.Key), actions, "Back")
-		if err != nil {
-			return err
-		}
-		if action < 0 {
-			continue
-		}
-		remove := action == 1
-		var value json.RawMessage
-		if !remove {
-			value, err = readConfigValue(m, s, field, source[field.Key])
-			if err != nil {
-				return err
-			}
-			if value == nil {
-				continue
-			}
-		}
-		if err = applyConfigChange(m, s, owner, field, source[field.Key], value, remove, changed); err != nil {
+		return nil
+	}})
+	if err != nil || selected < 0 {
+		return err
+	}
+	remove := selected == 1
+	var value json.RawMessage
+	if !remove {
+		value, err = readConfigValue(m, s, field, source[field.Key])
+		if err != nil || value == nil {
 			return err
 		}
 	}
+	return applyConfigChange(m, s, owner, field, source[field.Key], value, remove, changed)
 }
 
-func configMenuTitle(owner resource.Owner) string {
-	return "Config · " + displayCell(owner.Name)
-}
-
+func configMenuTitle(owner resource.Owner) string { return "Config · " + displayCell(owner.Name) }
 func configLabel(key string) string {
 	switch key {
 	case "shell":
@@ -187,7 +157,6 @@ func configLabel(key string) string {
 	}
 	return strings.ToUpper(text[:1]) + text[1:]
 }
-
 func configEntries(raw json.RawMessage, field resource.ConfigField) ([]string, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -201,7 +170,6 @@ func configEntries(raw json.RawMessage, field resource.ConfigField) ([]string, e
 	err := json.Unmarshal(raw, &entries)
 	return entries, err
 }
-
 func menuConfigValue(raw json.RawMessage, field resource.ConfigField) any {
 	if len(raw) == 0 {
 		return nil
@@ -222,7 +190,6 @@ func menuConfigValue(raw json.RawMessage, field resource.ConfigField) any {
 	}
 	return value
 }
-
 func configEntryLabel(entry string, field resource.ConfigField) string {
 	if field.Sensitive {
 		entry = config.RedactEnv([]string{entry})[0]
@@ -237,21 +204,20 @@ func readConfigValue(m menu, s *resource.Service, field resource.ConfigField, cu
 	var value any
 	switch field.Kind {
 	case "bool":
-		n, err := m.choose("New value", []string{"Yes", "No"}, "Cancel")
+		n, err := m.Select("New value", []string{"Yes", "No"}, "Cancel")
 		if err != nil || n < 0 {
 			return nil, err
 		}
 		value = n == 0
 	case "string":
-		choices := []string{}
-		switch field.Key {
-		case "harness":
+		var choices []string
+		if field.Key == "harness" {
 			registry, err := harness.Enumerate(s.Home)
 			if err != nil {
 				return nil, err
 			}
 			for _, issue := range registry.Invalid {
-				fmt.Fprintf(m.out, "Unavailable harness %s: %s\n", displayCell(issue.Name), displayCell(issue.Err.Error()))
+				m.Notice(fmt.Sprintf("Unavailable harness %s: %s", displayCell(issue.Name), displayCell(issue.Err.Error())))
 			}
 			for _, h := range registry.Valid {
 				choices = append(choices, h.Definition.Name)
@@ -260,7 +226,7 @@ func readConfigValue(m menu, s *resource.Service, field resource.ConfigField, cu
 		if len(choices) > 0 {
 			var selected string
 			_ = json.Unmarshal(current, &selected)
-			n, err := m.selectedChoice("New value", append(append([]string(nil), choices...), "Enter a value or host expression"), slices.Index(choices, selected), selected, "Cancel")
+			n, err := m.SelectCurrent("New value", append(slices.Clone(choices), "Enter a value or host expression"), slices.Index(choices, selected), selected, "Cancel")
 			if err != nil || n < 0 {
 				return nil, err
 			}
@@ -269,8 +235,8 @@ func readConfigValue(m menu, s *resource.Service, field resource.ConfigField, cu
 			}
 		}
 		if value == nil {
-			text, err := m.line("New value (:back cancels): ")
-			if err != nil || text == ":back" {
+			text, accepted, err := m.Text("New value (:back cancels): ", nil)
+			if err != nil || !accepted {
 				return nil, err
 			}
 			value = text
@@ -280,7 +246,6 @@ func readConfigValue(m menu, s *resource.Service, field resource.ConfigField, cu
 	}
 	return json.Marshal(value)
 }
-
 func listItemName(key string) string {
 	switch key {
 	case "mounts":
@@ -298,116 +263,111 @@ func listItemName(key string) string {
 	}
 }
 
-// A failed operation stays visible without closing the editor. Both callers
-// reload source before the next operation, including after a conflict.
+// The service compares the displayed field snapshot under its owner lock.
+// On conflict the next screen reloads; failed writes never advance UI state.
 func applyConfigChange(m menu, s *resource.Service, owner resource.Owner, field resource.ConfigField, expected, value json.RawMessage, remove bool, changed *bool) error {
-	if err := s.SetConfigField(m.ctx, owner, field.Key, expected, value, remove); err != nil {
-		if m.ctx.Err() != nil {
-			return m.ctx.Err()
+	if err := s.SetConfigField(m.Context, owner, field.Key, expected, value, remove); err != nil {
+		if m.Context.Err() != nil {
+			return m.Context.Err()
 		}
-		_, writeErr := fmt.Fprintf(m.out, "Not saved: %s\n", displayCell(err.Error()))
-		return writeErr
+		m.Notice("Not saved: " + displayCell(err.Error()))
+		return nil
 	}
 	if !bytes.Equal(expected, value) {
 		*changed = true
 	}
-	_, err := fmt.Fprintf(m.out, "Saved %s.\n", configLabel(field.Key))
-	return err
+	m.Notice("Saved " + configLabel(field.Key) + ".")
+	return nil
 }
 
 func editList(m menu, s *resource.Service, owner resource.Owner, field resource.ConfigField, changed *bool) error {
 	item := listItemName(field.Key)
-	for {
+	return m.Run(func() (cliui.Screen, error) {
 		source, err := s.ConfigSource(owner)
 		if err != nil {
-			return err
+			return cliui.Screen{}, err
 		}
 		entries, err := configEntries(source[field.Key], field)
 		if err != nil {
-			return err
-		}
-		if len(entries) == 0 {
-			fmt.Fprintln(m.out)
-			if err := writeMenuHint(m.out, fmt.Sprintf("No %s configured here.", strings.ToLower(configLabel(field.Key)))); err != nil {
-				return err
-			}
-		} else if err := writeMenuTitle(m.out, configLabel(field.Key)+" configured here:"); err != nil {
-			return err
+			return cliui.Screen{}, err
 		}
 		labels := make([]string, len(entries))
 		for i, entry := range entries {
 			labels[i] = configEntryLabel(entry, field)
-			prefix := menuPrefix(i + 1)
-			if err := writeConfigLine(m.out, prefix, labels[i], strings.Repeat(" ", len(prefix)), configDisplayWidth(m.out)); err != nil {
-				return err
+		}
+		save := func(updated []string, remove bool) (bool, error) {
+			var value json.RawMessage
+			if !remove {
+				var input any = updated
+				if field.Kind == "extensions" {
+					input = config.VSCode{Extensions: updated}
+				}
+				value, err = json.Marshal(input)
+				if err != nil {
+					return false, err
+				}
+			}
+			return false, applyConfigChange(m, s, owner, field, source[field.Key], value, remove, changed)
+		}
+		edit := func(existing bool) func() (bool, error) {
+			return func() (bool, error) {
+				index := len(entries)
+				if existing {
+					var err error
+					index, err = m.Select("Select "+item, labels, "Back")
+					if err != nil || index < 0 {
+						return false, err
+					}
+				}
+				text, accepted, err := m.Text("New "+item+" (:back cancels): ", func(value string) error {
+					if strings.ContainsRune(value, '\x00') {
+						return fmt.Errorf("Entries cannot contain NUL.")
+					}
+					return nil
+				})
+				if err != nil || !accepted {
+					return false, err
+				}
+				updated := slices.Clone(entries)
+				if existing {
+					updated[index] = text
+				} else {
+					updated = append(updated, text)
+				}
+				return save(updated, false)
 			}
 		}
-		actions := []string{"add"}
-		choices := []string{"Add " + item}
-		if len(entries) > 0 {
-			actions = append(actions, "edit", "remove")
-			choices = append(choices, "Edit "+item, "Remove "+item)
-		}
-		if _, configured := source[field.Key]; configured {
-			actions = append(actions, "reset")
-			choices = append(choices, "Remove this setting")
-		}
-		n, err := m.choose("What would you like to do?", choices, "Back")
-		if err != nil || n < 0 {
-			return err
-		}
-		switch actions[n] {
-		case "add", "edit":
-			index := len(entries)
-			if actions[n] == "edit" {
-				index, err = m.choose("Select "+item, labels, "Back")
-				if err != nil {
+		return cliui.Screen{Title: fmt.Sprintf("%s (%s)", configLabel(field.Key), field.Key), Back: "Back", Prompt: "What would you like to do?", Body: func(out io.Writer) error {
+			if field.Help != "" {
+				if err := writeMenuHint(out, field.Help); err != nil {
 					return err
 				}
-				if index < 0 {
-					continue
+			}
+			if len(entries) == 0 {
+				fmt.Fprintln(out)
+				return writeMenuHint(out, fmt.Sprintf("No %s configured here.", strings.ToLower(configLabel(field.Key))))
+			}
+			if err := writeMenuTitle(out, configLabel(field.Key)+" configured here:"); err != nil {
+				return err
+			}
+			for i, label := range labels {
+				prefix := menuPrefix(i + 1)
+				if err := writeConfigLine(out, prefix, label, strings.Repeat(" ", len(prefix)), configDisplayWidth(out)); err != nil {
+					return err
 				}
 			}
-			text, err := m.line("New " + item + " (:back cancels): ")
-			if err != nil {
-				return err
-			}
-			if text == ":back" {
-				continue
-			}
-			if strings.ContainsRune(text, '\x00') {
-				fmt.Fprintln(m.out, "Entries cannot contain NUL.")
-				continue
-			}
-			if actions[n] == "add" {
-				entries = append(entries, text)
-			} else {
-				entries[index] = text
-			}
-		case "remove":
-			index, err := m.choose("Remove "+item, labels, "Back")
-			if err != nil {
-				return err
-			}
-			if index < 0 {
-				continue
-			}
-			entries = append(entries[:index], entries[index+1:]...)
-		}
-		remove := actions[n] == "reset"
-		var value json.RawMessage
-		if !remove {
-			var input any = entries
-			if field.Kind == "extensions" {
-				input = config.VSCode{Extensions: entries}
-			}
-			value, err = json.Marshal(input)
-			if err != nil {
-				return err
-			}
-		}
-		if err = applyConfigChange(m, s, owner, field, source[field.Key], value, remove, changed); err != nil {
-			return err
-		}
-	}
+			return nil
+		}, Actions: []cliui.Action{
+			{Label: "Add " + item, Run: edit(false)},
+			{Label: "Edit " + item, Hidden: len(entries) == 0, Run: edit(true)},
+			{Label: "Remove " + item, Hidden: len(entries) == 0, Run: func() (bool, error) {
+				index, err := m.Select("Remove "+item, labels, "Back")
+				if err != nil || index < 0 {
+					return false, err
+				}
+				return save(slices.Delete(slices.Clone(entries), index, index+1), false)
+			}},
+			{Label: "Remove this setting", Hidden: source[field.Key] == nil, Run: func() (bool, error) { return save(nil, true) }},
+		}}, nil
+	})
 }

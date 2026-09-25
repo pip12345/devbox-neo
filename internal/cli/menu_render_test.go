@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"devbox/internal/cliui"
 	"fmt"
 	"strings"
 	"testing"
@@ -31,8 +32,8 @@ func TestMenuFrameFits(t *testing.T) {
 		{"A〈\n> ", 4, 3, false}, // U+2329 occupies two cells.
 		{"e\u0301\nChoice > ", 5, 40, false},
 	} {
-		if got := menuFrameFits(tc.frame, tc.rows, tc.cols); got != tc.fits {
-			t.Errorf("menuFrameFits(%q, %d, %d) = %v; want %v", tc.frame, tc.rows, tc.cols, got, tc.fits)
+		if got := cliui.FrameFits(tc.frame, tc.rows, tc.cols); got != tc.fits {
+			t.Errorf("cliui.FrameFits(%q, %d, %d) = %v; want %v", tc.frame, tc.rows, tc.cols, got, tc.fits)
 		}
 	}
 }
@@ -49,13 +50,13 @@ func TestInteractiveMenuRedrawAndFallback(t *testing.T) {
 	cmd.SetErr(slave)
 	cmd.SetContext(context.Background())
 	m := newMenu(cmd)
-	if m.screen == nil || configDisplayWidth(m.out) != 60 {
-		t.Fatal("terminal rendering should preserve output width", configDisplayWidth(m.out))
+	if !m.Redraws() || configDisplayWidth(m.Out) != 60 {
+		t.Fatal("terminal rendering should preserve output width", configDisplayWidth(m.Out))
 	}
 	if _, err := master.WriteString("bad\n1\n0\n"); err != nil {
 		t.Fatal(err)
 	}
-	choice, err := m.choose("Short menu", []string{"First"}, "Back")
+	choice, err := m.Select("Short menu", []string{"First"}, "Back")
 	if err != nil || choice != 0 {
 		t.Fatal(choice, err)
 	}
@@ -65,11 +66,11 @@ func TestInteractiveMenuRedrawAndFallback(t *testing.T) {
 	for i := range choices {
 		choices[i] = fmt.Sprintf("Item %d", i+1)
 	}
-	choice, err = m.choose("Long menu", choices, "Back")
+	choice, err = m.Select("Long menu", choices, "Back")
 	if err != nil || choice != -1 {
 		t.Fatal(choice, err)
 	}
-	if err := m.finish(); err != nil {
+	if err := m.Finish(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := slave.WriteString("\x00"); err != nil {
@@ -133,23 +134,23 @@ func TestWarningRetryRemainsVisible(t *testing.T) {
 	if _, err := master.WriteString("0\n0\n0\n"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.choose("Initial menu", nil, "Back"); err != nil {
+	if _, err := m.Select("Initial menu", nil, "Back"); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.pause(); err != nil {
+	if err := m.Pause(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := slave.WriteString("Warning: check the config\n"); err != nil {
 		t.Fatal(err)
 	}
-	m.showNextPlain()
-	if _, err := m.choose("Retry menu", nil, "Back"); err != nil {
+	m.PlainNext()
+	if _, err := m.Select("Retry menu", nil, "Back"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.choose("Next menu", nil, "Back"); err != nil {
+	if _, err := m.Select("Next menu", nil, "Back"); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.finish(); err != nil {
+	if err := m.Finish(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := slave.WriteString("\x00"); err != nil {
@@ -181,7 +182,7 @@ func TestMenuRestoresShellAfterCancellation(t *testing.T) {
 	m := newMenu(cmd)
 	done := make(chan error, 1)
 	go func() {
-		_, err := m.choose("Waiting menu", []string{"First"}, "Back")
+		_, err := m.Select("Waiting menu", []string{"First"}, "Back")
 		done <- err
 	}()
 	if err := master.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
@@ -201,7 +202,7 @@ func TestMenuRestoresShellAfterCancellation(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("cancelled read did not stop")
 	}
-	if err := m.finish(); err != nil {
+	if err := m.Finish(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := slave.WriteString("\x00"); err != nil {
@@ -224,10 +225,10 @@ func TestMenuKeepsRedirectedOutputPlain(t *testing.T) {
 	cmd.SetOut(&output)
 	cmd.SetContext(context.Background())
 	m := newMenu(cmd)
-	if m.screen != nil {
+	if m.Redraws() {
 		t.Fatal("redirected output must not use terminal escapes")
 	}
-	if _, err := m.choose("Plain menu", []string{"First"}, "Back"); err != nil {
+	if _, err := m.Select("Plain menu", []string{"First"}, "Back"); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(output.String(), "\x1b[") || !strings.Contains(output.String(), "Plain menu") {
@@ -249,11 +250,11 @@ func TestMenuFinishedOutputIsNotHidden(t *testing.T) {
 	cmd.SetOut(slave)
 	cmd.SetContext(context.Background())
 	m := newMenu(cmd)
-	if _, err := m.choose("Menu", nil, "Back"); err != nil {
+	if _, err := m.Select("Menu", nil, "Back"); err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprint(m.out, "Saved.\n")
-	if err := m.finish(); err != nil {
+	fmt.Fprint(m.Out, "Saved.\n")
+	if err := m.Finish(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := slave.WriteString("\x00"); err != nil {

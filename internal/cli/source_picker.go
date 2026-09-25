@@ -1,13 +1,17 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
+	"devbox/internal/cliui"
 	"devbox/internal/config"
+	"devbox/internal/resource"
 )
 
 type sourcePicker struct {
@@ -23,118 +27,130 @@ func newSourcePicker(m menu, home, workspace string) (sourcePicker, error) {
 	userHome, err := os.UserHomeDir()
 	return sourcePicker{menu: m, home: home, workspace: workspace, cwd: cwd, userHome: userHome}, err
 }
-
 func (p sourcePicker) capture(input string) (config.Reference, error) {
 	return config.CaptureReference(p.home, p.workspace, p.cwd, p.userHome, input)
 }
-
-func (p sourcePicker) choose(current *config.Reference, back string) (config.Reference, bool, error) {
-	entries, err := os.ReadDir(filepath.Join(p.home, "configs"))
-	if err != nil && !os.IsNotExist(err) {
+func (p sourcePicker) existing(input string) (config.Reference, error) {
+	reference, err := p.capture(input)
+	if err != nil {
+		return reference, err
+	}
+	sources, err := config.ResolveReferences(p.workspace, []config.Reference{reference})
+	if err != nil {
+		return reference, err
+	}
+	info, err := os.Lstat(filepath.Join(sources[0].Path, "config.json"))
+	if err == nil && !info.Mode().IsRegular() {
+		err = fmt.Errorf("config.json must be a regular file")
+	}
+	return reference, err
+}
+func (p sourcePicker) create() (config.Reference, bool, error) {
+	owner, result, created, err := createConfig(p.menu, &resource.Service{Home: p.home}, "", p.cwd, p.userHome)
+	for _, warning := range result.Warnings {
+		p.Notice("Warning: " + displayCell(warning))
+	}
+	if err != nil {
+		for _, path := range result.Created {
+			p.Notice("Created " + displayCell(path))
+		}
+		// Publication may be partial. Keep the service's actionable error intact;
+		// do not delete files or retry a create that has already claimed config.json.
 		return config.Reference{}, false, err
 	}
-	var names []string
-	for _, entry := range entries {
-		path := filepath.Join(p.home, "configs", entry.Name(), "config.json")
-		if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() {
-			names = append(names, entry.Name())
-		}
+	if !created {
+		return config.Reference{}, false, nil
 	}
-	for {
-		selected := -1
-		if current != nil {
-			for i, name := range names {
-				candidate, _ := p.capture(name)
-				a, _ := candidate.Expand(p.workspace)
-				b, _ := current.Expand(p.workspace)
-				if ca, err := config.CanonicalPath(a.Path); err == nil {
-					if cb, err := config.CanonicalPath(b.Path); err == nil && ca == cb {
-						selected = i
+	p.Notice("Created config " + displayCell(owner.Name) + ". This config is saved independently of the session.")
+	reference, err := p.capture(owner.Name)
+	return reference, err == nil, err
+}
+
+func (p sourcePicker) choose(current *config.Reference, back string) (config.Reference, bool, error) {
+	var result config.Reference
+	chosen := false
+	accept := func(input string) (bool, error) {
+		reference, err := p.existing(input)
+		if err != nil {
+			return false, p.report(err)
+		}
+		result, chosen = reference, true
+		return true, nil
+	}
+	err := p.Run(func() (cliui.Screen, error) {
+		entries, err := os.ReadDir(filepath.Join(p.home, "configs"))
+		if err != nil && !os.IsNotExist(err) {
+			return cliui.Screen{}, err
+		}
+		var names []string
+		for _, entry := range entries {
+			if info, err := os.Lstat(filepath.Join(p.home, "configs", entry.Name(), "config.json")); err == nil && info.Mode().IsRegular() {
+				names = append(names, entry.Name())
+			}
+		}
+		nameWidth := len("NAME")
+		for _, name := range names {
+			nameWidth = max(nameWidth, len(displayCell(name)))
+		}
+		var actions []cliui.Action
+		for _, name := range names {
+			selected := false
+			if current != nil {
+				candidate, err := p.capture(name)
+				if err == nil {
+					a, aErr := candidate.Expand(p.workspace)
+					b, bErr := current.Expand(p.workspace)
+					if aErr == nil && bErr == nil {
+						ca, ea := config.CanonicalPath(a.Path)
+						cb, eb := config.CanonicalPath(b.Path)
+						selected = ea == nil && eb == nil && ca == cb
 					}
 				}
 			}
+			actions = append(actions, cliui.Action{Label: fmt.Sprintf("%-*s  %-5s  %s", nameWidth, displayCell(name), "fixed", displayCell(filepath.Join(p.home, "configs", name))), Selected: selected, Run: func() (bool, error) { return accept(name) }})
 		}
-		if err := writeMenuTitle(p.out, "Select an existing config"); err != nil {
-			return config.Reference{}, false, err
-		}
-		if current != nil {
-			if err := writeStyledConfigLine(p.out, "Current selection: ", displayCell(current.Label)+" ("+current.Kind+")", "  ", configDisplayWidth(p.out), terminalColors(p.out).strong); err != nil {
-				return config.Reference{}, false, err
+		actions = append(actions, cliui.Action{Label: "Enter a directory path", BreakBefore: len(names) > 0, Run: func() (bool, error) {
+			input, accepted, err := p.Text("Config directory (:back cancels): ", nil)
+			if err != nil || !accepted {
+				return false, err
 			}
-		}
-		if len(names) > 0 {
-			nameWidth := len("NAME")
-			for _, name := range names {
-				nameWidth = max(nameWidth, len(displayCell(name)))
+			return accept(input)
+		}})
+		actions = append(actions, cliui.Action{Label: "Create and add config", Hidden: len(names) > 0, Run: func() (bool, error) {
+			reference, created, err := p.create()
+			if errors.Is(err, io.EOF) {
+				return false, err
 			}
-			fmt.Fprintln(p.out)
+			if err != nil {
+				return false, p.report(err)
+			}
+			if !created {
+				return false, nil
+			}
+			result, chosen = reference, true
+			return true, nil
+		}})
+		return cliui.Screen{Title: "Select an existing config", Back: back, Actions: actions, Body: func(out io.Writer) error {
+			if current != nil {
+				if err := writeStyledConfigLine(out, "Current selection: ", displayCell(current.Label)+" ("+current.Kind+")", "  ", configDisplayWidth(out), terminalColors(out).strong); err != nil {
+					return err
+				}
+			}
+			if len(names) == 0 {
+				return writeMenuHint(out, "No named configs found. Create one here, or enter an existing directory path.")
+			}
+			fmt.Fprintln(out)
 			prefix := strings.Repeat(" ", len(menuPrefix(1)))
-			if err := writeConfigLine(p.out, prefix, fmt.Sprintf("%-*s  %-5s  PATH", nameWidth, "NAME", "TYPE"), prefix, configDisplayWidth(p.out)); err != nil {
-				return config.Reference{}, false, err
-			}
-			for i, name := range names {
-				label := fmt.Sprintf("%-*s  %-5s  %s", nameWidth, displayCell(name), "fixed", displayCell(filepath.Join(p.home, "configs", name)))
-				if i == selected {
-					label += " (selected)"
-				}
-				row := menuPrefix(i + 1)
-				if err := writeConfigLine(p.out, row, label, strings.Repeat(" ", len(row)), configDisplayWidth(p.out)); err != nil {
-					return config.Reference{}, false, err
-				}
-			}
-			fmt.Fprintln(p.out)
-		} else {
-			writeMenuHint(p.out, "No named configs found. Create one separately, or enter an existing directory path.")
-			if err := p.commandHint(p.home, "Create a named config", "config", "create", "base"); err != nil {
-				return config.Reference{}, false, err
-			}
-		}
-		prefix := menuPrefix(len(names) + 1)
-		if err := writeConfigLine(p.out, prefix, "Enter a directory path", strings.Repeat(" ", len(prefix)), configDisplayWidth(p.out)); err != nil {
-			return config.Reference{}, false, err
-		}
-		choice, err := p.menu.readChoice(len(names)+1, back)
-		if err != nil || choice < 0 {
-			return config.Reference{}, false, err
-		}
-		input := ""
-		if choice < len(names) {
-			input = names[choice]
-		} else {
-			input, err = p.line("Config directory (:back cancels): ")
-			if err != nil || input == ":back" {
-				return config.Reference{}, false, err
-			}
-		}
-		reference, err := p.capture(input)
-		if err == nil {
-			var sources []config.Source
-			sources, err = config.ResolveReferences(p.workspace, []config.Reference{reference})
-			if err == nil {
-				info, statErr := os.Lstat(filepath.Join(sources[0].Path, "config.json"))
-				err = statErr
-				if err == nil && !info.Mode().IsRegular() {
-					err = fmt.Errorf("config.json must be a regular file")
-				}
-			}
-		}
-		if err != nil {
-			fmt.Fprintf(p.out, "Error: %s\n", displayCell(err.Error()))
-			if os.IsNotExist(err) {
-				if hintErr := p.commandHint(p.home, "Create this config separately", "config", "create", input); hintErr != nil {
-					return config.Reference{}, false, hintErr
-				}
-			}
-			continue
-		}
-		return reference, true, nil
-	}
+			return writeConfigLine(out, prefix, fmt.Sprintf("%-*s  %-5s  PATH", nameWidth, "NAME", "TYPE"), prefix, configDisplayWidth(out))
+		}}, nil
+	})
+	return result, chosen, err
 }
 
 func showSourceChain(m menu, home, workspace string, sources []config.Reference) error {
-	fmt.Fprintln(m.out, "\nConfigs, in order:")
+	fmt.Fprintln(m.Out, "\nConfigs, in order:")
 	if len(sources) == 0 {
-		fmt.Fprintln(m.out, "   None")
+		fmt.Fprintln(m.Out, "   None")
 	}
 	for i, reference := range sources {
 		source, err := reference.Expand(workspace)
@@ -143,11 +159,11 @@ func showSourceChain(m menu, home, workspace string, sources []config.Reference)
 		}
 		prefix := fmt.Sprintf("   %d. ", i+1)
 		text := fmt.Sprintf("%-12s %s", displayCell(reference.Label), displayCell(source.Path))
-		if err := writeConfigLine(m.out, prefix, text, strings.Repeat(" ", len(prefix)), configDisplayWidth(m.out)); err != nil {
+		if err := writeConfigLine(m.Out, prefix, text, strings.Repeat(" ", len(prefix)), configDisplayWidth(m.Out)); err != nil {
 			return err
 		}
 		if _, err := config.ReadLayer(filepath.Join(source.Path, "config.json"), config.Snapshot()); err != nil {
-			writeMenuHint(m.out, "      Error: "+displayCell(err.Error()))
+			writeMenuHint(m.Out, "      Error: "+displayCell(err.Error()))
 			action, reason := "edit", "Edit this config"
 			if os.IsNotExist(err) {
 				action, reason = "create", "Create this config separately"
@@ -160,52 +176,75 @@ func showSourceChain(m menu, home, workspace string, sources []config.Reference)
 	return nil
 }
 
-func editSourceChain(p sourcePicker, sources []config.Reference, action string) ([]config.Reference, bool, error) {
-	updated := slices.Clone(sources)
-	index := -1
-	if action != "Add existing config" {
-		choices := make([]string, len(sources))
+// Chain controls do not own persistence. Creation replaces its draft; editing
+// saves through UpdateSources with its existing identity/conflict checks.
+func (p sourcePicker) chainActions(sources []config.Reference, apply func([]config.Reference) error) []cliui.Action {
+	save := func(updated []config.Reference) (bool, error) {
+		if err := config.ValidateReferenceChain(p.workspace, updated); err != nil {
+			return false, p.report(err)
+		}
+		return false, apply(updated)
+	}
+	add := func(selectConfig func() (config.Reference, bool, error)) func() (bool, error) {
+		return func() (bool, error) {
+			reference, selected, err := selectConfig()
+			if errors.Is(err, io.EOF) {
+				return false, err
+			}
+			if err != nil {
+				return false, p.report(err)
+			}
+			if !selected {
+				return false, nil
+			}
+			return save(append(slices.Clone(sources), reference))
+		}
+	}
+	selectIndex := func() (int, error) {
+		labels := make([]string, len(sources))
 		for i, reference := range sources {
-			choices[i] = reference.Label + " (" + reference.Kind + ")"
+			labels[i] = reference.Label + " (" + reference.Kind + ")"
 		}
-		var err error
-		index, err = p.menu.choose("Select a config", choices, "Back")
-		if err != nil || index < 0 {
-			return sources, false, err
-		}
+		return p.Select("Select a config", labels, "Back")
 	}
-	switch action {
-	case "Add existing config", "Replace config":
-		var current *config.Reference
-		if index >= 0 {
-			current = &sources[index]
-		}
-		reference, chosen, err := p.choose(current, "Back")
-		if err != nil || !chosen {
-			return sources, false, err
-		}
-		if index < 0 {
-			updated = append(updated, reference)
-		} else {
+	return []cliui.Action{
+		{Label: "Add existing config", Run: add(func() (config.Reference, bool, error) { return p.choose(nil, "Back") })},
+		{Label: "Create config", Run: add(p.create)},
+		{Label: "Replace config", Hidden: len(sources) == 0, Run: func() (bool, error) {
+			index, err := selectIndex()
+			if err != nil || index < 0 {
+				return false, err
+			}
+			reference, selected, err := p.choose(&sources[index], "Back")
+			if err != nil || !selected {
+				return false, err
+			}
+			updated := slices.Clone(sources)
 			updated[index] = reference
-		}
-	case "Remove config":
-		updated = slices.Delete(updated, index, index+1)
-	case "Reorder configs":
-		choices := make([]string, len(sources))
-		for i := range choices {
-			choices[i] = fmt.Sprintf("Position %d", i+1)
-		}
-		position, err := p.selectedChoice("Choose the new position", choices, index, "", "Back")
-		if err != nil || position < 0 {
-			return sources, false, err
-		}
-		reference := updated[index]
-		updated = slices.Delete(updated, index, index+1)
-		updated = slices.Insert(updated, position, reference)
+			return save(updated)
+		}},
+		{Label: "Remove config", Hidden: len(sources) == 0, Run: func() (bool, error) {
+			index, err := selectIndex()
+			if err != nil || index < 0 {
+				return false, err
+			}
+			return save(slices.Delete(slices.Clone(sources), index, index+1))
+		}},
+		{Label: "Reorder configs", Hidden: len(sources) < 2, Run: func() (bool, error) {
+			index, err := selectIndex()
+			if err != nil || index < 0 {
+				return false, err
+			}
+			labels := make([]string, len(sources))
+			for i := range labels {
+				labels[i] = fmt.Sprintf("Position %d", i+1)
+			}
+			position, err := p.SelectCurrent("Choose the new position", labels, index, "", "Back")
+			if err != nil || position < 0 {
+				return false, err
+			}
+			updated := slices.Delete(slices.Clone(sources), index, index+1)
+			return save(slices.Insert(updated, position, sources[index]))
+		}},
 	}
-	if err := config.ValidateReferenceChain(p.workspace, updated); err != nil {
-		return sources, false, err
-	}
-	return updated, true, nil
 }

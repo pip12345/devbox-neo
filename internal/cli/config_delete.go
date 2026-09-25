@@ -1,17 +1,17 @@
 package cli
 
 import (
+	"devbox/internal/cliui"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 func configDeleteCommand(factory resourceFactory) *cobra.Command {
 	var force, asJSON bool
-	cmd := &cobra.Command{Use: "delete <name>", Short: "Delete an unreferenced named config and its files", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "delete <name>", Short: "Delete an unreferenced named config and its files", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		if !force && (!interactive(cmd) || asJSON) {
 			return fmt.Errorf("config delete requires --force without a terminal or with --json")
 		}
@@ -24,13 +24,13 @@ func configDeleteCommand(factory resourceFactory) *cobra.Command {
 			return err
 		}
 		if !force {
-			fmt.Fprintf(cmd.OutOrStdout(), "Delete config %s and all files in %s? [y/N] ", displayCell(args[0]), displayCell(path))
-			line, err := promptReader(cmd).ReadString('\n')
-			if err != nil && err != io.EOF {
+			ui := cliui.New(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout())
+			defer func() { runErr = errors.Join(runErr, ui.Finish()) }()
+			confirmed, err := ui.Confirm(fmt.Sprintf("Delete config %s and all files in %s? [y/N] ", displayCell(args[0]), displayCell(path)))
+			if err != nil {
 				return err
 			}
-			answer := strings.ToLower(strings.TrimSpace(line))
-			if answer != "y" && answer != "yes" {
+			if !confirmed {
 				cmd.Println("Cancelled.")
 				return nil
 			}

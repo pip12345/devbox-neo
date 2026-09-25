@@ -2,6 +2,12 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). The migration utility remains separate from runtime loading; adapting its destination model to named sessions and explicit configs is also approved.
 
+## Shared synchronous CLI screens — implemented, manual acceptance pending
+
+- `internal/cliui` owns the command-scoped reader, terminal lifecycle, screen dispatch, selection/toggle markers, text validation, and confirmations. Main CLI and migrator menus use handler-bound actions; workflows retain ordinary local state and service-owned mutations.
+- Session creation always offers Create session and explains missing inputs. Create config reuses standalone setup and adds the result; empty pickers offer the same workflow. Cancellation preserves the parent draft, created configs persist independently, reorder needs two configs, and combined configuration is a separate Back-only view.
+- Final `make test-fast` passes, including shared-runner, workflow, pseudo-terminal, and migrator tests. Live Docker and manual host-terminal acceptance remain unrun; automated tests do not establish those results.
+
 ## Workspace-only session-name hash — clean development-state cutover
 
 - The 12-hex portion of a full session/container name now hashes only the canonical workspace path. Case-sensitive local names remain distinct in the suffix; sessions in one workspace display the same hash. Identity validation, lookup, creation, transfer targets, and Docker ownership checks use the shared naming function.

@@ -58,7 +58,7 @@ Creation, opening, and recreation require at least one source, accessible valid 
 | `edit <folder> --name NAME` | Edit that named session's selected configs directly |
 | `edit <full-name> --show [--json]` | Inspect combined settings and provenance |
 
-For folder-targeted `--show`, supply `--name`. JSON requires `--show`; editing a session's selected configs otherwise requires a terminal. Config-directory setup also supports [explicit automation flags](commands.md#configuration-commands).
+For folder-targeted `--show`, supply `--name`. JSON requires `--show`; editing a session's selected configs otherwise requires a terminal. Config-directory setup also supports [explicit automation flags](commands.md#configuration-commands). Session menus reuse that setup through **Create config** and append the result; existing config files are never overwritten. **Show combined configuration** opens a read-only screen with **Back**.
 
 `config create` fails if `config.json` exists, including an empty or invalid file, and points to `config edit`. An existing directory without `config.json` is allowed; existing artifacts are kept. `config edit` never creates a missing config.
 

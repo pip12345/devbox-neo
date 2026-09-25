@@ -1,13 +1,10 @@
-package cli
+package cliui
 
 import (
-	"bufio"
 	"context"
 	"errors"
-	"io"
 	"os"
 
-	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 )
 
@@ -35,11 +32,4 @@ func (r terminalReader) Read(p []byte) (int, error) {
 			return r.file.Read(p)
 		}
 	}
-}
-func promptReader(cmd *cobra.Command) *bufio.Reader {
-	var input io.Reader = cmd.InOrStdin()
-	if f, ok := input.(*os.File); ok && terminal(f) {
-		input = terminalReader{ctx: cmd.Context(), file: f}
-	}
-	return bufio.NewReader(input)
 }

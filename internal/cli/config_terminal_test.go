@@ -29,18 +29,18 @@ func TestConfigCommandWithTerminalInputKeepsTerminalMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TERM", "xterm")
-	if !terminalColors(slave).enabled || terminalColors(&bytes.Buffer{}).enabled {
+	if !terminalColors(slave).paint.Enabled() || terminalColors(&bytes.Buffer{}).paint.Enabled() {
 		t.Fatal("color must be limited to terminal output")
 	}
 	t.Setenv("NO_COLOR", "1")
-	if terminalColors(slave).enabled {
+	if terminalColors(slave).paint.Enabled() {
 		t.Fatal("NO_COLOR was ignored")
 	}
 	if err := os.Unsetenv("NO_COLOR"); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("TERM", "dumb")
-	if terminalColors(slave).enabled {
+	if terminalColors(slave).paint.Enabled() {
 		t.Fatal("dumb terminal received styling")
 	}
 	s := menuService(t)

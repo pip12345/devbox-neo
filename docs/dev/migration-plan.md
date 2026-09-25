@@ -31,7 +31,7 @@ Run `bin/devbox-migrate` in a terminal for a compact menu showing source/destina
 - `[4]` **Resume** — continue already approved copying or importing; this may make changes immediately, but never resets completed imports.
 - `[0]` **Exit**.
 
-Menus follow the rewrite's indented `[number]` choices and `Choose a number >` prompt. `[0]` goes back, cancels, or exits as labeled (`q` does the same); copy/import approval prompts remain separate.
+Menus use the shared `internal/cliui` synchronous runner, with the rewrite's indented `[number]` choices and `Choose a number >` prompt. One command-scoped input reader is shared by nested review flows. `[0]` goes back, cancels, or exits as labeled (`q` does the same); read-only views wait for Back. Copy/import approval prompts remain separate and visible in the shell transcript.
 
 Unavailable actions stay visible with a short inline reason, such as `(not staged)` or `(nothing pending)`. Explanations, staging paths, warnings, and approvals belong inside the selected action, not on the landing screen. Preview remains available in every staging state, including unreadable work directories, and neither modifies nor resumes an existing run. An absent work directory enables copying, a prepared journal enables import review, and an incomplete staging/merge journal enables continuation. Completed or unreadable work state does not authorize a new run or overwrite. Selecting copy/import opens its existing review and confirmation flow; after copying finishes, invoke the tool again to review the import separately. `--source` and `--destination` also work with this menu. Without terminal input, the bare command prints help; `--help` always shows the full flag reference.
 

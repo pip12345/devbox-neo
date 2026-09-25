@@ -8,7 +8,9 @@ import (
 	"sort"
 
 	"devbox/internal/app"
+	"devbox/internal/cliui"
 	"devbox/internal/commanderror"
+	"devbox/internal/config"
 	"devbox/internal/environment"
 	"devbox/internal/resource"
 	"devbox/internal/store"
@@ -80,73 +82,33 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 		savedSources := map[string]bool{}
 		defaultChange := ""
 		defer func() {
-			runErr = errors.Join(runErr, writeEditReceipts(m, e.Store.Home, savedSources, defaultChange), m.finish())
+			runErr = errors.Join(runErr, writeEditReceipts(m, e.Store.Home, savedSources, defaultChange), m.Finish())
 		}()
-		for {
-			var selected *store.Record
-			if direct {
-				r, err := e.Locate(cmd.Context(), args[0], *name)
-				if err != nil {
-					return err
-				}
-				selected = &r
-			} else {
-				var action folderEditAction
-				selected, action, err = chooseSessionToEdit(m, e, args[0])
-				if err != nil && action == folderEditRetry {
-					fmt.Fprintf(m.out, "Error: %s\n", displayCell(err.Error()))
-					continue
-				}
-				if errors.Is(err, io.EOF) || (err == nil && selected == nil && action == folderEditNone) {
-					return nil
-				}
-				if err != nil {
-					return err
-				}
-				switch action {
-				case folderEditSetDefault:
-					chosen, err := chooseFolderDefault(m, e, args[0])
-					if errors.Is(err, io.EOF) {
-						return nil
-					}
-					if err != nil {
-						return err
-					}
-					if chosen != nil {
-						if err := e.SetDefault(cmd.Context(), *chosen); err != nil {
-							return err
-						}
-						defaultChange = fmt.Sprintf("Default session for %s: %s", displayCell(chosen.Identity.Workspace), chosen.Identity.LocalName)
-						fmt.Fprintln(m.out, defaultChange)
-					}
-					continue
-				case folderEditClearDefault:
-					workspace, err := e.ClearDefault(cmd.Context(), args[0])
-					if err != nil {
-						return err
-					}
-					defaultChange = fmt.Sprintf("Cleared default session for %s.", displayCell(workspace))
-					fmt.Fprintln(m.out, defaultChange)
-					continue
-				}
-			}
+		open := func(r store.Record) error {
 			back := "Back"
 			if direct {
 				back = "Exit"
 			}
-			saved, editErr := sourceChainMenu(m, e, *selected, back)
+			saved, err := sourceChainMenu(m, e, r, back)
 			if saved {
-				savedSources[selected.Identity.Name] = true
+				savedSources[r.Identity.Name] = true
 			}
-			err = editErr
-			if errors.Is(err, io.EOF) {
-				fmt.Fprintln(m.out, "Menu closed. Completed changes remain saved.")
-				return nil
-			}
-			if err != nil || direct {
-				return err
-			}
+			return err
 		}
+		if direct {
+			r, locateErr := e.Locate(cmd.Context(), args[0], *name)
+			if locateErr != nil {
+				return locateErr
+			}
+			err = open(r)
+		} else {
+			err = folderEditMenu(m, e, args[0], open, func(message string) { defaultChange = message })
+		}
+		if errors.Is(err, io.EOF) {
+			fmt.Fprintln(m.Out, "Menu closed. Completed changes remain saved.")
+			return nil
+		}
+		return err
 	}}
 	cmd.Example = "  devbox-neo edit .\n  devbox-neo edit . --name work --default"
 	cmd.Flags().BoolVar(&show, "show", false, "Show combined settings and their sources without editing")
@@ -158,7 +120,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 
 func writeEditReceipts(m menu, home string, savedSources map[string]bool, defaultChange string) error {
 	if defaultChange != "" {
-		if _, err := fmt.Fprintln(m.out, defaultChange); err != nil {
+		if _, err := fmt.Fprintln(m.Out, defaultChange); err != nil {
 			return err
 		}
 	}
@@ -174,10 +136,10 @@ func writeEditReceipts(m menu, home string, savedSources map[string]bool, defaul
 	for _, name := range names {
 		steps = append(steps, commanderror.Next("", "status", name))
 	}
-	if _, err := fmt.Fprintln(m.out, "Selected configs saved; container changes may still be pending. Check with:"); err != nil {
+	if _, err := fmt.Fprintln(m.Out, "Selected configs saved; container changes may still be pending. Check with:"); err != nil {
 		return err
 	}
-	_, err := fmt.Fprint(m.out, stepsText(scopedSteps(m.cmd, steps, home)))
+	_, err := fmt.Fprint(m.Out, stepsText(scopedSteps(m.cmd, steps, home)))
 	return err
 }
 
@@ -194,68 +156,52 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 	if err != nil {
 		return saved, err
 	}
-	for {
-		if err := writeMenuTitle(m.out, "Manage configs"); err != nil {
-			return saved, err
-		}
-		writeMenuHint(m.out, "Session: "+r.Identity.LocalName)
-		writeMenuHint(m.out, "Folder: "+displayCell(r.Identity.Workspace))
-		if err := showSourceChain(m, e.Store.Home, r.Identity.Workspace, r.Sources); err != nil {
-			return saved, err
-		}
-		if resolved, err := e.CombinedConfiguration(r); err != nil {
-			writeMenuHint(m.out, "Configuration error: "+displayCell(err.Error()))
-		} else if err := resolved.Settings.Validate(); err != nil {
-			writeMenuHint(m.out, "Configuration error: "+displayCell(err.Error()))
-		}
-		actions := []string{"Add existing config"}
-		if len(r.Sources) > 0 {
-			actions = append(actions, "Replace config", "Remove config", "Reorder configs")
-		}
-		actions = append(actions, "Show combined configuration")
-		choice, err := m.choose("What would you like to do?", actions, back)
-		if err != nil || choice < 0 {
-			return saved, err
-		}
-		if actions[choice] == "Show combined configuration" {
-			view, err := combinedView(e, r)
-			if err != nil {
-				fmt.Fprintf(m.out, "Error: %s\n", displayCell(err.Error()))
-			} else if err := printConfigView(m.out, view); err != nil {
-				return saved, err
-			}
-			continue
-		}
-		sources, changed, err := editSourceChain(picker, r.Sources, actions[choice])
-		if errors.Is(err, io.EOF) {
-			return saved, err
-		}
-		if err != nil {
-			fmt.Fprintf(m.out, "Error: %s\n", displayCell(err.Error()))
-			continue
-		}
-		if !changed {
-			continue
-		}
-		updated, err := e.UpdateSources(m.ctx, r, sources)
+	apply := func(sources []config.Reference) error {
+		updated, err := e.UpdateSources(m.Context, r, sources)
 		if err != nil {
 			var actionable *commanderror.Error
 			if !errors.As(err, &actionable) || actionable.Code != "sources_changed" {
-				return saved, err
+				return err
 			}
-			fmt.Fprintf(m.out, "Error: %s\n", displayCell(err.Error()))
-			latest, readErr := e.Store.Read(m.ctx, r.Identity.Name)
+			latest, readErr := e.Store.Read(m.Context, r.Identity.Name)
 			if readErr != nil {
-				return saved, readErr
+				return readErr
 			}
 			if latest.ID != r.ID {
-				return saved, fmt.Errorf("session identity changed; select it again")
+				return fmt.Errorf("session identity changed; select it again")
 			}
 			r = latest
-			continue
+			return m.report(err)
 		}
 		r = updated
 		saved = true
-		fmt.Fprintln(m.out, "Saved selected configs.")
+		m.Notice("Saved selected configs.")
+		return nil
 	}
+	err = m.Run(func() (cliui.Screen, error) {
+		resolved, configErr := e.CombinedConfiguration(r)
+		if configErr == nil {
+			configErr = resolved.Settings.Validate()
+		}
+		actions := picker.chainActions(r.Sources, apply)
+		actions = append(actions, cliui.Action{Label: "Show combined configuration", Run: func() (bool, error) {
+			view, err := combinedView(e, r)
+			if err != nil {
+				return false, m.report(err)
+			}
+			return false, m.View("Combined configuration", func(out io.Writer) error { return printConfigView(out, view) })
+		}})
+		return cliui.Screen{Title: "Manage configs", Prompt: "What would you like to do?", Actions: actions, Back: back, Body: func(out io.Writer) error {
+			writeMenuHint(out, "Session: "+r.Identity.LocalName)
+			writeMenuHint(out, "Folder: "+displayCell(r.Identity.Workspace))
+			if err := showSourceChain(m, e.Store.Home, r.Identity.Workspace, r.Sources); err != nil {
+				return err
+			}
+			if configErr != nil {
+				return writeMenuHint(out, "Configuration error: "+displayCell(configErr.Error()))
+			}
+			return nil
+		}}, nil
+	})
+	return saved, err
 }

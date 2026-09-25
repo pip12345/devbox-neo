@@ -33,7 +33,7 @@ func sshCommand(factory engineFactory, localName *string) *cobra.Command {
 			}
 			if hostMaster {
 				warning := hostMasterWarning
-				if terminalColors(cmd.ErrOrStderr()).enabled {
+				if terminalColors(cmd.ErrOrStderr()).paint.Enabled() {
 					warning = "\x1b[33m" + warning + "\x1b[0m"
 				}
 				fmt.Fprintln(cmd.ErrOrStderr(), warning+"\n")

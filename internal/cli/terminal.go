@@ -3,41 +3,15 @@ package cli
 import (
 	"io"
 	"os"
-	"syscall"
-	"unsafe"
+
+	"devbox/internal/cliui"
 )
 
-type terminalPaint struct{ enabled bool }
+// Table renderers use the same terminal capabilities and palette as screens.
+type terminalPaint struct{ paint cliui.Paint }
 
-func terminalColors(out io.Writer) terminalPaint {
-	_, noColor := os.LookupEnv("NO_COLOR")
-	file := menuTerminal(out)
-	return terminalPaint{enabled: file != nil && !noColor && os.Getenv("TERM") != "dumb" && terminal(file)}
-}
-
-func (p terminalPaint) dim(text string) string {
-	if !p.enabled || text == "" {
-		return text
-	}
-	return "\x1b[2m" + text + "\x1b[0m"
-}
-
-func (p terminalPaint) strong(text string) string {
-	if !p.enabled || text == "" {
-		return text
-	}
-	return "\x1b[1m" + text + "\x1b[0m"
-}
-
-func (p terminalPaint) green(text string) string {
-	if !p.enabled || text == "" {
-		return text
-	}
-	return "\x1b[32m" + text + "\x1b[0m"
-}
-
-func terminal(file *os.File) bool {
-	var state syscall.Termios
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, file.Fd(), syscall.TCGETS, uintptr(unsafe.Pointer(&state)))
-	return errno == 0
-}
+func terminalColors(out io.Writer) terminalPaint  { return terminalPaint{cliui.Colors(out)} }
+func (p terminalPaint) dim(text string) string    { return p.paint.Dim(text) }
+func (p terminalPaint) strong(text string) string { return p.paint.Strong(text) }
+func (p terminalPaint) green(text string) string  { return p.paint.Green(text) }
+func terminal(file *os.File) bool                 { return cliui.IsTerminal(file) }

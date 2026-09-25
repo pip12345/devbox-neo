@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
+	"devbox/internal/cliui"
 	"encoding/json"
 	"errors"
 	"io"
@@ -357,9 +357,9 @@ func TestMergeOwnerMenusUseBracketedChoicesAndZeroBack(t *testing.T) {
 
 func TestMenuChoicesMatchRewritePresentation(t *testing.T) {
 	var out bytes.Buffer
-	ui := menu{in: bufio.NewReader(strings.NewReader("0\n")), out: &out}
-	answer, err := ui.choose("What would you like to do?", []string{"Review inventory", "Choose what to stage"}, "Back")
-	if err != nil || answer != "0" {
+	ui := cliui.New(context.Background(), strings.NewReader("0\n"), &out)
+	answer, err := ui.Select("What would you like to do?", []string{"Review inventory", "Choose what to stage"}, "Back")
+	if err != nil || answer != -1 {
 		t.Fatal(answer, err)
 	}
 	want := "\nWhat would you like to do?\n   [1]  Review inventory\n   [2]  Choose what to stage\n\n   [0]  Back\n\n   Choose a number > "
@@ -369,16 +369,20 @@ func TestMenuChoicesMatchRewritePresentation(t *testing.T) {
 }
 
 func TestMenuChoiceValidationAndCancellation(t *testing.T) {
-	for _, tc := range []struct{ input, answer string }{
-		{"bad\n99\n1\n", "1"}, {"q\n", "0"}, {"0\n", "0"}, {"1", ""},
+	for _, tc := range []struct {
+		input  string
+		answer int
+		eof    bool
+	}{
+		{"bad\n99\n1\n", 0, false}, {"q\n", -1, false}, {"0\n", -1, false}, {"1", -1, true},
 	} {
 		var out bytes.Buffer
-		ui := menu{in: bufio.NewReader(strings.NewReader(tc.input)), out: &out}
-		answer, err := ui.choose("Choose", []string{"Action"}, "Back")
+		ui := cliui.New(context.Background(), strings.NewReader(tc.input), &out)
+		answer, err := ui.Select("Choose", []string{"Action"}, "Back")
 		if answer != tc.answer {
 			t.Fatal(answer)
 		}
-		if tc.answer == "" {
+		if tc.eof {
 			if !errors.Is(err, io.EOF) {
 				t.Fatal(err)
 			}
@@ -390,7 +394,7 @@ func TestMenuChoiceValidationAndCancellation(t *testing.T) {
 
 func TestStageSelectionUsesNumberedCacheChoiceAndZeroBack(t *testing.T) {
 	var out bytes.Buffer
-	ui := menu{in: bufio.NewReader(strings.NewReader("1\n2\n0\n")), out: &out}
+	ui := cliui.New(context.Background(), strings.NewReader("1\n2\n0\n"), &out)
 	v := &migration.Inventory{Items: []migration.Item{{Key: "profile:work", Harness: "pi"}}}
 	var selection migration.Selection
 	if err := choose(ui, v, &selection); err != nil {
@@ -414,7 +418,7 @@ func TestStageSelectionShowsMetadataStatusSeparatelyFromSelection(t *testing.T) 
 	}}
 	var out bytes.Buffer
 	s := migration.Selection{Skip: []string{"session:error"}}
-	if err := choose(menu{in: bufio.NewReader(strings.NewReader("3\n0\n")), out: &out}, v, &s); err != nil {
+	if err := choose(cliui.New(context.Background(), strings.NewReader("3\n0\n"), &out), v, &s); err != nil {
 		t.Fatal(err)
 	}
 	for _, text := range []string{
@@ -449,7 +453,7 @@ func TestStageSelectionExcludeAll(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			ui := menu{in: bufio.NewReader(strings.NewReader(tc.input)), out: &out}
+			ui := cliui.New(context.Background(), strings.NewReader(tc.input), &out)
 			s := migration.Selection{Skip: []string{"profile:work"}, Caches: true, ExternalAuth: []string{"auth:opencode"}}
 			if err := choose(ui, v, &s); err != nil {
 				t.Fatal(err)
@@ -467,7 +471,7 @@ func TestStageSelectionExcludeAll(t *testing.T) {
 	}
 	var out bytes.Buffer
 	s := migration.Selection{Caches: true}
-	if err := choose(menu{in: bufio.NewReader(strings.NewReader("2\n0\n")), out: &out}, &migration.Inventory{}, &s); err != nil {
+	if err := choose(cliui.New(context.Background(), strings.NewReader("2\n0\n"), &out), &migration.Inventory{}, &s); err != nil {
 		t.Fatal(err)
 	}
 	if len(s.Skip) != 0 || s.Caches {

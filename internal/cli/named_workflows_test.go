@@ -18,7 +18,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func TestSourcePickerHintsRetainExplicitHome(t *testing.T) {
+func TestEmptySourcePickerOffersSharedCreation(t *testing.T) {
 	for _, explicit := range []bool{false, true} {
 		home := filepath.Join(t.TempDir(), "home with spaces")
 		cmd := &cobra.Command{Use: "create"}
@@ -29,7 +29,7 @@ func TestSourcePickerHintsRetainExplicitHome(t *testing.T) {
 			}
 		}
 		var out bytes.Buffer
-		m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("0\n")), out: &out, cmd: cmd}
+		m := testMenuCommand(context.Background(), bufio.NewReader(strings.NewReader("0\n")), &out, cmd)
 		picker, err := newSourcePicker(m, home, t.TempDir())
 		if err != nil {
 			t.Fatal(err)
@@ -37,13 +37,8 @@ func TestSourcePickerHintsRetainExplicitHome(t *testing.T) {
 		if _, selected, err := picker.choose(nil, "Back"); err != nil || selected {
 			t.Fatal(selected, err)
 		}
-		want := "devbox-neo "
-		if explicit {
-			want += "--home " + shellQuote(home) + " "
-		}
-		want += "config create base"
-		if !strings.Contains(out.String(), want) || strings.Contains(out.String(), "--home") != explicit {
-			t.Fatal("menu hint changed installations", out.String())
+		if !strings.Contains(out.String(), "Create and add config") || strings.Contains(out.String(), "config create base") {
+			t.Fatal("empty picker must offer inline creation, not send the user away", out.String())
 		}
 	}
 }
@@ -283,7 +278,7 @@ func TestEditFolderCanRecoverFromBrokenSessionSelection(t *testing.T) {
 func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("1\nFresh\n2\n1\n1\n"); err != nil {
+	if _, err := master.WriteString("2\nFresh\n3\n1\n1\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -304,14 +299,14 @@ func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 			t.Fatal("session creation entered another workflow or suggested a name", text)
 		}
 	}
-	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "[1]  Set session name") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "edit "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
+	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "[2]  Set session name") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "edit "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
 		t.Fatal(text)
 	}
-	nameIndex, pickerIndex, reviewIndex := strings.Index(text, "Session name (:back cancels): "), strings.Index(text, "Select an existing config"), strings.Index(text, "[1]  Create session")
-	if nameIndex < 0 || pickerIndex < nameIndex || reviewIndex < pickerIndex || !strings.Contains(text, "[1]  Create session\n\n   [2]  Change session name") {
+	nameIndex, pickerIndex := strings.Index(text, "Session name (:back cancels): "), strings.Index(text, "Select an existing config")
+	if nameIndex < 0 || pickerIndex < nameIndex || !strings.Contains(text, "[1]  Create session\n\n   [2]  Change session name") {
 		t.Fatal("creation overview did not keep pending inputs editable", text)
 	}
-	for _, label := range []string{"Configs, in order:", "[3]  Add existing config", "[4]  Replace config", "[5]  Remove config", "[6]  Reorder configs"} {
+	for _, label := range []string{"Configs, in order:", "[3]  Add existing config", "[4]  Create config", "[5]  Replace config", "[6]  Remove config"} {
 		if !strings.Contains(text, label) {
 			t.Fatal("creation menu mixed config and source labels", label, text)
 		}
@@ -328,7 +323,7 @@ func TestInteractiveCreationRedrawsEditableNameInTerminal(t *testing.T) {
 	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 30, Col: 80}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := master.WriteString("1\nFresh\n2\n1\n1\n"); err != nil {
+	if _, err := master.WriteString("2\nFresh\n3\n1\n1\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -357,7 +352,7 @@ func TestInteractiveCreationRedrawsEditableNameInTerminal(t *testing.T) {
 func TestInteractiveCreationCanBackOutOfInputsAndCancelOverview(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("1\nFresh\n2\n0\n1\n:back\n0\n"); err != nil {
+	if _, err := master.WriteString("2\nFresh\n3\n0\n2\n:back\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -387,7 +382,7 @@ func TestInteractiveCreationCanBackOutOfInputsAndCancelOverview(t *testing.T) {
 func TestInteractiveCreationCanChooseSourcesBeforeNameAndChangeName(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("2\n1\n1\nbad name\nFirst\n2\n:back\n2\nRenamed\n1\n"); err != nil {
+	if _, err := master.WriteString("3\n1\n2\nbad name\nFirst\n2\n:back\n2\nRenamed\n1\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -425,8 +420,8 @@ func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
 		input      string
 		wantPicker bool
 	}{
-		{"name", []string{"--name", "OnlyName"}, "2\n1\n1\n", true},
-		{"config", []string{"--config", "base"}, "1\nOnlyConfig\n1\n", false},
+		{"name", []string{"--name", "OnlyName"}, "3\n1\n1\n", true},
+		{"config", []string{"--config", "base"}, "2\nOnlyConfig\n1\n", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, q, _ := namedCLIFixture(t)
@@ -474,7 +469,7 @@ func TestEditReportsSavedSourcesAfterExitOnlyWhenChanged(t *testing.T) {
 		}
 		return out.String()
 	}
-	changed := run("3\n1\n0\n")
+	changed := run("4\n1\n0\n")
 	if !strings.Contains(changed, "Saved selected configs.") || !strings.Contains(changed, "Selected configs saved; container changes may still be pending. Check with:\n  devbox-neo status "+fullName) {
 		t.Fatal("source edit lost its saved-but-not-applied receipt", changed)
 	}
@@ -485,7 +480,7 @@ func TestEditReportsSavedSourcesAfterExitOnlyWhenChanged(t *testing.T) {
 
 func TestEditReceiptListsEachChangedSessionOnce(t *testing.T) {
 	var out bytes.Buffer
-	m := menu{out: &out, cmd: &cobra.Command{Use: "edit"}}
+	m := testMenuCommand(context.Background(), strings.NewReader(""), &out, &cobra.Command{Use: "edit"})
 	if err := writeEditReceipts(m, "", map[string]bool{"devbox-z": true, "devbox-a": true}, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +497,7 @@ func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("3\n1\n0\n")), out: &out}
+	m := testMenu(context.Background(), bufio.NewReader(strings.NewReader("4\n1\n0\n")), &out)
 	saved, err := sourceChainMenu(m, e, r, "Exit")
 	if err != nil || !saved {
 		t.Fatal(out.String(), saved, err)
@@ -511,7 +506,7 @@ func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T
 	if err != nil || after.ID != r.ID || len(after.Sources) != 0 || after.Applied != r.Applied {
 		t.Fatal("source edit was lost or applied container settings", after, err)
 	}
-	for _, label := range []string{"Manage configs", "Configs, in order:", "Add existing config", "Replace config", "Remove config", "Reorder configs", "Select a config", "Saved selected configs.", "at least one config is required", "[0]  Exit"} {
+	for _, label := range []string{"Manage configs", "Configs, in order:", "Add existing config", "Replace config", "Remove config", "Select a config", "Saved selected configs.", "at least one config is required", "[0]  Exit"} {
 		if !strings.Contains(out.String(), label) {
 			t.Fatal("session editor mixed config and source labels", label, out.String())
 		}

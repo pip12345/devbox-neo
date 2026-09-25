@@ -1,20 +1,16 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"os"
 
+	"devbox/internal/cliui"
 	"devbox/internal/migration"
-	"github.com/spf13/cobra"
 )
 
-// Choosing an action enters its existing review flow; it is not approval to
-// copy or import anything. Resume alone continues previously approved work.
-func migrationMenu(cmd *cobra.Command, paths migration.Paths) (string, error) {
-	ui := menu{in: bufio.NewReader(cmd.InOrStdin()), out: cmd.OutOrStdout()}
-	fmt.Fprintf(ui.out, "Devbox -> Neo\n\nSource       %s\nDestination  %s\n", safe(paths.Source), safe(paths.Destination))
-
+// Entering a review flow never approves copying or importing data.
+func migrationMenu(ui *cliui.Runner, paths migration.Paths) (string, error) {
 	stageReason, mergeReason, resumeReason := "", "not staged", "nothing pending"
 	var stateErr error
 	if _, err := os.Lstat(paths.Work); !os.IsNotExist(err) {
@@ -38,43 +34,33 @@ func migrationMenu(cmd *cobra.Command, paths migration.Paths) (string, error) {
 			}
 		}
 	}
-
-	actions := []struct {
-		name, label, unavailable string
-	}{
+	selected := ""
+	actions := []struct{ name, label, unavailable string }{
 		{"preview", "Preview migration (read-only)", ""},
 		{"stage", "Prepare staged copy", stageReason},
 		{"merge", "Review and import", mergeReason},
 		{"resume", "Resume", resumeReason},
 	}
-	for {
-		if err := cmd.Context().Err(); err != nil {
-			return "", err
-		}
-		fmt.Fprintln(ui.out)
-		for n, action := range actions {
-			label := action.label
+	err := ui.Run(func() (cliui.Screen, error) {
+		page := cliui.Screen{Title: "Devbox -> Neo", Back: "Exit", Body: func(out io.Writer) error {
+			_, err := fmt.Fprintf(out, "\nSource       %s\nDestination  %s\n", safe(paths.Source), safe(paths.Destination))
+			return err
+		}}
+		for _, action := range actions {
+			label, blocked := action.label, ""
 			if action.unavailable != "" {
 				label += " (" + action.unavailable + ")"
+				blocked = "Unavailable: " + action.unavailable
+				if stateErr != nil {
+					blocked += fmt.Sprintf("\nCannot read migration state at %s: %s", safe(paths.Work), safe(stateErr.Error()))
+				}
 			}
-			ui.option(n+1, label)
+			page.Actions = append(page.Actions, cliui.Action{Label: label, Blocked: blocked, Run: func() (bool, error) { selected = action.name; return true, nil }})
 		}
-		choice, err := ui.readChoice(len(actions), "Exit")
-		if err != nil {
-			return "", err
-		}
-		if choice == "0" {
-			fmt.Fprintln(ui.out, "Exited; no migration changes made.")
-			return "", nil
-		}
-		action := actions[int(choice[0]-'1')]
-		if action.unavailable != "" {
-			fmt.Fprintln(ui.out, "Unavailable:", action.unavailable)
-			if stateErr != nil {
-				fmt.Fprintf(ui.out, "Cannot read migration state at %s: %s\n", safe(paths.Work), safe(stateErr.Error()))
-			}
-			continue
-		}
-		return action.name, nil
+		return page, nil
+	})
+	if err == nil && selected == "" {
+		fmt.Fprintln(ui.Out, "Exited; no migration changes made.")
 	}
+	return selected, err
 }

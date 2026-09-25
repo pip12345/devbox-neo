@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"context"
+	"devbox/internal/cliui"
 	"encoding/json"
 	"os"
 	"sort"
@@ -206,7 +206,7 @@ func TestDeleteConfirmationNamesBulkScopeWithoutClaimingDefault(t *testing.T) {
 		{Sessions: []string{"devbox-a.one", "devbox-b.two"}},
 	} {
 		var out bytes.Buffer
-		confirmation := deletionConfirmation{reader: bufio.NewReader(strings.NewReader("n\n")), out: &out}
+		confirmation := deletionConfirmation{ui: cliui.New(context.Background(), strings.NewReader("n\n"), &out)}
 		ok, err := confirmation.confirm(prompt)
 		if err != nil || ok || strings.Contains(out.String(), "(default in ") || !strings.Contains(out.String(), "[y/N]") {
 			t.Fatal("bulk confirmation claimed a folder default or lost its scope", out.String(), err)

@@ -140,21 +140,21 @@ func TestMenusSharePresentationAndPreserveSelections(t *testing.T) {
 				reader := bufio.NewReader(strings.NewReader("2\n"))
 				switch kind {
 				case "config":
-					m := menu{ctx: context.Background(), in: reader, out: out}
-					selection, err := m.choose("Harness", choices, "Back")
+					m := testMenu(context.Background(), reader, out)
+					selection, err := m.Select("Harness", choices, "Back")
 					if err == nil && selection != 1 {
 						t.Fatal("config choice changed", selection)
 					}
 					return err
 				case "init-one":
-					m := menu{ctx: context.Background(), in: reader, out: out}
-					selection, err := m.selectedChoice("Harness", choices, 0, "", "Cancel")
+					m := testMenu(context.Background(), reader, out)
+					selection, err := m.SelectCurrent("Harness", choices, 0, "", "Cancel")
 					if err == nil && selection != 1 {
 						t.Fatal("harness choice changed", selection)
 					}
 					return err
 				default:
-					m := menu{ctx: context.Background(), in: bufio.NewReader(strings.NewReader("2\n5\n")), out: out}
+					m := testMenu(context.Background(), bufio.NewReader(strings.NewReader("2\n5\n")), out)
 					options, proceed, err := optionalFilesMenu(m, t.TempDir(), resource.SetupOptions{})
 					if err == nil && (!proceed || len(options.Artifacts) != 1 || options.Artifacts[0] != "setup.sh") {
 						t.Fatal("artifact toggle changed", options)
@@ -233,7 +233,9 @@ func TestSharedMenuWrapping(t *testing.T) {
 	enableTerminalColors(t)
 	choice := strings.Repeat("long-value-", 8)
 	text := terminalOutput(t, 32, func(out *os.File) error {
-		return writeMenuChoices(out, "A longer menu heading that must wrap", []string{choice})
+		m := testMenu(context.Background(), strings.NewReader("0\n"), out)
+		_, err := m.Select("A longer menu heading that must wrap", []string{choice}, "Back")
+		return err
 	})
 	for _, line := range strings.Split(unstyle(text), "\n") {
 		if utf8.RuneCountInString(line) > 32 {
