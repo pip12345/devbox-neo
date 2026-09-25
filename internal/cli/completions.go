@@ -246,7 +246,7 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 		for flag, source := range map[string]completionSource{
 			"harness": completeHarnesses, "artifact-harness": completeHarnesses,
 			"artifact": func(*cobra.Command) []string { return resource.SetupArtifacts },
-			"sort":     func(*cobra.Command) []string { return []string{"name", "last-active"} },
+			"sort":     func(*cobra.Command) []string { return []string{"folder", "name", "last-active"} },
 		} {
 			if cmd == root || cmd.Flags().Lookup(flag) == nil {
 				continue

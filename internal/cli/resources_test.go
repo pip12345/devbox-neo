@@ -120,6 +120,59 @@ func TestConfigDeleteRefusesDesiredAndCommittedSessionSources(t *testing.T) {
 	}
 }
 
+func TestConfigDeleteProtectsNestedSources(t *testing.T) {
+	for _, phase := range []string{"desired", "committed", "both"} {
+		t.Run(phase, func(t *testing.T) {
+			e, q, name := namedCLIFixture(t)
+			ctx := context.Background()
+			service := resource.Service{Home: e.Store.Home}
+			root := filepath.Join(e.Store.Home, "configs", "bundle")
+			child := filepath.Join(root, "child")
+			owner, err := service.ConfigDirectory(child, q.Workspace, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := service.CreateConfig(ctx, owner, resource.SetupOptions{Harness: harnessSetting("pi")}); err != nil {
+				t.Fatal(err)
+			}
+			shown, err := e.Store.Read(ctx, name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sources := []config.Reference{{Label: "child", Kind: config.ReferenceFixed, Path: child}}
+			if _, err := e.UpdateSources(ctx, shown, sources); err != nil {
+				t.Fatal(err)
+			}
+			if phase != "desired" {
+				if _, err := e.Recreate(ctx, q, false); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if phase == "committed" {
+				shown, err = e.Store.Read(ctx, name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := e.UpdateSources(ctx, shown, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			users, err := service.ConfigUsers(ctx, resource.Owner{Kind: "config", Root: root})
+			if err != nil || len(users) != 1 || users[0].Session != name || users[0].Desired != (phase != "committed") || users[0].Committed != (phase != "desired") {
+				t.Fatal("nested config usage was not reported", users, err)
+			}
+			out, err := resourceCLI(t, e.Store.Home, "config", "delete", "bundle", "--force", "--json")
+			var blocked *commanderror.Error
+			if !errors.As(err, &blocked) || blocked.Code != "config_in_use" || len(blocked.Next) != 1 || !strings.Contains(out, name) {
+				t.Fatal("nested config was not protected", out, err)
+			}
+			if _, err := os.Stat(filepath.Join(child, "config.json")); err != nil {
+				t.Fatal("blocked deletion removed nested config", err)
+			}
+		})
+	}
+}
+
 func TestConfigUsageReportsEveryDesiredAndCommittedSession(t *testing.T) {
 	e, q, first := namedCLIFixture(t)
 	ctx := context.Background()

@@ -50,6 +50,9 @@ func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 		}
 		view := details.View
 		printView(cmd, view)
+		if details.DefaultError != "" {
+			cmd.Printf("Default selection unavailable: %s\n", displayCell(details.DefaultError))
+		}
 		if details.Record != nil {
 			cmd.Printf("Session: %s\nHarness: %s\nImage: %s\nActive commands: %d\n", displayCell(details.SessionID), displayCell(details.Harness), displayCell(details.Record.ImageID), len(details.Active))
 			lifetime := "automatic (stops after the last attached command)"

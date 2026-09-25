@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,6 +93,50 @@ func TestStatusDoesNotSuggestRestartForLaunchArguments(t *testing.T) {
 	cmd.SetArgs([]string{name})
 	if err := cmd.Execute(); err != nil || !strings.Contains(out.String(), "Changes: Runtime changes") || strings.Contains(out.String(), "Changes apply on container restart.") {
 		t.Fatal("launch-only change was labeled as needing container restart", out.String(), err)
+	}
+}
+
+func TestSingleStatusJSONReportsDefaultAndDefaultErrors(t *testing.T) {
+	e, q, name := namedCLIFixture(t)
+	ctx := context.Background()
+	r, err := e.Store.Read(ctx, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.SetDefault(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) string {
+		t.Helper()
+		local := ""
+		cmd := statusCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &local)
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetArgs(args)
+		if err := cmd.ExecuteContext(ctx); err != nil {
+			t.Fatal(out.String(), err)
+		}
+		return out.String()
+	}
+	var result struct {
+		Default      bool   `json:"default"`
+		DefaultError string `json:"default_error"`
+	}
+	if err := json.Unmarshal([]byte(run(q.Workspace, "--json")), &result); err != nil || !result.Default || result.DefaultError != "" {
+		t.Fatal(result, err)
+	}
+	key, err := store.WorkspaceKey(q.Workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(e.Store.Home, "state/workspaces", key+".json"), []byte("broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(run(name, "--json")), &result); err != nil || result.Default || result.DefaultError == "" {
+		t.Fatal("JSON lost the default-state diagnostic", result, err)
+	}
+	if text := run(name); !strings.Contains(text, "Default selection unavailable:") || !strings.Contains(text, "Session: "+r.ID) {
+		t.Fatal("human status lost details or default-state diagnostic", text)
 	}
 }
 

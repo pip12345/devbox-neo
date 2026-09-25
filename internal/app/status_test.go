@@ -42,6 +42,65 @@ func TestStatusRetainsDetailsWithInvalidConfig(t *testing.T) {
 	}
 }
 
+func TestStatusDefaultMatchesSavedNameAndID(t *testing.T) {
+	e, _, q := fixture(t)
+	ctx := context.Background()
+	made, err := e.Create(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := record(t, e, made.Name)
+	key, err := store.WorkspaceKey(r.Identity.Workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(e.Store.Home, "state/workspaces", key+".json")
+	check := func(want bool) {
+		t.Helper()
+		for _, target := range []struct{ path, name string }{{made.Name, ""}, {q.Workspace, q.LocalName}} {
+			details, err := e.Status(ctx, target.path, target.name)
+			if err != nil || details.Default != want || details.DefaultError != "" {
+				t.Fatal("wrong default selection", details.Default, details.DefaultError, err)
+			}
+		}
+	}
+	check(false)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("status seeded absent default state", err)
+	}
+	if err := e.SetDefault(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	check(true)
+	details, err := e.Status(ctx, q.Workspace, "")
+	if err != nil || !details.Default {
+		t.Fatal("default-selected folder status lost default flag", details, err)
+	}
+	for _, selected := range []store.DefaultSession{
+		{Name: made.Name, ID: strings.Repeat("a", 32)},
+		{Name: environment.ContainerName(q.Workspace, "Other"), ID: r.ID},
+	} {
+		data, err := json.Marshal(map[string]any{"version": 1, "workspace": q.Workspace, "default_session": selected})
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(t, path, string(data))
+		check(false)
+	}
+	if err := e.Store.ClearDefault(ctx, q.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
+	write(t, path, "broken")
+	details, err = e.Status(ctx, made.Name, "")
+	if err != nil || details.Record == nil || details.Record.ID != r.ID || details.Default || details.DefaultError == "" || details.Desired != environment.NoChange {
+		t.Fatal("broken default hid exact-session details", details, err)
+	}
+	if string(getFile(t, path)) != "broken" {
+		t.Fatal("status repaired invalid default state")
+	}
+}
+
 func TestStatusReportsLiveLeasesWithoutReaping(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()

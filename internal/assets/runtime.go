@@ -63,6 +63,8 @@ On the host, config create <name|path> creates a config directory; config edit
 selected home (normally ~/.devbox-neo/configs/); directories elsewhere are ordinary
 explicit sources too. Creation rejects existing config.json; artifact setup never
 overwrites existing files. Harness-file generation does not force harness selection.
+Config delete removes a named directory only when saved sessions do not reference
+it or configs beneath it, including committed sources needed for recovery.
 Devbox-neo create <folder> asks for an explicit local session name and existing
 config sources, then prepares a stopped container. Scripts supply --name NAME and
 repeated --config REF. Creation never selects a default. Use edit <folder> to choose

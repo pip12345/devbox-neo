@@ -14,8 +14,9 @@ import (
 
 type StatusDetails struct {
 	View
-	Record *store.Record `json:"record,omitempty"`
-	Active []store.Lease `json:"active"`
+	Record       *store.Record `json:"record,omitempty"`
+	Active       []store.Lease `json:"active"`
+	DefaultError string        `json:"default_error,omitempty"`
 }
 
 func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDetails, error) {
@@ -71,7 +72,19 @@ func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDe
 	if pending == nil {
 		e.desiredStatus(&view, r)
 	}
-	return StatusDetails{View: view, Record: &r, Active: leases}, nil
+	details := StatusDetails{View: view, Record: &r, Active: leases}
+	selected, defaultErr := e.Store.ReadDefault(ctx, r.Identity.Workspace)
+	if defaultErr != nil {
+		if errors.Is(defaultErr, context.Canceled) || errors.Is(defaultErr, context.DeadlineExceeded) {
+			return StatusDetails{}, defaultErr
+		}
+		// Default metadata must not hide an explicitly selected session's
+		// saved details, container state, or configuration diagnostics.
+		details.DefaultError = defaultErr.Error()
+	} else {
+		details.Default = selected != nil && selected.Name == r.Identity.Name && selected.ID == r.ID
+	}
+	return details, nil
 }
 
 type sessionRemoval struct {

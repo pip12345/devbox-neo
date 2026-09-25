@@ -18,7 +18,7 @@ The editor shows the directory's path and every saved session using it. Choose a
 
 Use **Add optional files** to add missing customization files without overwriting existing ones. Adding harness files does not force a harness selection: an overlay can supply Pi files while leaving its Harness setting unset.
 
-To remove an unused named config and all its files, run `devbox-neo config delete base` and confirm. Devbox refuses while saved sessions still select it or need its committed files, and lists every affected session. Remove this config from those sessions and recreate them (or delete the sessions) first. This command does not remove configs at arbitrary paths outside the selected home's `configs/` directory.
+To remove an unused named config and all its files, run `devbox-neo config delete base` and confirm. Devbox refuses while saved sessions still select it, use a config inside it, or need its committed files, and lists every affected session. Remove this config from those sessions and recreate them (or delete the sessions) first. This command does not remove configs at arbitrary paths outside the selected home's `configs/` directory.
 
 ## Add workspace-specific settings
 

@@ -40,7 +40,7 @@ Single-target status includes saved session ID, harness, image, active-command c
 | `status --json` | Same inventory shape, enriched with desired-change diagnostics |
 | `status <folder\|session> --json` | One status object, plus `record` and `active` details |
 
-Bulk arrays are present even when empty. Optional `default_errors` maps workspaces to default-state diagnostics without hiding sessions. Rows include `local_name`, `default`, `manual_start` (the lifetime choice), and desired `sources`. List session order follows `--sort`. Status fields include `desired_change`, `pending_input_changes`, `config_error`, `error`, and `pending_transfer` where applicable. Bulk rows omit full records and leases.
+Bulk arrays are present even when empty. Optional `default_errors` maps workspaces to default-state diagnostics without hiding sessions. Rows include `local_name`, `default`, `manual_start` (the lifetime choice), and desired `sources`. Both bulk and single-target `default` flags match the saved name and durable ID. Single-target status adds `default_error` when default state cannot be read, without hiding explicitly selected session details. List session order follows `--sort`. Status fields include `desired_change`, `pending_input_changes`, `config_error`, `error`, and `pending_transfer` where applicable. Bulk rows omit full records and leases.
 
 An exact pending-transfer endpoint remains inspectable without a session record: `record` is omitted and `active` is empty. Pending transfers skip desired-config comparison. Per-row diagnostics do not fail bulk status; unavailable inventory/Docker does.
 

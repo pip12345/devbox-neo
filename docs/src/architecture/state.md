@@ -75,7 +75,7 @@ Folder filtering uses recorded workspace identity, or workspace labels for unava
 
 Bulk status enriches the same inventory with the normal resolver and `environment.CompareInputs`. Runtime state remains independent of configuration health: a missing container can still have comparable inputs, while a running container can have invalid desired config.
 
-Single-target `app.Status` reads the record and live leases under the operation lock, inspects the linked container, and uses the same comparison. `StatusDetails` adds full `record` and `active` fields without bloating bulk rows. Pending transfers skip desired resolution because their transaction, not current configuration, governs recovery.
+Single-target `app.Status` reads the record and live leases under the operation lock, inspects the linked container, and uses the same comparison. `StatusDetails` adds full `record` and `active` fields without bloating bulk rows. It reads the workspace default after acquiring the session lock and matches both name and durable ID. Default-state read errors appear separately as `default_error`, preserving explicitly selected session details. Pending transfers skip desired resolution because their transaction, not current configuration, governs recovery.
 
 Last activity means recorded Devbox operations, not filesystem activity or only harness launches. Container creation time in listing comes from Docker, independently of durable session creation time.
 
