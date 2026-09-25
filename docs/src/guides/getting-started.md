@@ -21,7 +21,7 @@ alias dbx="devbox-neo"
 source <(devbox-neo completion bash)
 ```
 
-This makes Devbox available from any folder, adds the `dbx` shortcut, and enables tab completion.
+This makes Devbox available from any folder, adds an optional `dbx` shortcut, and enables tab completion. The program's command is `devbox-neo`.
 
 Reload your shell configuration and check the CLI:
 
@@ -30,74 +30,43 @@ source ~/.bashrc
 devbox-neo version
 ```
 
-## 2. Choose your harness
+## 2. Create your first session
 
-A **harness** is the coding tool Devbox launches, such as Pi, OpenCode, or Claude Code. A **config directory** supplies reusable settings and optional customization files.
-
-Create a config named `base`:
-
-```sh
-devbox-neo config create base
-```
-
-In the overview, choose **Harness** and select your coding tool, then choose **Create config**. Leave **Optional files** at **None** for now; you can add files later through `config edit base`. The built-in Claude harness bypasses Claude's permission prompts; see [built-in launch settings](../reference/harnesses.md#built-in-harnesses). This config lives in `~/.devbox-neo/configs/base/`; creating it does not create a session. You can also run `devbox-neo config create` without a name and set **Name/location** in the same overview.
-
-## 3. Create an environment
-
-The command is `devbox-neo create <folder>`: replace `<folder>` with your project's path. `.` means “the current folder,” so you can go to your project first:
+Go to your project and open Devbox:
 
 ```sh
 cd /path/to/your/project
+devbox-neo
 ```
 
-Then create its environment:
+With no sessions, **Create session** starts selected. Press **Enter**. The overview shows your current folder; **Change folder** lets you choose another. Choose **Set session name** and enter a name such as `work`. Names belong to a workspace, so other workspaces can use the same name.
 
-```sh
-devbox-neo create .
-```
+Choose **Create config**. A **config directory** supplies reusable settings and optional customization files. Set **Name/location** to `base`, then choose **Harness** and select your coding tool. A harness is what Devbox launches, such as Pi, OpenCode, or Claude Code. Leave **Optional files** at **None** for now. The built-in Claude harness bypasses Claude's permission prompts; see [built-in launch settings](../reference/harnesses.md#built-in-harnesses).
 
-Choose **Set session name** and enter a name, then **Add existing config** and select `base`. If you skipped config setup, **Create config** opens that same setup here and adds the result. The config stays saved even if you later cancel session creation. You can change the pending name and configs before choosing **Create session**; selecting it too early tells you what's missing. The name belongs to this workspace; other workspaces can use the same name.
+Choose **Create config** to save it. Devbox returns to your session draft with `base` already added. If you have an existing config instead, use **Add existing config**. A config already created remains saved even if you cancel the session draft.
 
-You can also use a path directly, such as `devbox-neo create /path/to/your/project`, without changing folders.
+Review the folder, name, and selected configs, then choose **Create session**. Devbox builds the image, installs the selected harness, and prepares the container. The first build can take a while. Build failures return to your entered choices; follow any recovery instructions before retrying.
 
-Devbox builds the image, installs the selected harness, and prepares the container. The first build can take a while. When creation finishes, the environment is ready but stopped.
+Your project appears at `/workspace` inside the container. Changes there are changes to your real project files.
 
-Your project folder appears at `/workspace` inside the container. Changes made there are changes to your real project files.
+## 3. Open it
 
-## 4. Select a default and open it
+After creation, acknowledge the result to enter the new session's menu. The session is stopped, with **Open** selected. Press **Enter** to launch the harness, then follow its login or provider setup when prompted. Devbox keeps managed authentication on the host for reuse.
 
-Choose the session to use when you address this folder without a name:
+You do not need a folder default to open the session from this menu. **Make folder default** is available if you want folder-only commands to select it later. Creation never sets a default or launches a harness automatically.
 
-```sh
-devbox-neo edit .
-```
+When the last attached Devbox command exits, the container stops by default. Your project files and saved harness state remain. Acknowledge the result to return to the menu.
 
-Choose **Set folder default**, then select the session you just created. Even a folder with only one session needs an explicit default. Then open it:
+## 4. Come back later
 
-```sh
-devbox-neo open .
-```
+Run `devbox-neo`, highlight your session on the left, and press **Enter** to open its menu. Choose **Continue** to resume its previous conversation, **Open** for a normal launch, or **Shell** for a terminal inside the container. Use **Esc** to return to browsing and **Tab** to switch to configs.
 
-Devbox starts the container and launches your harness. Follow its login or provider setup when prompted. Devbox keeps its managed authentication on the host so you can reuse it later.
-
-When the last attached Devbox command exits, the container stops by default. Your project files and saved harness state remain.
-
-## 5. Come back later
-
-From the same project folder:
+Direct commands remain available. If you made this session the folder default, from its project folder you can run:
 
 ```sh
 devbox-neo open . --continue
 ```
 
-`--continue` asks the harness to resume its previous conversation. You can also use the shorthand `-c`:
-
-```sh
-devbox-neo open . -c
-```
-
-Leave the flag out for a normal launch. You only need `create` once for each environment.
-
-Use `devbox-neo list` to find your environments, or `devbox-neo shell .` to open a shell instead of the harness.
+Here `.` means the current folder. You can use `-c` instead of `--continue`. Without a saved default, add `--name work` to select the session explicitly. You only need to create each session once.
 
 **Next:** [Everyday use](everyday-use.md).

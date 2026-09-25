@@ -6,13 +6,15 @@ Named configs live under `~/.devbox-neo/configs/`. You can also keep configs any
 
 ## Edit a config
 
-Open the directory editor:
+Run `devbox-neo config` to browse named configs, create one, or enter a directory path. Selecting a config opens its editor; eligible named configs also have a **Delete config** action with the same usage checks as the delete command.
+
+To go straight to a known directory:
 
 ```sh
 devbox-neo config edit base
 ```
 
-The editor shows the directory's path and every saved session using it. Choose a setting and enter its value. Each valid edit saves immediately. Use `0` or `q` to go back or exit, and `:back` to cancel text entry.
+The editor shows the directory's path and every saved session using it. Choose a setting and enter its value. Each valid edit saves immediately. Use arrows and **Enter** to select, and **Esc** to go back or cancel text entry. **Page Up/Down** scrolls long details.
 
 **Remove this setting** removes the key from this config. It does not write a built-in or another config's value into the file. The dashboard shows only this directory over built-in defaults; its list editors change only entries stored here.
 

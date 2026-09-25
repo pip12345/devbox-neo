@@ -53,16 +53,16 @@ func createConfig(m menu, s *resource.Service, input, cwd, userHome string) (res
 			blocked = "Set a config name or directory first."
 		}
 		return cliui.Screen{Title: "Create config", Back: "Cancel", Actions: []cliui.Action{
-			{Label: "Name/location: " + name, Run: func() (bool, error) {
+			{Label: "Name/location", Value: name, Run: func() (bool, error) {
 				_, _, err := m.Text("Config name or directory (:back returns): ", locate)
 				return false, err
 			}},
-			{Label: "Harness: " + selectedHarness, Run: func() (bool, error) {
+			{Label: "Harness", Value: selectedHarness, Run: func() (bool, error) {
 				var err error
 				options.Harness, err = chooseConfigHarness(m, s.Home, options.Harness)
 				return false, err
 			}},
-			{Label: "Optional files: " + files, Run: func() (bool, error) {
+			{Label: "Optional files", Value: files, Run: func() (bool, error) {
 				// The optional-files editor commits its selection with Continue;
 				// Back must not mutate the creation draft through a shared slice.
 				draft := options

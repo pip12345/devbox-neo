@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -17,7 +18,11 @@ type menu struct {
 }
 
 func newMenu(cmd *cobra.Command) menu {
-	return menu{Runner: cliui.New(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout()), cmd: cmd}
+	runner := cliui.New(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout())
+	// UI cancellation must also reach command-owned preparation/operations.
+	// Finish restores the terminal without cancelling this command context.
+	cmd.SetContext(runner.Context)
+	return menu{Runner: runner, cmd: cmd}
 }
 
 func (m menu) commandHint(home, reason string, args ...string) error {
@@ -40,9 +45,24 @@ func (m menu) report(err error) error {
 	if err == nil {
 		return nil
 	}
-	if m.Context.Err() != nil {
-		return m.Context.Err()
+	if cancelled := m.Context.Err(); cancelled != nil {
+		if errors.Is(err, cancelled) {
+			return err
+		}
+		return errors.Join(err, cancelled)
 	}
-	m.Notice("Error: " + displayCell(err.Error()))
+	report := describeError(err)
+	if m.cmd != nil {
+		home, _ := m.cmd.Flags().GetString("home")
+		var scope func(*errorReport)
+		scope = func(r *errorReport) {
+			r.Next = scopedSteps(m.cmd, r.Next, home)
+			for i := range r.Related {
+				scope(&r.Related[i])
+			}
+		}
+		scope(&report)
+	}
+	m.Notice(humanErrorText(report))
 	return nil
 }

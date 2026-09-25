@@ -187,7 +187,7 @@ func TestMenuCancellationAndValidationDoNotWrite(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	m := testMenu(ctx, bufio.NewReader(strings.NewReader(n+"\n1\nhost\n1\n")), &out)
-	if err := configMenu(m, s, owner, new(bool)); !errors.Is(err, context.Canceled) {
+	if err := configMenu(m, s, owner, new(bool), "Exit"); !errors.Is(err, context.Canceled) {
 		t.Fatal("cancellation ignored", err)
 	}
 }

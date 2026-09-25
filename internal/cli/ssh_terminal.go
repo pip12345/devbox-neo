@@ -22,22 +22,27 @@ func sshTerminalMessage(out io.Writer, text string) {
 	fmt.Fprint(out, text)
 }
 
-func runSSHInTerminal(input *os.File, out io.Writer, run func() error) (err error) {
+// A cancelled Docker CLI can exit before its restoration defer runs. Restore
+// the pre-operation state before printing results or reading acknowledgement;
+// otherwise Enter may still be raw CR and a line reader can wait indefinitely.
+func preserveTerminal(input *os.File, run func() error) (err error) {
 	state, err := unix.IoctlGetTermios(int(input.Fd()), unix.TCGETS)
 	if err != nil {
-		return fmt.Errorf("cannot capture SSH terminal settings: %w", err)
+		return fmt.Errorf("cannot capture terminal settings: %w", err)
 	}
 	defer func() {
-		// A cancelled Docker CLI can exit before its own restoration defer runs.
-		// Restore before printing completion or handing an error to the CLI renderer.
 		if restoreErr := unix.IoctlSetTermios(int(input.Fd()), unix.TCSETS, state); restoreErr != nil {
-			err = errors.Join(err, fmt.Errorf("cannot restore SSH terminal settings: %w", restoreErr))
-		}
-		if err == nil {
-			sshTerminalMessage(out, "\nDisconnected.\n")
-		} else {
-			sshTerminalMessage(out, "\n")
+			err = errors.Join(err, fmt.Errorf("cannot restore terminal settings: %w", restoreErr))
 		}
 	}()
 	return run()
+}
+func runSSHInTerminal(input *os.File, out io.Writer, run func() error) error {
+	err := preserveTerminal(input, run)
+	if err == nil {
+		sshTerminalMessage(out, "\nDisconnected.\n")
+	} else {
+		sshTerminalMessage(out, "\n")
+	}
+	return err
 }

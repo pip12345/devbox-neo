@@ -50,6 +50,7 @@ Creation, opening, and recreation require at least one source, accessible valid 
 
 | Command | Scope |
 |---|---|
+| `config` | Browse named configs, create/edit/delete them, or enter a directory path; **Tab** switches to sessions |
 | `config create [name\|path]` | Open a new-config overview; a supplied name/path prefills it |
 | `config edit <name\|path>` | Edit one existing directory's settings or add missing optional files |
 | `config list [--json]` | Show names, harnesses, and directory paths under `<home>/configs/`, including invalid or incomplete configs; does not discover arbitrary path-based configs |
@@ -66,7 +67,7 @@ Interactive creation keeps **Name/location**, **Harness**, and **Optional files*
 
 `config delete` accepts only a direct named directory under the selected home's `configs/`; symlink entries and arbitrary directory paths are refused. It can remove incomplete directories, but refuses while saved sessions use the directory or a descendant as a desired or committed source. The check includes aliases whose removal would break a saved source reference. The blocked-deletion error lists every known session once with a command to inspect it. The interactive directory editor shows the same plain list. Invalid session state and pending transfers block deletion because use cannot be checked completely; the editor labels a partial report. This is a check of current saved state, not an atomic guarantee against concurrent session creation or source edits.
 
-Each completed setting/source-chain edit saves immediately. `0` or `q` navigates back or exits; `:back` cancels text input. Removing a setting removes its local key. List editors change only the selected directory's entries. Selected-config changes affect one session; directory changes affect all referencing sessions.
+Each completed setting/source-chain edit saves immediately. In the native UI, **Esc** or `q` navigates back or exits; **Esc** cancels text entry. Plain numbered prompts use `0` or `q` for navigation and `:back` for text cancellation. Removing a setting removes its local key. List editors change only the selected directory's entries. Selected-config changes affect one session; directory changes affect all referencing sessions.
 
 Saves preserve expressions and unrelated fields. A stale same-field edit or changed session/source-list snapshot is rejected. The directory dashboard shows that source over built-in defaults; combined inspection is read-only. Env values are redacted, but typed input is visible.
 

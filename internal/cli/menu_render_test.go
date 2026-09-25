@@ -1,219 +1,164 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"context"
-	"devbox/internal/cliui"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"devbox/internal/app"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
-
-	"devbox/internal/app"
 )
 
-func TestMenuFrameFits(t *testing.T) {
-	for _, tc := range []struct {
-		frame string
-		rows  int
-		cols  int
-		fits  bool
-	}{
-		{"Title\n1  First\nChoice > ", 5, 40, true},
-		{"Title\n1  First\nChoice > ", 2, 40, false},
-		{"Choice > ", 5, 9, false},
-		{"\x1b[1mTitle\x1b[0m\nChoice > ", 5, 40, true},
-		{"\x1b[HChoice > ", 5, 40, false},
-		{"目录\nChoice > ", 5, 40, true},
-		{"A〈\n> ", 4, 3, false}, // U+2329 occupies two cells.
-		{"e\u0301\nChoice > ", 5, 40, false},
-	} {
-		if got := cliui.FrameFits(tc.frame, tc.rows, tc.cols); got != tc.fits {
-			t.Errorf("cliui.FrameFits(%q, %d, %d) = %v; want %v", tc.frame, tc.rows, tc.cols, got, tc.fits)
+func TestInteractiveMenusShareOneTerminalAndRestoreIt(t *testing.T) {
+	p := newTerminalProbe(t)
+	before, err := unix.IoctlGetTermios(int(p.slave.Fd()), unix.TCGETS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := p.workflow(func(ctx context.Context, tty *os.File) (err error) {
+		cmd := &cobra.Command{}
+		cmd.SetContext(ctx)
+		cmd.SetIn(tty)
+		cmd.SetOut(tty)
+		m := newMenu(cmd)
+		defer func() { err = errors.Join(err, m.Finish()) }()
+		if !m.Redraws() {
+			return fmt.Errorf("terminal UI not enabled")
 		}
+		choice, err := m.Select("First screen", []string{"Alpha action", "Beta action"}, "Back")
+		if err != nil {
+			return err
+		}
+		if choice != 1 {
+			return fmt.Errorf("wrong selected action: %d", choice)
+		}
+		choices := make([]string, 30)
+		for i := range choices {
+			choices[i] = fmt.Sprintf("Long action %02d", i)
+		}
+		choice, err = m.Select("Scrollable screen", choices, "Back")
+		if err != nil {
+			return err
+		}
+		if choice != 29 {
+			return fmt.Errorf("long list did not select final item")
+		}
+		m.Receipt("Saved receipt.")
+		return nil
+	})
+	p.wait("Alpha action")
+	p.send("\x1b[B\r")
+	p.wait("Long action")
+	p.send("\x1b[F")
+	p.send("\r")
+	p.finish(done)
+	text := p.output()
+	if strings.Count(text, "\x1b[?1049h") != 1 || strings.Count(text, "\x1b[?1049l") != 1 {
+		t.Fatal("nested screens restarted the terminal", text)
+	}
+	if strings.Index(text, "Saved receipt.") < strings.Index(text, "\x1b[?1049l") {
+		t.Fatal("receipt hidden in alternate screen", text)
+	}
+	after, err := unix.IoctlGetTermios(int(p.slave.Fd()), unix.TCGETS)
+	if err != nil || *before != *after {
+		t.Fatal("terminal mode not restored", err)
 	}
 }
-
-func TestInteractiveMenuRedrawAndFallback(t *testing.T) {
-	t.Setenv("TERM", "xterm")
-	master, slave := testTerminal(t)
-	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 12, Col: 60}); err != nil {
-		t.Fatal(err)
-	}
-	cmd := &cobra.Command{}
-	cmd.SetIn(slave)
-	cmd.SetOut(slave)
-	cmd.SetErr(slave)
-	cmd.SetContext(context.Background())
-	m := newMenu(cmd)
-	if !m.Redraws() || configDisplayWidth(m.Out) != 60 {
-		t.Fatal("terminal rendering should preserve output width", configDisplayWidth(m.Out))
-	}
-	if _, err := master.WriteString("bad\n1\n0\n"); err != nil {
-		t.Fatal(err)
-	}
-	choice, err := m.Select("Short menu", []string{"First"}, "Back")
-	if err != nil || choice != 0 {
-		t.Fatal(choice, err)
-	}
-	// This frame cannot fit in twelve rows. It must return to the ordinary
-	// shell screen before printing the complete menu, then accept input.
-	choices := make([]string, 15)
-	for i := range choices {
-		choices[i] = fmt.Sprintf("Item %d", i+1)
-	}
-	choice, err = m.Select("Long menu", choices, "Back")
-	if err != nil || choice != -1 {
-		t.Fatal(choice, err)
-	}
-	if err := m.Finish(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := slave.WriteString("\x00"); err != nil {
-		t.Fatal(err)
-	}
-	text, err := bufio.NewReader(master).ReadString('\x00')
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Count(text, "\x1b[?1049h") != 1 || strings.Count(text, "\x1b[?1049l") != 1 || strings.Count(text, "Short menu") != 2 || !strings.Contains(text, "Long menu") || !strings.Contains(text, "Item 15") || !strings.Contains(text, "Choose 1–1") {
-		t.Fatal("short menu did not redraw or long menu did not fall back", text)
-	}
-}
-
-func TestEditUsesMenuScreenInTerminal(t *testing.T) {
-	t.Setenv("TERM", "xterm")
-	engine, request, _ := namedCLIFixture(t)
-	master, slave := testTerminal(t)
-	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 24, Col: 80}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := master.WriteString("2\n1\n0\n"); err != nil {
-		t.Fatal(err)
-	}
-	name := ""
-	cmd := editCommand(func(*cobra.Command) (*app.Engine, error) { return engine, nil }, &name)
-	cmd.SetIn(slave)
-	cmd.SetOut(slave)
-	cmd.SetErr(slave)
-	cmd.SetArgs([]string{request.Workspace})
-	if err := cmd.ExecuteContext(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := slave.WriteString("\x00"); err != nil {
-		t.Fatal(err)
-	}
-	text, err := bufio.NewReader(master).ReadString('\x00')
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(text, "\x1b[?1049h") || !strings.Contains(text, "\x1b[?1049l") || !strings.Contains(text, "Default session for ") {
-		t.Fatal("edit did not render and close its interactive menu", text)
-	}
-	selected, err := engine.Store.ReadDefault(context.Background(), request.Workspace)
+func TestEditUsesNativeMenuAndSavesDefault(t *testing.T) {
+	e, q, _ := namedCLIFixture(t)
+	p := newTerminalProbe(t)
+	done := p.workflow(func(ctx context.Context, tty *os.File) error {
+		name := ""
+		cmd := editCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+		cmd.SetIn(tty)
+		cmd.SetOut(tty)
+		cmd.SetErr(tty)
+		cmd.SetArgs([]string{q.Workspace})
+		return cmd.ExecuteContext(ctx)
+	})
+	p.wait("Set folder default")
+	p.send("\x1b[B\r")
+	p.send("\r")
+	p.send("q")
+	p.finish(done)
+	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
 	if err != nil || selected == nil {
-		t.Fatal("edit did not select the saved default", selected, err)
+		t.Fatal("default not saved", selected, err, p.output())
+	}
+	if !strings.Contains(p.output(), "Default session for ") {
+		t.Fatal("default receipt missing", p.output())
 	}
 }
-
-func TestWarningRetryRemainsVisible(t *testing.T) {
-	t.Setenv("TERM", "xterm")
-	master, slave := testTerminal(t)
-	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 24, Col: 80}); err != nil {
-		t.Fatal(err)
+func TestWarningsStayVisibleUntilAcknowledged(t *testing.T) {
+	p := newTerminalProbe(t)
+	done := p.workflow(func(ctx context.Context, tty *os.File) (err error) {
+		cmd := &cobra.Command{}
+		cmd.SetContext(ctx)
+		cmd.SetIn(tty)
+		cmd.SetOut(tty)
+		m := newMenu(cmd)
+		defer func() { err = errors.Join(err, m.Finish()) }()
+		if _, err = m.Select("Initial screen", nil, "Back"); err != nil {
+			return err
+		}
+		if err = m.Pause(); err != nil {
+			return err
+		}
+		fmt.Fprintln(tty, "Warning: review this before proceeding")
+		if err = m.ReviewOutput(); err != nil {
+			return err
+		}
+		_, err = m.Select("Retry screen", nil, "Back")
+		return err
+	})
+	p.wait("Initial screen")
+	p.send("\r")
+	p.wait("Press Enter")
+	text := p.output()
+	warning := strings.Index(text, "Warning: review")
+	if warning < 0 || strings.Contains(text[warning:], "\x1b[?1049h") {
+		t.Fatal("warning hidden before acknowledgement", text)
 	}
-	cmd := &cobra.Command{}
-	cmd.SetIn(slave)
-	cmd.SetOut(slave)
-	cmd.SetContext(context.Background())
-	m := newMenu(cmd)
-	if _, err := master.WriteString("0\n0\n0\n"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := m.Select("Initial menu", nil, "Back"); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Pause(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := slave.WriteString("Warning: check the config\n"); err != nil {
-		t.Fatal(err)
-	}
-	m.PlainNext()
-	if _, err := m.Select("Retry menu", nil, "Back"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := m.Select("Next menu", nil, "Back"); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Finish(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := slave.WriteString("\x00"); err != nil {
-		t.Fatal(err)
-	}
-	text, err := bufio.NewReader(master).ReadString('\x00')
-	if err != nil {
-		t.Fatal(err)
-	}
-	warning := strings.Index(text, "Warning: check the config")
-	retry := strings.Index(text, "Retry menu")
-	if warning < 0 || retry < warning || strings.Contains(text[warning:retry], "\x1b[?1049h") || strings.Count(text, "\x1b[?1049h") != 2 {
-		t.Fatal("warning and retry must stay on the shell screen", text)
-	}
+	p.send("\n")
+	p.wait("Retry")
+	p.send("\r")
+	p.finish(done)
 }
-
-func TestMenuRestoresShellAfterCancellation(t *testing.T) {
-	t.Setenv("TERM", "xterm")
-	master, slave := testTerminal(t)
-	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 24, Col: 80}); err != nil {
-		t.Fatal(err)
-	}
+func TestMenuCancellationRestoresTerminal(t *testing.T) {
+	p := newTerminalProbe(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	cmd := &cobra.Command{}
-	cmd.SetIn(slave)
-	cmd.SetOut(slave)
-	cmd.SetContext(ctx)
-	m := newMenu(cmd)
 	done := make(chan error, 1)
 	go func() {
-		_, err := m.Select("Waiting menu", []string{"First"}, "Back")
-		done <- err
+		cmd := &cobra.Command{}
+		cmd.SetContext(ctx)
+		cmd.SetIn(p.slave)
+		cmd.SetOut(p.slave)
+		m := newMenu(cmd)
+		_, err := m.Select("Waiting", []string{"Cancel me"}, "Back")
+		done <- errors.Join(err, m.Finish())
 	}()
-	if err := master.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	reader := bufio.NewReader(master)
-	output, err := reader.ReadBytes('>')
-	if err != nil || !bytes.Contains(output, []byte("\x1b[?1049h")) {
-		t.Fatal("menu did not enter temporary screen", err, string(output))
-	}
+	p.wait("Cancel me")
 	cancel()
 	select {
 	case err := <-done:
-		if err == nil {
-			t.Fatal("cancelled read returned without an error")
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("cancelled read did not stop")
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled menu did not stop")
 	}
-	if err := m.Finish(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := slave.WriteString("\x00"); err != nil {
-		t.Fatal(err)
-	}
-	rest, err := reader.ReadString('\x00')
-	if err != nil || !strings.Contains(rest, "\x1b[?1049l") {
-		t.Fatal("shell screen was not restored", err, rest)
+	p.drain()
+	if !strings.Contains(p.output(), "\x1b[?1049l") {
+		t.Fatal("alternate screen not restored", p.output())
 	}
 }
-
 func TestMenuKeepsRedirectedOutputPlain(t *testing.T) {
 	master, slave := testTerminal(t)
 	if _, err := master.WriteString("0\n"); err != nil {
@@ -226,45 +171,12 @@ func TestMenuKeepsRedirectedOutputPlain(t *testing.T) {
 	cmd.SetContext(context.Background())
 	m := newMenu(cmd)
 	if m.Redraws() {
-		t.Fatal("redirected output must not use terminal escapes")
+		t.Fatal("redirected output enabled terminal UI")
 	}
 	if _, err := m.Select("Plain menu", []string{"First"}, "Back"); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(output.String(), "\x1b[") || !strings.Contains(output.String(), "Plain menu") {
 		t.Fatal(output.String())
-	}
-}
-
-func TestMenuFinishedOutputIsNotHidden(t *testing.T) {
-	t.Setenv("TERM", "xterm")
-	master, slave := testTerminal(t)
-	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 24, Col: 80}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := master.WriteString("0\n"); err != nil {
-		t.Fatal(err)
-	}
-	cmd := &cobra.Command{}
-	cmd.SetIn(slave)
-	cmd.SetOut(slave)
-	cmd.SetContext(context.Background())
-	m := newMenu(cmd)
-	if _, err := m.Select("Menu", nil, "Back"); err != nil {
-		t.Fatal(err)
-	}
-	fmt.Fprint(m.Out, "Saved.\n")
-	if err := m.Finish(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := slave.WriteString("\x00"); err != nil {
-		t.Fatal(err)
-	}
-	text, err := bufio.NewReader(master).ReadString('\x00')
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Index(text, "\x1b[?1049l") < 0 || strings.Index(text, "Saved.") < strings.Index(text, "\x1b[?1049l") {
-		t.Fatal("final message remained hidden in the alternate screen", text)
 	}
 }

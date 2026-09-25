@@ -102,7 +102,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			}
 			err = open(r)
 		} else {
-			err = folderEditMenu(m, e, args[0], open, func(message string) { defaultChange = message })
+			err = folderEditMenu(m, e, args[0], open, func(message string) { defaultChange = message }, "Exit")
 		}
 		if errors.Is(err, io.EOF) {
 			fmt.Fprintln(m.Out, "Menu closed. Completed changes remain saved.")
@@ -191,7 +191,7 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 			}
 			return false, m.View("Combined configuration", func(out io.Writer) error { return printConfigView(out, view) })
 		}})
-		return cliui.Screen{Title: "Manage configs", Prompt: "What would you like to do?", Actions: actions, Back: back, Body: func(out io.Writer) error {
+		return cliui.Screen{Title: "Manage configs", Actions: actions, Back: back, Body: func(out io.Writer) error {
 			writeMenuHint(out, "Session: "+r.Identity.LocalName)
 			writeMenuHint(out, "Folder: "+displayCell(r.Identity.Workspace))
 			if err := showSourceChain(m, e.Store.Home, r.Identity.Workspace, r.Sources); err != nil {

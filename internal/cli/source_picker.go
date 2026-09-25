@@ -61,7 +61,7 @@ func (p sourcePicker) create() (config.Reference, bool, error) {
 	if !created {
 		return config.Reference{}, false, nil
 	}
-	p.Notice("Created config " + displayCell(owner.Name) + ". This config is saved independently of the session.")
+	p.Notice("Created config " + displayCell(owner.Name) + ".")
 	reference, err := p.capture(owner.Name)
 	return reference, err == nil, err
 }
@@ -137,7 +137,7 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 				}
 			}
 			if len(names) == 0 {
-				return writeMenuHint(out, "No named configs found. Create one here, or enter an existing directory path.")
+				return writeMenuHint(out, "No named configs found.")
 			}
 			fmt.Fprintln(out)
 			prefix := strings.Repeat(" ", len(menuPrefix(1)))

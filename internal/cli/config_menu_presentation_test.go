@@ -23,7 +23,7 @@ func TestEmptyListShowsOnlyAddAndBack(t *testing.T) {
 	if err := editList(m, s, owner, field, new(bool)); err != nil {
 		t.Fatal(err)
 	}
-	want := "\nMounts (mounts)\n\nNo mounts configured here.\n\nWhat would you like to do?\n   [1]  Add mount\n\n   [0]  Back\n\n   Choose a number > "
+	want := "\nMounts (mounts)\n\nNo mounts configured here.\n   [1]  Add mount\n\n   [0]  Back\n\n   Choose a number > "
 	if out.String() != want {
 		t.Fatalf("empty list should be a simple add/back menu:\n%s", out.String())
 	}
@@ -142,7 +142,7 @@ func TestSettingsOverviewUsesReadableValues(t *testing.T) {
 	}
 	originColumn := -1
 	for _, line := range strings.Split(out, "\n") {
-		if !strings.HasPrefix(line, "   [") || strings.Contains(line, "[0]") || strings.Contains(line, "Add optional files") {
+		if !strings.HasPrefix(line, "   [") || strings.Contains(line, "[0]") || strings.Contains(line, "Add optional files") || strings.Contains(line, "Delete config") {
 			continue
 		}
 		parts := strings.Fields(line)
@@ -155,10 +155,13 @@ func TestSettingsOverviewUsesReadableValues(t *testing.T) {
 	if originColumn < 0 || !strings.Contains(out, "\n\n   [0]  Exit\n\n   Choose a number > ") {
 		t.Fatalf("missing aligned origins or menu spacing:\n%s", out)
 	}
+	if !strings.Contains(strings.ReplaceAll(out, "\n", ""), owner.Root) {
+		t.Fatal("directory context missing", out)
+	}
 	if !strings.Contains(out, "Config · basic") || !strings.Contains(out, "Setting") || !strings.Contains(out, "Value") || !strings.Contains(out, "Source") {
 		t.Fatal("missing title or column headings", out)
 	}
-	for _, text := range []string{"local:", "effective:", "null", "[]", "{}", "Changes save immediately", "Creation changes require", "Values include inherited", "Select a setting", s.Home} {
+	for _, text := range []string{"local:", "effective:", "null", "[]", "{}", "Changes save immediately", "Creation changes require", "Values include inherited", "Select a setting"} {
 		if strings.Contains(out, text) {
 			t.Fatalf("raw storage detail %q in the overview:\n%s", text, out)
 		}

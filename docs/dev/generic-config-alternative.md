@@ -2,6 +2,8 @@
 
 Status: implemented; live acceptance pending. This replaces the previous generic-config alternative and the profile/project selection model. Implementation checkpoints, automated validation, and unpassed acceptance gates are tracked in [progress.md](progress.md). The separately approved `devbox-migrate` adaptation targets this model; ordinary runtime loading gains no migration or compatibility path.
 
+The numbered-menu presentation examples below describe workflow intent. The Bubble Tea frontend now supplies keyboard navigation, filtering, scrolling, shared browser entry points, and terminal handoff; see the presentation section of the runtime architecture documentation. Domain contracts, persistence, and direct command behavior remain in force. Bubble Tea's UI event loop does not introduce a domain router or event bus.
+
 ## The whole model
 
 A **session** is a saved development environment for one workspace folder. It has:

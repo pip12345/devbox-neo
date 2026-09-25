@@ -2,6 +2,17 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). The migration utility remains separate from runtime loading; adapting its destination model to named sessions and explicit configs is also approved.
 
+## Real Bubble Tea frontend — implemented, host/live acceptance pending
+
+- Host review rejected the first generic action-list presentation. The revised browser separates folder/session/config objects from application actions, previews structured details, and opens object-specific menus with Enter. Navigation snapshots retain the left collection; stable keys preserve selection across refreshes. Top tabs own the Tab hint, shortcuts appear only beside their options, and the UI uses Devbox Neo branding without slogans or background rectangles.
+- Session menus offer Make/Clear folder default directly, with no second picker. Folder menus retain creation and clearing unavailable defaults. The direct folder editor and scripting flags remain available.
+- First creation starts from an empty-state Create action, prefills an editable folder, and shares nested config setup. Build failures retain the draft; success opens the stopped session menu without a default or launch. Direct commands/flags/JSON remain supported; non-terminal bare entry points show help without opening state.
+- The shared runner retains synchronous domain workflows while one Bubble Tea UI goroutine owns terminal interaction. Foreground handoff releases the reader/renderer; results are acknowledged before returning. Operation-scoped SIGINT differs from whole-command termination. No recursive Cobra execution or duplicate lifecycle implementation.
+- Forms cover session lifecycle, config/default editing, logs, networks, exec and launch argv, SSH sharing, copy/move with pinned retries, and exact/filtered deletion. Config deletion and status/error/completion presentation are shared with direct commands.
+- Validation passes: `make test-fast`, race tests for cliui/cli/migrator, both builds, and `git diff --check`. PTY tests cover the empty browser → nested config creation → stopped session menu → Make/Clear default flow, foreground handoff, raw-termios restoration, and signal routing. Rendered terminal captures were inspected for browser, session/config menus, and creation layouts.
+- Repeated race checks exposed reader shutdown races. The dependency now includes Ultraviolet's upstream StreamEvents join fix, and command cancellation requests graceful UI shutdown rather than Bubble Tea's force-exit path. A deterministic reader-join regression test and twelve repeated race runs of affected terminal workflows pass.
+- Live Docker/harness/SSH acceptance and manual host-terminal acceptance of the redesign remain unrun. PTY fixtures and rendered captures do not establish those results.
+
 ## Config creation overview and stable default picker — implemented, manual acceptance pending
 
 - Standalone and nested config creation share an editable destination/harness/files overview with an explicit Create config action. Bare `config create` opens it; supplied destinations prefill it. Automation still requires a destination and never prompts.

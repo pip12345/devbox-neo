@@ -28,7 +28,7 @@ func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner
 			err = errors.Join(err, receiptErr)
 		}
 	}()
-	err = configMenu(m, s, owner, &changed)
+	err = configMenu(m, s, owner, &changed, "Exit")
 	if errors.Is(err, io.EOF) {
 		fmt.Fprintln(m.Out, "\nMenu closed. Completed changes remain saved.")
 		return nil
@@ -36,17 +36,18 @@ func runConfigMenu(cmd *cobra.Command, s *resource.Service, owner resource.Owner
 	return err
 }
 
-func configMenu(m menu, s *resource.Service, owner resource.Owner, changed *bool) error {
+func configMenu(m menu, s *resource.Service, owner resource.Owner, changed *bool, back string) error {
 	fields := resource.ConfigFields()
 	return m.Run(func() (cliui.Screen, error) {
-		source, err := s.ConfigSource(owner)
-		if err != nil {
-			return cliui.Screen{}, err
+		source, readErr := s.ConfigSource(owner)
+		available := fields
+		if readErr != nil {
+			available = nil
 		}
 		view, resolveErr := s.ShowOwner(owner)
-		rows := make([]configDisplayRow, len(fields))
-		actions := make([]cliui.Action, 0, len(fields)+1)
-		for i, field := range fields {
+		rows := make([]configDisplayRow, len(available))
+		actions := make([]cliui.Action, 0, len(available)+2)
+		for i, field := range available {
 			value := source[field.Key]
 			origin := owner.Name
 			var entrySources []string
@@ -71,11 +72,12 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner, changed *bool
 				rows[i].value = "Unavailable"
 				rows[i].origin = "unknown"
 			}
-			actions = append(actions, cliui.Action{Label: configLabel(field.Key), Run: func() (bool, error) {
+			valueText := configFieldText(rows[i].value)
+			actions = append(actions, cliui.Action{Label: configLabel(field.Key), Value: strings.ReplaceAll(valueText, "\n", ", "), Fields: configActionFields(rows[i]), Run: func() (bool, error) {
 				return false, editConfigField(m, s, owner, field, source, changed)
 			}})
 		}
-		actions = append(actions, cliui.Action{Label: "Add optional files", BreakBefore: true, Run: func() (bool, error) {
+		actions = append(actions, cliui.Action{Label: "Add optional files", Hidden: readErr != nil, BreakBefore: true, Run: func() (bool, error) {
 			var configured *string
 			if raw := source["harness"]; raw != nil {
 				_ = json.Unmarshal(raw, &configured)
@@ -97,13 +99,39 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner, changed *bool
 			}
 			return false, m.report(err)
 		}})
-		return cliui.Screen{Title: configMenuTitle(owner), Back: "Exit", Actions: actions, Body: func(out io.Writer) error {
-			if resolveErr != nil {
-				_, err := fmt.Fprintf(out, "Effective configuration unavailable: %s\nShowing values configured here; you can still edit them.\n", displayCell(resolveErr.Error()))
-				return err
+		if isNamedConfig(owner.Name) {
+			actions = append(actions, cliui.Action{Label: "Delete config", Description: "Remove this named directory and all files; refuses saved-session users", Danger: true, Run: func() (bool, error) {
+				result, cancelled, err := deleteConfigWorkflow(m, s, owner.Name, false)
+				if err != nil {
+					return false, m.report(err)
+				}
+				if cancelled {
+					return false, nil
+				}
+				*changed = false
+				m.Receipt("Deleted config " + displayCell(owner.Name) + " (" + displayCell(result.Path) + ").")
+				return true, nil
+			}})
+		}
+		context := []cliui.Field{{Label: "Directory", Value: owner.Root}}
+		users, usageErr := s.ConfigUsers(m.Context, owner)
+		if len(users) > 0 {
+			names := make([]string, len(users))
+			for i, user := range users {
+				names[i] = user.Session
 			}
-			return nil
-		}, Rows: func(out io.Writer, actions []cliui.Action) error { return printConfigActions(out, rows, actions) }}, nil
+			context = append(context, cliui.Field{Label: "Used by saved sessions", Values: names})
+		}
+		if usageErr != nil {
+			context = append(context, cliui.Field{Label: "Shared-use report is incomplete", Value: usageErr.Error(), Warning: true})
+		}
+		if readErr != nil {
+			context = append(context, cliui.Field{Label: "Settings unavailable", Value: readErr.Error(), Warning: true})
+		} else if resolveErr != nil {
+			context = append(context, cliui.Field{Label: "Effective configuration unavailable", Value: resolveErr.Error() + "\nShowing values configured here; you can still edit them.", Warning: true})
+		}
+		return cliui.Screen{Title: configMenuTitle(owner), Back: back, Actions: actions, Fields: context,
+			Rows: func(out io.Writer, actions []cliui.Action) error { return printConfigActions(out, rows, actions) }}, nil
 	})
 }
 
@@ -133,6 +161,35 @@ func editConfigField(m menu, s *resource.Service, owner resource.Owner, field re
 		}
 	}
 	return applyConfigChange(m, s, owner, field, source[field.Key], value, remove, changed)
+}
+
+func configActionFields(row configDisplayRow) []cliui.Field {
+	entries, list := row.value.([]string)
+	if !list || len(entries) == 0 {
+		return []cliui.Field{{Label: "Value", Value: configFieldText(row.value)}, {Label: "From", Value: row.origin}}
+	}
+	var fields []cliui.Field
+	for i, entry := range entries {
+		origin := row.origin
+		if i < len(row.entryOrigins) {
+			origin = row.entryOrigins[i]
+		}
+		fields = append(fields, cliui.Field{Label: fmt.Sprintf("%d", i+1), Value: entry}, cliui.Field{Label: "From", Value: origin})
+	}
+	return fields
+}
+
+func configFieldText(value any) string {
+	if value == nil {
+		return "Unset"
+	}
+	if entries, ok := value.([]string); ok {
+		if len(entries) == 0 {
+			return "None"
+		}
+		return strings.Join(entries, "\n")
+	}
+	return fmt.Sprint(value)
 }
 
 func configMenuTitle(owner resource.Owner) string { return "Config · " + displayCell(owner.Name) }
@@ -337,7 +394,7 @@ func editList(m menu, s *resource.Service, owner resource.Owner, field resource.
 				return save(updated, false)
 			}
 		}
-		return cliui.Screen{Title: fmt.Sprintf("%s (%s)", configLabel(field.Key), field.Key), Back: "Back", Prompt: "What would you like to do?", Body: func(out io.Writer) error {
+		return cliui.Screen{Title: fmt.Sprintf("%s (%s)", configLabel(field.Key), field.Key), Back: "Back", Body: func(out io.Writer) error {
 			if field.Help != "" {
 				if err := writeMenuHint(out, field.Help); err != nil {
 					return err

@@ -32,7 +32,7 @@ func TestSavedSessionCanCreateAndAddConfigWithoutApplyingRuntime(t *testing.T) {
 func TestDuplicateConfigSelectionPreservesSessionDraft(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	var out bytes.Buffer
-	p, err := newSourcePicker(testMenu(context.Background(), strings.NewReader("3\n1\n0\n"), &out), e.Store.Home, q.Workspace)
+	p, err := newSourcePicker(testMenu(context.Background(), strings.NewReader("2\n1\n0\n"), &out), e.Store.Home, q.Workspace)
 	if err != nil {
 		t.Fatal(err)
 	}

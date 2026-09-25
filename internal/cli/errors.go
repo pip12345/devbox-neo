@@ -51,21 +51,7 @@ func RenderError(cmd *cobra.Command, err error) int {
 	if asJSON {
 		writeErr = json.NewEncoder(cmd.OutOrStdout()).Encode(report)
 	} else {
-		var print func(errorReport)
-		print = func(r errorReport) {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Error: %s\n", displayCell(r.Message))
-			if r.Target != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Target: %s\n", displayCell(r.Target))
-			}
-			if len(r.Next) > 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "\n%s", stepsText(r.Next))
-			}
-			for _, related := range r.Related {
-				fmt.Fprintln(cmd.ErrOrStderr())
-				print(related)
-			}
-		}
-		print(report)
+		_, writeErr = fmt.Fprint(cmd.ErrOrStderr(), humanErrorText(report))
 	}
 	if writeErr != nil {
 		fmt.Fprintln(cmd.ErrOrStderr(), "Could not write the error report.")
@@ -76,6 +62,26 @@ func RenderError(cmd *cobra.Command, err error) int {
 		return exit.ExitCode()
 	}
 	return 1
+}
+
+func humanErrorText(report errorReport) string {
+	var out strings.Builder
+	var write func(errorReport)
+	write = func(r errorReport) {
+		fmt.Fprintf(&out, "Error: %s\n", displayCell(r.Message))
+		if r.Target != "" {
+			fmt.Fprintf(&out, "Target: %s\n", displayCell(r.Target))
+		}
+		if len(r.Next) > 0 {
+			fmt.Fprintf(&out, "\n%s", stepsText(r.Next))
+		}
+		for _, related := range r.Related {
+			out.WriteByte('\n')
+			write(related)
+		}
+	}
+	write(report)
+	return out.String()
 }
 
 func describeError(err error) errorReport {
@@ -115,13 +121,17 @@ func bindCommandErrors(root *cobra.Command) {
 	})
 	var visit func(*cobra.Command)
 	visit = func(cmd *cobra.Command) {
-		if cmd.Args == nil && !cmd.Runnable() && cmd.HasSubCommands() {
+		if cmd.Args == nil && cmd.HasSubCommands() {
+			entry := cmd.RunE
 			// Own group validation before Cobra flattens an unknown command and
 			// its suggestions into one multiline string. User text stays quoted;
 			// known command suggestions use the normal structured step renderer.
 			cmd.Args = cobra.ArbitraryArgs
 			cmd.RunE = func(cmd *cobra.Command, args []string) error {
 				if len(args) == 0 {
+					if entry != nil {
+						return entry(cmd, args)
+					}
 					return cmd.Help()
 				}
 				var steps []commanderror.Step

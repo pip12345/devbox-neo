@@ -15,7 +15,6 @@ import (
 	"devbox/internal/docker/dockertest"
 	"devbox/internal/environment"
 	"github.com/spf13/cobra"
-	"golang.org/x/sys/unix"
 )
 
 func TestEmptySourcePickerOffersSharedCreation(t *testing.T) {
@@ -278,7 +277,7 @@ func TestEditFolderCanRecoverFromBrokenSessionSelection(t *testing.T) {
 func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("2\nFresh\n3\n1\n1\n"); err != nil {
+	if _, err := master.WriteString("1\nFresh\n2\n1\n6\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -299,14 +298,14 @@ func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 			t.Fatal("session creation entered another workflow or suggested a name", text)
 		}
 	}
-	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "[2]  Set session name") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "edit "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
+	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "[1]  Set session name") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "edit "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
 		t.Fatal(text)
 	}
 	nameIndex, pickerIndex := strings.Index(text, "Session name (:back cancels): "), strings.Index(text, "Select an existing config")
-	if nameIndex < 0 || pickerIndex < nameIndex || !strings.Contains(text, "[1]  Create session\n\n   [2]  Change session name") {
+	if nameIndex < 0 || pickerIndex < nameIndex || !strings.Contains(text, "[1]  Change session name") {
 		t.Fatal("creation overview did not keep pending inputs editable", text)
 	}
-	for _, label := range []string{"Configs, in order:", "[3]  Add existing config", "[4]  Create config", "[5]  Replace config", "[6]  Remove config"} {
+	for _, label := range []string{"Configs, in order:", "[2]  Add existing config", "[3]  Create config", "[4]  Replace config", "[5]  Remove config", "[6]  Create session"} {
 		if !strings.Contains(text, label) {
 			t.Fatal("creation menu mixed config and source labels", label, text)
 		}
@@ -317,42 +316,39 @@ func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 }
 
 func TestInteractiveCreationRedrawsEditableNameInTerminal(t *testing.T) {
-	t.Setenv("TERM", "xterm")
 	e, q, _ := namedCLIFixture(t)
-	master, slave := testTerminal(t)
-	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 30, Col: 80}); err != nil {
-		t.Fatal(err)
+	p := newTerminalProbe(t)
+	done := p.workflow(func(ctx context.Context, tty *os.File) error {
+		name := ""
+		cmd := createCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
+		cmd.SetIn(tty)
+		cmd.SetOut(tty)
+		cmd.SetErr(tty)
+		cmd.SetArgs([]string{q.Workspace})
+		return cmd.ExecuteContext(ctx)
+	})
+	p.wait("Set session name")
+	p.send("\r")
+	p.send("Fresh\r")
+	p.send("\x1b[B\r")
+	p.wait("Select an existing config")
+	p.send("\r")
+	p.send("\x1b[F\r")
+	p.finish(done)
+	text := p.output()
+	if !strings.Contains(text, "\x1b[?1049h") || strings.Index(text, "\nCreated session Fresh") < strings.LastIndex(text, "\x1b[?1049l") {
+		t.Fatal("creation did not restore the terminal before materialization", text)
 	}
-	if _, err := master.WriteString("2\nFresh\n3\n1\n1\n"); err != nil {
-		t.Fatal(err)
-	}
-	name := ""
-	cmd := createCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &name)
-	cmd.SetIn(slave)
-	cmd.SetOut(slave)
-	cmd.SetErr(slave)
-	cmd.SetArgs([]string{q.Workspace})
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	if err := cmd.ExecuteContext(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := slave.WriteString("\x00"); err != nil {
-		t.Fatal(err)
-	}
-	text, err := bufio.NewReader(master).ReadString('\x00')
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "\x1b[?1049h") || !strings.Contains(text, "\x1b[?1049l") || strings.Index(text, "\nCreated session Fresh") < strings.LastIndex(text, "\x1b[?1049l") {
-		t.Fatal("creation did not show the editable draft and restore the shell before creating", text)
+	r, err := e.Store.Read(context.Background(), environment.ContainerName(q.Workspace, "Fresh"))
+	if err != nil || r.Identity.LocalName != "Fresh" {
+		t.Fatal("native draft did not create the chosen identity", r, err)
 	}
 }
 
 func TestInteractiveCreationCanBackOutOfInputsAndCancelOverview(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("2\nFresh\n3\n0\n2\n:back\n0\n"); err != nil {
+	if _, err := master.WriteString("1\nFresh\n2\n0\n1\n:back\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -382,7 +378,7 @@ func TestInteractiveCreationCanBackOutOfInputsAndCancelOverview(t *testing.T) {
 func TestInteractiveCreationCanChooseSourcesBeforeNameAndChangeName(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("3\n1\n2\nbad name\nFirst\n2\n:back\n2\nRenamed\n1\n"); err != nil {
+	if _, err := master.WriteString("2\n1\n1\nbad name\nFirst\n1\n:back\n1\nRenamed\n6\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -420,8 +416,8 @@ func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
 		input      string
 		wantPicker bool
 	}{
-		{"name", []string{"--name", "OnlyName"}, "3\n1\n1\n", true},
-		{"config", []string{"--config", "base"}, "2\nOnlyConfig\n1\n", false},
+		{"name", []string{"--name", "OnlyName"}, "2\n1\n6\n", true},
+		{"config", []string{"--config", "base"}, "1\nOnlyConfig\n6\n", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, q, _ := namedCLIFixture(t)

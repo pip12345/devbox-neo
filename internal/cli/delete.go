@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"devbox/internal/app"
@@ -79,6 +80,31 @@ func (c *deletionConfirmation) confirm(prompt app.DeletePrompt) (bool, error) {
 	return confirmed, nil
 }
 
+func printDeleteResult(out io.Writer, result app.DeleteResult) error {
+	var text strings.Builder
+	if result.Cancelled {
+		text.WriteString("Cancelled.\n")
+	}
+	action := "Deleted"
+	if result.DryRun {
+		action = "Would delete"
+	}
+	for _, name := range result.Containers {
+		fmt.Fprintf(&text, "%s container %s.\n", action, displayCell(name))
+	}
+	for _, name := range result.Sessions {
+		fmt.Fprintf(&text, "%s session %s.\n", action, displayCell(name))
+	}
+	for _, name := range result.Retained {
+		fmt.Fprintf(&text, "Session state and image retained: %s\n", displayCell(name))
+	}
+	if !result.Cancelled && len(result.Containers) == 0 && len(result.Sessions) == 0 {
+		text.WriteString("No resources deleted.\n")
+	}
+	_, err := io.WriteString(out, text.String())
+	return err
+}
+
 func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 	var options app.DeleteOptions
 	var container, session, asJSON bool
@@ -120,27 +146,7 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 		if asJSON {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
 		}
-		if result.Cancelled {
-			cmd.Println("Cancelled.")
-			return nil
-		}
-		action := "Deleted"
-		if result.DryRun {
-			action = "Would delete"
-		}
-		for _, name := range result.Containers {
-			cmd.Printf("%s container %s.\n", action, displayCell(name))
-		}
-		for _, name := range result.Sessions {
-			cmd.Printf("%s session %s.\n", action, displayCell(name))
-		}
-		for _, name := range result.Retained {
-			cmd.Printf("Session state and image retained: %s\n", displayCell(name))
-		}
-		if len(result.Containers) == 0 && len(result.Sessions) == 0 {
-			cmd.Println("No resources deleted.")
-		}
-		return nil
+		return printDeleteResult(cmd.OutOrStdout(), result)
 	}}
 	cmd.Flags().BoolVar(&options.Selection.All, "all", false, "Select all saved environments and unmatched managed containers")
 	cmd.Flags().BoolVar(&options.Selection.Stopped, "stopped", false, "Select environments with stopped containers")

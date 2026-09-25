@@ -194,13 +194,13 @@ func TestConfigCreationUsesStyledMenusForNamesAndPaths(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				target, input := "basic", ""
+				target, selected := "basic", -1
 				for i, entry := range registry.Valid {
 					if entry.Definition.Name == name {
-						input = fmt.Sprintf("2\n%d\n4\n", i+1)
+						selected = i
 					}
 				}
-				if input == "" {
+				if selected < 0 {
 					t.Fatal("built-in harness missing from setup", name)
 				}
 				configPath := filepath.Join(home, "configs/basic/config.json")
@@ -208,34 +208,34 @@ func TestConfigCreationUsesStyledMenusForNamesAndPaths(t *testing.T) {
 					target = filepath.Join(t.TempDir(), "config")
 					configPath = filepath.Join(target, "config.json")
 				}
-				master, slave := testTerminal(t)
-				before, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)
+				p := newTerminalProbe(t)
+				before, err := unix.IoctlGetTermios(int(p.slave.Fd()), unix.TCGETS)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := master.WriteString(input); err != nil {
-					t.Fatal(err)
-				}
-				text := terminalOutput(t, 80, func(out *os.File) error {
+				done := p.workflow(func(ctx context.Context, tty *os.File) error {
 					cmd := New()
-					cmd.SetIn(slave)
-					cmd.SetOut(out)
-					cmd.SetErr(out)
+					cmd.SetIn(tty)
+					cmd.SetOut(tty)
+					cmd.SetErr(tty)
 					cmd.SetArgs([]string{"--home", home, "config", "create", target})
-					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-					defer cancel()
 					return cmd.ExecuteContext(ctx)
 				})
-				for _, want := range []string{"\x1b[1mSelect a harness\x1b[0m", "\x1b[1mCreate config\x1b[0m", "\x1b[32m(selected)\x1b[0m"} {
-					if !strings.Contains(text, want) {
-						t.Fatalf("init missing %q: %q", want, text)
-					}
+				p.wait("Name/location")
+				p.send("\x1b[B\r")
+				p.wait("Leave unset")
+				p.send("\x1b[H" + strings.Repeat("\x1b[B", selected) + "\r")
+				p.send("\x1b[F\r")
+				p.finish(done)
+				text := p.output()
+				if !strings.Contains(text, "\x1b[?1049h") || !strings.Contains(text, "\x1b[?1049l") {
+					t.Fatal("creation did not use and restore native UI", text)
 				}
 				data, err := os.ReadFile(configPath)
 				if err != nil || !strings.Contains(string(data), `"`+name+`"`) {
 					t.Fatal("styled init did not save selected harness", string(data), err)
 				}
-				after, err := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS)
+				after, err := unix.IoctlGetTermios(int(p.slave.Fd()), unix.TCGETS)
 				if err != nil || *before != *after {
 					t.Fatal("init changed terminal mode", err)
 				}

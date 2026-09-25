@@ -17,7 +17,7 @@ import (
 type resourceFactory func(*cobra.Command) (*resource.Service, error)
 
 func configCommands(factory resourceFactory) *cobra.Command {
-	group := &cobra.Command{Use: "config", Short: "Create, edit, list, and delete config directories"}
+	group := &cobra.Command{Use: "config", Short: "Browse configs interactively or use create/edit/list/delete", Long: "Open the named-config browser in a terminal. Tab switches to sessions.\nExplicit create, edit, list, and delete commands remain direct entry points.\nWithout an interactive terminal, this command shows help."}
 	group.AddCommand(directoryCommand(factory, true), directoryCommand(factory, false), configListCommand(factory), configDeleteCommand(factory))
 	return group
 }
@@ -120,17 +120,6 @@ func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
 		if !direct && interactive(cmd) {
 			if _, err := service.ConfigSource(owner); err != nil {
 				return err
-			}
-			writeMenuHint(cmd.OutOrStdout(), "Directory: "+displayCell(owner.Root))
-			users, reportErr := service.ConfigUsers(cmd.Context(), owner)
-			if len(users) > 0 {
-				writeMenuHint(cmd.OutOrStdout(), "Used by saved sessions:")
-				for _, user := range users {
-					writeMenuHint(cmd.OutOrStdout(), "  "+displayCell(user.Session))
-				}
-			}
-			if reportErr != nil {
-				writeMenuHint(cmd.OutOrStdout(), "Shared-use report is incomplete: "+displayCell(reportErr.Error()))
 			}
 			return runConfigMenu(cmd, service, owner)
 		}

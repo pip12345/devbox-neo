@@ -28,9 +28,13 @@ func generateCompletionScript(cmd *cobra.Command, _ []string) error {
 	out := cmd.OutOrStdout()
 	noDescriptions, _ := cmd.Flags().GetBool("no-descriptions")
 	includeDescriptions := !noDescriptions && !root.CompletionOptions.DisableDescriptions
+	return writeCompletionScript(root, out, cmd.Name(), includeDescriptions)
+}
+
+func writeCompletionScript(root *cobra.Command, out io.Writer, shell string, includeDescriptions bool) error {
 	var err error
 	var registration string
-	switch cmd.Name() {
+	switch shell {
 	case "bash":
 		err = root.GenBashCompletionV2(out, includeDescriptions)
 		registration = "\ncomplete -o default -F __start_devbox-neo dbx\n"
@@ -63,7 +67,7 @@ complete -k -c dbx -n '__devbox_neo_requires_order_preservation && __devbox_neo_
 		}
 		registration = "\nRegister-ArgumentCompleter -CommandName 'dbx' -ScriptBlock ${__devbox_neoCompleterBlock}\n"
 	default:
-		return fmt.Errorf("unsupported completion shell %q", cmd.Name())
+		return fmt.Errorf("unsupported completion shell %q", shell)
 	}
 	if err != nil {
 		return err

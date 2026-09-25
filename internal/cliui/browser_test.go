@@ -1,0 +1,184 @@
+package cliui
+
+import (
+	"bytes"
+	"context"
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+)
+
+func browserFixture() Collection {
+	return Collection{Title: "Sessions", Empty: "No sessions yet.", Items: []Item{
+		{Key: "/project", Label: "/project", Folder: true, Fields: []Field{{Label: "Default", Value: "claude"}}},
+		{Key: "session-a", Label: "pi", Depth: 1, Status: "missing", Description: "/project pi"},
+		{Key: "session-b", Label: "claude", Depth: 1, Status: "stopped", Selected: true, Description: "/project claude", Fields: []Field{
+			{Label: "Folder", Value: "/project"}, {Label: "Container", Value: "stopped", Status: true}, {Label: "Configs", Value: "1. base\n2. project"},
+		}},
+	}}
+}
+func browserRequest() *screenRequest {
+	req := request(Action{Label: "Create session", Shortcut: "n"}, Action{Label: "All-session operations", Shortcut: "a"}, Action{Label: "Refresh", Shortcut: "r"})
+	collection := browserFixture()
+	req.page.Collection = &collection
+	req.page.Title = "Sessions"
+	req.canTab = true
+	return req
+}
+func TestBrowserSeparatesObjectsAndCommands(t *testing.T) {
+	req := browserRequest()
+	m := newTerminalModel(req, true)
+	m.width, m.height = 112, 34
+	key(m, tea.KeyDown, "")
+	key(m, tea.KeyDown, "")
+	view := ansi.Strip(m.View().Content)
+	for _, forbidden := range []string{"D B X", "INTERACTIVE WORKSPACE", "no background polling", "CONTEXT / DETAILS", "Default: true", "n create", "a bulk"} {
+		if strings.Contains(view, forbidden) {
+			t.Fatalf("UI contains discarded copy %q", forbidden)
+		}
+	}
+	for _, label := range []string{"Create session", "All-session operations", "Refresh"} {
+		if strings.Count(view, label) != 1 {
+			t.Fatalf("command repeated: %s\n%s", label, view)
+		}
+	}
+	for _, line := range strings.Split(view, "\n") {
+		before, _, ok := strings.Cut(line, "│")
+		if ok && (strings.Contains(before, "Create session") || strings.Contains(before, "Refresh")) {
+			t.Fatal("commands leaked into object panel", line)
+		}
+	}
+	if !strings.Contains(view, "claude *") || !strings.Contains(view, "1. base") || !strings.Contains(view, "2. project") {
+		t.Fatal(view)
+	}
+	if strings.Count(view, "Tab") != 1 || !strings.Contains(strings.Split(view, "\n")[0], "Configs") {
+		t.Fatal("tabs are not in the header", view)
+	}
+	if !strings.Contains(m.View().Content, "\x1b[") {
+		t.Fatal("structured details lost colors")
+	}
+	key(m, tea.KeyEnter, "")
+	reply := <-req.reply
+	if !reply.item || reply.index != 2 {
+		t.Fatal("Enter ran an application action instead of opening the session", reply)
+	}
+}
+func TestBrowserActionFocusAndShortcuts(t *testing.T) {
+	req := browserRequest()
+	m := newTerminalModel(req, false)
+	key(m, tea.KeyDown, "")
+	key(m, tea.KeyDown, "")
+	key(m, tea.KeyRight, "")
+	if m.objects || m.currentObject().Key != "session-b" {
+		t.Fatal("switching focus lost selected object")
+	}
+	key(m, tea.KeyLeft, "")
+	if !m.objects || m.cursor != 2 {
+		t.Fatal("returning to object list lost cursor")
+	}
+	key(m, 'n', "n")
+	reply := <-req.reply
+	if reply.item || reply.index != 0 || reply.focusItem != "session-b" {
+		t.Fatal(reply)
+	}
+}
+func TestBrowserFilterAndRefreshKeepStableIdentity(t *testing.T) {
+	req := browserRequest()
+	req.itemKey = "session-b"
+	req.page.Collection.Items[0], req.page.Collection.Items[2] = req.page.Collection.Items[2], req.page.Collection.Items[0]
+	m := newTerminalModel(req, false)
+	if m.cursor != 0 {
+		t.Fatal("refresh retained row number instead of object key")
+	}
+	key(m, '/', "/")
+	m.Update(tea.PasteMsg{Content: "pi"})
+	key(m, tea.KeyEnter, "")
+	key(m, tea.KeyEnter, "")
+	reply := <-req.reply
+	if !reply.item || reply.index != 1 || reply.query != "pi" {
+		t.Fatal(reply)
+	}
+}
+func TestEmptyBrowserStartsOnCreate(t *testing.T) {
+	req := browserRequest()
+	req.page.Collection.Items = nil
+	m := newTerminalModel(req, false)
+	view := m.View().Content
+	if m.objects || !strings.Contains(view, "No sessions yet.") || strings.Contains(view, "0 sessions") {
+		t.Fatal(view)
+	}
+	key(m, tea.KeyEnter, "")
+	if reply := <-req.reply; reply.item || reply.index != 0 {
+		t.Fatal(reply)
+	}
+}
+func TestObjectMenuKeepsNavigationAndDoesNotSwitchTabs(t *testing.T) {
+	req := request(Action{Label: "Open"}, Action{Label: "Make folder default"})
+	req.page.Navigation = &Navigation{Collection: browserFixture(), Key: "session-b"}
+	req.page.Title = "Session · claude"
+	m := newTerminalModel(req, false)
+	m.width = 112
+	view := m.View().Content
+	if !strings.Contains(view, "claude *") || !strings.Contains(view, "Make folder default") {
+		t.Fatal(view)
+	}
+	key(m, tea.KeyTab, "")
+	select {
+	case <-req.reply:
+		t.Fatal("nested menu silently changed collections")
+	default:
+	}
+	key(m, tea.KeyLeft, "")
+	if reply := <-req.reply; !reply.back {
+		t.Fatal(reply)
+	}
+}
+func TestBrowserSnapshotsHaveNoWorkflowHandlers(t *testing.T) {
+	c := browserFixture()
+	c.Items[0].Open = func() error { return nil }
+	copy := snapshotCollection(&c)
+	if copy.Items[0].Open != nil || c.Items[0].Open == nil {
+		t.Fatal("snapshot retained handler or mutated original")
+	}
+	copy.Items[0].Label = "changed"
+	copy.Items[0].Fields[0].Value = "changed"
+	if c.Items[0].Fields[0].Value == "changed" {
+		t.Fatal("snapshot aliases workflow fields")
+	}
+	if c.Items[0].Label == "changed" {
+		t.Fatal("snapshot aliases workflow collection")
+	}
+}
+func TestRunnerScopesBrowserNavigationToNestedWorkflow(t *testing.T) {
+	var out bytes.Buffer
+	r := New(context.Background(), strings.NewReader("1\n0\n0\n"), &out)
+	c := browserFixture()
+	c.Items = c.Items[:1]
+	c.Items[0].Open = func() error {
+		if r.navigation == nil || r.navigation.Key != "/project" {
+			t.Fatal("object context not passed to child")
+		}
+		return r.Run(func() (Screen, error) { return Screen{Title: "Folder", Back: "Back"}, nil })
+	}
+	if err := r.Run(func() (Screen, error) { return Screen{Title: "Sessions", Back: "Exit", Collection: &c}, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if r.navigation != nil {
+		t.Fatal("closed browser leaked navigation into next workflow")
+	}
+}
+func TestGroupedActionsScrollWithoutLosingFocusedRow(t *testing.T) {
+	var actions []Action
+	for _, label := range []string{"One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"} {
+		actions = append(actions, Action{Label: label, BreakBefore: true})
+	}
+	req := request(actions...)
+	m := newTerminalModel(req, false)
+	m.width, m.height = 48, 20
+	key(m, tea.KeyEnd, "")
+	if !strings.Contains(m.View().Content, "▸ Ten") {
+		t.Fatal("focused last action was clipped", m.View().Content)
+	}
+}

@@ -1,6 +1,22 @@
 # Everyday use
 
-Once you've [created an environment](getting-started.md), use it from your project folder or address it by the name shown in `list`.
+Once you've [created an environment](getting-started.md), browse it interactively or use direct commands from your project folder.
+
+## Browse your workspaces
+
+Run this in a host terminal:
+
+```sh
+devbox-neo
+```
+
+Highlight a session in the left pane and press **Enter** to open its menu, then choose **Open**, **Continue**, or **Shell**. Other actions let you inspect status, edit selected configs, manage the container, copy/move, share SSH, or delete it. **Make folder default** selects that session directly; for the current default, the same menu offers **Clear folder default**. Merely highlighting or opening a session menu changes nothing.
+
+**Tab** switches Sessions/Configs while browsing; `/` filters; **Esc** returns to the same selected object. **Right** moves to application actions such as creation and bulk operations; **Left** returns to browsing. Selecting a folder offers creation there and clearing its default.
+
+The harness or shell gets the terminal while running. After it exits, acknowledge the result to return to the menu. **Ctrl-C** interrupts a foreground operation without closing the browser. Completed config edits remain saved when you leave.
+
+The commands below jump directly to the same operations when you already know your target.
 
 ## Find and open an environment
 

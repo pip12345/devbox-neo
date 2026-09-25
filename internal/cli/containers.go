@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"devbox/internal/app"
-	"devbox/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -32,16 +31,6 @@ func containerCommands(factory engineFactory, localName *string) []*cobra.Comman
 	logs.Flags().BoolVarP(&follow, "follow", "f", false, "Follow logs until interrupted")
 	logs.Flags().StringVar(&tail, "tail", "100", "Number of trailing lines, or all")
 	return []*cobra.Command{sessionNameFlag(logs, localName), networkCommands(factory, localName)}
-}
-
-func printView(cmd *cobra.Command, view app.View) {
-	cmd.Printf("%s  %s  %s\n", displayCell(view.Name), containerState(view), displayCell(view.Workspace))
-	if view.Pending != nil {
-		cmd.Printf("  Pending %s (%s): %s -> %s\n  Retry the same transfer command.\n", displayCell(store.TransferCommand(view.Pending.Mode)), displayCell(view.Pending.Phase), displayCell(view.Pending.Source), displayCell(view.Pending.Destination))
-	}
-	if view.Error != "" {
-		cmd.Printf("  Error: %s\n", displayCell(view.Error))
-	}
 }
 
 func networkCommands(factory engineFactory, localName *string) *cobra.Command {

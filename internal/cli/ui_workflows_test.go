@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,7 +30,11 @@ func TestCreateSessionAlwaysVisibleAndReportsMissingInputs(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			m := testMenu(context.Background(), strings.NewReader("1\n0\n"), &out)
+			choice := 4
+			if len(tc.draft.sources) > 0 {
+				choice = 6
+			}
+			m := testMenu(context.Background(), strings.NewReader(fmt.Sprintf("%d\n0\n", choice)), &out)
 			p, err := newSourcePicker(m, e.Store.Home, q.Workspace)
 			if err != nil {
 				t.Fatal(err)
@@ -39,7 +44,7 @@ func TestCreateSessionAlwaysVisibleAndReportsMissingInputs(t *testing.T) {
 				t.Fatal(after, proceed, err)
 			}
 			text := out.String()
-			if strings.Count(text, "[1]  Create session") != 2 || !strings.Contains(text, tc.message) {
+			if strings.Count(text, menuPrefix(choice)+"Create session") != 2 || !strings.Contains(text, tc.message) {
 				t.Fatal(text)
 			}
 		})
@@ -49,7 +54,7 @@ func TestCreateSessionAlwaysVisibleAndReportsMissingInputs(t *testing.T) {
 func TestConfigCreationReusesStandaloneSetupAndPreservesDraft(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	var nested bytes.Buffer
-	m := testMenu(context.Background(), strings.NewReader("4\n1\nfresh\n2\n1\n3\n2\n5\n4\n0\n"), &nested)
+	m := testMenu(context.Background(), strings.NewReader("3\n1\nfresh\n2\n1\n3\n2\n5\n4\n0\n"), &nested)
 	p, err := newSourcePicker(m, e.Store.Home, q.Workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -112,10 +117,10 @@ func TestConfigCreationReusesStandaloneSetupAndPreservesDraft(t *testing.T) {
 
 func TestCancelledAndFailedConfigSetupLeaveParentDraftUntouched(t *testing.T) {
 	for _, tc := range []struct{ name, input string }{
-		{"name-back", "4\n1\n:back\n0\n0\n"},
-		{"setup-cancel", "4\n1\nfresh\n0\n0\n"},
-		{"optional-back", "4\n1\nfresh\n3\n2\n0\n0\n0\n"},
-		{"existing-config", "4\n1\nbase\n:back\n0\n0\n"},
+		{"name-back", "3\n1\n:back\n0\n0\n"},
+		{"setup-cancel", "3\n1\nfresh\n0\n0\n"},
+		{"optional-back", "3\n1\nfresh\n3\n2\n0\n0\n0\n"},
+		{"existing-config", "3\n1\nbase\n:back\n0\n0\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, q, _ := namedCLIFixture(t)

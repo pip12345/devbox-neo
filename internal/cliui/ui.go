@@ -1,5 +1,5 @@
-// Package cliui provides synchronous, line-oriented screens. Workflows own
-// their state and persistence; the runner owns interaction and terminal life.
+// Package cliui exposes synchronous workflows over a command-scoped terminal UI.
+// Bubble Tea owns interactive input/rendering; callers own state and persistence.
 package cliui
 
 import (
@@ -15,6 +15,13 @@ import (
 
 type Action struct {
 	Label       string
+	Description string
+	Value       string
+	Fields      []Field
+	Status      string
+	Detail      string
+	Shortcut    string
+	Danger      bool
 	Hidden      bool
 	Blocked     string
 	Selected    bool
@@ -23,23 +30,59 @@ type Action struct {
 	Run         func() (done bool, err error)
 }
 
+// Items are browsed objects, not commands. Stable keys retain selection across
+// inventory refreshes. Open runs only after an explicit selection.
+type Item struct {
+	Key, Label, Description, Status string
+	Depth                           int
+	Selected, Folder                bool
+	Fields                          []Field
+	Open                            func() error
+}
+
+type Field struct {
+	Label, Value string
+	Values       []string
+	Status       bool
+	Warning      bool
+}
+
+type Collection struct {
+	Title, Empty string
+	Items        []Item
+}
+
+// Navigation keeps the object list visible while a nested workflow owns input.
+// A workflow can replace it with a refreshed snapshot after an operation.
+type Navigation struct {
+	Collection Collection
+	Key, Query string
+}
+
 // Rows may supply a table layout for the actions. The filtered slice is the
 // exact displayed snapshot used for dispatch; labels never select behavior.
 type Screen struct {
-	Title   string
-	Body    func(io.Writer) error
-	Prompt  string
-	Actions []Action
-	Rows    func(io.Writer, []Action) error
-	Back    string
+	Title      string
+	Body       func(io.Writer) error
+	Prompt     string
+	Actions    []Action
+	Rows       func(io.Writer, []Action) error
+	Back       string
+	OnTab      func() (done bool, err error)
+	Fields     []Field
+	Collection *Collection
+	Navigation *Navigation
+	FocusItem  string
 }
 
 type Runner struct {
-	Context context.Context
-	Input   *bufio.Reader
-	Out     io.Writer
-	screen  *terminalScreen
-	notices []string
+	Context    context.Context
+	Input      *bufio.Reader
+	Out        io.Writer
+	screen     *terminalScreen
+	notices    []string
+	receipts   []string
+	navigation *Navigation
 }
 
 func New(ctx context.Context, in io.Reader, out io.Writer) *Runner {
@@ -57,7 +100,9 @@ func New(ctx context.Context, in io.Reader, out io.Writer) *Runner {
 		r.Input = bufio.NewReader(in)
 	}
 	if file := Terminal(out); inputTTY && IsTerminal(inputFile) && file != nil && IsTerminal(file) && os.Getenv("TERM") != "dumb" {
-		r.screen = &terminalScreen{terminal: file}
+		uiContext, cancel := context.WithCancel(ctx)
+		r.Context = uiContext
+		r.screen = &terminalScreen{terminal: file, input: inputFile, ctx: uiContext, cancel: cancel}
 		r.Out = r.screen
 	}
 	return r
@@ -71,21 +116,39 @@ func (r *Runner) Finish() error {
 		}
 	}
 	r.notices = nil
+	var err error
 	if r.screen != nil {
-		return r.screen.finish()
+		err = r.screen.finish()
 	}
-	return nil
+	for _, receipt := range r.receipts {
+		if _, writeErr := fmt.Fprintln(r.Out, receipt); writeErr != nil && err == nil {
+			err = writeErr
+		}
+	}
+	r.receipts = nil
+	return err
 }
+func (r *Runner) Receipt(text string) { r.receipts = append(r.receipts, text) }
 func (r *Runner) Pause() error {
 	if r.screen != nil {
 		return r.screen.leave()
 	}
 	return nil
 }
-func (r *Runner) PlainNext() {
-	if r.screen != nil {
-		r.screen.showNextPlain = true
+
+// ReviewOutput keeps streamed warnings/results visible before restoring menus.
+func (r *Runner) ReviewOutput() error {
+	if r.screen == nil {
+		return nil
 	}
+	if err := r.Pause(); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprint(r.Out, "\nPress Enter to return to the menu… "); err != nil {
+		return err
+	}
+	_, err := r.Input.ReadString('\n')
+	return err
 }
 
 // Notice belongs to the next interaction, not to a partially rendered parent
@@ -93,9 +156,16 @@ func (r *Runner) PlainNext() {
 func (r *Runner) Notice(text string) { r.notices = append(r.notices, text) }
 
 func (r *Runner) Run(build func() (Screen, error)) error {
+	cursor, query := -1, ""
+	itemKey := ""
+	parentNavigation := r.navigation
+	defer func() { r.navigation = parentNavigation }()
 	for {
 		if err := r.Context.Err(); err != nil {
 			return err
+		}
+		if r.screen != nil {
+			r.screen.working()
 		}
 		page, err := build()
 		if err != nil {
@@ -107,64 +177,78 @@ func (r *Runner) Run(build func() (Screen, error)) error {
 				actions = append(actions, action)
 			}
 		}
-		for _, notice := range r.notices {
-			if _, err := fmt.Fprintln(r.Out, notice); err != nil {
-				return err
+		if page.Navigation != nil {
+			if r.navigation != nil && r.navigation.Collection.Title == page.Navigation.Collection.Title {
+				page.Navigation.Query = r.navigation.Query
 			}
+			r.navigation = page.Navigation
+		} else {
+			page.Navigation = r.navigation
 		}
-		r.notices = nil
-		if page.Title != "" {
-			if err := Title(r.Out, page.Title); err != nil {
-				return err
-			}
-		}
-		if page.Body != nil {
-			if err := page.Body(r.Out); err != nil {
-				return err
-			}
-		}
-		if page.Prompt != "" {
-			if err := Title(r.Out, page.Prompt); err != nil {
-				return err
-			}
-		}
-		if page.Rows != nil {
-			if err := page.Rows(r.Out, actions); err != nil {
-				return err
+		selected, tab, item := -1, false, false
+		if r.screen != nil {
+			var reply screenReply
+			reply, err = r.terminalChoice(page, actions, cursor, itemKey, query)
+			selected, tab, item, query = reply.index, reply.tab, reply.item, reply.query
+			if reply.focusItem != "" {
+				itemKey = reply.focusItem
 			}
 		} else {
-			for i, action := range actions {
-				if action.BreakBefore {
-					if _, err := fmt.Fprintln(r.Out); err != nil {
-						return err
-					}
+			plain := actions
+			if page.Collection != nil {
+				plain = make([]Action, 0, len(page.Collection.Items)+len(actions))
+				for _, object := range page.Collection.Items {
+					plain = append(plain, Action{Label: object.Label, Description: object.Description, Selected: object.Selected})
 				}
-				label := Safe(action.Label)
-				var style func(string) string
-				if action.Checked != nil {
-					if *action.Checked {
-						label = "✓ " + label
-						paint := Colors(r.Out)
-						style = func(s string) string { return strings.ReplaceAll(paint.Strong(s), "✓", paint.Green("✓")) }
-					} else {
-						label = "  " + label
+				plain = append(plain, actions...)
+			}
+			err = r.renderPlainPage(page, plain)
+			if err == nil {
+				selected, err = r.readChoice(len(plain), page.Back)
+				if selected >= 0 && page.Collection != nil {
+					item = selected < len(page.Collection.Items)
+					if !item {
+						selected -= len(page.Collection.Items)
 					}
-				} else if action.Selected {
-					label += " (selected)"
-					paint := Colors(r.Out)
-					style = func(s string) string {
-						return strings.ReplaceAll(paint.Strong(s), "(selected)", paint.Green("(selected)"))
-					}
-				}
-				prefix := Prefix(i + 1)
-				if err := WriteLine(r.Out, prefix, label, strings.Repeat(" ", len(prefix)), Width(r.Out), style); err != nil {
-					return err
 				}
 			}
 		}
-		selected, err := r.readChoice(len(actions), page.Back)
-		if err != nil || selected < 0 {
+		if err != nil {
 			return err
+		}
+		if err := r.Context.Err(); err != nil {
+			return err
+		}
+		if tab {
+			cursor, query, itemKey = -1, "", ""
+			done, err := page.OnTab()
+			if err == nil {
+				err = r.Context.Err()
+			}
+			if err != nil || done {
+				return err
+			}
+			continue
+		}
+		if selected < 0 {
+			return r.Context.Err()
+		}
+		if item {
+			object := page.Collection.Items[selected]
+			itemKey, cursor = object.Key, -1
+			r.navigation = &Navigation{Collection: *page.Collection, Key: object.Key, Query: query}
+			if object.Open == nil {
+				return fmt.Errorf("object %q has no opener", object.Label)
+			}
+			if err := object.Open(); err != nil {
+				return err
+			}
+			r.navigation = parentNavigation
+			continue
+		}
+		cursor = selected
+		if page.Collection != nil {
+			r.navigation = &Navigation{Collection: *page.Collection}
 		}
 		action := actions[selected]
 		if action.Blocked != "" {
@@ -175,10 +259,89 @@ func (r *Runner) Run(build func() (Screen, error)) error {
 			return fmt.Errorf("menu action %q has no handler", action.Label)
 		}
 		done, err := action.Run()
+		if err == nil {
+			err = r.Context.Err()
+		}
 		if err != nil || done {
 			return err
 		}
 	}
+}
+
+func (r *Runner) renderPlainPage(page Screen, actions []Action) error {
+	for _, notice := range r.notices {
+		if _, err := fmt.Fprintln(r.Out, notice); err != nil {
+			return err
+		}
+	}
+	r.notices = nil
+	if page.Title != "" {
+		if err := Title(r.Out, page.Title); err != nil {
+			return err
+		}
+	}
+	if page.Body != nil {
+		if err := page.Body(r.Out); err != nil {
+			return err
+		}
+	}
+	for _, field := range page.Fields {
+		if field.Values != nil {
+			if _, err := fmt.Fprintf(r.Out, "%s:\n", Safe(field.Label)); err != nil {
+				return err
+			}
+			for _, value := range field.Values {
+				if _, err := fmt.Fprintln(r.Out, "  "+Safe(value)); err != nil {
+					return err
+				}
+			}
+		} else if _, err := fmt.Fprintf(r.Out, "%s: %s\n", Safe(field.Label), Safe(field.Value)); err != nil {
+			return err
+		}
+	}
+	if page.Prompt != "" {
+		if err := Title(r.Out, page.Prompt); err != nil {
+			return err
+		}
+	}
+	if page.Rows != nil {
+		if err := page.Rows(r.Out, actions); err != nil {
+			return err
+		}
+	} else {
+		for i, action := range actions {
+			if action.BreakBefore {
+				if _, err := fmt.Fprintln(r.Out); err != nil {
+					return err
+				}
+			}
+			label := Safe(action.Label)
+			if action.Value != "" {
+				label += ": " + Safe(action.Value)
+			}
+			var style func(string) string
+			if action.Checked != nil {
+				if *action.Checked {
+					label = "✓ " + label
+					paint := Colors(r.Out)
+					style = func(s string) string { return strings.ReplaceAll(paint.Strong(s), "✓", paint.Green("✓")) }
+				} else {
+					label = "  " + label
+				}
+			} else if action.Selected {
+				label += " (selected)"
+				paint := Colors(r.Out)
+				style = func(s string) string {
+					return strings.ReplaceAll(paint.Strong(s), "(selected)", paint.Green("(selected)"))
+				}
+			}
+			prefix := Prefix(i + 1)
+			if err := WriteLine(r.Out, prefix, label, strings.Repeat(" ", len(prefix)), Width(r.Out), style); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Choose and View use the same dispatcher as action menus. A view with no
@@ -233,10 +396,6 @@ func (r *Runner) readChoice(count int, back string) (int, error) {
 	if _, err := fmt.Fprintf(r.Out, "\n%s%s\n", Prefix(0), back); err != nil {
 		return -1, err
 	}
-	var frame []byte
-	if r.screen != nil {
-		frame = r.screen.choiceFrame()
-	}
 	for {
 		line, err := r.Line(ChoicePrompt)
 		if err != nil {
@@ -254,9 +413,7 @@ func (r *Runner) readChoice(count int, back string) (int, error) {
 		if count == 0 {
 			hint = fmt.Sprintf("Choose 0 to %s.\n", strings.ToLower(back))
 		}
-		if r.screen != nil {
-			r.screen.retryChoice(frame, hint)
-		} else if _, err := fmt.Fprint(r.Out, hint); err != nil {
+		if _, err := fmt.Fprint(r.Out, hint); err != nil {
 			return -1, err
 		}
 	}
@@ -267,18 +424,16 @@ func (r *Runner) Line(prompt string) (string, error) {
 		return "", err
 	}
 	if r.screen != nil {
-		if err := r.screen.show(prompt); err != nil {
-			return "", err
+		value, accepted, err := r.terminalText(prompt)
+		if err == nil && !accepted {
+			return "", io.EOF
 		}
-	} else if _, err := fmt.Fprint(r.Out, prompt); err != nil {
+		return value, err
+	}
+	if _, err := fmt.Fprint(r.Out, prompt); err != nil {
 		return "", err
 	}
 	line, err := r.Input.ReadString('\n')
-	if r.screen != nil {
-		if displayErr := r.screen.afterInput(); displayErr != nil {
-			return "", displayErr
-		}
-	}
 	// EOF never submits partially typed input, including destructive approvals.
 	if err != nil {
 		return "", err
@@ -288,13 +443,23 @@ func (r *Runner) Line(prompt string) (string, error) {
 
 func (r *Runner) Text(prompt string, validate func(string) error) (string, bool, error) {
 	for {
-		value, err := r.Line(prompt)
-		if err != nil || value == ":back" {
+		var value string
+		var err error
+		accepted := true
+		if r.screen != nil {
+			value, accepted, err = r.terminalText(prompt)
+		} else {
+			value, err = r.Line(prompt)
+			accepted = value != ":back"
+		}
+		if err != nil || !accepted {
 			return "", false, err
 		}
 		if validate != nil {
 			if err := validate(value); err != nil {
-				if _, writeErr := fmt.Fprintf(r.Out, "Error: %s\n", Safe(err.Error())); writeErr != nil {
+				if r.screen != nil {
+					r.Notice("Error: " + Safe(err.Error()))
+				} else if _, writeErr := fmt.Fprintf(r.Out, "Error: %s\n", Safe(err.Error())); writeErr != nil {
 					return "", false, writeErr
 				}
 				continue
@@ -305,22 +470,13 @@ func (r *Runner) Text(prompt string, validate func(string) error) (string, bool,
 }
 
 func (r *Runner) Confirm(prompt string) (bool, error) {
-	// Approvals and their context belong in the shell transcript, including
-	// when invoked from a redrawable menu. Never hide a destructive decision.
-	if err := r.Pause(); err != nil {
-		return false, err
-	}
-	out := r.Out
 	if r.screen != nil {
-		if _, err := r.screen.pending.WriteTo(r.screen.terminal); err != nil {
-			return false, err
-		}
-		out = r.screen.terminal
+		return r.terminalConfirm(prompt)
 	}
 	if err := r.Context.Err(); err != nil {
 		return false, err
 	}
-	if _, err := fmt.Fprint(out, prompt); err != nil {
+	if _, err := fmt.Fprint(r.Out, prompt); err != nil {
 		return false, err
 	}
 	value, err := r.Input.ReadString('\n')

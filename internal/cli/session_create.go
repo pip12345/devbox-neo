@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"devbox/internal/app"
 	"devbox/internal/cliui"
 	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/environment"
+	"devbox/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -86,8 +88,9 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 }
 
 type sessionCreationDraft struct {
-	name    string
-	sources []config.Reference
+	workspace string
+	name      string
+	sources   []config.Reference
 }
 
 func (d sessionCreationDraft) missing() string {
@@ -104,27 +107,43 @@ func (d sessionCreationDraft) missing() string {
 }
 
 func createSessionMenu(p sourcePicker, e *app.Engine, draft sessionCreationDraft) (sessionCreationDraft, bool, error) {
+	return sessionCreationMenu(p, e, draft, nil)
+}
+
+// The browser supplies materialization so a failed build returns to this same
+// draft. Direct create retains its existing streamed, command-ending operation.
+func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDraft, create func(sessionCreationDraft) (bool, error)) (sessionCreationDraft, bool, error) {
 	proceed := false
 	err := p.Run(func() (cliui.Screen, error) {
+		if draft.workspace != "" {
+			p.workspace = draft.workspace
+		}
 		nameAction := "Set session name"
 		if draft.name != "" {
 			nameAction = "Change session name"
 		}
-		actions := []cliui.Action{
-			{Label: "Create session", Blocked: draft.missing(), Run: func() (bool, error) {
-				if err := p.Pause(); err != nil {
-					return false, err
-				}
-				spec, err := e.Resolve(app.Request{Workspace: p.workspace, LocalName: draft.name, Sources: draft.sources})
-				if err != nil {
-					if len(spec.Warnings) > 0 {
-						p.PlainNext()
+		createAction := cliui.Action{Label: "Create session", BreakBefore: true, Blocked: draft.missing(), Run: func() (bool, error) {
+			if err := p.Pause(); err != nil {
+				return false, err
+			}
+			spec, err := e.Resolve(app.Request{Workspace: p.workspace, LocalName: draft.name, Sources: draft.sources})
+			if err != nil {
+				if len(spec.Warnings) > 0 {
+					if reviewErr := p.ReviewOutput(); reviewErr != nil {
+						return false, reviewErr
 					}
-					return false, p.report(err)
 				}
-				proceed = true
-				return true, nil
-			}},
+				return false, p.report(err)
+			}
+			if create != nil {
+				var err error
+				proceed, err = create(draft)
+				return proceed, err
+			}
+			proceed = true
+			return true, nil
+		}}
+		actions := []cliui.Action{
 			{Label: nameAction, BreakBefore: true, Run: func() (bool, error) {
 				name, changed, err := editSessionCreationName(p, draft.name)
 				if changed {
@@ -134,7 +153,17 @@ func createSessionMenu(p sourcePicker, e *app.Engine, draft sessionCreationDraft
 			}},
 		}
 		actions = append(actions, p.chainActions(draft.sources, func(updated []config.Reference) error { draft.sources = updated; return nil })...)
-		return cliui.Screen{Title: "Create session", Prompt: "What would you like to do?", Actions: actions, Back: "Cancel", Body: func(out io.Writer) error {
+		if draft.workspace != "" {
+			actions = append(actions, cliui.Action{Label: "Change folder", Run: func() (bool, error) {
+				folder, ok, err := p.Text("Workspace folder: ", func(value string) error { _, err := environment.CanonicalWorkspace(value); return err })
+				if err == nil && ok {
+					draft.workspace, err = environment.CanonicalWorkspace(folder)
+				}
+				return false, err
+			}})
+		}
+		actions = append(actions, createAction)
+		page := cliui.Screen{Title: "Create session", Actions: actions, Back: "Cancel", Body: func(out io.Writer) error {
 			if err := writeMenuHint(out, "Folder: "+displayCell(p.workspace)); err != nil {
 				return err
 			}
@@ -146,7 +175,32 @@ func createSessionMenu(p sourcePicker, e *app.Engine, draft sessionCreationDraft
 				return err
 			}
 			return showSourceChain(p.menu, p.home, p.workspace, draft.sources)
-		}}, nil
+		}}
+		if p.Redraws() {
+			page.Body = nil
+			name := draft.name
+			if name == "" {
+				name = "Not set"
+			}
+			var refs []string
+			for i, ref := range draft.sources {
+				refs = append(refs, fmt.Sprintf("%d. %s", i+1, ref.Label))
+			}
+			selected := strings.Join(refs, "\n")
+			if selected == "" {
+				selected = "None"
+			}
+			page.Fields = []cliui.Field{{Label: "Folder", Value: p.workspace}, {Label: "Name", Value: name}, {Label: "Configs", Value: selected}}
+			if len(draft.sources) > 0 {
+				resolved, err := e.CombinedConfiguration(store.Record{Identity: environment.Identity{Workspace: p.workspace}, Sources: draft.sources})
+				if err != nil {
+					page.Fields = append(page.Fields, cliui.Field{Label: "Error", Value: err.Error(), Warning: true})
+				} else {
+					page.Fields = append(page.Fields, cliui.Field{Label: "Harness", Value: resolved.Settings.Harness})
+				}
+			}
+		}
+		return page, nil
 	})
 	return draft, proceed, err
 }

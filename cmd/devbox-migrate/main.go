@@ -72,6 +72,7 @@ func newCommand(runtime migration.SourceRuntime, merger migration.Merger, intera
 	cmd.Args = cobra.NoArgs
 	cmd.RunE = func(cmd *cobra.Command, args []string) (runErr error) {
 		ui := cliui.New(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout())
+		cmd.SetContext(ui.Context)
 		defer func() { runErr = errors.Join(runErr, ui.Finish()) }()
 		count := 0
 		for _, on := range []bool{dry, stage, merge, resume} {

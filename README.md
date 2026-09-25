@@ -16,14 +16,15 @@ The point is less setup and more convenience. You stay responsible for watching 
 
 ## Quick start
 
-Linux and Docker required. From this checkout:
+Run `devbox-neo` in a terminal to browse sessions. Highlight a session and press **Enter** for its menu; **Tab** switches to configs and **Esc** goes back. Direct commands remain available for shortcuts and scripts.
+
+Linux and Docker required. Building from source requires Go 1.24.2+. From this checkout:
 
 ```sh
 make build
 export PATH="$PWD/bin:$PATH"
 cd /path/to/your/project
-devbox-neo config create base  # choose Pi, OpenCode, or Claude
-devbox-neo create .            # pick a name and select base
-devbox-neo edit .              # set the folder default
-devbox-neo open .
+devbox-neo
 ```
+
+Choose **Create session**, set a name, and **Create config** to choose Pi, OpenCode, or Claude. The config is added to your draft. Choose **Create session**, then **Open** in the new session's menu. Setting a folder default is optional; **Make folder default** is in that same menu.

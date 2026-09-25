@@ -2,6 +2,23 @@
 
 Executable: `devbox-neo`. Use `<command> --help` for command-specific help.
 
+## Interactive frontend
+
+| Entry point | Behavior in a full terminal |
+|---|---|
+| `devbox-neo` | Browse folders/sessions, create one, or run all-session operations |
+| `config` | Browse named configs, create/edit/delete them, or edit a directory by path |
+
+The left pane lists objects; the right previews the selection. **Enter** opens its menu/editor, and **Esc** returns to the selected object. **Right/Left** switches between browsing and application actions. **Tab** switches the Sessions/Configs tabs while browsing, not inside a form. Use arrows/`j`/`k` to move, `/` to filter, and **Page Up/Down** for context. Browser shortcuts: `n` creates, `r` refreshes, and `a` opens all-session operations from sessions. Without terminal input/output, or with `TERM=dumb`, these bare entry points show help without initializing state. Explicit subcommands retain their flags, JSON, and direct behavior.
+
+Selecting a session opens its actions: Open, Continue, Shell, Status, selected-config editing, container actions, copy/move, Exec/SSH/launch arguments, Make folder default (or Clear folder default), and Delete. Default changes save directly without another picker. Folder menus offer Create session here and Clear folder default, including defaults whose sessions are unavailable. Container actions include Start, Stop with explicit force, Recreate with cache choice, Logs with tail/follow, and Networks. Access forms support exact exec arguments, invocation-only harness arguments, and SSH destination/host-master selection. Argument editors also accept a JSON string array to preserve escapes and empty values without shell parsing.
+
+All-session operations include status, recreate-all, and deletion with exact targets or the existing intersecting filters. Deletion previews have an explicit scope; execution asks separately about containers and saved data/history. Copy/move previews exact endpoints before confirmation and pins pending-transfer retry fields to the recorded journal. Operations use the same validation, ownership, locks, and recovery rules as direct commands.
+
+Foreground programs take over the normal terminal. After completion, acknowledge the result to return to the refreshed menu. **Ctrl-C** during a foreground operation cancels that operation; in menus it exits the command. **SIGTERM** always cancels the command. Selecting a session never selects its folder default or launches its harness implicitly.
+
+**Create session** in the browser prefills an editable folder from the current directory (or selected folder), leaving the name and configs unset. Nested config creation adds its result directly to that draft. Build failures retain the entered choices; committed creation with a stop failure opens the saved session menu for recovery. Success opens the stopped session's menu with Open focused, without launching or setting a default.
+
 ## Global options and targets
 
 | Option | Meaning |
@@ -64,6 +81,7 @@ See [output and errors](output.md) for columns, change classifications, and JSON
 
 | Command | Effect |
 |---|---|
+| `config` | Browse named configs interactively; **Tab** switches to sessions |
 | `config create [name\|path]` | Open the creation overview; supplied names/paths prefill it; reject an existing `config.json` |
 | `config edit <name\|path>` | Edit an existing directory or add missing optional files |
 | `config list [--json]` | Show named configs under the selected home's `configs/` with harness and directory path; report invalid or incomplete entries; no Docker required |
@@ -95,7 +113,7 @@ Explicit setup flags run directly, even in a terminal. Without flags, interactiv
 | `edit <full-name> --default` | Select that session for its recorded workspace |
 | `edit <folder\|session> --clear-default` | Clear the workspace's default without selecting another session |
 
-**Set folder default** opens a picker with the same folder header, row positions, statuses, and default marker as the overview. Choose a session to save, or **Back** to leave the default unchanged. Set and Clear remain folder-level actions.
+**Set folder default** opens a picker with the same folder header, row positions, statuses, and default marker as the overview. Choose a session to save, or **Back** to leave the default unchanged. These controls belong to the direct `edit <folder>` overview; the session browser also offers Make/Clear folder default in each session's menu.
 
 `--default` requires `--name` or an exact full session name. `--clear-default` cannot be combined with `--name`, `--default`, or `--show`. In the folder overview, **Exit** leaves completed config-selection/default changes saved; selecting a broken session record shows its error and lets you choose again. Selection never starts a container. Opening does not change the default.
 

@@ -58,7 +58,23 @@ unrelated remote changes or use of host/network services.
 Do not modify /devbox: it is Devbox-owned runtime data. Do not add a Dockerfile
 to a selected config directory to persist an ad-hoc installation without approval.
 Devbox does not enforce network egress restrictions or provide an offline mode.
-On the host, config create [name|path] opens a creation overview with editable
+On the host, bare devbox-neo opens the session browser; bare config opens the
+named-config browser. Objects appear on the left, separate from application
+actions. Highlight previews details; Enter opens the object's menu/editor.
+Left/Right moves between browsing and application actions; Tab switches the
+top Sessions/Configs tabs while browsing. Esc goes back, / filters, and Page
+Up/Down scrolls context. These entry points show help without a full terminal.
+Explicit commands/flags/JSON stay available. Session menus offer Make folder
+default or Clear folder default directly, without another picker. Browser
+creation prefills an editable current folder and preserves its draft on build
+failure. Success opens the stopped session's menu, without launching or
+selecting a default.
+Session actions cover lifecycle, config/default editing, logs, networks,
+copy/move, deletion, exec, and SSH. The UI uses the same services and safety
+checks as direct commands, without background inventory polling. Foreground
+programs own the terminal; acknowledge their result to return. Ctrl-C cancels
+a foreground operation rather than the browser; Ctrl-C in menus exits.
+Config create [name|path] opens a creation overview with editable
 Name/location, Harness, and Optional files. Only Create config writes the config;
 Cancel writes nothing. A supplied destination prefills the overview. Outside
 interactive setup (including setup flags/JSON), a name/path is required.
@@ -76,8 +92,9 @@ creation remains saved independently of that draft. Scripts supply --name NAME a
 repeated --config REF. Creation never selects a default. Use edit <folder> to choose
 one, open <folder> --name NAME for an explicit local name, or a full session name
 from list --wide or status for exact targeting anywhere. Even a sole session needs an explicit
-folder default. Set/Clear folder default stay in the folder overview; the picker
-keeps the same folder header, row positions, statuses, and default marker.
+folder default for folder-only commands, but not to open it from its session menu.
+The direct edit <folder> overview retains Set/Clear folder default and its aligned
+picker, with the same folder header, row positions, statuses, and default marker.
 Edit <folder|session> manages a session's saved source references;
 it offers shared config creation but does not open existing-directory editors.
 Combined configuration has a read-only screen with Back. Config edits do not rename sessions.

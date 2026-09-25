@@ -47,7 +47,7 @@ func TestDefaultPickerKeepsFolderRowsInPlace(t *testing.T) {
 				return folderEditMenu(testMenu(ctx, input, out), e, q.Workspace, func(store.Record) error {
 					t.Error("default selection opened the session editor")
 					return nil
-				}, func(string) { changes++ })
+				}, func(string) { changes++ }, "Exit")
 			}
 			var text string
 			if styled {

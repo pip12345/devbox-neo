@@ -10,6 +10,7 @@ import (
 	"devbox/internal/app"
 	"devbox/internal/commanderror"
 	"devbox/internal/environment"
+	"devbox/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -48,44 +49,57 @@ func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 		if asJSON {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(details)
 		}
-		view := details.View
-		printView(cmd, view)
-		if details.DefaultError != "" {
-			cmd.Printf("Default selection unavailable: %s\n", displayCell(details.DefaultError))
-		}
-		if details.Record != nil {
-			cmd.Printf("Session: %s\nHarness: %s\nImage: %s\nActive commands: %d\n", displayCell(details.SessionID), displayCell(details.Harness), displayCell(details.Record.ImageID), len(details.Active))
-			lifetime := "automatic (stops after the last attached command)"
-			if details.Record.ManualStart {
-				lifetime = "until stop (restarts with Docker)"
-			}
-			cmd.Printf("Lifetime: %s\n", lifetime)
-		}
-		cmd.Printf("Changes: %s\n", statusChange(view))
-		if view.ConfigError != "" {
-			cmd.Printf("Desired configuration error: %s\n", displayCell(view.ConfigError))
-		}
-		for _, change := range view.PendingInputChanges {
-			cmd.Printf("  - [%s] %s\n", change.Scope, change)
-		}
-		if view.Error == "" && view.ConfigError == "" && view.Pending == nil {
-			switch view.Desired {
-			case environment.RuntimeSync:
-				for _, change := range view.PendingInputChanges {
-					if change.Field == "managed_config" {
-						cmd.Println("Changes apply on container restart.")
-						break
-					}
-				}
-			case environment.Recreate, environment.RebuildAndRecreate:
-				steps := scopedSteps(cmd, []commanderror.Step{commanderror.Next("To apply changes", "recreate", view.Name)}, e.Store.Home)
-				cmd.Print(stepsText(steps))
-			}
-		}
-		return nil
+		return printStatusDetails(cmd.OutOrStdout(), details, scopedSteps(cmd, []commanderror.Step{commanderror.Next("To apply changes", "recreate", details.Name)}, e.Store.Home))
 	}}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print session details and status, or bulk inventory diagnostics, as JSON")
 	return sessionNameFlag(cmd, localName)
+}
+
+func printStatusDetails(out io.Writer, details app.StatusDetails, steps []commanderror.Step) error {
+	view := details.View
+	if _, err := fmt.Fprintf(out, "%s  %s  %s\n", displayCell(view.Name), containerState(view), displayCell(view.Workspace)); err != nil {
+		return err
+	}
+	if view.Pending != nil {
+		p := view.Pending
+		fmt.Fprintf(out, "  Pending %s (%s): %s -> %s\n  Retry the same transfer command.\n", displayCell(store.TransferCommand(p.Mode)), displayCell(p.Phase), displayCell(p.Source), displayCell(p.Destination))
+	}
+	if view.Error != "" {
+		fmt.Fprintf(out, "  Error: %s\n", displayCell(view.Error))
+	}
+	if details.DefaultError != "" {
+		fmt.Fprintf(out, "Default selection unavailable: %s\n", displayCell(details.DefaultError))
+	}
+	if details.Record != nil {
+		fmt.Fprintf(out, "Session: %s\nHarness: %s\nImage: %s\nActive commands: %d\n", displayCell(details.SessionID), displayCell(details.Harness), displayCell(details.Record.ImageID), len(details.Active))
+		lifetime := "automatic (stops after the last attached command)"
+		if details.Record.ManualStart {
+			lifetime = "until stop (restarts with Docker)"
+		}
+		fmt.Fprintf(out, "Lifetime: %s\n", lifetime)
+	}
+	fmt.Fprintf(out, "Changes: %s\n", statusChange(view))
+	if view.ConfigError != "" {
+		fmt.Fprintf(out, "Desired configuration error: %s\n", displayCell(view.ConfigError))
+	}
+	for _, change := range view.PendingInputChanges {
+		fmt.Fprintf(out, "  - [%s] %s\n", change.Scope, change)
+	}
+	if view.Error == "" && view.ConfigError == "" && view.Pending == nil {
+		switch view.Desired {
+		case environment.RuntimeSync:
+			for _, change := range view.PendingInputChanges {
+				if change.Field == "managed_config" {
+					fmt.Fprintln(out, "Changes apply on container restart.")
+					break
+				}
+			}
+		case environment.Recreate, environment.RebuildAndRecreate:
+			_, err := fmt.Fprint(out, stepsText(steps))
+			return err
+		}
+	}
+	return nil
 }
 
 func statusChange(view app.View) string {

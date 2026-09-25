@@ -10,7 +10,7 @@ import (
 	"devbox/internal/store"
 )
 
-func folderEditMenu(m menu, e *app.Engine, folder string, open func(store.Record) error, changed func(string)) error {
+func folderEditMenu(m menu, e *app.Engine, folder string, open func(store.Record) error, changed func(string), back string) error {
 	workspace, entries, err := e.FolderSessions(m.Context, folder)
 	if err != nil {
 		return err
@@ -28,6 +28,7 @@ func folderEditMenu(m menu, e *app.Engine, folder string, open func(store.Record
 		selected, defaultErr := e.Store.ReadDefault(m.Context, workspace)
 		states := folderSessionStates(m, e, workspace)
 		page := folderSessionScreen(workspace, entries, selected, defaultErr, states)
+		page.Back = back
 		canSet := false
 		for i, entry := range entries {
 			if entry.Err == nil {
@@ -90,7 +91,16 @@ func folderSessionScreen(workspace string, entries []store.Entry, selected *stor
 	}
 	actions := make([]cliui.Action, len(entries))
 	for i, entry := range entries {
-		actions[i].Label = sessionPickerLabel(entry, states)
+		actions[i].Label = entry.Record.Identity.LocalName
+		if actions[i].Label == "" {
+			actions[i].Label = entry.Name
+		}
+		actions[i].Status = states[entry.Name]
+		actions[i].Selected = i == current
+		actions[i].Detail = "Folder: " + displayCell(workspace) + "\nFull name: " + displayCell(entry.Name)
+		if entry.Err != nil {
+			actions[i].Detail += "\nError: " + displayCell(entry.Err.Error())
+		}
 	}
 	return cliui.Screen{Title: "Select a session to edit", Back: "Exit", Actions: actions, Body: func(out io.Writer) error {
 		if defaultErr != nil {
@@ -109,6 +119,7 @@ func folderSessionScreen(workspace string, entries []store.Entry, selected *stor
 			var style func(string) string
 			prefix := menuPrefix(i + 1)
 			if i < len(entries) {
+				label = sessionPickerLabel(entries[i], states)
 				inactive := states[entries[i].Name] != "running"
 				if inactive {
 					style = paint.dim
