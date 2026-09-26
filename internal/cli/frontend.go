@@ -66,6 +66,10 @@ func (f *frontend) action(label, description string, run func() error) cliui.Act
 	}}
 }
 func (f *frontend) browse(configs bool) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
 	if f.sortBy == "" {
 		f.sortBy = "name"
 	}
@@ -79,15 +83,23 @@ func (f *frontend) browse(configs bool) error {
 			if err != nil {
 				f.m.Notice("Config inventory unavailable: " + displayCell(err.Error()))
 			}
-			for _, entry := range entries {
-				entry := entry
-				item := cliui.Item{Key: entry.Path, Label: entry.Name, Description: entry.Harness,
-					Fields: []cliui.Field{{Label: "Directory", Value: entry.Path}, {Label: "Harness", Value: entry.Harness}},
-					Open:   func() error { return f.m.report(f.editConfig(entry.Name)) }}
-				if entry.Error != "" {
-					item.Fields = append(item.Fields, cliui.Field{Label: "Error", Value: entry.Error, Warning: true})
+			local, err := resource.DiscoverConfigs(cwd)
+			if err != nil {
+				f.m.Notice("Local config discovery unavailable: " + displayCell(err.Error()))
+			}
+			for _, group := range []struct {
+				label   string
+				entries []resource.ConfigEntry
+			}{{"Local", local}, {"Named", entries}} {
+				for _, entry := range group.entries {
+					item := cliui.Item{Key: group.label + ":" + entry.Path, Label: entry.Name, Description: entry.Harness,
+						Fields: []cliui.Field{{Label: "Location", Value: group.label}, {Label: "Directory", Value: entry.Path}, {Label: "Harness", Value: entry.Harness}},
+						Open:   func() error { return f.m.report(f.editConfig(entry.Name)) }}
+					if entry.Error != "" {
+						item.Fields = append(item.Fields, cliui.Field{Label: "Error", Value: entry.Error, Warning: true})
+					}
+					page.Collection.Items = append(page.Collection.Items, item)
 				}
-				page.Collection.Items = append(page.Collection.Items, item)
 			}
 			create := f.action("Create config", "", f.createConfig)
 			create.Shortcut = "n"
@@ -283,6 +295,13 @@ func (f *frontend) session(v app.View) error {
 					return false, f.m.report(err)
 				}
 				return moved, nil
+			}},
+			cliui.Action{Label: "Rename session", Description: "New name in the same folder; rebuilds the container", Run: func() (bool, error) {
+				renamed, err := f.rename(v.Name)
+				if err != nil {
+					return false, f.m.report(err)
+				}
+				return renamed, nil
 			}},
 			cliui.Action{Label: "Delete", Description: "Container first; saved data/history separately", Danger: true, Run: func() (bool, error) {
 				if err := f.delete([]string{v.Name}); err != nil {

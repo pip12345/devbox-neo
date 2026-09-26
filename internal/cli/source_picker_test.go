@@ -59,8 +59,9 @@ func TestSourcePickerShowsReferenceTypeWithoutAnotherConfirmation(t *testing.T) 
 	for _, test := range []struct {
 		name, input, kind, path string
 	}{
-		{"named", "1\n", config.ReferenceFixed, owner.Root},
-		{"local", "2\n./devconfig\n", config.ReferenceRelative, "devconfig"},
+		{"named", "2\n", config.ReferenceFixed, owner.Root},
+		{"discovered", "1\n", config.ReferenceRelative, "devconfig"},
+		{"entered", "3\n./devconfig\n", config.ReferenceRelative, "devconfig"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var out bytes.Buffer
@@ -73,7 +74,7 @@ func TestSourcePickerShowsReferenceTypeWithoutAnotherConfirmation(t *testing.T) 
 				t.Fatal("wrong selected reference", reference, chosen, err, out.String())
 			}
 			text := out.String()
-			if !strings.Contains(text, "NAME  TYPE   PATH") || !strings.Contains(text, "base  fixed") || !strings.Contains(text, "\n\n   [2]  Enter a directory path") || strings.Contains(text, "Add this config?") || strings.Contains(text, "Confirm") {
+			if !strings.Contains(text, "TYPE      PATH") || !strings.Contains(text, "fixed") || !strings.Contains(text, "relative") || !strings.Contains(text, "\n\n   [3]  Enter a directory path") || strings.Contains(text, "Add this config?") || strings.Contains(text, "Confirm action") {
 				t.Fatal("picker did not separate the table or added a confirmation screen", text)
 			}
 		})

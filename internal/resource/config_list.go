@@ -8,8 +8,8 @@ import (
 	"devbox/internal/fsutil"
 )
 
-// ConfigEntry describes a named directory even when its config needs repair.
-// Arbitrary path-based configs are not registered under the selected home.
+// ConfigEntry describes a config directory even when its config needs repair.
+// Name is a selectable reference: a named config or a relative directory path.
 type ConfigEntry struct {
 	Name    string `json:"name"`
 	Path    string `json:"path"`
@@ -31,19 +31,52 @@ func (s Service) ListConfigs() ([]ConfigEntry, error) {
 		if !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
 			continue
 		}
-		item := ConfigEntry{Name: entry.Name(), Path: filepath.Join(root, entry.Name())}
-		canonical, err := config.CanonicalPath(item.Path)
-		if err == nil {
-			var layer config.Layer
-			_, layer, err = readLayer(Owner{Kind: "config", Name: item.Name, Root: canonical})
-			if layer.Harness != nil {
-				item.Harness = *layer.Harness
-			}
+		configs = append(configs, inspectConfig(entry.Name(), filepath.Join(root, entry.Name())))
+	}
+	return configs, nil
+}
+
+func inspectConfig(name, path string) ConfigEntry {
+	item := ConfigEntry{Name: name, Path: path}
+	canonical, err := config.CanonicalPath(path)
+	if err == nil {
+		var layer config.Layer
+		_, layer, err = readLayer(Owner{Kind: "config", Name: name, Root: canonical})
+		if layer.Harness != nil {
+			item.Harness = *layer.Harness
 		}
-		if err != nil {
-			item.Error = err.Error()
+	}
+	if err != nil {
+		item.Error = err.Error()
+	}
+	return item
+}
+
+// DiscoverConfigs only supplies menu candidates. It neither registers sources
+// nor resolves a session's configuration; selecting a source remains explicit.
+func DiscoverConfigs(directory string) ([]ConfigEntry, error) {
+	root, err := filepath.Abs(directory)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	names := []string{"."}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+			names = append(names, "./"+entry.Name())
 		}
-		configs = append(configs, item)
+	}
+	configs := []ConfigEntry{}
+	for _, name := range names {
+		path := filepath.Join(root, name)
+		info, err := os.Lstat(filepath.Join(path, "config.json"))
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		configs = append(configs, inspectConfig(name, path))
 	}
 	return configs, nil
 }

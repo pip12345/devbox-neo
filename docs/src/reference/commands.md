@@ -18,9 +18,9 @@ A folder alone requires a saved default, even if it has only one session. An exa
 | Command | Opens |
 |---|---|
 | No subcommand | Session browser |
-| `config` | Named-config browser |
+| `config` | Local and named-config browser |
 
-Enter opens the selected object's menu; it does not launch a harness. Sessions expose lifecycle, config, network, transfer, SSH, and deletion operations directly. See [keyboard controls](output.md#interactive-menus).
+Enter opens the selected object's menu; it does not launch a harness. Sessions expose lifecycle, config, network, transfer, rename, SSH, and deletion operations directly. See [keyboard controls](output.md#interactive-menus).
 
 These browsers require terminal input/output. Otherwise, including `TERM=dumb`, they show help. Explicit commands remain available for scripts.
 
@@ -145,6 +145,7 @@ Exports include `DEVBOX_HOST`, `DEVBOX_NETWORK`, `DEVBOX_PRIMARY_NETWORK`, and `
 
 ```sh
 devbox-neo copy <target> [destination-folder] [--as NAME] [--move]
+devbox-neo rename <target> --to NAME [--dry-run] [--json]
 ```
 
 | Option | Meaning |
@@ -160,6 +161,8 @@ Omitting the destination keeps the source workspace. The destination must be unu
 Only declared harness state transfers. Project/config files, container-local tools, auth, caches, and live connections do not. Relative config references follow the destination; fixed ones keep their paths. Neither operation selects a destination default.
 
 For interrupted transfers, fix the reported problem and retry the same command. Keep pending state and destination config in place until recovery finishes. JSON uses `clone` for Copy and `relocate` for Move.
+
+`rename --to NAME` is same-folder `copy --move --as NAME`: it preserves the session ID, rebuilds with current config, loses container-local changes, and clears a matching folder default. It accepts `--name` for source selection and uses the same transfer result/retry behavior. The explicit command does not prompt.
 
 ## Deletion
 

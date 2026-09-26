@@ -25,6 +25,7 @@ func TestInteractiveCapabilitiesHaveDirectCommandInputs(t *testing.T) {
 		{"recreate", []string{"name", "all", "image"}},
 		{"ssh", []string{"name", "host-master"}},
 		{"copy", []string{"name", "as", "move", "dry-run", "json"}},
+		{"rename", []string{"name", "to", "dry-run", "json"}},
 		{"delete", []string{"name", "container", "session", "all", "stopped", "orphaned", "older-than", "force", "dry-run", "json"}},
 		{"network inspect", []string{"name"}}, {"network env", []string{"name", "get"}},
 		{"network connect", []string{"name"}}, {"network disconnect", []string{"name"}},

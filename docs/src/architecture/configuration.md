@@ -21,7 +21,7 @@ flowchart TD
 
 `app.Locate` selects saved session identity using an exact full name, a folder-local name, or a folder's saved default. It never resolves config to find a session. This keeps broken sources from blocking lookup and repair.
 
-`config.Reference` preserves relative/fixed intent. CLI capture resolves relative arguments against the invoking cwd, then records them relative to the canonical workspace. `ResolveReferences` expands the saved chain at the runtime boundary, requires its directories, and rejects duplicate canonical paths. Composition receives absolute `config.Source` inputs. There is no discovery, global baseline, or inheritance cutoff.
+`config.Reference` preserves relative/fixed intent. CLI capture resolves relative arguments against the invoking cwd, then records them relative to the canonical workspace. `ResolveReferences` expands the saved chain at the runtime boundary, requires its directories, and rejects duplicate canonical paths. Composition receives absolute `config.Source` inputs. Resolution never discovers sources; there is no global baseline or inheritance cutoff.
 
 `app.UpdateSources` requires a nonempty chain, validates references, and compares session ID plus the displayed chain under the operation lock. It preserves unrelated latest fields and saves only desired references; runnable settings are not required. Creation drafts and record reads can still be empty. Startup/recreation resolve from the reread locked record, not a pre-lock source snapshot.
 
@@ -51,7 +51,7 @@ The Docker adapter renders creation env through a private `0600` temporary file.
 
 ## Source mutation and initialization
 
-`resource` owns directory creation, setting edits, and optional-artifact setup. Its named-config listing scans the selected home's `configs/` directory and parses each source independently so invalid entries remain visible without Docker or session state. Arbitrary path-based configs have no global registry and appear only in saved source chains. Canonical directory paths key external configuration-owner locks. Folder defaults belong to `store`, not config files.
+`resource` owns directory creation, setting edits, and optional-artifact setup. Its named-config listing scans the selected home's `configs/` directory and parses each source independently so invalid entries remain visible without Docker or session state. Arbitrary path-based configs have no global registry; `resource.DiscoverConfigs` supplies local menu candidates without changing saved selections. Canonical directory paths key external configuration-owner locks. Folder defaults belong to `store`, not config files.
 
 Creation checks for `config.json` before prompts, repeats the check under the owner lock, validates setup, and claims the config file with no-replace publication before adding artifacts. Existing directories are allowed, but an existing config file is never replaced. Optional-file planning/publication is shared with editing and adds only missing files. A generation target may differ from, or exist without, the persistent harness setting.
 

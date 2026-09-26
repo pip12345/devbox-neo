@@ -200,7 +200,7 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 	visit = func(cmd *cobra.Command) {
 		path := strings.TrimPrefix(cmd.CommandPath(), root.Name()+" ")
 		switch path {
-		case "open", "start", "recreate", "status", "ssh", "shell", "exec", "stop", "logs", "edit":
+		case "open", "start", "recreate", "status", "ssh", "shell", "exec", "stop", "logs", "edit", "rename":
 			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
 		case "delete":
 			cmd.ValidArgsFunction = completeTarget(func(cmd *cobra.Command) []string {
@@ -235,8 +235,10 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 		if cmd.Flags().Lookup("name") != nil {
 			_ = cmd.RegisterFlagCompletionFunc("name", completeLocalNames)
 		}
-		if cmd.Flags().Lookup("as") != nil {
-			_ = cmd.RegisterFlagCompletionFunc("as", cobra.NoFileCompletions)
+		for _, flag := range []string{"as", "to"} {
+			if cmd.Flags().Lookup(flag) != nil {
+				_ = cmd.RegisterFlagCompletionFunc(flag, cobra.NoFileCompletions)
+			}
 		}
 		if cmd.Flags().Lookup("config") != nil {
 			_ = cmd.RegisterFlagCompletionFunc("config", func(cmd *cobra.Command, _ []string, prefix string) ([]string, cobra.ShellCompDirective) {

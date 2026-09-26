@@ -2,6 +2,8 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). The migration utility remains separate from runtime loading; adapting its destination model to named sessions and explicit configs is also approved.
 
+Local config discovery and CLI/menu rename implemented; `make test-fast` passes. Live Docker and manual terminal acceptance remain unrun.
+
 ## CLI/TUI alignment and editing UX — implemented, host/live acceptance pending
 
 Implemented the [alignment plan](cli-tui-alignment-plan.md): ordered config replacement and inspection, improved text editing, and consistent failure reporting. Selection keys wrap at list boundaries.

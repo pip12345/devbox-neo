@@ -32,7 +32,9 @@ The directory only takes effect after you select it in a session.
 
 ## Select the configs to use
 
-Open the session's menu in `devbox-neo`, then **Edit selected configs**. Choose **Add existing config** and enter `./devconfig`.
+Open the session's menu in `devbox-neo`, then **Edit selected configs**. Choose **Add existing config** and select `./devconfig` under **Local configs**. Use **Enter a directory path** if it is elsewhere.
+
+Menus offer configs from the launch folder and its immediate subfolders, including hidden ones; nothing is automatically selected or applied.
 
 Keep `base` first and `./devconfig` second. Later scalar settings replace earlier ones; most lists append. For example, the project config can change the shared network setting without choosing another harness.
 

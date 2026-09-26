@@ -82,18 +82,28 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 		if err != nil && !os.IsNotExist(err) {
 			return cliui.Screen{}, err
 		}
-		var names []string
+		configs, err := resource.DiscoverConfigs(p.cwd)
+		if err != nil {
+			p.Notice("Local config discovery unavailable: " + displayCell(err.Error()))
+		}
+		localCount := len(configs)
 		for _, entry := range entries {
-			if info, err := os.Lstat(filepath.Join(p.home, "configs", entry.Name(), "config.json")); err == nil && info.Mode().IsRegular() {
-				names = append(names, entry.Name())
+			path := filepath.Join(p.home, "configs", entry.Name())
+			if info, err := os.Lstat(filepath.Join(path, "config.json")); err == nil && info.Mode().IsRegular() {
+				configs = append(configs, resource.ConfigEntry{Name: entry.Name(), Path: path})
 			}
 		}
 		nameWidth := len("NAME")
-		for _, name := range names {
-			nameWidth = max(nameWidth, len(displayCell(name)))
+		for _, entry := range configs {
+			nameWidth = max(nameWidth, len(displayCell(entry.Name)))
 		}
 		var actions []cliui.Action
-		for _, name := range names {
+		for i, entry := range configs {
+			name := entry.Name
+			kind, group := "fixed", "Named configs"
+			if i < localCount {
+				kind, group = "relative", "Local configs"
+			}
 			selected := false
 			if current != nil {
 				candidate, err := p.capture(name)
@@ -107,9 +117,13 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 					}
 				}
 			}
-			actions = append(actions, cliui.Action{Label: fmt.Sprintf("%-*s  %-5s  %s", nameWidth, displayCell(name), "fixed", displayCell(filepath.Join(p.home, "configs", name))), Selected: selected, Run: func() (bool, error) { return accept(name) }})
+			description := ""
+			if entry.Error != "" {
+				description = displayCell(entry.Error)
+			}
+			actions = append(actions, cliui.Action{Label: fmt.Sprintf("%-*s  %-8s  %s", nameWidth, displayCell(name), kind, displayCell(entry.Path)), Group: group, Description: description, Selected: selected, Run: func() (bool, error) { return accept(name) }})
 		}
-		actions = append(actions, cliui.Action{Label: "Enter a directory path", BreakBefore: len(names) > 0, Run: func() (bool, error) {
+		actions = append(actions, cliui.Action{Label: "Enter a directory path", BreakBefore: len(configs) > 0, Run: func() (bool, error) {
 			initial := ""
 			if current != nil {
 				source, err := current.Expand(p.workspace)
@@ -137,7 +151,7 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 			}
 			return accept(input)
 		}})
-		actions = append(actions, cliui.Action{Label: "Create and add config", Hidden: len(names) > 0, Run: func() (bool, error) {
+		actions = append(actions, cliui.Action{Label: "Create and add config", Hidden: len(configs) > 0, Run: func() (bool, error) {
 			reference, created, err := p.create()
 			if errors.Is(err, io.EOF) {
 				return false, err
@@ -157,12 +171,12 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 					return err
 				}
 			}
-			if len(names) == 0 {
-				return writeMenuHint(out, "No named configs found.")
+			if len(configs) == 0 {
+				return writeMenuHint(out, "No configs found.")
 			}
 			fmt.Fprintln(out)
 			prefix := strings.Repeat(" ", len(menuPrefix(1)))
-			return writeConfigLine(out, prefix, fmt.Sprintf("%-*s  %-5s  PATH", nameWidth, "NAME", "TYPE"), prefix, configDisplayWidth(out))
+			return writeConfigLine(out, prefix, fmt.Sprintf("%-*s  %-8s  PATH", nameWidth, "NAME", "TYPE"), prefix, configDisplayWidth(out))
 		}}, nil
 	})
 	return result, chosen, err
