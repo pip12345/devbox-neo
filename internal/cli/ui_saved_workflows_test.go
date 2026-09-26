@@ -36,7 +36,7 @@ func TestDuplicateConfigSelectionPreservesSessionDraft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := sessionCreationDraft{name: "Work", sources: q.Sources}
+	before := sessionCreationDraft{workspace: q.Workspace, name: "Work", sources: q.Sources}
 	after, proceed, err := createSessionMenu(p, e, before)
 	if err != nil || proceed || !reflect.DeepEqual(after, before) || !strings.Contains(out.String(), "Error:") {
 		t.Fatal(after, proceed, err, out.String())

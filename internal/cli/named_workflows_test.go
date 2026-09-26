@@ -146,7 +146,7 @@ func TestEditFolderMenuSetsAndClearsDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("3\n2\n4\n0\n"); err != nil {
+	if _, err := master.WriteString("3\n14\n14\n0\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -162,8 +162,8 @@ func TestEditFolderMenuSetsAndClearsDefault(t *testing.T) {
 		t.Fatal(out.String(), err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "[3]  Set folder default") || !strings.Contains(text, "[4]  Clear folder default") || !strings.Contains(text, "[0]  Exit") || strings.Contains(text, "[0]  Cancel") || !strings.Contains(text, "Default: No default") || !strings.Contains(text, ": Second\n") || !strings.Contains(text, "[2]  * Second") || !strings.Contains(text, "[1]    Main") || !strings.Contains(text, "Cleared default session for ") || strings.Contains(text, "default · stopped") || strings.Contains(text, "Make folder default") {
-		t.Fatal("default actions were not available in the folder menu", text)
+	if !strings.Contains(text, "Session · Second") || !strings.Contains(text, "Make folder default") || !strings.Contains(text, "Clear folder default") || !strings.Contains(text, "[0]  Exit") || !strings.Contains(text, "Cleared default session for ") || strings.Contains(text, "Select a session to edit") {
+		t.Fatal("edit did not use the browser's session default actions", text)
 	}
 	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {
 		t.Fatal("folder default was not cleared", selected, err)
@@ -173,7 +173,7 @@ func TestEditFolderMenuSetsAndClearsDefault(t *testing.T) {
 func TestEditFolderExitKeepsSavedDefault(t *testing.T) {
 	e, q, fullName := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("2\n1\n0\n"); err != nil {
+	if _, err := master.WriteString("2\n14\n0\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -209,7 +209,7 @@ func TestEditCanClearStaleDefaultWithoutSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("1\n"); err != nil {
+	if _, err := master.WriteString("1\n2\n0\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -254,7 +254,7 @@ func TestEditFolderCanRecoverFromBrokenSessionSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("1\n2\n0\n0\n"); err != nil {
+	if _, err := master.WriteString("1\n13\n0\n3\n13\n0\n0\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -269,15 +269,15 @@ func TestEditFolderCanRecoverFromBrokenSessionSelection(t *testing.T) {
 	if err := cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}
-	if strings.Count(out.String(), "Select a session to edit") < 2 || !strings.Contains(out.String(), "Error: Invalid session state: unsupported session record version") || !strings.Contains(out.String(), "Manage configs") || !strings.Contains(out.String(), "[0]  Exit") {
-		t.Fatal("invalid session selection closed the folder editor", out.String())
+	if !strings.Contains(out.String(), "Error: Invalid session state: unsupported session record version") || !strings.Contains(out.String(), "Manage configs") || !strings.Contains(out.String(), "[0]  Exit") {
+		t.Fatal("invalid session selection closed the browser", out.String())
 	}
 }
 
 func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("1\nFresh\n2\n1\n6\n"); err != nil {
+	if _, err := master.WriteString("1\nFresh\n2\n1\n7\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -298,14 +298,14 @@ func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 			t.Fatal("session creation entered another workflow or suggested a name", text)
 		}
 	}
-	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "[1]  Set session name") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "\nCreated session Fresh") || !strings.Contains(text, "edit "+shellQuote(q.Workspace)) || strings.Contains(text, "--name Fresh") {
+	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "[1]  Set session name") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "Session · Fresh") {
 		t.Fatal(text)
 	}
 	nameIndex, pickerIndex := strings.Index(text, "Session name (:back cancels): "), strings.Index(text, "Select an existing config")
 	if nameIndex < 0 || pickerIndex < nameIndex || !strings.Contains(text, "[1]  Change session name") {
 		t.Fatal("creation overview did not keep pending inputs editable", text)
 	}
-	for _, label := range []string{"Configs, in order:", "[2]  Add existing config", "[3]  Create config", "[4]  Replace config", "[5]  Remove config", "[6]  Create session"} {
+	for _, label := range []string{"Configs, in order:", "[2]  Add existing config", "[3]  Create config", "[4]  Replace config", "[5]  Remove config", "[6]  Change folder", "[7]  Create session"} {
 		if !strings.Contains(text, label) {
 			t.Fatal("creation menu mixed config and source labels", label, text)
 		}
@@ -334,10 +334,14 @@ func TestInteractiveCreationRedrawsEditableNameInTerminal(t *testing.T) {
 	p.wait("Select an existing config")
 	p.send("\r")
 	p.send("\x1b[F\r")
+	p.wait("Press Enter")
+	p.send("\r")
+	p.wait("Session · Fresh")
+	p.send("q")
 	p.finish(done)
 	text := p.output()
-	if !strings.Contains(text, "\x1b[?1049h") || strings.Index(text, "\nCreated session Fresh") < strings.LastIndex(text, "\x1b[?1049l") {
-		t.Fatal("creation did not restore the terminal before materialization", text)
+	if !strings.Contains(text, "\x1b[?1049h") || !strings.Contains(text, "Session · Fresh") {
+		t.Fatal("creation did not return to the shared session menu", text)
 	}
 	r, err := e.Store.Read(context.Background(), environment.ContainerName(q.Workspace, "Fresh"))
 	if err != nil || r.Identity.LocalName != "Fresh" {
@@ -363,7 +367,7 @@ func TestInteractiveCreationCanBackOutOfInputsAndCancelOverview(t *testing.T) {
 	if err := cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}
-	if !strings.Contains(out.String(), "Select an existing config") || !strings.Contains(out.String(), "[0]  Back") || strings.Count(out.String(), "Session name: Fresh") < 2 || !strings.Contains(out.String(), "Cancelled. No session was created.") {
+	if !strings.Contains(out.String(), "Select an existing config") || !strings.Contains(out.String(), "[0]  Back") || strings.Count(out.String(), "Session name: Fresh") < 2 || !strings.Contains(out.String(), "[0]  Cancel") {
 		t.Fatal(out.String())
 	}
 	identity, err := environment.Identify(q.Workspace, "Fresh")
@@ -378,7 +382,7 @@ func TestInteractiveCreationCanBackOutOfInputsAndCancelOverview(t *testing.T) {
 func TestInteractiveCreationCanChooseSourcesBeforeNameAndChangeName(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("2\n1\n1\nbad name\nFirst\n1\n:back\n1\nRenamed\n6\n"); err != nil {
+	if _, err := master.WriteString("2\n1\n1\nbad name\nFirst\n1\n:back\n1\nRenamed\n7\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -394,7 +398,7 @@ func TestInteractiveCreationCanChooseSourcesBeforeNameAndChangeName(t *testing.T
 		t.Fatal(out.String(), err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "Error: session name must be") || !strings.Contains(text, "Session name: First") || !strings.Contains(text, "Current name: First") || !strings.Contains(text, "Created session Renamed") || strings.Contains(text, "Created session First") {
+	if !strings.Contains(text, "Error: session name must be") || !strings.Contains(text, "Session name: First") || !strings.Contains(text, "Current name: First") || !strings.Contains(text, "Session · Renamed") || strings.Contains(text, "Session · First") {
 		t.Fatal("editing the pending name changed the wrong state", text)
 	}
 	for _, local := range []string{"First", "Renamed"} {
@@ -416,8 +420,8 @@ func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
 		input      string
 		wantPicker bool
 	}{
-		{"name", []string{"--name", "OnlyName"}, "2\n1\n6\n", true},
-		{"config", []string{"--config", "base"}, "1\nOnlyConfig\n6\n", false},
+		{"name", []string{"--name", "OnlyName"}, "2\n1\n7\n0\n", true},
+		{"config", []string{"--config", "base"}, "1\nOnlyConfig\n7\n0\n", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, q, _ := namedCLIFixture(t)
@@ -437,7 +441,7 @@ func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
 			if err := cmd.ExecuteContext(ctx); err != nil {
 				t.Fatal(out.String(), err)
 			}
-			if strings.Contains(out.String(), "Select an existing config") != tc.wantPicker || !strings.Contains(out.String(), "Created session Only") {
+			if strings.Contains(out.String(), "Select an existing config") != tc.wantPicker || !strings.Contains(out.String(), "Session · Only") {
 				t.Fatal("provided inputs were not retained in the creation overview", out.String())
 			}
 		})
@@ -472,23 +476,11 @@ func TestEditReportsSavedSourcesAfterExitOnlyWhenChanged(t *testing.T) {
 		return out.String()
 	}
 	changed := run("4\n1\n0\n")
-	if !strings.Contains(changed, "Saved selected configs.") || !strings.Contains(changed, "Selected configs saved; container changes may still be pending. Check with:\n  devbox-neo status "+fullName) {
+	if !strings.Contains(changed, "Saved selected configs.") || !strings.Contains(changed, "Selected configs saved; container changes may still be pending.") || !strings.Contains(changed, "devbox-neo status "+fullName) {
 		t.Fatal("source edit lost its saved-but-not-applied receipt", changed)
 	}
 	if unchanged := run("0\n"); strings.Contains(unchanged, "Selected configs saved;") {
 		t.Fatal("no-op edit claimed to have saved sources", unchanged)
-	}
-}
-
-func TestEditReceiptListsEachChangedSessionOnce(t *testing.T) {
-	var out bytes.Buffer
-	m := testMenuCommand(context.Background(), strings.NewReader(""), &out, &cobra.Command{Use: "edit"})
-	if err := writeEditReceipts(m, "", map[string]bool{"devbox-z": true, "devbox-a": true}, ""); err != nil {
-		t.Fatal(err)
-	}
-	text := out.String()
-	if strings.Count(text, "Selected configs saved;") != 1 || strings.Count(text, "devbox-neo status devbox-a") != 1 || strings.Count(text, "devbox-neo status devbox-z") != 1 || strings.Index(text, "devbox-a") >= strings.Index(text, "devbox-z") {
-		t.Fatal("receipt lost or duplicated a changed session", text)
 	}
 }
 

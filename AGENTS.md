@@ -32,6 +32,7 @@ Approved design decisions and acceptance history live in `docs/dev/`. The named-
 - Config references are explicit and ordered. Desired config is separate from applied state; execution uses captured inputs, not another config read.
 - Harness behavior belongs in definitions, not harness-name branches. Managed files replace their owned content, never unrelated history.
 - Deletion retains scope, confirmations, idle checks, and locks across phases. Transfer retries retain exact endpoints and never recopy after commitment.
+- The CLI is the source of truth. The interactive menu must fit the CLI's behavior, not the other way around. The CLI must remain fully usable without ever opening an interactive menu.
 - The UI calls shared services. Keep one terminal reader, immutable display snapshots, graceful cancellation, and foreground handoff.
 - Preserve error causes and use `commanderror.Error`/`Step` for guidance. Do not print secrets or persist env/auth values in records.
 - No unapproved compatibility readers, migrations, aliases, or automatic adoption. Importer migration code stays in dedicated `migrations.go` files.

@@ -92,7 +92,7 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 		{"create", "Name a new session and select its configs"},
 		{"version", "Print the Devbox version"},
 		{"config edit", "Edit a config directory or add missing optional files"},
-		{"edit", "Edit a session's selected configs or its folder's default selection"},
+		{"edit", "Browse a folder's sessions or edit a session's selected configs"},
 		{"shell", "Open a shell in a session"},
 		{"exec", "Run a command in a session"},
 		{"recreate", "Recreate the container with current settings, keeping session data"},

@@ -82,13 +82,15 @@ func TestEditUsesNativeMenuAndSavesDefault(t *testing.T) {
 		cmd.SetArgs([]string{q.Workspace})
 		return cmd.ExecuteContext(ctx)
 	})
-	p.wait("Set folder default")
+	p.wait("Application actions")
 	p.send("\x1b[B\r")
-	p.wait("the folder default")
-	p.send("\r")
+	p.wait("Session · Main")
+	p.send("/Make folder\r\r")
 	// The saved-state reload may outlast a fixed inter-key delay. Wait for
 	// the refreshed parent controls before sending its exit key.
 	p.wait("Clear folder default")
+	p.send("q")
+	p.wait("Application actions")
 	p.send("q")
 	p.finish(done)
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)

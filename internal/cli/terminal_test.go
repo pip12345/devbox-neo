@@ -74,17 +74,6 @@ func unstyle(text string) string {
 	return strings.NewReplacer("\x1b[1m", "", "\x1b[2m", "", "\x1b[32m", "", "\x1b[0m", "").Replace(text)
 }
 
-func TestDefaultMarkerRemainsProminentWhenSessionIsDimmed(t *testing.T) {
-	enableTerminalColors(t)
-	text := terminalOutput(t, 80, func(out *os.File) error {
-		prefix := menuPrefix(3)
-		return writeStyledConfigLine(out, prefix, "* blah             stopped", strings.Repeat(" ", len(prefix)), 80, defaultRowStyle(terminalColors(out), prefix, true))
-	})
-	if !strings.Contains(text, "\x1b[32m*\x1b[0m") || !strings.Contains(text, "\x1b[2m blah") || unstyle(text) != "   [3]  * blah             stopped\n" {
-		t.Fatal("default marker was lost in the inactive row", text)
-	}
-}
-
 func TestListDimsOnlyInactiveRowsWithoutChangingAlignment(t *testing.T) {
 	enableTerminalColors(t)
 	now := time.Now()

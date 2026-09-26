@@ -11,6 +11,7 @@ import (
 	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/environment"
+	"devbox/internal/resource"
 	"devbox/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -45,22 +46,15 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 			}
 			sources = append(sources, reference)
 		}
-		draft := sessionCreationDraft{name: *name, sources: sources}
+		draft := sessionCreationDraft{workspace: workspace, name: *name, sources: sources}
 		if draft.name != "" {
 			if err := environment.ValidateLocalName(draft.name); err != nil {
 				return err
 			}
 		}
 		if missing {
-			var proceed bool
-			draft, proceed, err = createSessionMenu(picker, e, draft)
-			if errors.Is(err, io.EOF) || (err == nil && !proceed) {
-				fmt.Fprintln(m.Out, "Cancelled. No session was created.")
-				return nil
-			}
-			if err != nil {
-				return err
-			}
+			f := frontend{m: m, cmd: cmd, e: e, s: &resource.Service{Home: e.Store.Home}}
+			return f.createSessionFromDraft(draft)
 		}
 		// Creation streams diagnostics; restore the shell before materialization.
 		if err := m.Finish(); err != nil {
@@ -106,18 +100,11 @@ func (d sessionCreationDraft) missing() string {
 	return ""
 }
 
-func createSessionMenu(p sourcePicker, e *app.Engine, draft sessionCreationDraft) (sessionCreationDraft, bool, error) {
-	return sessionCreationMenu(p, e, draft, nil)
-}
-
-// The browser supplies materialization so a failed build returns to this same
-// draft. Direct create retains its existing streamed, command-ending operation.
+// Submission runs inside the form so a failed build retains the draft for retry.
 func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDraft, create func(sessionCreationDraft) (bool, error)) (sessionCreationDraft, bool, error) {
 	proceed := false
 	err := p.Run(func() (cliui.Screen, error) {
-		if draft.workspace != "" {
-			p.workspace = draft.workspace
-		}
+		p.workspace = draft.workspace
 		nameAction := "Set session name"
 		if draft.name != "" {
 			nameAction = "Change session name"
@@ -135,13 +122,8 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 				}
 				return false, p.report(err)
 			}
-			if create != nil {
-				var err error
-				proceed, err = create(draft)
-				return proceed, err
-			}
-			proceed = true
-			return true, nil
+			proceed, err = create(draft)
+			return proceed, err
 		}}
 		actions := []cliui.Action{
 			{Label: nameAction, BreakBefore: true, Run: func() (bool, error) {
@@ -153,15 +135,13 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 			}},
 		}
 		actions = append(actions, p.chainActions(draft.sources, false, func(updated []config.Reference) error { draft.sources = updated; return nil })...)
-		if draft.workspace != "" {
-			actions = append(actions, cliui.Action{Label: "Change folder", Run: func() (bool, error) {
-				folder, ok, err := p.Text(cliui.TextRequest{Prompt: "Workspace folder: ", Initial: draft.workspace, Validate: func(value string) error { _, err := environment.CanonicalWorkspace(value); return err }})
-				if err == nil && ok {
-					draft.workspace, err = environment.CanonicalWorkspace(folder)
-				}
-				return false, err
-			}})
-		}
+		actions = append(actions, cliui.Action{Label: "Change folder", Run: func() (bool, error) {
+			folder, ok, err := p.Text(cliui.TextRequest{Prompt: "Workspace folder: ", Initial: draft.workspace, Validate: func(value string) error { _, err := environment.CanonicalWorkspace(value); return err }})
+			if err == nil && ok {
+				draft.workspace, err = environment.CanonicalWorkspace(folder)
+			}
+			return false, err
+		}})
 		actions = append(actions, createAction)
 		page := cliui.Screen{Title: "Create session", Actions: actions, Back: "Cancel", Body: func(out io.Writer) error {
 			if err := writeMenuHint(out, "Folder: "+displayCell(p.workspace)); err != nil {

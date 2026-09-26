@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 
 	"devbox/internal/app"
 	"devbox/internal/cliui"
@@ -20,7 +19,7 @@ import (
 func editCommand(factory engineFactory, name *string) *cobra.Command {
 	var show, asJSON, setDefault, clearDefault bool
 	var references []string
-	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Edit a session's selected configs or its folder's default selection", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
+	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Browse a folder's sessions or edit a session's selected configs", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		replace := cmd.Flags().Changed("config")
 		if replace && (show || setDefault || clearDefault) {
 			return fmt.Errorf("use --config alone, not with --show, --default, or --clear-default")
@@ -89,31 +88,30 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			}
 			return printConfigView(cmd.OutOrStdout(), view)
 		}
-		m := newMenu(cmd)
-		savedSources := map[string]bool{}
-		defaultChange := ""
-		defer func() {
-			runErr = errors.Join(runErr, writeEditReceipts(m, e.Store.Home, savedSources, defaultChange), m.Finish())
-		}()
-		open := func(r store.Record) error {
-			back := "Back"
-			if direct {
-				back = "Exit"
-			}
-			saved, err := sourceChainMenu(m, e, r, back)
-			if saved {
-				savedSources[r.Identity.Name] = true
-			}
-			return err
-		}
+		target := ""
 		if direct {
-			r, locateErr := e.Locate(cmd.Context(), args[0], *name)
-			if locateErr != nil {
-				return locateErr
+			r, err := e.Locate(cmd.Context(), args[0], *name)
+			if err != nil {
+				return err
 			}
-			err = open(r)
+			target = r.Identity.Name
 		} else {
-			err = folderEditMenu(m, e, args[0], open, func(message string) { defaultChange = message }, "Exit")
+			target, err = environment.CanonicalWorkspace(args[0])
+			if err != nil {
+				return err
+			}
+			if _, err := e.List(cmd.Context(), ""); err != nil {
+				return err
+			}
+		}
+		m := newMenu(cmd)
+		defer func() { runErr = errors.Join(runErr, m.Finish()) }()
+		f := frontend{m: m, cmd: cmd, e: e, s: &resource.Service{Home: e.Store.Home}}
+		if direct {
+			err = f.editSession(target)
+		} else {
+			f.knownFolder, f.focusItem = target, target
+			err = f.browse(false)
 		}
 		if errors.Is(err, io.EOF) {
 			fmt.Fprintln(m.Out, "Menu closed. Completed changes remain saved.")
@@ -128,31 +126,6 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 	cmd.Flags().BoolVar(&setDefault, "default", false, "Select this session as its folder's default without prompting")
 	cmd.Flags().BoolVar(&clearDefault, "clear-default", false, "Clear the folder's default without selecting another session")
 	return sessionNameFlag(cmd, name)
-}
-
-func writeEditReceipts(m menu, home string, savedSources map[string]bool, defaultChange string) error {
-	if defaultChange != "" {
-		if _, err := fmt.Fprintln(m.Out, defaultChange); err != nil {
-			return err
-		}
-	}
-	if len(savedSources) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(savedSources))
-	for name := range savedSources {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	steps := make([]commanderror.Step, 0, len(names))
-	for _, name := range names {
-		steps = append(steps, commanderror.Next("", "status", name))
-	}
-	if _, err := fmt.Fprintln(m.Out, "Selected configs saved; container changes may still be pending. Check with:"); err != nil {
-		return err
-	}
-	_, err := fmt.Fprint(m.Out, stepsText(scopedSteps(m.cmd, steps, home)))
-	return err
 }
 
 func combinedView(e *app.Engine, r store.Record) (resource.ConfigView, error) {

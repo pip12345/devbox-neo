@@ -5,39 +5,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"devbox/internal/app"
 	"devbox/internal/cliui"
 	"devbox/internal/commanderror"
-	"devbox/internal/environment"
+	"devbox/internal/resource"
 	"github.com/spf13/cobra"
 )
 
 type deletionConfirmation struct {
 	ui                *cliui.Runner
-	defaultFolder     string
 	singleTarget      bool
 	removedContainers int
 }
 
 func (c *deletionConfirmation) confirm(prompt app.DeletePrompt) (bool, error) {
 	var text strings.Builder
-	if c.defaultFolder != "" {
-		if len(prompt.Containers) > 0 || c.removedContainers == 0 {
-			name := prompt.Containers
-			if len(name) == 0 {
-				name = prompt.Sessions
-			}
-			if len(name) == 1 {
-				local := name[0]
-				if dot := strings.LastIndexByte(local, '.'); dot >= 0 {
-					local = local[dot+1:]
-				}
-				fmt.Fprintf(&text, "Delete %s (default in %s)\n", displayCell(local), displayCell(c.defaultFolder))
-			}
-		}
-	}
 	if len(prompt.Containers) > 0 {
 		if len(prompt.Containers) == 1 {
 			fmt.Fprintf(&text, "Container: %s\n", displayCell(prompt.Containers[0]))
@@ -64,7 +49,7 @@ func (c *deletionConfirmation) confirm(prompt app.DeletePrompt) (bool, error) {
 			for _, name := range prompt.Sessions {
 				fmt.Fprintf(&text, "  %s\n", displayCell(name))
 			}
-		} else if c.defaultFolder == "" && c.removedContainers == 0 {
+		} else if c.removedContainers == 0 {
 			fmt.Fprintf(&text, "Saved session: %s\n", displayCell(prompt.Sessions[0]))
 		}
 		text.WriteString("Delete saved data and history? [y/N] ")
@@ -127,17 +112,32 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 		options.Selection.Targets = args
 		options.Selection.LocalName = *localName
 		options.Confirm = nil
-		if options.Scope == "" {
-			confirmation := &deletionConfirmation{ui: cliui.New(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout()), singleTarget: len(args) == 1}
-			defer func() { runErr = errors.Join(runErr, confirmation.ui.Finish()) }()
-			if confirmation.singleTarget && *localName == "" && !environment.IsSessionTarget(args[0]) {
-				confirmation.defaultFolder = args[0]
-			}
-			options.Confirm = confirmation.confirm
-		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
+		}
+		if options.Scope == "" {
+			options.Scope = app.DeleteContainer
+			preview := options
+			preview.DryRun = true
+			result, err := e.Delete(cmd.Context(), preview)
+			if err != nil {
+				return err
+			}
+			if len(args) > 0 {
+				// Pin folder/default lookups to the targets shown by preflight;
+				// changing a default while the form is open must not retarget deletion.
+				targets := append(slices.Clone(result.Containers), result.Retained...)
+				if len(targets) == 0 {
+					return printDeleteResult(cmd.OutOrStdout(), result)
+				}
+				slices.Sort(targets)
+				options.Selection = app.Selection{Targets: slices.Compact(targets)}
+			}
+			m := newMenu(cmd)
+			defer func() { runErr = errors.Join(runErr, m.Finish()) }()
+			f := frontend{m: m, cmd: cmd, e: e, s: &resource.Service{Home: e.Store.Home}}
+			return f.deleteWithOptions(options)
 		}
 		result, err := e.Delete(cmd.Context(), options)
 		if err != nil {

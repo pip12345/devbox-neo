@@ -11,11 +11,16 @@ import (
 	"strings"
 	"testing"
 
+	"devbox/internal/app"
 	"devbox/internal/config"
 	"devbox/internal/environment"
 	"devbox/internal/resource"
 	"github.com/spf13/cobra"
 )
+
+func createSessionMenu(p sourcePicker, e *app.Engine, draft sessionCreationDraft) (sessionCreationDraft, bool, error) {
+	return sessionCreationMenu(p, e, draft, func(sessionCreationDraft) (bool, error) { return true, nil })
+}
 
 func TestCreateSessionAlwaysVisibleAndReportsMissingInputs(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
@@ -24,15 +29,15 @@ func TestCreateSessionAlwaysVisibleAndReportsMissingInputs(t *testing.T) {
 		draft   sessionCreationDraft
 		message string
 	}{
-		{"both", sessionCreationDraft{}, "Set a session name and add at least one config first."},
-		{"config", sessionCreationDraft{name: "Work"}, "Add at least one config first."},
-		{"name", sessionCreationDraft{sources: q.Sources}, "Set a session name first."},
+		{"both", sessionCreationDraft{workspace: q.Workspace}, "Set a session name and add at least one config first."},
+		{"config", sessionCreationDraft{workspace: q.Workspace, name: "Work"}, "Add at least one config first."},
+		{"name", sessionCreationDraft{workspace: q.Workspace, sources: q.Sources}, "Set a session name first."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			choice := 4
+			choice := 5
 			if len(tc.draft.sources) > 0 {
-				choice = 6
+				choice = 7
 			}
 			m := testMenu(context.Background(), strings.NewReader(fmt.Sprintf("%d\n0\n", choice)), &out)
 			p, err := newSourcePicker(m, e.Store.Home, q.Workspace)
@@ -59,7 +64,7 @@ func TestConfigCreationReusesStandaloneSetupAndPreservesDraft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	draft := sessionCreationDraft{name: "Work", sources: q.Sources}
+	draft := sessionCreationDraft{workspace: q.Workspace, name: "Work", sources: q.Sources}
 	after, proceed, err := createSessionMenu(p, e, draft)
 	if err != nil || proceed || after.name != "Work" || len(after.sources) != len(draft.sources)+1 {
 		t.Fatal(after, proceed, err, nested.String())
@@ -130,7 +135,7 @@ func TestCancelledAndFailedConfigSetupLeaveParentDraftUntouched(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			before := sessionCreationDraft{name: "Work", sources: q.Sources}
+			before := sessionCreationDraft{workspace: q.Workspace, name: "Work", sources: q.Sources}
 			after, proceed, err := createSessionMenu(p, e, before)
 			if err != nil || proceed || !reflect.DeepEqual(before, after) {
 				t.Fatal(after, proceed, err, out.String())
@@ -197,7 +202,7 @@ func TestReorderActionRequiresTwoConfigs(t *testing.T) {
 			}
 			sources = append(sources, r)
 		}
-		_, _, err = createSessionMenu(p, e, sessionCreationDraft{name: "Work", sources: sources})
+		_, _, err = createSessionMenu(p, e, sessionCreationDraft{workspace: q.Workspace, name: "Work", sources: sources})
 		if err != nil || strings.Contains(out.String(), "Reorder configs") != (count == 2) {
 			t.Fatal(count, err, out.String())
 		}

@@ -368,11 +368,22 @@ func (f *frontend) chooseDeleteTargets(targets *[]string) error {
 	})
 }
 func (f *frontend) delete(targets []string) error {
-	options := app.DeleteOptions{Selection: app.Selection{Targets: slices.Clone(targets)}, Scope: app.DeleteContainer}
+	return f.deleteWithOptions(app.DeleteOptions{Selection: app.Selection{Targets: targets}, Scope: app.DeleteContainer})
+}
+
+func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
+	options.Selection.Targets = slices.Clone(options.Selection.Targets)
+	targets := options.Selection.Targets
 	age := ""
+	if options.OlderThan > 0 {
+		age = options.OlderThan.String()
+	}
 	bulk := len(targets) == 0
 	title := "Delete sessions"
 	var fields []cliui.Field
+	if len(targets) > 1 {
+		fields = append(fields, cliui.Field{Label: "Sessions", Values: targets})
+	}
 	if len(targets) == 1 {
 		title = "Delete · " + displayCell(targets[0])
 		if record, err := f.e.Store.Read(f.m.Context, targets[0]); err == nil {

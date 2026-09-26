@@ -91,12 +91,12 @@ func TestSessionCollectionContainsOnlyFolderAndSessionObjects(t *testing.T) {
 	}
 }
 func TestCreationCallbackRetriesSameDraft(t *testing.T) {
-	f, out, q, _ := frontendFixture(t, strings.NewReader("6\n6\n"))
+	f, out, q, _ := frontendFixture(t, strings.NewReader("7\n7\n"))
 	p, err := newSourcePicker(f.m, f.s.Home, q.Workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := sessionCreationDraft{name: "Second", sources: append([]config.Reference(nil), q.Sources...)}
+	original := sessionCreationDraft{workspace: q.Workspace, name: "Second", sources: append([]config.Reference(nil), q.Sources...)}
 	attempts := 0
 	after, created, err := sessionCreationMenu(p, f.e, original, func(draft sessionCreationDraft) (bool, error) {
 		attempts++

@@ -12,35 +12,6 @@ import (
 	"devbox/internal/store"
 )
 
-// FolderSessions is a saved-state query, independent of Docker and config
-// resolution. Repair and default selection must not require a working daemon.
-func (e *Engine) FolderSessions(ctx context.Context, folder string) (string, []store.Entry, error) {
-	workspace, err := environment.CanonicalWorkspace(folder)
-	if err != nil {
-		return "", nil, err
-	}
-	entries, err := e.Store.Inventory(ctx)
-	if err != nil {
-		return "", nil, err
-	}
-	var selected []store.Entry
-	for _, entry := range entries {
-		if entry.Record.Identity.Workspace == workspace {
-			selected = append(selected, entry)
-		}
-	}
-	slices.SortFunc(selected, func(a, b store.Entry) int {
-		if a.Record.Identity.LocalName < b.Record.Identity.LocalName {
-			return -1
-		}
-		if a.Record.Identity.LocalName > b.Record.Identity.LocalName {
-			return 1
-		}
-		return 0
-	})
-	return workspace, selected, nil
-}
-
 func (e *Engine) SetDefault(ctx context.Context, selected store.Record) error {
 	lock, err := e.Store.Lock(ctx, selected.Identity.Name)
 	if err != nil {

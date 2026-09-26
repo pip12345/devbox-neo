@@ -162,8 +162,8 @@ func TestDeleteCLIFlagsAndTerminalPrompts(t *testing.T) {
 		{name: "negative age rejected", flags: []string{"--container", "--older-than", "-1h"}, wantError: true},
 		{name: "target and filters rejected", flags: []string{"--container", "--stopped"}, wantError: true},
 		{name: "json does not prompt", flags: []string{"--json"}, wantError: true},
-		{name: "interactive keeps state", input: "y\nn\n", prompts: 2},
-		{name: "interactive deletes state", input: "y\ny\n", prompts: 2, sessionGone: true},
+		{name: "interactive keeps state", input: "1\n2\n4\ny\nn\n", prompts: 2},
+		{name: "interactive deletes state", input: "1\n2\n4\ny\ny\n", prompts: 2, sessionGone: true},
 		{name: "explicit scope never prompts", flags: []string{"--session"}, input: "n\n", sessionGone: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -258,16 +258,16 @@ func TestDeleteFolderExplainsItsSelectedDefaultAndPhases(t *testing.T) {
 		}
 		return out.String()
 	}
-	cancelled := run("n\n")
-	label := "Delete test (default in " + selected.Identity.Workspace + ")"
-	if !strings.HasPrefix(cancelled, label) || !strings.Contains(cancelled, "Container: "+name) || !strings.Contains(cancelled, "Remove container? [y/N]") || !strings.Contains(cancelled, "Cancelled.") || strings.Contains(cancelled, "Delete saved data and history?") {
+	cancelled := run("1\n2\n4\nn\n0\n")
+	label := "Delete · " + selected.Identity.LocalName
+	if !strings.Contains(cancelled, label) || !strings.Contains(cancelled, "Folder: "+selected.Identity.Workspace) || !strings.Contains(cancelled, "Container: "+name) || !strings.Contains(cancelled, "Remove container? [y/N]") || !strings.Contains(cancelled, "Cancelled.") || strings.Contains(cancelled, "Delete saved data and history?") {
 		t.Fatal("folder default selection or first phase was unclear", cancelled)
 	}
 	if _, exists := daemon.Snapshot(name); !exists {
 		t.Fatal("declining container deletion removed the selected default")
 	}
-	kept := run("y\nn\n")
-	if strings.Count(kept, label) != 1 || !strings.Contains(kept, "Container removed. Delete saved data and history? [y/N]") || strings.Contains(kept, "Saved session data (including") || !strings.Contains(kept, "Session state and image retained") {
+	kept := run("1\n2\n4\ny\nn\n")
+	if !strings.Contains(kept, label) || !strings.Contains(kept, "Container removed. Delete saved data and history? [y/N]") || strings.Contains(kept, "Saved session data (including") || !strings.Contains(kept, "Session state and image retained") {
 		t.Fatal("saved-data decision did not explain the partial outcome", kept)
 	}
 	if _, exists := daemon.Snapshot(name); exists {
@@ -279,8 +279,8 @@ func TestDeleteFolderExplainsItsSelectedDefaultAndPhases(t *testing.T) {
 	if _, err := engine.Store.Read(ctx, name); err != nil {
 		t.Fatal("declining saved-data deletion removed the session", err)
 	}
-	missing := run("n\n")
-	if !strings.Contains(missing, label) || strings.Contains(missing, "Remove container?") || !strings.Contains(missing, "No container. Delete saved data and history? [y/N]") {
+	missing := run("1\n2\n4\nn\n0\n")
+	if !strings.Contains(missing, label) || strings.Contains(missing, "Remove container?") || !strings.Contains(missing, "No container.") || !strings.Contains(missing, "Delete saved data and history? [y/N]") {
 		t.Fatal("missing container did not go directly to saved-data decision", missing)
 	}
 }

@@ -29,7 +29,9 @@ type frontend struct {
 	e         *app.Engine
 	s         *resource.Service
 	focusItem string
-	sortBy    string
+	// Keep an explicitly opened folder visible even before it has sessions.
+	knownFolder string
+	sortBy      string
 }
 
 func runFrontend(cmd *cobra.Command, engine engineFactory, resources resourceFactory, configs bool) (err error) {
@@ -159,6 +161,9 @@ func sessionFields(v app.View) []cliui.Field {
 func (f *frontend) sessionCollection(report app.InventoryReport, sortBy string) *cliui.Collection {
 	collection := &cliui.Collection{Title: "Sessions", Empty: "No sessions yet."}
 	groups := map[string][]app.View{}
+	if f.knownFolder != "" {
+		groups[f.knownFolder] = nil
+	}
 	var ungrouped []app.View
 	for _, v := range report.Sessions {
 		if v.Workspace == "" {
@@ -418,6 +423,7 @@ func (f *frontend) folder(folder string) error {
 	if err != nil {
 		return err
 	}
+	f.knownFolder = workspace
 	return f.m.Run(func() (cliui.Screen, error) {
 		selected, defaultErr := f.e.Store.ReadDefault(f.m.Context, workspace)
 		name := "None"
@@ -497,10 +503,14 @@ func (f *frontend) createSession() error {
 }
 
 func (f *frontend) createSessionIn(folder string) error {
+	return f.createSessionFromDraft(sessionCreationDraft{workspace: folder})
+}
+
+func (f *frontend) createSessionFromDraft(draft sessionCreationDraft) error {
 	if err := f.loadEngine(); err != nil {
 		return err
 	}
-	workspace, err := environment.CanonicalWorkspace(folder)
+	workspace, err := environment.CanonicalWorkspace(draft.workspace)
 	if err != nil {
 		return err
 	}
@@ -509,7 +519,8 @@ func (f *frontend) createSessionIn(folder string) error {
 		return err
 	}
 	var result app.Result
-	draft, proceed, err := sessionCreationMenu(picker, f.e, sessionCreationDraft{workspace: workspace}, func(draft sessionCreationDraft) (bool, error) {
+	draft.workspace = workspace
+	draft, proceed, err := sessionCreationMenu(picker, f.e, draft, func(draft sessionCreationDraft) (bool, error) {
 		err := f.foreground("Create session", func(ctx context.Context) error {
 			var err error
 			result, err = f.e.Create(ctx, app.Request{Workspace: draft.workspace, LocalName: draft.name, Sources: draft.sources})
