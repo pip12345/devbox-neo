@@ -13,30 +13,42 @@ import (
 	"devbox/internal/resource"
 )
 
-func TestLocalSourcePickerUsesLaunchDirectoryAndSavesRelativeReference(t *testing.T) {
+func TestSourcePickerGroupsAndRelativeSelectionRoots(t *testing.T) {
 	launch := t.TempDir()
 	workspace := filepath.Join(launch, "workspace")
-	if err := os.Mkdir(workspace, 0700); err != nil {
-		t.Fatal(err)
+	for _, root := range []string{launch, workspace} {
+		completionFile(t, root, ".devbox/config.json", `{"version":1}`)
+		completionFile(t, root, "foreign-app/config.json", `{"theme":"dark"}`)
 	}
-	completionFile(t, launch, ".devbox/config.json", `{"version":1}`)
-	completionFile(t, launch, "foreign-app/config.json", `{"theme":"dark"}`)
 	s := menuService(t)
 	completionFile(t, s.Home, "configs/base/config.json", `{"version":1}`)
 	completionFile(t, s.Home, "configs/broken/config.json", `invalid`)
 	before := completionSnapshot(t, launch)
-	var out bytes.Buffer
-	p := sourcePicker{menu: testMenu(context.Background(), strings.NewReader("1\n"), &out), home: s.Home, workspace: workspace, cwd: launch, userHome: t.TempDir()}
-	ref, selected, err := p.choose(nil, "Back")
-	if err != nil || !selected || ref.Kind != config.ReferenceRelative || ref.Path != "../.devbox" || ref.Label != "./.devbox" {
-		t.Fatal(ref, selected, err, out.String())
-	}
-	text := out.String()
-	if !strings.Contains(text, "Local configs") || !strings.Contains(text, "Named configs") || strings.Index(text, "./.devbox") > strings.Index(text, "base") {
-		t.Fatal("local configs were not shown first", text)
-	}
-	if strings.Contains(text, "foreign-app") || !strings.Contains(text, "broken") {
-		t.Fatal("picker must hide invalid local configs but retain invalid named configs", text)
+	for _, tc := range []struct{ name, input, kind, path, label string }{
+		{"named", "1\n", config.ReferenceFixed, filepath.Join(s.Home, "configs/base"), "base"},
+		{"workspace", "3\n", config.ReferenceRelative, ".devbox", "./.devbox"},
+		{"cwd", "4\n", config.ReferenceRelative, "../.devbox", "./.devbox"},
+		{"entered", "5\n./.devbox\n", config.ReferenceRelative, "../.devbox", "./.devbox"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			p := sourcePicker{menu: testMenu(context.Background(), strings.NewReader(tc.input), &out), home: s.Home, workspace: workspace, cwd: launch, userHome: t.TempDir()}
+			ref, selected, err := p.choose(nil, "Back")
+			if err != nil || !selected || ref.Kind != tc.kind || ref.Path != tc.path || ref.Label != tc.label {
+				t.Fatal(ref, selected, err, out.String())
+			}
+			text := out.String()
+			named, work, cwd := strings.Index(text, "Named configs"), strings.Index(text, "Workspace configs"), strings.Index(text, "Current-directory configs")
+			if named < 0 || work <= named || cwd <= work {
+				t.Fatal("incorrect suggestion group order", text)
+			}
+			if strings.Contains(text, "(selected)") {
+				t.Fatal("discovery marked an unchosen config as selected", text)
+			}
+			if strings.Contains(text, "foreign-app") || !strings.Contains(text, "broken") {
+				t.Fatal("picker must hide invalid local configs but retain invalid named configs", text)
+			}
+		})
 	}
 	if !reflect.DeepEqual(before, completionSnapshot(t, launch)) {
 		t.Fatal("discovery or selection modified config files")

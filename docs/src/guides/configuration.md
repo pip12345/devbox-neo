@@ -32,9 +32,7 @@ The directory only takes effect after you select it in a session.
 
 ## Select the configs to use
 
-Open the session's menu in `devbox-neo`, then **Edit selected configs**. Choose **Add existing config** and select `./devconfig` under **Local configs**. Use **Enter a directory path** if it is elsewhere.
-
-Menus offer valid configs from the launch folder and its immediate subfolders, including hidden ones. Directory names are unrestricted. Nothing is automatically selected or applied.
+Open the session's menu in `devbox-neo`, then **Edit selected configs**. Choose **Add existing config** and select `./devconfig` under **Workspace configs**. Use **Enter a directory path** if it is elsewhere.
 
 Keep `base` first and `./devconfig` second. Later scalar settings replace earlier ones. Most lists append. For example, the project config can change the shared network setting without choosing another harness.
 
@@ -51,7 +49,7 @@ Include every config you want to keep: this replaces the list, never appends. Se
 ## Choose where configs live
 
 - `base` refers to `~/.devbox-neo/configs/base/`. It stays at that fixed path when a session is copied or moved.
-- `./devconfig` is selected relative to your current directory and follows the session's workspace during a transfer.
+- `--config ./devconfig` uses a directory relative to your current folder. It follows the session's workspace when copied or moved.
 
 Config directories themselves are not copied. [Reference rules](../reference/configuration.md#locations-and-references) cover other path forms.
 

@@ -15,7 +15,7 @@ Home selection: `--home` → `DEVBOX_HOME` → `~/.devbox-neo`. The old `~/.devb
 
 Use `./base` for a local directory named `base`. Duplicate directories, including symlink aliases, are rejected. Config directories are not copied during session transfers.
 
-Menus suggest valid local configs from the current directory and its immediate subdirectories.
+Picker order: **Named configs** → **Workspace configs** → **Current-directory configs**. Relative names in the picker refer to their group's directory. Relative paths you type, including `--config` arguments, refer to your current directory.
 
 ## Config fields
 

@@ -6,6 +6,12 @@ Session structure refactor implemented: schema 6 separates settings/applied runt
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Session config suggestion groups — implemented, live acceptance pending
+
+- Session creation and config-chain editing suggest named configs first, workspace configs second, and current-directory configs third. Canonical paths deduplicate directory aliases and overlapping search results; the first group retains the reference's fixed/relative semantics.
+- Discovered selections resolve against their group's directory. Typed paths and `--config` remain invoking-directory-relative. No automatic selections, new discovery registry, or standalone config-browser changes.
+- Regression coverage checks ordering, same-named configs in different roots, explicit path entry, current-selection markers, canonical deduplication, cancellation, and unavailable discovery roots. `make test-fast`, `make build`, and `git diff --check` pass. Live terminal acceptance remains unrun.
+
 ## Dedicated Docker build contexts — implemented, live acceptance pending
 
 - Image customization uses only `<config>/docker/Dockerfile`, with `<config>/docker/` as its isolated build context. Settings, harness files, and lifecycle scripts no longer enter context capture or invalidate image fingerprints as unrelated files.

@@ -16,6 +16,8 @@ Config browsing does not initialize Docker. Session inventory errors remain visi
 
 Session creation and source editing share config-chain controls with different save callbacks. Both nested and standalone config creation use `cli.createConfig` and `resource.CreateConfig`.
 
+The shared source picker orders suggestions as named configs, workspace configs, then invoking-directory configs. Canonical directory identity deduplicates both search roots and candidates; the first candidate wins, retaining its named/fixed or discovered/relative reference semantics. Each discovered row retains its search root so selecting a workspace-relative name cannot accidentally choose a same-named config under the invoking directory. Typed paths still use the invoking directory, and all relative selections are captured against the session workspace. Workspace/current-directory discovery failures are reported without removing candidates from other roots; discovery never saves a selection. The standalone config browser has no workspace target and keeps its separate current-directory inventory.
+
 Drafts remain local until explicit submission. Optional-file drafts copy slices so cancellation cannot mutate the accepted selection. A successfully created config is independently saved; cancellation of its parent session draft does not remove it.
 
 Browser creation supplies a materialization callback so build errors return to the populated form. A committed creation whose final Stop failed opens the saved session for recovery rather than retrying Create. Other successful one-shot forms close; failures retain inputs.

@@ -42,6 +42,33 @@ func TestSelectedSourcesShowLabelsAndPathsWithoutTypes(t *testing.T) {
 	}
 }
 
+func TestSourcePickerMarksCurrentSelectionUsingEachGroupsDirectory(t *testing.T) {
+	s := menuService(t)
+	workspace, cwd := t.TempDir(), t.TempDir()
+	for _, root := range []string{workspace, cwd} {
+		completionFile(t, root, "devconfig/config.json", `{"version":1}`)
+	}
+	for _, directory := range []string{workspace, cwd} {
+		current, err := config.CaptureReference(s.Home, workspace, directory, t.TempDir(), "./devconfig")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		p := sourcePicker{menu: testMenu(context.Background(), strings.NewReader("0\n"), &out), home: s.Home, workspace: workspace, cwd: cwd, userHome: t.TempDir()}
+		if _, chosen, err := p.choose(&current, "Back"); err != nil || chosen {
+			t.Fatal(chosen, err)
+		}
+		if strings.Count(out.String(), "(selected)") != 1 {
+			t.Fatal("picker did not mark exactly one current selection", out.String())
+		}
+		text := out.String()
+		first, second := strings.Index(text, "[1]"), strings.Index(text, "[2]")
+		if first < 0 || second <= first || strings.Contains(text[first:second], "(selected)") != (directory == workspace) {
+			t.Fatal("picker marked the same-named config in the wrong directory", text)
+		}
+	}
+}
+
 func TestSourcePickerShowsReferenceTypeWithoutAnotherConfirmation(t *testing.T) {
 	s := menuService(t)
 	owner := testConfigOwner(t, s.Home, "base")
@@ -59,8 +86,8 @@ func TestSourcePickerShowsReferenceTypeWithoutAnotherConfirmation(t *testing.T) 
 	for _, test := range []struct {
 		name, input, kind, path string
 	}{
-		{"named", "2\n", config.ReferenceFixed, owner.Root},
-		{"discovered", "1\n", config.ReferenceRelative, "devconfig"},
+		{"named", "1\n", config.ReferenceFixed, owner.Root},
+		{"discovered", "2\n", config.ReferenceRelative, "devconfig"},
 		{"entered", "3\n./devconfig\n", config.ReferenceRelative, "devconfig"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

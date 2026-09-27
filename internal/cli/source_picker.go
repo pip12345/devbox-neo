@@ -30,8 +30,8 @@ func newSourcePicker(m menu, home, workspace string) (sourcePicker, error) {
 func (p sourcePicker) capture(input string) (config.Reference, error) {
 	return config.CaptureReference(p.home, p.workspace, p.cwd, p.userHome, input)
 }
-func (p sourcePicker) existing(input string) (config.Reference, error) {
-	reference, err := p.capture(input)
+func (p sourcePicker) existing(input, directory string) (config.Reference, error) {
+	reference, err := config.CaptureReference(p.home, p.workspace, directory, p.userHome, input)
 	if err != nil {
 		return reference, err
 	}
@@ -66,11 +66,70 @@ func (p sourcePicker) create() (config.Reference, bool, error) {
 	return reference, err == nil, err
 }
 
+type sourceCandidate struct {
+	resource.ConfigEntry
+	group, directory string
+}
+
+// Discovery roots determine what a suggested relative name refers to. Keep
+// that root with the row so workspace suggestions are not reinterpreted using
+// the invoking directory when selected. Explicit paths still use the cwd.
+func (p sourcePicker) candidates() ([]sourceCandidate, error) {
+	entries, err := os.ReadDir(filepath.Join(p.home, "configs"))
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	var candidates []sourceCandidate
+	seen := map[string]bool{}
+	add := func(entry resource.ConfigEntry, group, directory string) {
+		canonical, err := config.CanonicalPath(entry.Path)
+		if err != nil {
+			p.Notice("Config discovery unavailable: " + displayCell(err.Error()))
+			return
+		}
+		if seen[canonical] {
+			return
+		}
+		seen[canonical] = true
+		candidates = append(candidates, sourceCandidate{ConfigEntry: entry, group: group, directory: directory})
+	}
+	for _, entry := range entries {
+		path := filepath.Join(p.home, "configs", entry.Name())
+		if info, err := os.Lstat(filepath.Join(path, "config.json")); err == nil && info.Mode().IsRegular() {
+			add(resource.ConfigEntry{Name: entry.Name(), Path: path}, "Named configs", p.cwd)
+		}
+	}
+	roots := map[string]bool{}
+	for _, group := range []struct{ label, directory string }{
+		{"Workspace configs", p.workspace},
+		{"Current-directory configs", p.cwd},
+	} {
+		canonical, err := config.CanonicalPath(group.directory)
+		if err != nil {
+			p.Notice(group.label + " discovery unavailable: " + displayCell(err.Error()))
+			continue
+		}
+		if roots[canonical] {
+			continue
+		}
+		roots[canonical] = true
+		configs, err := resource.DiscoverConfigs(group.directory)
+		if err != nil {
+			p.Notice(group.label + " discovery unavailable: " + displayCell(err.Error()))
+			continue
+		}
+		for _, entry := range configs {
+			add(entry, group.label, group.directory)
+		}
+	}
+	return candidates, nil
+}
+
 func (p sourcePicker) choose(current *config.Reference, back string) (config.Reference, bool, error) {
 	var result config.Reference
 	chosen := false
-	accept := func(input string) (bool, error) {
-		reference, err := p.existing(input)
+	accept := func(input, directory string) (bool, error) {
+		reference, err := p.existing(input, directory)
 		if err != nil {
 			return false, p.report(err)
 		}
@@ -78,50 +137,36 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 		return true, nil
 	}
 	err := p.Run(func() (cliui.Screen, error) {
-		entries, err := os.ReadDir(filepath.Join(p.home, "configs"))
-		if err != nil && !os.IsNotExist(err) {
-			return cliui.Screen{}, err
-		}
-		configs, err := resource.DiscoverConfigs(p.cwd)
+		configs, err := p.candidates()
 		if err != nil {
-			p.Notice("Local config discovery unavailable: " + displayCell(err.Error()))
-		}
-		localCount := len(configs)
-		for _, entry := range entries {
-			path := filepath.Join(p.home, "configs", entry.Name())
-			if info, err := os.Lstat(filepath.Join(path, "config.json")); err == nil && info.Mode().IsRegular() {
-				configs = append(configs, resource.ConfigEntry{Name: entry.Name(), Path: path})
-			}
+			return cliui.Screen{}, err
 		}
 		nameWidth := len("NAME")
 		for _, entry := range configs {
 			nameWidth = max(nameWidth, len(displayCell(entry.Name)))
 		}
 		var actions []cliui.Action
-		for i, entry := range configs {
+		for _, entry := range configs {
 			name := entry.Name
-			kind, group := "fixed", "Named configs"
-			if i < localCount {
-				kind, group = "relative", "Local configs"
+			candidate, err := config.CaptureReference(p.home, p.workspace, entry.directory, p.userHome, name)
+			if err != nil {
+				return cliui.Screen{}, err
 			}
 			selected := false
 			if current != nil {
-				candidate, err := p.capture(name)
-				if err == nil {
-					a, aErr := candidate.Expand(p.workspace)
-					b, bErr := current.Expand(p.workspace)
-					if aErr == nil && bErr == nil {
-						ca, ea := config.CanonicalPath(a.Path)
-						cb, eb := config.CanonicalPath(b.Path)
-						selected = ea == nil && eb == nil && ca == cb
-					}
+				a, aErr := candidate.Expand(p.workspace)
+				b, bErr := current.Expand(p.workspace)
+				if aErr == nil && bErr == nil {
+					ca, ea := config.CanonicalPath(a.Path)
+					cb, eb := config.CanonicalPath(b.Path)
+					selected = ea == nil && eb == nil && ca == cb
 				}
 			}
 			description := ""
 			if entry.Error != "" {
 				description = displayCell(entry.Error)
 			}
-			actions = append(actions, cliui.Action{Label: fmt.Sprintf("%-*s  %-8s  %s", nameWidth, displayCell(name), kind, displayCell(entry.Path)), Group: group, Description: description, Selected: selected, Run: func() (bool, error) { return accept(name) }})
+			actions = append(actions, cliui.Action{Label: fmt.Sprintf("%-*s  %-8s  %s", nameWidth, displayCell(name), candidate.Kind, displayCell(entry.Path)), Group: entry.group, Description: description, Selected: selected, Run: func() (bool, error) { return accept(name, entry.directory) }})
 		}
 		actions = append(actions, cliui.Action{Label: "Enter a directory path", BreakBefore: len(configs) > 0, Run: func() (bool, error) {
 			initial := ""
@@ -149,7 +194,7 @@ func (p sourcePicker) choose(current *config.Reference, back string) (config.Ref
 			if err != nil || !accepted {
 				return false, err
 			}
-			return accept(input)
+			return accept(input, p.cwd)
 		}})
 		actions = append(actions, cliui.Action{Label: "Create and add config", Hidden: len(configs) > 0, Run: func() (bool, error) {
 			reference, created, err := p.create()
