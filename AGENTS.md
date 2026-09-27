@@ -1,6 +1,6 @@
 # Working on Devbox Neo
 
-This directory is a separate Git repository and Go module. The executable is `devbox-neo`; `dbx` is only an optional user alias. Support Linux only.
+This directory is a separate Git repository and Go module. The executable is `dbx`. Support Linux only.
 
 ## Build and test
 

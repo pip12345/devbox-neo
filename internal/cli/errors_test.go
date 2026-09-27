@@ -37,8 +37,8 @@ func TestResourceJSONErrorsAreStructuredOnce(t *testing.T) {
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		t.Fatal("multiple output payloads", err)
 	}
-	want := []string{"devbox-neo", "--home", home, "config", "create", "missing"}
-	if report.Code != "config_missing" || report.Operation != "devbox-neo config edit" || len(report.Next) != 1 || !reflect.DeepEqual(report.Next[0].Command, want) || report.Target != filepath.Join(home, "configs/missing/config.json") {
+	want := []string{"dbx", "--home", home, "config", "create", "missing"}
+	if report.Code != "config_missing" || report.Operation != "dbx config edit" || len(report.Next) != 1 || !reflect.DeepEqual(report.Next[0].Command, want) || report.Target != filepath.Join(home, "configs/missing/config.json") {
 		t.Fatal(report)
 	}
 	if stderr.Len() != 0 {
@@ -48,7 +48,7 @@ func TestResourceJSONErrorsAreStructuredOnce(t *testing.T) {
 
 func TestErrorRenderingPreservesStreamsStatusAndJoinedCleanup(t *testing.T) {
 	for _, asJSON := range []bool{false, true} {
-		root := &cobra.Command{Use: "devbox-neo", SilenceErrors: true, SilenceUsage: true}
+		root := &cobra.Command{Use: "dbx", SilenceErrors: true, SilenceUsage: true}
 		var jsonFlag bool
 		foreground := &docker.ExitError{Code: 23, Operation: "exec"}
 		failure := errors.Join(commanderror.New("docker_command_failed", "foreground failed", "container", foreground),
@@ -193,7 +193,7 @@ func TestErrorNextStepsScopeOnlyDevboxCommands(t *testing.T) {
 	}
 	next := []commanderror.Step{commanderror.Next("Inspect", "status", "container"), {Command: []string{"docker", "info"}}}
 	scoped := scopedSteps(cmd, next, home)
-	if !reflect.DeepEqual(scoped[1].Command, next[1].Command) || !reflect.DeepEqual(next[0].Command, []string{"devbox-neo", "status", "container"}) {
+	if !reflect.DeepEqual(scoped[1].Command, next[1].Command) || !reflect.DeepEqual(next[0].Command, []string{"dbx", "status", "container"}) {
 		t.Fatal("external command or source steps mutated")
 	}
 	if text := stepsText(scoped); !strings.Contains(text, shellQuote(home)) {
@@ -218,8 +218,8 @@ func TestHumanErrorsUseShortHeaderAndLabeledActions(t *testing.T) {
 	}
 	want := "Error: Environment already exists.\n" +
 		"Target: /work/project\n\n" +
-		"Open:\n  devbox-neo --home '/home/custom home' open /work/project\n\n" +
-		"Or recreate with current configuration:\n  devbox-neo --home '/home/custom home' recreate /work/project\n"
+		"Open:\n  dbx --home '/home/custom home' open /work/project\n\n" +
+		"Or recreate with current configuration:\n  dbx --home '/home/custom home' recreate /work/project\n"
 	if stderr.String() != want || out.Len() != 0 {
 		t.Fatalf("got %q; want %q", stderr.String(), want)
 	}

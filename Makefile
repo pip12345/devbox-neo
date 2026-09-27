@@ -1,6 +1,6 @@
 GO ?= $(firstword $(wildcard $(CURDIR)/.tools/go/bin/go $(CURDIR)/../.tools/go/bin/go) go)
 GOFMT ?= $(shell $(GO) env GOROOT)/bin/gofmt
-BINARY ?= bin/devbox-neo
+BINARY ?= bin/dbx
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS ?= -X devbox/internal/cli.Version=$(VERSION)
 DOCS_IMAGE := zensical/zensical:0.0.62@sha256:162b7e191224f57b8c584debe51b157b9802efd25d3a8948e4e0f64c1baaaee6
@@ -20,7 +20,7 @@ test-integration:
 	DEVBOX_DOCKER_TEST=1 $(GO) test -tags integration -count=1 -timeout=60m ./...
 build:
 	mkdir -p $(dir $(BINARY))
-	$(GO) build -ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/devbox
+	$(GO) build -ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/dbx
 docs-build:
 	docker run --rm --user "$$(id -u):$$(id -g)" -v "$(CURDIR):/docs" $(DOCS_IMAGE) build
 docs-serve:

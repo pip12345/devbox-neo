@@ -116,7 +116,7 @@ func TestNativeRecreateRefreshesNavigationAndRetainsFailedForm(t *testing.T) {
 			}
 			p := newTerminalProbe(t)
 			done := p.workflow(func(ctx context.Context, tty *os.File) (err error) {
-				cmd := &cobra.Command{Use: "devbox-neo"}
+				cmd := &cobra.Command{Use: "dbx"}
 				cmd.SetContext(ctx)
 				cmd.SetIn(tty)
 				cmd.SetOut(tty)

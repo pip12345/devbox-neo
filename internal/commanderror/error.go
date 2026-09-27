@@ -23,5 +23,5 @@ func New(code, message, target string, cause error, next ...Step) *Error {
 }
 
 func Next(reason string, args ...string) Step {
-	return Step{Command: append([]string{"devbox-neo"}, args...), Reason: reason}
+	return Step{Command: append([]string{"dbx"}, args...), Reason: reason}
 }

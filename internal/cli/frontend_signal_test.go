@@ -36,7 +36,7 @@ func TestForegroundSIGINTReturnsToMenu(t *testing.T) {
 			fmt.Fprintln(c.Stdout, "FOREGROUND CONTEXT CANCELLED")
 			return ctx.Err()
 		}
-		cmd := &cobra.Command{Use: "devbox-neo"}
+		cmd := &cobra.Command{Use: "dbx"}
 		cmd.SetContext(ctx)
 		cmd.SetIn(os.Stdin)
 		cmd.SetOut(os.Stdout)

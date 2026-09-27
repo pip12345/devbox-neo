@@ -48,13 +48,13 @@ func TestConfigHintsKeepEnteredReference(t *testing.T) {
 	}
 	_, err = s.EditConfig(context.Background(), owner, SetupOptions{Artifacts: []string{"setup.sh"}})
 	var actionable *commanderror.Error
-	if !errors.As(err, &actionable) || !reflect.DeepEqual(actionable.Next[0].Command, []string{"devbox-neo", "config", "create", "./local-config"}) {
+	if !errors.As(err, &actionable) || !reflect.DeepEqual(actionable.Next[0].Command, []string{"dbx", "config", "create", "./local-config"}) {
 		t.Fatal(err)
 	}
 	if _, err := s.CreateConfig(context.Background(), owner, SetupOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CheckConfigCreation(owner); !errors.As(err, &actionable) || !reflect.DeepEqual(actionable.Next[0].Command, []string{"devbox-neo", "config", "edit", "./local-config"}) {
+	if err := s.CheckConfigCreation(owner); !errors.As(err, &actionable) || !reflect.DeepEqual(actionable.Next[0].Command, []string{"dbx", "config", "edit", "./local-config"}) {
 		t.Fatal(err)
 	}
 }

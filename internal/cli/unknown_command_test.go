@@ -30,7 +30,7 @@ func TestUnknownCommandsUseStructuredSuggestionsWithoutInitializingHome(t *testi
 		if _, err := os.Stat(home); !os.IsNotExist(err) {
 			t.Fatal("initialized home", err)
 		}
-		if args[0] == "/tmp" && !strings.Contains(text, "Did you mean:\n  devbox-neo --home "+home+" stop\n") {
+		if args[0] == "/tmp" && !strings.Contains(text, "Did you mean:\n  dbx --home "+home+" stop\n") {
 			t.Fatal("missing structured suggestion", text)
 		}
 		if args[0] == "config" && !strings.Contains(text, " config create\n") {

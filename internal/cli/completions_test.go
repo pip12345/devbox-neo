@@ -192,9 +192,9 @@ func TestContainerCompletionOnlyInspectsSelectedInstallation(t *testing.T) {
 	home := t.TempDir()
 	installation := strings.Repeat("a", 32)
 	completionFile(t, home, "state/installation-id", installation+"\n")
-	owned := docker.Container{ID: "owned-id", Name: "/devbox-owned"}
+	owned := docker.Container{ID: "owned-id", Name: "/dbx-owned"}
 	owned.Config.Labels = docker.Owner{Installation: installation}.Labels()
-	foreign := docker.Container{ID: "foreign-id", Name: "/devbox-foreign"}
+	foreign := docker.Container{ID: "foreign-id", Name: "/dbx-foreign"}
 	foreign.Config.Labels = docker.Owner{Installation: strings.Repeat("b", 32)}.Labels()
 	daemon := &dockertest.Daemon{Containers: map[string]docker.Container{"owned": owned, "foreign": foreign}}
 	cmd := &cobra.Command{Use: "test"}
@@ -202,7 +202,7 @@ func TestContainerCompletionOnlyInspectsSelectedInstallation(t *testing.T) {
 	cmd.Flags().String("home", home, "")
 	before := completionSnapshot(t, home)
 	source := completionContainers(docker.Runtime{Runner: daemon})
-	if got := source(cmd); !slices.Equal(got, []string{"devbox-owned"}) {
+	if got := source(cmd); !slices.Equal(got, []string{"dbx-owned"}) {
 		t.Fatal("incorrect installation completion", got)
 	}
 	if len(daemon.Calls) != 2 || !slices.Equal(daemon.Calls[0][:2], []string{"container", "ls"}) || !slices.Equal(daemon.Calls[1], []string{"container", "inspect", "owned-id"}) {

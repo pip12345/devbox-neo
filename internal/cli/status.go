@@ -150,7 +150,7 @@ func printStatusList(out io.Writer, views []app.View) error {
 			}
 		}
 		if view.Error == "" && view.ConfigError == "" && view.Pending == nil && (view.Desired == environment.Recreate || view.Desired == environment.RebuildAndRecreate) {
-			if _, err := fmt.Fprintf(out, "  devbox-neo recreate %s\n", displayCell(view.Target)); err != nil {
+			if _, err := fmt.Fprintf(out, "  dbx recreate %s\n", displayCell(view.Target)); err != nil {
 				return err
 			}
 		}

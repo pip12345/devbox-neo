@@ -1,6 +1,6 @@
 # Customize your environment
 
-Open `devbox-neo config edit base` and choose **Add optional files**. Add only what you need. Existing files are kept.
+Open `dbx config edit base` and choose **Add optional files**. Add only what you need. Existing files are kept.
 
 These examples change the shared `base` config. Use a [project config](configuration.md#add-settings-for-one-project) when the customization belongs to one workspace.
 

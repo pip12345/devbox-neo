@@ -54,7 +54,7 @@ func diagnosticFixture(t *testing.T) (*app.Engine, *dockertest.Daemon, app.Reque
 	if err != nil || len(spec.Warnings) != 1 {
 		t.Fatal("expected one resolution warning", spec.Warnings, err)
 	}
-	want := "Warning: this container differs from current configuration:\n  - network: default -> host\n\nUsing the existing container without applying these creation changes.\nRecreate to apply changes:\n  devbox-neo recreate " + result.SessionID + "\n"
+	want := "Warning: this container differs from current configuration:\n  - network: default -> host\n\nUsing the existing container without applying these creation changes.\nRecreate to apply changes:\n  dbx recreate " + result.SessionID + "\n"
 	want += fmt.Sprintf("Warning: %s\n", spec.Warnings[0])
 	return e, d, q, want
 }

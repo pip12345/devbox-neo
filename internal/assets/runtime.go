@@ -14,7 +14,7 @@ import (
 const AgentGuide = `# Devbox container
 
 You are inside a persistent Linux development container. /workspace is the host
-project: changes there affect the user's real files. Docker and devbox-neo normally
+project: changes there affect the user's real files. Docker and dbx normally
 run on the host. Ask the user for container lifecycle changes; do not start a
 Docker daemon or try to manage this container from inside it.
 

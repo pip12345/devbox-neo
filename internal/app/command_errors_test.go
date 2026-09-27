@@ -134,7 +134,7 @@ func TestMissingHarnessGuidanceUsesResolvedOwner(t *testing.T) {
 			q.Sources = q.Sources[1:]
 			write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1}`)
 		}
-		want := []string{"devbox-neo", "config", "edit", q.Sources[0].Path, "--harness", "<name>"}
+		want := []string{"dbx", "config", "edit", q.Sources[0].Path, "--harness", "<name>"}
 		_, err := e.Create(context.Background(), q)
 		var missing *commanderror.Error
 		if !errors.As(err, &missing) || missing.Code != "harness_required" || len(missing.Next) != 1 || !reflect.DeepEqual(missing.Next[0].Command, want) {

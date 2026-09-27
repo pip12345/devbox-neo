@@ -25,10 +25,10 @@ func TestTransferRetryCommandsKeepExactEndpoints(t *testing.T) {
 		from, to environment.Identity
 		want     []string
 	}{
-		{"relocate", source, destination, []string{"devbox-neo", "copy", "--move", source.Name, destination.Workspace, "--as", "Main"}},
-		{"clone", source, destination, []string{"devbox-neo", "copy", source.Name, destination.Workspace, "--as", "Main"}},
-		{"relocate", source, other, []string{"devbox-neo", "copy", "--move", source.Name, workspace, "--as", "Experiment"}},
-		{"clone", other, source, []string{"devbox-neo", "copy", other.Name, workspace, "--as", "Main"}},
+		{"relocate", source, destination, []string{"dbx", "copy", "--move", source.Name, destination.Workspace, "--as", "Main"}},
+		{"clone", source, destination, []string{"dbx", "copy", source.Name, destination.Workspace, "--as", "Main"}},
+		{"relocate", source, other, []string{"dbx", "copy", "--move", source.Name, workspace, "--as", "Experiment"}},
+		{"clone", other, source, []string{"dbx", "copy", other.Name, workspace, "--as", "Main"}},
 	} {
 		journal := Transfer{Mode: test.mode, Source: test.from, Destination: test.to}
 		if got := journal.RetryStep(); !reflect.DeepEqual(got.Command, test.want) {

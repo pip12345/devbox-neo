@@ -12,7 +12,7 @@ import (
 func (e *Engine) creationDrift(result *Result, r store.Record, spec environment.Spec) {
 	drift := environment.CompareInputs(r.Applied.Inputs, spec.Inputs)
 	if drift.Change == environment.Recreate || drift.Change == environment.RebuildAndRecreate {
-		e.diagnose(result, Diagnostic{Code: "creation_drift", Message: "this container differs from current configuration:", Command: []string{"devbox-neo", "recreate", r.ID}, Change: drift.Change, PendingInputChanges: drift.PendingCreationChanges()})
+		e.diagnose(result, Diagnostic{Code: "creation_drift", Message: "this container differs from current configuration:", Command: []string{"dbx", "recreate", r.ID}, Change: drift.Change, PendingInputChanges: drift.PendingCreationChanges()})
 	}
 }
 

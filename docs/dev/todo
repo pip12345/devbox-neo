@@ -2,7 +2,7 @@
   - Use subdued text for inactive devboxes to make active ones easier to spot.
 - devbox interactive config menus
   - Extend the improved visual styling to other menus, including profile init.
-- Investigate and fix devbox-neo shell not importing terminal setup properly.
+- Investigate and fix dbx shell not importing terminal setup properly.
 
 Why the fuck do sessions have -rewrite in them?
 ~/.devbox-neo/sessions/devbox-rewrite-b5f92fb1f4f3413d7e46ce8c.profile-pi-basic

@@ -21,7 +21,7 @@ func frontendFixture(t *testing.T, input io.Reader) (*frontend, *bytes.Buffer, a
 	t.Helper()
 	e, q, name := namedCLIFixture(t)
 	out := new(bytes.Buffer)
-	cmd := &cobra.Command{Use: "devbox-neo"}
+	cmd := &cobra.Command{Use: "dbx"}
 	cmd.SetContext(context.Background())
 	cmd.SetIn(input)
 	cmd.SetOut(out)

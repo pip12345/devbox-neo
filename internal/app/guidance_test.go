@@ -24,7 +24,7 @@ func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
 		if !errors.As(err, &actionable) || actionable.Code != code || actionable.Target != result.SessionID || len(actionable.Next) != 1 {
 			t.Fatalf("unexpected guidance: %v", err)
 		}
-		if !reflect.DeepEqual(actionable.Next[0].Command, append([]string{"devbox-neo"}, command...)) || strings.Contains(err.Error(), "\n") {
+		if !reflect.DeepEqual(actionable.Next[0].Command, append([]string{"dbx"}, command...)) || strings.Contains(err.Error(), "\n") {
 			t.Fatal("actions must be structured, not embedded in the message", actionable)
 		}
 	}

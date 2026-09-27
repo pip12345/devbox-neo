@@ -4,10 +4,10 @@ A config directory holds settings and optional customization files. Several sess
 
 ## Change shared settings
 
-Run `devbox-neo config`, select `base`, and press **Enter**. Or go straight to it:
+Run `dbx config`, select `base`, and press **Enter**. Or go straight to it:
 
 ```sh
-devbox-neo config edit base
+dbx config edit base
 ```
 
 Choose a setting to edit it. Changes save immediately. Leaving the editor does not undo them. **Remove this setting** removes the value from this config, allowing an earlier config or the built-in default to supply it.
@@ -19,20 +19,20 @@ Editing `base` affects every session using it. The editor lists those sessions.
 From your project folder, create a separate config:
 
 ```sh
-devbox-neo config create ./devconfig
+dbx config create ./devconfig
 ```
 
 Leave **Harness** unset when `base` already selects your coding tool. Choose **Create config**, then edit its settings:
 
 ```sh
-devbox-neo config edit ./devconfig
+dbx config edit ./devconfig
 ```
 
 The directory only takes effect after you select it in a session.
 
 ## Select the configs to use
 
-Open the session's menu in `devbox-neo`, then **Edit selected configs**. Choose **Add existing config** and select `./devconfig` under **Workspace configs**. Use **Enter a directory path** if it is elsewhere.
+Open the session's menu in `dbx`, then **Edit selected configs**. Choose **Add existing config** and select `./devconfig` under **Workspace configs**. Use **Enter a directory path** if it is elsewhere.
 
 Keep `base` first and `./devconfig` second. Later scalar settings replace earlier ones. Most lists append. For example, the project config can change the shared network setting without choosing another harness.
 
@@ -41,7 +41,7 @@ Use the same menu to replace, remove, or reorder configs. Use **Replace config**
 To replace the entire selection without a menu:
 
 ```sh
-devbox-neo edit . --name work --config base --config ./devconfig
+dbx edit . --name work --config base --config ./devconfig
 ```
 
 Include every config you want to keep: this replaces the list, never appends. See the [field table](../reference/configuration.md#config-fields) for exact merge rules.

@@ -15,7 +15,7 @@ import (
 
 func TestExecutableName(t *testing.T) {
 	cmd := New()
-	if cmd.Name() != "devbox-neo" {
+	if cmd.Name() != "dbx" {
 		t.Fatalf("unexpected executable name: %s", cmd.Name())
 	}
 	out := new(bytes.Buffer)
@@ -28,13 +28,13 @@ func TestExecutableName(t *testing.T) {
 	if !strings.HasPrefix(help, "Persistent development environments\n") {
 		t.Fatalf("incorrect help description: %s", help)
 	}
-	if !strings.Contains(help, "open") || strings.Contains(help, "devbox-neo <target>") || strings.Contains(help, "rewrite") {
+	if !strings.Contains(help, "open") || strings.Contains(help, "dbx <target>") || strings.Contains(help, "rewrite") {
 		t.Fatalf("incorrect root help: %s", help)
 	}
 	if strings.Contains(help, "--continue") || strings.Contains(help, "--network string") {
 		t.Fatalf("root help contains open-only flags: %s", help)
 	}
-	steps := []string{"# First run", "devbox-neo config create base", "devbox-neo create .", "devbox-neo edit .", "devbox-neo open ."}
+	steps := []string{"# First run", "dbx config create base", "dbx create .", "dbx edit .", "dbx open ."}
 	for i, step := range steps {
 		if index := strings.Index(help, step); index < 0 || i > 0 && index <= strings.Index(help, steps[i-1]) {
 			t.Fatalf("first-run help steps are missing or out of order: %s", help)
@@ -126,8 +126,8 @@ func TestCreateAndEditHelpShowInteractiveAndDirectExamples(t *testing.T) {
 		command string
 		want    []string
 	}{
-		{"create", []string{"devbox-neo create .", "devbox-neo create . --name work --config base"}},
-		{"edit", []string{"devbox-neo edit .", "devbox-neo edit . --name work --default"}},
+		{"create", []string{"dbx create .", "dbx create . --name work --config base"}},
+		{"edit", []string{"dbx edit .", "dbx edit . --name work --default"}},
 	} {
 		t.Run(tc.command, func(t *testing.T) {
 			root := New()
@@ -276,10 +276,10 @@ func TestPlainOpenAndStartRejectMissingSessionWithScopedGuidance(t *testing.T) {
 						message = "No session named \"test\" exists for this folder."
 					}
 					want := "Error: " + message + "\nTarget: " + workspace + "\n\n" +
-						"Create a session:\n  devbox-neo --home " + home + " create " + shellQuote(workspace) + "\n"
+						"Create a session:\n  dbx --home " + home + " create " + shellQuote(workspace) + "\n"
 					if selection != "explicit" {
-						want += "\nThen select a default:\n  devbox-neo --home " + home + " edit " + shellQuote(workspace) + "\n" +
-							"\nThen open it:\n  devbox-neo --home " + home + " open " + shellQuote(workspace) + "\n"
+						want += "\nThen select a default:\n  dbx --home " + home + " edit " + shellQuote(workspace) + "\n" +
+							"\nThen open it:\n  dbx --home " + home + " open " + shellQuote(workspace) + "\n"
 					}
 					if out.String() != want {
 						t.Fatalf("got %q; want %q", out.String(), want)

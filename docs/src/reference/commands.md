@@ -1,6 +1,6 @@
 # Commands
 
-Prefix commands below with `devbox-neo`. Use `<command> --help` for options. For a walkthrough, start with [Getting started](../guides/getting-started.md).
+Prefix commands below with `dbx`. Use `<command> --help` for options. For a walkthrough, start with [Getting started](../guides/getting-started.md).
 
 ## Global options and targets
 
@@ -114,7 +114,7 @@ The browser offers Make/Clear folder default in the session menu. Selection does
 ## SSH sharing
 
 ```sh
-devbox-neo ssh <target> <destination> [--host-master]
+dbx ssh <target> <destination> [--host-master]
 ```
 
 | Option / input | Meaning |
@@ -145,8 +145,8 @@ Exports include `DEVBOX_HOST`, `DEVBOX_NETWORK`, `DEVBOX_PRIMARY_NETWORK`, and `
 ## Transfers
 
 ```sh
-devbox-neo copy <target> [destination-folder] [--as NAME] [--move]
-devbox-neo rename <target> --to NAME [--dry-run] [--json]
+dbx copy <target> [destination-folder] [--as NAME] [--move]
+dbx rename <target> --to NAME [--dry-run] [--json]
 ```
 
 | Option | Meaning |
@@ -168,8 +168,8 @@ For interrupted transfers, fix the reported problem and retry the same command. 
 ## Deletion
 
 ```sh
-devbox-neo delete <target>... [--container|--session]
-devbox-neo delete [filters...] --container|--session
+dbx delete <target>... [--container|--session]
+dbx delete [filters...] --container|--session
 ```
 
 | Flag | Meaning |
@@ -196,12 +196,12 @@ For persistent Bash setup, add these lines to `~/.bashrc`, replacing the checkou
 
 ```bash
 export PATH="/path/to/devbox/bin:$PATH"
-source <(devbox-neo completion bash)
+source <(dbx completion bash)
 ```
 
 Reload with `source ~/.bashrc`. Other shells use `completion zsh`, `completion fish`, or `completion powershell`.
 
-An optional `alias dbx='devbox-neo'` is supported by generated completions; Devbox does not create the alias. Completion is read-only. Regenerate/reload scripts after updating the CLI.
+Completion is read-only. Regenerate and reload scripts after updating the CLI.
 
 ## Version
 

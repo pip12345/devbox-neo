@@ -21,7 +21,7 @@ func sessionNameFlag(cmd *cobra.Command, name *string) *cobra.Command {
 
 func New() *cobra.Command {
 	var home, localName string
-	root := &cobra.Command{Use: "devbox-neo", Short: "Persistent development environments", Long: "Persistent development environments\nRun without a subcommand in a terminal to browse sessions and configs.\nUse arrows and Enter, Tab to switch browsers, / to filter, and Esc to go back.\nExplicit commands and JSON output remain available for direct use and scripts.", Example: "  # First run\n  devbox-neo config create base\n  devbox-neo create .\n  devbox-neo edit .\n  devbox-neo open .", SilenceUsage: true, SilenceErrors: true}
+	root := &cobra.Command{Use: "dbx", Short: "Persistent development environments", Long: "Persistent development environments\nRun without a subcommand in a terminal to browse sessions and configs.\nUse arrows and Enter, Tab to switch browsers, / to filter, and Esc to go back.\nExplicit commands and JSON output remain available for direct use and scripts.", Example: "  # First run\n  dbx config create base\n  dbx create .\n  dbx edit .\n  dbx open .", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().StringVar(&home, "home", "", "Devbox home (default ~/.devbox-neo; DEVBOX_HOME overrides)")
 	initialize := func(cmd *cobra.Command) (*store.Store, error) {
 		userHome, err := os.UserHomeDir()

@@ -32,7 +32,7 @@ type Result struct {
 }
 
 func (o Owner) Command(action string) []string {
-	return []string{"devbox-neo", "config", action, o.Name}
+	return []string{"dbx", "config", action, o.Name}
 }
 func (o Owner) step(action, reason string) commanderror.Step {
 	return commanderror.Step{Command: o.Command(action), Reason: reason}

@@ -113,7 +113,7 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 	if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "creation_drift" || count(d, "create") != 1 {
 		t.Fatal("drift must warn without recreate")
 	}
-	if !slices.Equal(result.Diagnostics[0].Command, []string{"devbox-neo", "recreate", result.SessionID}) {
+	if !slices.Equal(result.Diagnostics[0].Command, []string{"dbx", "recreate", result.SessionID}) {
 		t.Fatal("drift hint uses the wrong executable")
 	}
 	if sessionRecord(t, e, result.SessionID).Applied.Creation.Network != "default" {
@@ -234,7 +234,7 @@ func TestRecordedRecoveryUsesOriginalDefinitionAndSettings(t *testing.T) {
 	}
 	creates := count(d, "create")
 	var recoveryError *commanderror.Error
-	if _, err = e.Start(ctx, result.SessionID, ""); !errors.As(err, &recoveryError) || recoveryError.Code != "recovery_unavailable" || !slices.Equal(recoveryError.Next[0].Command, []string{"devbox-neo", "recreate", result.SessionID}) {
+	if _, err = e.Start(ctx, result.SessionID, ""); !errors.As(err, &recoveryError) || recoveryError.Code != "recovery_unavailable" || !slices.Equal(recoveryError.Next[0].Command, []string{"dbx", "recreate", result.SessionID}) {
 		t.Fatalf("want actionable recovery error: %v", err)
 	}
 	if count(d, "create") != creates {
@@ -268,7 +268,7 @@ func TestRunningManagedConfigIsDeferred(t *testing.T) {
 	if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "runtime_deferred" {
 		t.Fatal("missing deferral")
 	}
-	if !slices.Equal(result.Diagnostics[0].Command, []string{"devbox-neo", "stop", result.SessionID}) {
+	if !slices.Equal(result.Diagnostics[0].Command, []string{"dbx", "stop", result.SessionID}) {
 		t.Fatal("deferral hint uses the wrong executable")
 	}
 	after, _ := os.ReadFile(manifest)

@@ -128,8 +128,8 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 
 func TestListUsesLocalNamesAndWideIncludesFullNames(t *testing.T) {
 	views := []app.View{
-		{Target: "devbox-alpha-111111111111.work", SessionID: "session-alpha", ContainerName: "container-alpha", LocalName: "work", Workspace: "/projects/alpha"},
-		{Target: "devbox-beta-222222222222.work", SessionID: "session-beta", ContainerName: "container-beta", LocalName: "work", Workspace: "/projects/beta"},
+		{Target: "dbx-alpha-111111111111.work", SessionID: "session-alpha", ContainerName: "container-alpha", LocalName: "work", Workspace: "/projects/alpha"},
+		{Target: "dbx-beta-222222222222.work", SessionID: "session-beta", ContainerName: "container-beta", LocalName: "work", Workspace: "/projects/beta"},
 	}
 	for _, local := range []bool{false, true} {
 		for _, wide := range []bool{false, true} {

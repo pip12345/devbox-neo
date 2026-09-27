@@ -41,7 +41,7 @@ func inventoryCLI(t *testing.T) (*app.Engine, *dockertest.Daemon, string, func()
 		t.Fatal(err)
 	}
 	root := func() *cobra.Command {
-		cmd := &cobra.Command{Use: "devbox-neo", SilenceErrors: true, SilenceUsage: true}
+		cmd := &cobra.Command{Use: "dbx", SilenceErrors: true, SilenceUsage: true}
 		profile := ""
 		cmd.PersistentFlags().StringVar(&profile, "profile", "", "Profile")
 		cmd.AddCommand(sessionCommands(func(*cobra.Command) (*app.Engine, error) { return engine, nil }, &profile)...)
@@ -213,8 +213,8 @@ func TestDeleteCLIFlagsAndTerminalPrompts(t *testing.T) {
 
 func TestDeleteConfirmationNamesBulkScopeWithoutClaimingDefault(t *testing.T) {
 	for _, prompt := range []app.DeletePrompt{
-		{Containers: []string{"devbox-a.one", "devbox-b.two"}},
-		{Sessions: []string{"devbox-a.one", "devbox-b.two"}},
+		{Containers: []string{"dbx-a.one", "dbx-b.two"}},
+		{Sessions: []string{"dbx-a.one", "dbx-b.two"}},
 	} {
 		var out bytes.Buffer
 		confirmation := deletionConfirmation{ui: cliui.New(context.Background(), strings.NewReader("n\n"), &out)}
@@ -222,7 +222,7 @@ func TestDeleteConfirmationNamesBulkScopeWithoutClaimingDefault(t *testing.T) {
 		if err != nil || ok || strings.Contains(out.String(), "(default in ") || !strings.Contains(out.String(), "[y/N]") {
 			t.Fatal("bulk confirmation claimed a folder default or lost its scope", out.String(), err)
 		}
-		if len(prompt.Containers) > 0 && (!strings.Contains(out.String(), "Remove containers?") || !strings.Contains(out.String(), "devbox-a.one") || !strings.Contains(out.String(), "devbox-b.two")) || len(prompt.Sessions) > 0 && (!strings.Contains(out.String(), "Delete saved data and history?") || !strings.Contains(out.String(), "devbox-a.one") || !strings.Contains(out.String(), "devbox-b.two")) {
+		if len(prompt.Containers) > 0 && (!strings.Contains(out.String(), "Remove containers?") || !strings.Contains(out.String(), "dbx-a.one") || !strings.Contains(out.String(), "dbx-b.two")) || len(prompt.Sessions) > 0 && (!strings.Contains(out.String(), "Delete saved data and history?") || !strings.Contains(out.String(), "dbx-a.one") || !strings.Contains(out.String(), "dbx-b.two")) {
 			t.Fatal("bulk confirmation used a singular or ambiguous question", out.String())
 		}
 	}

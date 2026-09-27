@@ -7,9 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Cobra's dynamic handlers invoke the command the user typed, so sharing them
-// preserves a dbx shortcut's executable and flags. Only shell registrations are
-// added: dbx is not a Cobra command alias and its shell definition is untouched.
 func bindCompletionScripts(root *cobra.Command) {
 	root.InitDefaultCompletionCmd()
 	for _, command := range root.Commands() {
@@ -17,7 +14,6 @@ func bindCompletionScripts(root *cobra.Command) {
 			continue
 		}
 		for _, shell := range command.Commands() {
-			shell.Long += "\nThe loaded script also registers completion for an existing dbx shortcut; it does not define that shortcut.\n"
 			shell.RunE = generateCompletionScript
 		}
 	}
@@ -25,53 +21,28 @@ func bindCompletionScripts(root *cobra.Command) {
 
 func generateCompletionScript(cmd *cobra.Command, _ []string) error {
 	root := cmd.Root()
-	out := cmd.OutOrStdout()
 	noDescriptions, _ := cmd.Flags().GetBool("no-descriptions")
 	includeDescriptions := !noDescriptions && !root.CompletionOptions.DisableDescriptions
-	return writeCompletionScript(root, out, cmd.Name(), includeDescriptions)
+	return writeCompletionScript(root, cmd.OutOrStdout(), cmd.Name(), includeDescriptions)
 }
 
 func writeCompletionScript(root *cobra.Command, out io.Writer, shell string, includeDescriptions bool) error {
-	var err error
-	var registration string
 	switch shell {
 	case "bash":
-		err = root.GenBashCompletionV2(out, includeDescriptions)
-		registration = "\ncomplete -o default -F __start_devbox-neo dbx\n"
+		return root.GenBashCompletionV2(out, includeDescriptions)
 	case "zsh":
-		// compinit reads the first line without sourcing the file. Include dbx
-		// there too so it can trigger autoload before devbox-neo has been used.
-		if _, err := io.WriteString(out, "#compdef devbox-neo dbx\ncompdef _devbox-neo dbx\n"); err != nil {
-			return err
-		}
 		if includeDescriptions {
-			err = root.GenZshCompletion(out)
-		} else {
-			err = root.GenZshCompletionNoDesc(out)
+			return root.GenZshCompletion(out)
 		}
+		return root.GenZshCompletionNoDesc(out)
 	case "fish":
-		err = root.GenFishCompletion(out, includeDescriptions)
-		// Share handlers without redirecting requests to the canonical executable;
-		// the shortcut itself supplies any implicit flags.
-		registration = `
-complete -c dbx -e
-complete -c dbx -n '__devbox_neo_clear_perform_completion_once_result'
-complete -c dbx -n 'not __devbox_neo_requires_order_preservation && __devbox_neo_prepare_completions' -f -a '$__devbox_neo_comp_results'
-complete -k -c dbx -n '__devbox_neo_requires_order_preservation && __devbox_neo_prepare_completions' -f -a '$__devbox_neo_comp_results'
-`
+		return root.GenFishCompletion(out, includeDescriptions)
 	case "powershell":
 		if includeDescriptions {
-			err = root.GenPowerShellCompletionWithDesc(out)
-		} else {
-			err = root.GenPowerShellCompletion(out)
+			return root.GenPowerShellCompletionWithDesc(out)
 		}
-		registration = "\nRegister-ArgumentCompleter -CommandName 'dbx' -ScriptBlock ${__devbox_neoCompleterBlock}\n"
+		return root.GenPowerShellCompletion(out)
 	default:
 		return fmt.Errorf("unsupported completion shell %q", shell)
 	}
-	if err != nil {
-		return err
-	}
-	_, err = io.WriteString(out, registration)
-	return err
 }

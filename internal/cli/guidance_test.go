@@ -44,7 +44,7 @@ func TestResourceSuggestionsOnlyCarryExplicitHome(t *testing.T) {
 			}
 			check := func(text string) {
 				t.Helper()
-				if strings.Contains(text, "\nNext:\n") || !strings.Contains(text, ":\n  devbox-neo ") {
+				if strings.Contains(text, "\nNext:\n") || !strings.Contains(text, ":\n  dbx ") {
 					t.Fatal("missing labeled command", text)
 				}
 				if strings.Contains(text, "--home") != explicit {
@@ -59,7 +59,7 @@ func TestResourceSuggestionsOnlyCarryExplicitHome(t *testing.T) {
 				t.Fatal(err)
 			}
 			check(out)
-			if !explicit && !strings.Contains(out, "  devbox-neo create ") {
+			if !explicit && !strings.Contains(out, "  dbx create ") {
 				t.Fatal("default suggestion is not minimal", out)
 			}
 			out, err = run("config", "create", "basic")
@@ -80,7 +80,7 @@ func TestResourceSuggestionsOnlyCarryExplicitHome(t *testing.T) {
 			if err = json.Unmarshal([]byte(out), &result); err != nil {
 				t.Fatal(err)
 			}
-			want := []string{"devbox-neo"}
+			want := []string{"dbx"}
 			if explicit {
 				want = append(want, "--home", home)
 			}

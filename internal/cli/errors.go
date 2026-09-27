@@ -197,7 +197,7 @@ func scopedSteps(cmd *cobra.Command, steps []commanderror.Step, home string) []c
 	result := make([]commanderror.Step, 0, len(steps))
 	for _, step := range steps {
 		args := append([]string(nil), step.Command...)
-		if explicit && len(args) > 0 && args[0] == "devbox-neo" {
+		if explicit && len(args) > 0 && args[0] == "dbx" {
 			args = append([]string{args[0], "--home", home}, args[1:]...)
 		}
 		result = append(result, commanderror.Step{Command: args, Reason: step.Reason})

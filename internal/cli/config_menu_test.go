@@ -63,7 +63,7 @@ func TestConfigEditorReceiptOnlyAfterSaving(t *testing.T) {
 	}
 	n := fieldNumber(t, "network")
 	out, err = runMenu(t, s, owner, n+"\n1\nhost\n0\n")
-	if err != nil || !strings.Contains(out, "Saved Network.") || !strings.Contains(out, "Config changes saved: base\nReview pending changes:\n  devbox-neo status\n") {
+	if err != nil || !strings.Contains(out, "Saved Network.") || !strings.Contains(out, "Config changes saved: base\nReview pending changes:\n  dbx status\n") {
 		t.Fatal("saved edit did not leave a status receipt", out, err)
 	}
 	out, err = runMenu(t, s, owner, n+"\n1\nhost\n0\n")

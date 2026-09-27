@@ -31,12 +31,12 @@ func TestStatusTableSeparatesLiveStateFromChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	for _, want := range []string{"NAME", "CONTAINER", "CHANGE", "No changes", "Runtime changes", "Recreate needed", "Rebuild + recreate needed", "corrupt record", `invalid config\nnext line`, "devbox-neo recreate container", "devbox-neo recreate image", "pending copy --move"} {
+	for _, want := range []string{"NAME", "CONTAINER", "CHANGE", "No changes", "Runtime changes", "Recreate needed", "Rebuild + recreate needed", "corrupt record", `invalid config\nnext line`, "dbx recreate container", "dbx recreate image", "pending copy --move"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q: %s", want, text)
 		}
 	}
-	if strings.Count(text, "Cannot check") != 4 || strings.Count(text, "devbox-neo recreate") != 2 || strings.Contains(text, "--image") || strings.Contains(text, "\x1b") {
+	if strings.Count(text, "Cannot check") != 4 || strings.Count(text, "dbx recreate") != 2 || strings.Contains(text, "--image") || strings.Contains(text, "\x1b") {
 		t.Fatal("incorrect unknown states, actions or escaping", text)
 	}
 	for _, line := range strings.Split(text, "\n") {
@@ -68,14 +68,14 @@ func TestSingleStatusGivesShortManagedFileAndRecreateGuidance(t *testing.T) {
 		return out.String()
 	}
 	out := show()
-	if !strings.Contains(out, "Changes: Runtime changes") || !strings.Contains(out, "Changes apply on container restart.") || strings.Contains(out, "devbox-neo stop") {
+	if !strings.Contains(out, "Changes: Runtime changes") || !strings.Contains(out, "Changes apply on container restart.") || strings.Contains(out, "dbx stop") {
 		t.Fatal("managed file guidance was not short and accurate", out)
 	}
 	if err := os.WriteFile(filepath.Join(configPath, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	out = show()
-	if !strings.Contains(out, "Changes: Recreate needed") || !strings.Contains(out, "To apply changes:\n  devbox-neo recreate "+name) || strings.Contains(out, "Changes apply on container restart.") {
+	if !strings.Contains(out, "Changes: Recreate needed") || !strings.Contains(out, "To apply changes:\n  dbx recreate "+name) || strings.Contains(out, "Changes apply on container restart.") {
 		t.Fatal("container changes need recreation, not a restart hint", out)
 	}
 }
@@ -142,7 +142,7 @@ func TestSingleStatusJSONReportsDefaultAndDefaultErrors(t *testing.T) {
 
 func TestStatusRejectsAmbiguousSelectionBeforeInitialization(t *testing.T) {
 	for _, args := range [][]string{{"status", "--name", "work"}, {"status", "target", "--all"}, {"status", "one", "two"}} {
-		root := &cobra.Command{Use: "devbox-neo", SilenceErrors: true, SilenceUsage: true}
+		root := &cobra.Command{Use: "dbx", SilenceErrors: true, SilenceUsage: true}
 		profile := ""
 		root.AddCommand(sessionCommands(func(*cobra.Command) (*app.Engine, error) {
 			t.Fatal("invalid status selection initialized the home")

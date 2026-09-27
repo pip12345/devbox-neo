@@ -10,7 +10,7 @@ From the repository checkout:
 make build
 export PATH="$PWD/bin:$PATH"
 cd /path/to/your/project
-devbox-neo
+dbx
 ```
 
 If Go is missing, run `make install-go` before building. The PATH change above applies to this terminal. [Shell setup](../reference/commands.md#completion) covers future terminals.
@@ -39,6 +39,6 @@ When you leave the harness, the container normally stops. Project files and save
 
 ## Return later
 
-Run `devbox-neo`, highlight your session, and press **Enter**. Choose **Continue** to resume the conversation or **Open** for a normal launch. **Esc** goes back. **Tab** switches to configs while browsing.
+Run `dbx`, highlight your session, and press **Enter**. Choose **Continue** to resume the conversation or **Open** for a normal launch. **Esc** goes back. **Tab** switches to configs while browsing.
 
 **Next:** [Everyday use](everyday-use.md).

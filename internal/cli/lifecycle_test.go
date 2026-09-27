@@ -35,7 +35,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := func(args ...string) (string, error) {
-		root := &cobra.Command{Use: "devbox-neo", SilenceUsage: true, SilenceErrors: true}
+		root := &cobra.Command{Use: "dbx", SilenceUsage: true, SilenceErrors: true}
 		profile := ""
 		factory := func(cmd *cobra.Command) (*app.Engine, error) {
 			engine.Streams.Out = cmd.OutOrStdout()
@@ -175,7 +175,7 @@ func TestSessionListEmptyOutput(t *testing.T) {
 	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: &dockertest.Daemon{}}}
 	for _, asJSON := range []bool{false, true} {
 		profile := ""
-		cmd := &cobra.Command{Use: "devbox-neo"}
+		cmd := &cobra.Command{Use: "dbx"}
 		cmd.AddCommand(sessionCommands(func(*cobra.Command) (*app.Engine, error) { return engine, nil }, &profile)...)
 		var out bytes.Buffer
 		cmd.SetOut(&out)

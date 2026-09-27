@@ -16,7 +16,7 @@ func TestReadableResourceNamesAreIndependentOfSessionIdentity(t *testing.T) {
 	}
 	r := sessionRecord(t, e, made.SessionID)
 	for _, name := range []string{r.Directory, r.Applied.Creation.Name} {
-		if !strings.HasPrefix(name, "devbox-") || !strings.HasSuffix(name, "."+q.LocalName) {
+		if !strings.HasPrefix(name, "dbx-") || !strings.HasSuffix(name, "."+q.LocalName) || len(name) != len("dbx-")+12+1+len(q.LocalName) {
 			t.Fatal(name)
 		}
 	}

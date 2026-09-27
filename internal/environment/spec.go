@@ -11,8 +11,6 @@ import (
 	"maps"
 	"os"
 	"path"
-	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -26,7 +24,7 @@ import (
 )
 
 // ContainerPrefix is a lookup convention, independent of Docker ownership labels.
-const ContainerPrefix = "devbox-"
+const ContainerPrefix = "dbx-"
 
 // Binding is the user-selected workspace and folder-local name. Neither field
 // identifies storage or authorizes a Docker resource.
@@ -41,19 +39,11 @@ type Identity struct {
 	Name string `json:"name"`
 }
 
-var unsafeFolderCharacters = regexp.MustCompile(`[^a-z0-9_.-]+`)
-
-func ResourceName(workspace, localName, allocation string) string {
-	// Readable hints are fixed at allocation. The suffix prevents reused names
-	// and workspaces from colliding with resources whose hints are now stale.
-	folder := unsafeFolderCharacters.ReplaceAllString(strings.ToLower(filepath.Base(workspace)), "-")
-	folder = strings.Trim(folder, "-_.")
-	folder = strings.TrimRight(folder[:min(len(folder), 32)], "-_.")
-	if folder == "" {
-		folder = "workspace"
-	}
+func ResourceName(_ string, localName, allocation string) string {
+	// The allocation suffix prevents reused names from colliding with resources
+	// whose readable local-name hint is now stale.
 	sum := sha256.Sum256([]byte(allocation))
-	return ContainerPrefix + folder + "-" + hex.EncodeToString(sum[:6]) + "." + localName
+	return ContainerPrefix + hex.EncodeToString(sum[:6]) + "." + localName
 }
 
 type Fingerprints struct {

@@ -231,7 +231,7 @@ func TestDeletionPartialResultsSurviveCLIAndTUIErrors(t *testing.T) {
 			var out, stderr bytes.Buffer
 			if mode == "tui" {
 				input := &choiceScript{t: t, out: &out, steps: []string{"@Delete…", "y", "@Back"}}
-				cmd := &cobra.Command{Use: "devbox-neo"}
+				cmd := &cobra.Command{Use: "dbx"}
 				cmd.SetIn(input)
 				cmd.SetOut(&out)
 				cmd.SetErr(&stderr)
@@ -286,7 +286,7 @@ func TestConfigSaveReceiptPreservesExplicitHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	receipt := configSaveReceipt(cmd, home, "base")
-	if !strings.Contains(receipt, "devbox-neo --home "+shellQuote(home)+" status") {
+	if !strings.Contains(receipt, "dbx --home "+shellQuote(home)+" status") {
 		t.Fatal(receipt)
 	}
 }

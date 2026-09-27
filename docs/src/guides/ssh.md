@@ -7,7 +7,7 @@ You authenticate in a host terminal. The agent reuses that connection without re
 Choose **SSH** in the session menu and enter a destination such as `user@server`. Or, from a project with a selected default, run on the host:
 
 ```sh
-devbox-neo ssh . user@server
+dbx ssh . user@server
 ```
 
 Answer password, passphrase, MFA, and host-key prompts yourself. SSH runs inside the container by default, using its SSH configuration and network.
@@ -41,7 +41,7 @@ If the connection drops, authenticate again from the host. Generated client comm
 When your keys, aliases, or jump hosts are already configured on the host, choose **Use host SSH master** or run:
 
 ```sh
-devbox-neo ssh . staging --host-master
+dbx ssh . staging --host-master
 ```
 
 **Host mode grants broader access:** the container can act as your authenticated remote user and create tunnels into your host and reachable networks. Use it only when you intend to grant that access.

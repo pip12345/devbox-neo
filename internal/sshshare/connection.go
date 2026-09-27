@@ -150,7 +150,7 @@ func Prepare(root, destination string) (_ *Connection, err error) {
 	}
 	// Defaults also reject unknown aliases. ControlPath alone would silently fall
 	// back to a new authentication attempt when a master disappears.
-	config := "# Devbox SSH connections. Authenticate using the host devbox-neo ssh command.\nInclude /devbox/ssh/c/*/config\nHost *\n  BatchMode yes\n  ControlMaster no\n  ProxyCommand /bin/false\n"
+	config := "# Devbox SSH connections. Authenticate using the host dbx ssh command.\nInclude /devbox/ssh/c/*/config\nHost *\n  BatchMode yes\n  ControlMaster no\n  ProxyCommand /bin/false\n"
 	if err = fsutil.Write(filepath.Join(root, "config"), []byte(config), 0600); err != nil {
 		return nil, err
 	}

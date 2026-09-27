@@ -4,9 +4,9 @@ The saved session is the top-level environment model. Docker inventory supplies 
 
 ## Identity and ownership
 
-`environment.ContainerPrefix` defines the `devbox-` lookup convention independently of `docker.Namespace`, which defines `devbox-rewrite.*` labels and image tags.
+`environment.ContainerPrefix` defines the `dbx-` lookup convention independently of `docker.Namespace`, which defines `devbox-rewrite.*` labels and image tags.
 
-The immutable session ID identifies the saved session. `settings` contains the editable workspace, local name, config references, and keep-running intent. Storage directories and Docker names are independently allocated readable hints with unique suffixes; neither is parsed or required to match settings or the other name.
+The immutable session ID identifies the saved session. `settings` contains the editable workspace, local name, config references, and keep-running intent. Storage directories and Docker names are independently allocated as `dbx-<allocation-hash>.<local-name>` hints; neither is parsed or required to match settings or the other name.
 
 `store.Find` looks up an ID or workspace/name from saved records, without config resolution or a persistent index. Folder-only lookup reads its explicit default ID. Defaults use schema 2 under `state/workspaces/<workspace-key>.json`, keyed by the canonical workspace's SHA-256. Missing defaults are absent; malformed defaults are errors. Name reuse never inherits an old ID selection.
 

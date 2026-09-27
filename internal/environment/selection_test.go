@@ -24,7 +24,7 @@ func TestSessionTargetsAreIDsNotStorageOrContainerNames(t *testing.T) {
 	if !IsSessionTarget(strings.Repeat("a", 32)) {
 		t.Fatal("rejected session ID")
 	}
-	for _, target := range []string{"devbox-api-abc.work", "work", "/work/api", strings.Repeat("a", 31)} {
+	for _, target := range []string{"dbx-api-abc.work", "work", "/work/api", strings.Repeat("a", 31)} {
 		if IsSessionTarget(target) {
 			t.Fatal("accepted non-ID target", target)
 		}

@@ -82,7 +82,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 			if current {
 				record.ApplyRuntime(spec.Inputs.Runtime)
 			} else {
-				e.diagnose(&result, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; it will apply at the next startup", Command: []string{"devbox-neo", "stop", record.ID}})
+				e.diagnose(&result, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; it will apply at the next startup", Command: []string{"dbx", "stop", record.ID}})
 			}
 		}
 		applyLaunch(&record, spec)

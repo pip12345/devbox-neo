@@ -41,7 +41,7 @@ func TestDirectConfigEditPointsToBulkStatusOnlyWhenChanged(t *testing.T) {
 		t.Fatal(out, err)
 	}
 	out, err := resourceCLI(t, home, "config", "edit", "base", "--harness", "opencode")
-	if err != nil || !strings.Contains(out, "Review pending changes:\n  devbox-neo --home "+home+" status") {
+	if err != nil || !strings.Contains(out, "Review pending changes:\n  dbx --home "+home+" status") {
 		t.Fatal("direct edit did not point to bulk status", out, err)
 	}
 	out, err = resourceCLI(t, home, "config", "edit", "base", "--harness", "opencode")

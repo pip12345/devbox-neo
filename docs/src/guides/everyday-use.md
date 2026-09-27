@@ -1,6 +1,6 @@
 # Everyday use
 
-Run `devbox-neo` on the host. Highlight a session and press **Enter** for its actions.
+Run `dbx` on the host. Highlight a session and press **Enter** for its actions.
 
 ## Resume work
 
@@ -25,22 +25,22 @@ Selecting a default does not launch anything. Opening a session from the browser
 From your project folder, `.` means “this folder.” These commands use its selected default:
 
 ```sh
-devbox-neo open . --continue
+dbx open . --continue
 ```
 
 To open a shell instead:
 
 ```sh
-devbox-neo shell .
+dbx shell .
 ```
 
 Or run one command and return:
 
 ```sh
-devbox-neo exec . -- git status
+dbx exec . -- git status
 ```
 
-The `--` separates Devbox options from the command. Add `--name work` before it to select a named session instead of the default. Use `devbox-neo list` to find sessions and `devbox-neo status .` to inspect one.
+The `--` separates Devbox options from the command. Add `--name work` before it to select a named session instead of the default. Use `dbx list` to find sessions and `dbx status .` to inspect one.
 
 ## Keep services running
 
@@ -53,7 +53,7 @@ Stop refuses while Devbox commands are active. Finish them first. Use Force only
 Use **Open with options**, or put one-off arguments after `--`. For Pi's regular terminal mode:
 
 ```sh
-devbox-neo open . -- --tui-mode regular
+dbx open . -- --tui-mode regular
 ```
 
 Put options you use every time in your config's **Harness arguments** setting instead.

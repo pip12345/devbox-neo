@@ -138,7 +138,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 		}
 		return err
 	}}
-	cmd.Example = "  devbox-neo edit .\n  devbox-neo edit . --name work --default\n  devbox-neo edit . --name work --config base --config ./project-config"
+	cmd.Example = "  dbx edit .\n  dbx edit . --name work --default\n  dbx edit . --name work --config base --config ./project-config"
 	cmd.Flags().BoolVar(&show, "show", false, "Show combined settings and their sources without editing")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print explicit operation results as JSON; never prompt")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Change workspace reference and clear its old default; recreate explicitly")

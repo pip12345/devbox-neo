@@ -115,7 +115,7 @@ func TestConfigCreationReusesStandaloneSetupAndPreservesDraft(t *testing.T) {
 			t.Fatal("creation entry points did not share screens", screen)
 		}
 	}
-	if strings.Contains(nested.String(), "devbox-neo create <folder>") {
+	if strings.Contains(nested.String(), "dbx create <folder>") {
 		t.Fatal("nested creation printed standalone next steps", nested.String())
 	}
 }

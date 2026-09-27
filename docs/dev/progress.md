@@ -2,6 +2,8 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). Legacy chats remain in old Devbox; the standalone migration tool has been removed. Earlier milestone entries below are historical delivery records, not current build instructions.
 
+Executable and readable resource rename implemented: the built command is `dbx`, generated completion targets only `dbx`, and newly allocated session/container names use the `dbx-` prefix. The existing `~/.devbox-neo` home and `devbox-rewrite.*` Docker ownership namespace remain unchanged; no compatibility executable, alias, state migration, or automatic adoption was added. `make test-fast`, `make build`, and a direct `dbx version`/help smoke check pass; live Docker and manual terminal acceptance remain unrun.
+
 Session structure refactor implemented: schema 6 separates settings/applied runtime, with ID-based lookup/locks/leases, independent resource names, metadata-only rename, and explicit workspace edits. `make test-fast`, affected-package race tests, both builds, vet, and integration compilation pass; live Docker/manual acceptance remain unrun. No migration or automatic reset.
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.

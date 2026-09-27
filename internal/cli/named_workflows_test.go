@@ -476,7 +476,7 @@ func TestEditReportsSavedSourcesAfterExitOnlyWhenChanged(t *testing.T) {
 		return out.String()
 	}
 	changed := run("4\n1\n0\n")
-	if !strings.Contains(changed, "Saved selected configs.") || !strings.Contains(changed, "Selected configs saved; container changes may still be pending.") || !strings.Contains(changed, "devbox-neo status "+fullName) {
+	if !strings.Contains(changed, "Saved selected configs.") || !strings.Contains(changed, "Selected configs saved; container changes may still be pending.") || !strings.Contains(changed, "dbx status "+fullName) {
 		t.Fatal("source edit lost its saved-but-not-applied receipt", changed)
 	}
 	if unchanged := run("0\n"); strings.Contains(unchanged, "Selected configs saved;") {

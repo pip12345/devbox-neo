@@ -12,7 +12,7 @@ You need Linux, Docker, and Go 1.24.2+ to build from source.
 make build
 export PATH="$PWD/bin:$PATH"
 cd /path/to/your/project
-devbox-neo
+dbx
 ```
 
 Choose **Create session**. Set a name, then **Create config** to select your coding tool. Finish creation and choose **Open**.

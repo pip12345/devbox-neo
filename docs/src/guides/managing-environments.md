@@ -35,7 +35,7 @@ Transfers copy saved harness state—not project files, config directories, inst
 You can also copy under a new name in the same folder. From the host:
 
 ```sh
-devbox-neo copy . --name work --as experiment
+dbx copy . --name work --as experiment
 ```
 
 The destination name must be unused. Neither copy nor move selects a destination default.

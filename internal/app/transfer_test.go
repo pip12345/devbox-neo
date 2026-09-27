@@ -220,7 +220,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 		t.Fatal("source not restarted")
 	}
 	var pendingError *commanderror.Error
-	if _, err = e.Start(ctx, opened.SessionID, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "devbox-neo copy --move "+opened.SessionID+" "+opts.Destination+" --as "+q.LocalName {
+	if _, err = e.Start(ctx, opened.SessionID, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "dbx copy --move "+opened.SessionID+" "+opts.Destination+" --as "+q.LocalName {
 		t.Fatal("pending source not guarded", err)
 	}
 	j, err := pendingTransfer(e, opened.SessionID)
