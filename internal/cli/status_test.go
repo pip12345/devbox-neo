@@ -17,14 +17,14 @@ import (
 
 func TestStatusTableSeparatesLiveStateFromChanges(t *testing.T) {
 	views := []app.View{
-		{Name: "clean", Exists: true, Running: true, Desired: environment.NoChange},
-		{Name: "runtime", Exists: true, Desired: environment.RuntimeSync},
-		{Name: "container", Exists: true, Running: true, Desired: environment.Recreate},
-		{Name: "image", Exists: true, Desired: environment.RebuildAndRecreate},
-		{Name: "invalid", Exists: true, Running: true, ConfigError: "invalid config\nnext line"},
-		{Name: "broken", Exists: true, Error: "corrupt record"},
-		{Name: "pending", Exists: true, Pending: &store.Reservation{Mode: "relocate", Phase: "prepare"}},
-		{Name: "unknown", Exists: true},
+		{Target: "clean", Exists: true, Running: true, Desired: environment.NoChange},
+		{Target: "runtime", Exists: true, Desired: environment.RuntimeSync},
+		{Target: "container", Exists: true, Running: true, Desired: environment.Recreate},
+		{Target: "image", Exists: true, Desired: environment.RebuildAndRecreate},
+		{Target: "invalid", Exists: true, Running: true, ConfigError: "invalid config\nnext line"},
+		{Target: "broken", Exists: true, Error: "corrupt record"},
+		{Target: "pending", Exists: true, Pending: &store.Reservation{Mode: "relocate", Phase: "prepare"}},
+		{Target: "unknown", Exists: true},
 	}
 	var out bytes.Buffer
 	if err := printStatusList(&out, views); err != nil {
@@ -99,7 +99,7 @@ func TestStatusDoesNotSuggestRestartForLaunchArguments(t *testing.T) {
 func TestSingleStatusJSONReportsDefaultAndDefaultErrors(t *testing.T) {
 	e, q, name := namedCLIFixture(t)
 	ctx := context.Background()
-	r, err := e.Store.Read(ctx, name)
+	r, err := e.Store.Find(ctx, name, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

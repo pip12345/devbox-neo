@@ -30,14 +30,14 @@ func TestDeleteFiltersIntersectAndScopeIsIndependent(t *testing.T) {
 					t.Fatal(err)
 				}
 				if name == "old-running" {
-					if _, err = e.Start(ctx, created.Name, ""); err != nil {
+					if _, err = e.Start(ctx, created.SessionID, ""); err != nil {
 						t.Fatal(err)
 					}
 				}
 				if name == "old-missing" {
-					d.Forget(created.Name)
+					forgetSession(t, e, created.SessionID)
 				}
-				lock, err := e.Store.Lock(ctx, created.Name)
+				lock, err := e.Store.Lock(ctx, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -80,7 +80,7 @@ func TestAgeSelectionIsRecheckedAfterInventoryBeforeMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	setActivity := func(at time.Time) {
-		lock, err := e.Store.Lock(ctx, created.Name)
+		lock, err := e.Store.Lock(ctx, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +107,7 @@ func TestAgeSelectionIsRecheckedAfterInventoryBeforeMutation(t *testing.T) {
 	if err == nil || !touched {
 		t.Fatal("stale selection accepted", err)
 	}
-	if _, exists := d.Snapshot(created.Name); !exists {
+	if _, exists := sessionSnapshot(t, e, created.SessionID); !exists {
 		t.Fatal("stale selection deleted container")
 	}
 }
@@ -119,7 +119,7 @@ func TestOrphanSelectionRechecksContainerAbsence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, err := e.Store.Lock(ctx, created.Name)
+	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,18 +130,18 @@ func TestOrphanSelectionRechecksContainerAbsence(t *testing.T) {
 }
 
 func TestMissingContainerDeletionStillHonorsProfile(t *testing.T) {
-	e, d, q := fixture(t)
+	e, _, q := fixture(t)
 	ctx := context.Background()
 	created, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.Forget(created.Name)
-	_, err = e.Delete(ctx, DeleteOptions{Scope: DeleteSession, Selection: Selection{Targets: []string{created.Name}, LocalName: "other"}})
+	forgetSession(t, e, created.SessionID)
+	_, err = e.Delete(ctx, DeleteOptions{Scope: DeleteSession, Selection: Selection{Targets: []string{created.SessionID}, LocalName: "other"}})
 	if err == nil {
 		t.Fatal("profile mismatch ignored for missing container")
 	}
-	if _, err := e.Store.Read(ctx, created.Name); err != nil {
+	if _, err := e.Store.Find(ctx, created.SessionID, nil); err != nil {
 		t.Fatal("mismatched session was deleted", err)
 	}
 }

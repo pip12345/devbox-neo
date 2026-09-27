@@ -23,7 +23,20 @@ func sortViews(views []app.View, by string) {
 		if by == "last-active" && !views[i].LastActivity.Equal(views[j].LastActivity) {
 			return views[i].LastActivity.After(views[j].LastActivity)
 		}
-		return views[i].Name < views[j].Name
+		a, b := views[i].LocalName, views[j].LocalName
+		if a == "" {
+			a = views[i].Target
+		}
+		if b == "" {
+			b = views[j].Target
+		}
+		if a != b {
+			return a < b
+		}
+		if views[i].Workspace != views[j].Workspace {
+			return views[i].Workspace < views[j].Workspace
+		}
+		return views[i].Target < views[j].Target
 	})
 }
 
@@ -108,12 +121,12 @@ func printSessionTable(out io.Writer, views []app.View, wide bool, now time.Time
 		header = "FOLDER\t" + header
 	}
 	if wide {
-		header += "\tLAST ACTION\tCREATED\tFULL NAME"
+		header += "\tLAST ACTION\tCREATED\tSESSION ID\tCONTAINER NAME"
 	}
 	fmt.Fprintln(w, header)
 	for _, view := range views {
 		state := containerState(view)
-		name := view.Name
+		name := view.Target
 		if view.LocalName != "" {
 			name = view.LocalName
 		}
@@ -130,7 +143,7 @@ func printSessionTable(out io.Writer, views []app.View, wide bool, now time.Time
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s", displayCell(name), marker, displayCell(view.Harness), activity, state, lifetimeState(view), sourceSummary(view.Sources))
 		if wide {
-			fmt.Fprintf(w, "\t%s\t%s\t%s", displayCell(view.LastAction), exactTime(view.CreatedAt), displayCell(view.Name))
+			fmt.Fprintf(w, "\t%s\t%s\t%s\t%s", displayCell(view.LastAction), exactTime(view.CreatedAt), displayCell(view.SessionID), displayCell(view.ContainerName))
 		}
 		fmt.Fprintln(w)
 	}
@@ -152,7 +165,7 @@ func printUnmatchedContainers(out io.Writer, views []app.View) error {
 		if view.Running {
 			state = "running"
 		}
-		if _, err := fmt.Fprintf(out, "  %s (%s)\n", displayCell(view.Name), state); err != nil {
+		if _, err := fmt.Fprintf(out, "  %s (%s)\n", displayCell(view.Target), state); err != nil {
 			return err
 		}
 	}
@@ -208,13 +221,13 @@ func printListRows(out io.Writer, views []app.View, table string, defaults bool)
 	}
 	for _, view := range views {
 		if view.Error != "" {
-			if _, err := fmt.Fprintf(out, "! %s: %s\n", displayCell(view.Name), displayCell(view.Error)); err != nil {
+			if _, err := fmt.Fprintf(out, "! %s: %s\n", displayCell(view.Target), displayCell(view.Error)); err != nil {
 				return err
 			}
 		}
 		if view.Pending != nil {
 			p := view.Pending
-			if _, err := fmt.Fprintf(out, "* %s: pending %s (%s): %s -> %s; retry the same transfer command.\n", displayCell(view.Name), displayCell(store.TransferCommand(p.Mode)), displayCell(p.Phase), displayCell(p.Source), displayCell(p.Destination)); err != nil {
+			if _, err := fmt.Fprintf(out, "* %s: pending %s (%s): %s -> %s; retry the same transfer command.\n", displayCell(view.Target), displayCell(store.TransferCommand(p.Mode)), displayCell(p.Phase), displayCell(p.Source), displayCell(p.Destination)); err != nil {
 				return err
 			}
 		}

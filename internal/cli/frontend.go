@@ -163,7 +163,7 @@ func sessionFields(v app.View) []cliui.Field {
 	for i, ref := range v.Sources {
 		sources = append(sources, fmt.Sprintf("%d. %s", i+1, ref.Label))
 	}
-	fields = append(fields, cliui.Field{Label: "Configs", Value: strings.Join(sources, "\n")}, cliui.Field{Label: "Last active", Value: activityAge(v.LastActivity, time.Now())}, cliui.Field{Label: "Full name", Value: v.Name})
+	fields = append(fields, cliui.Field{Label: "Configs", Value: strings.Join(sources, "\n")}, cliui.Field{Label: "Last active", Value: activityAge(v.LastActivity, time.Now())}, cliui.Field{Label: "Session ID", Value: v.SessionID}, cliui.Field{Label: "Container name", Value: v.ContainerName})
 	if v.Error != "" {
 		fields = append(fields, cliui.Field{Label: "Error", Value: v.Error, Warning: true})
 	}
@@ -192,7 +192,7 @@ func (f *frontend) sessionCollection(report app.InventoryReport, sortBy string) 
 	item := func(v app.View, depth int) cliui.Item {
 		label := v.LocalName
 		if label == "" {
-			label = v.Name
+			label = v.Target
 		}
 		state := strings.TrimRight(containerState(v), "!*")
 		if v.Pending != nil {
@@ -201,7 +201,7 @@ func (f *frontend) sessionCollection(report app.InventoryReport, sortBy string) 
 		if v.Error != "" {
 			state = "error"
 		}
-		return cliui.Item{Key: v.Name, Label: label, Description: v.Workspace + " " + v.Harness, Depth: depth,
+		return cliui.Item{Key: v.Target, Label: label, Description: v.Workspace + " " + v.Harness, Depth: depth,
 			Status: state, Activity: activityAge(v.LastActivity, time.Now()), Selected: v.Default, Fields: sessionFields(v),
 			Open: func() error { return f.m.report(f.session(v)) }}
 	}
@@ -240,17 +240,17 @@ func (f *frontend) session(v app.View) error {
 		// for stop/delete or other repair operations.
 		var navigation *cliui.Navigation
 		if report, err := f.e.List(f.m.Context, ""); err == nil {
-			navigation = &cliui.Navigation{Collection: *f.sessionCollection(report, f.sortBy), Key: v.Name}
+			navigation = &cliui.Navigation{Collection: *f.sessionCollection(report, f.sortBy), Key: v.Target}
 			found := false
 			for _, row := range append(report.Sessions, report.UnmatchedContainers...) {
-				if row.Name == v.Name {
+				if row.Target == v.Target {
 					v = row
 					found = true
 					break
 				}
 			}
 			if !found {
-				return cliui.Screen{}, fmt.Errorf("session %s no longer exists; refresh the browser", v.Name)
+				return cliui.Screen{}, fmt.Errorf("session %s no longer exists; refresh the browser", v.Target)
 			}
 		}
 		run := func(title string, op func(context.Context) error) func() error {
@@ -264,56 +264,67 @@ func (f *frontend) session(v app.View) error {
 			}
 		}
 		addGroup("Harness",
-			f.action("Open", "Launch the recorded harness", run("Open", func(ctx context.Context) error { _, err := f.e.Open(ctx, app.Request{Workspace: v.Name}); return err })),
+			f.action("Open", "Launch the recorded harness", run("Open", func(ctx context.Context) error { _, err := f.e.Open(ctx, app.Request{Workspace: v.Target}); return err })),
 			f.action("Continue", "Resume the harness conversation", run("Continue", func(ctx context.Context) error {
-				_, err := f.e.Open(ctx, app.Request{Workspace: v.Name, Continue: true})
+				_, err := f.e.Open(ctx, app.Request{Workspace: v.Target, Continue: true})
 				return err
 			})),
-			f.action("Open with options", "Continuation and one-off harness arguments", func() error { return f.openWithOptions(v.Name) }),
+			f.action("Open with options", "Continuation and one-off harness arguments", func() error { return f.openWithOptions(v.Target) }),
 		)
 		addGroup("Commands & access",
-			f.action("Shell", "Attach to the configured shell", run("Shell", func(ctx context.Context) error { return f.e.Exec(ctx, v.Name, "", nil, true) })),
-			f.action("Exec", "Run a command with exact arguments", func() error { return f.exec(v.Name) }),
-			f.action("SSH", "Share an authenticated SSH connection", func() error { return f.ssh(v.Name) }),
+			f.action("Shell", "Attach to the configured shell", run("Shell", func(ctx context.Context) error { return f.e.Exec(ctx, v.Target, "", nil, true) })),
+			f.action("Exec", "Run a command with exact arguments", func() error { return f.exec(v.Target) }),
+			f.action("SSH", "Share an authenticated SSH connection", func() error { return f.ssh(v.Target) }),
 		)
 		addGroup("Inspect",
-			f.action("Status", "Live state, active commands and pending changes", func() error { return f.status(v.Name) }),
-			f.action("Logs", "", func() error { return f.logs(v.Name) }),
-			f.action("Networks", "", func() error { return f.networks(v.Name) }),
+			f.action("Status", "Live state, active commands and pending changes", func() error { return f.status(v.Target) }),
+			f.action("Logs", "", func() error { return f.logs(v.Target) }),
+			f.action("Networks", "", func() error { return f.networks(v.Target) }),
 		)
 		addGroup("Container lifecycle",
-			f.action("Start", "Keep running until stopped", run("Start", func(ctx context.Context) error { _, err := f.e.Start(ctx, v.Name, ""); return err })),
-			f.action("Stop", "", func() error { return f.stop(v.Name) }),
-			f.action("Recreate", "Replace the container using current settings", func() error { return f.recreate(v.Name) }),
+			f.action("Start", "Keep running until stopped", run("Start", func(ctx context.Context) error { _, err := f.e.Start(ctx, v.Target, ""); return err })),
+			f.action("Stop", "", func() error { return f.stop(v.Target) }),
+			f.action("Recreate", "Replace the container using current settings", func() error { return f.recreate(v.Target) }),
 		)
 		addGroup("Manage session",
-			f.action("Edit selected configs", sourceSummary(v.Sources), func() error { return f.editSession(v.Name) }),
+			f.action("Edit selected configs", sourceSummary(v.Sources), func() error { return f.editSession(v.Target) }),
 			f.defaultAction(v),
 			cliui.Action{Label: "Copy or move", Description: "Destination, name, preview and explicit transfer", Run: func() (bool, error) {
-				moved, err := f.transfer(v.Name)
+				moved, err := f.transfer(v.Target)
 				if err != nil {
 					return false, f.m.report(err)
 				}
 				return moved, nil
 			}},
-			cliui.Action{Label: "Rename session", Description: "New name in the same folder; rebuilds the container", Run: func() (bool, error) {
-				renamed, err := f.rename(v.Name)
+			cliui.Action{Label: "Rename session", Description: "Change the session label without changing its container", Run: func() (bool, error) {
+				renamed, err := f.rename(v.Target)
 				if err != nil {
 					return false, f.m.report(err)
 				}
 				return renamed, nil
 			}},
+			f.action("Change workspace", "Save a new folder reference; recreate explicitly to apply it", func() error {
+				path, ok, err := f.m.Text(cliui.TextRequest{Prompt: "New workspace (a matching old-folder default will be cleared): ", Initial: v.Workspace, Validate: func(path string) error { _, err := environment.CanonicalWorkspace(path); return err }})
+				if err != nil || !ok {
+					return err
+				}
+				r, err := f.e.SetWorkspace(f.m.Context, v.Target, "", path)
+				if err == nil {
+					f.m.Receipt("Workspace saved. Recreate explicitly to apply it.\n" + stepsText(scopedSteps(f.cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.ID)}, f.s.Home)))
+				}
+				return err
+			}),
 			cliui.Action{Label: "Delete", Description: "Container first; saved data/history separately", Danger: true, Run: func() (bool, error) {
-				if err := f.delete([]string{v.Name}); err != nil {
+				if err := f.delete([]string{v.Target}); err != nil {
 					return false, f.m.report(err)
 				}
-				_, err := f.e.Store.Read(f.m.Context, v.Name)
+				_, err := f.e.Store.Find(f.m.Context, v.Target, nil)
 				return os.IsNotExist(err), nil
 			}},
 		)
 		label := v.LocalName
 		if label == "" {
-			label = v.Name
+			label = v.Target
 		}
 		return cliui.Screen{Title: "Session · " + displayCell(label), Back: "Back", Actions: actions, Fields: []cliui.Field{{Label: "Folder", Value: v.Workspace}, {Label: "Harness", Value: v.Harness}, {Label: "Container", Value: strings.TrimRight(containerState(v), "!*"), Status: true}}, Navigation: navigation}, nil
 	})
@@ -382,7 +393,7 @@ func (f *frontend) status(target string) error {
 		return err
 	}
 	return f.m.View("Status", func(out io.Writer) error {
-		return printStatusDetails(out, details, scopedSteps(f.cmd, []commanderror.Step{commanderror.Next("To apply changes", "recreate", details.Name)}, f.s.Home))
+		return printStatusDetails(out, details, scopedSteps(f.cmd, []commanderror.Step{commanderror.Next("To apply changes", "recreate", details.Target)}, f.s.Home))
 	})
 }
 func (f *frontend) editSession(name string) error {
@@ -409,7 +420,7 @@ func (f *frontend) defaultAction(v app.View) cliui.Action {
 		if v.Default {
 			return f.clearDefault(v.Workspace)
 		}
-		record, err := f.e.Store.Read(f.m.Context, v.Name)
+		record, err := f.e.Store.Find(f.m.Context, v.Target, nil)
 		if err != nil {
 			return err
 		}
@@ -447,7 +458,7 @@ func (f *frontend) folder(folder string) error {
 		selected, defaultErr := f.e.Store.ReadDefault(f.m.Context, workspace)
 		name := "None"
 		if selected != nil {
-			name = selected.Name
+			name = selected.ID
 		}
 		var navigation *cliui.Navigation
 		if report, err := f.e.List(f.m.Context, ""); err == nil {
@@ -562,8 +573,8 @@ func (f *frontend) createSessionFromDraft(draft sessionCreationDraft) error {
 		return err
 	}
 	// Creation never selects a default or launches the harness.
-	f.focusItem = result.Name
-	return f.session(app.View{Name: result.Name, LocalName: draft.name, Workspace: draft.workspace})
+	f.focusItem = result.SessionID
+	return f.session(app.View{Target: result.SessionID, LocalName: draft.name, Workspace: draft.workspace})
 }
 func (f *frontend) help() error {
 	actions := []cliui.Action{f.action("Command reference", Version, func() error {

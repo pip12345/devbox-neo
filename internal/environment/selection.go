@@ -44,24 +44,35 @@ func Identify(workspace, localName string) (Identity, error) {
 	if err != nil {
 		return Identity{}, err
 	}
-	return Identity{Workspace: canonical, LocalName: localName, Name: ContainerName(canonical, localName)}, nil
+	return Identity{Binding: Binding{Workspace: canonical, LocalName: localName}}, nil
 }
 
 // Validate uses saved canonical paths without reopening the workspace. Exact
 // session lookup and cleanup must work after a directory has moved or vanished.
-func (id Identity) Validate() error {
+func (id Binding) Validate() error {
 	if err := ValidateLocalName(id.LocalName); err != nil {
 		return err
 	}
 	if !filepath.IsAbs(id.Workspace) || filepath.Clean(id.Workspace) != id.Workspace || strings.ContainsRune(id.Workspace, '\x00') {
 		return fmt.Errorf("invalid recorded workspace identity")
 	}
-	if id.Name != ContainerName(id.Workspace, id.LocalName) {
-		return fmt.Errorf("recorded workspace and local name do not match the full session name")
+	return nil
+}
+
+func (id Identity) Validate() error {
+	if err := id.Binding.Validate(); err != nil {
+		return err
+	}
+	if !ValidResourceName(id.Name) {
+		return fmt.Errorf("invalid resource name")
 	}
 	return nil
 }
 
-func IsSessionTarget(target string) bool {
-	return strings.HasPrefix(target, ContainerPrefix) && !strings.ContainsAny(target, "/\\")
+func ValidResourceName(name string) bool {
+	return strings.HasPrefix(name, ContainerPrefix) && filepath.Base(name) == name && !strings.ContainsAny(name, "/\\\x00\r\n")
 }
+
+var sessionIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
+
+func IsSessionTarget(target string) bool { return sessionIDPattern.MatchString(target) }

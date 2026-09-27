@@ -46,7 +46,8 @@ func TestDeletionReportsRemovalWhenActivitySaveFails(t *testing.T) {
 		t.Skip("requires ordinary filesystem permission enforcement")
 	}
 	e, _, name := namedCLIFixture(t)
-	path := filepath.Join(e.Store.Home, "sessions", name)
+	record := sessionRecord(t, e, name)
+	path := filepath.Join(e.Store.Home, "sessions", record.Directory)
 	t.Cleanup(func() { _ = os.Chmod(path, 0700) })
 	e.Docker.Runner.(*dockertest.Daemon).Fail = func(args []string) error {
 		if len(args) > 0 && args[0] == "rm" {
@@ -55,10 +56,10 @@ func TestDeletionReportsRemovalWhenActivitySaveFails(t *testing.T) {
 		return nil
 	}
 	result, err := e.Delete(context.Background(), app.DeleteOptions{Selection: app.Selection{Targets: []string{name}}, Scope: app.DeleteContainer})
-	if err == nil || len(result.Containers) != 1 || result.Containers[0] != name || len(result.Retained) != 1 {
+	if err == nil || len(result.Containers) != 1 || result.Containers[0] != record.Applied.Creation.Name || len(result.Retained) != 1 {
 		t.Fatal("committed Docker removal was hidden by activity-save failure", result, err)
 	}
-	if _, err := e.Store.Read(context.Background(), name); err != nil {
+	if _, err := e.Store.Find(context.Background(), name, nil); err != nil {
 		t.Fatal("failed activity save removed saved state", err)
 	}
 }

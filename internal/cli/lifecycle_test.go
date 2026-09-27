@@ -52,19 +52,19 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		err := root.Execute()
 		return out.String(), err
 	}
-	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.Name, "--json"}, {"status"}, {"status", "--json"}, {"status", result.Name}, {"network", "env", result.Name, "--get", "DEVBOX_HOST"}, {"logs", result.Name}} {
+	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.SessionID, "--json"}, {"status"}, {"status", "--json"}, {"status", result.SessionID}, {"network", "env", result.SessionID, "--get", "DEVBOX_HOST"}, {"logs", result.SessionID}} {
 		if out, err := run(args...); err != nil || out == "" {
 			t.Fatal(args, out, err)
 		}
 	}
-	for _, args := range [][]string{{"status", "--all"}, {"status", result.Name, "--all"}, {"status", result.Name, result.Name}, {"list", "--sort", "wrong"}, {"list", "--orphaned"}, {"list", "--older-than", "24h"}, {"session", "list"}} {
+	for _, args := range [][]string{{"status", "--all"}, {"status", result.SessionID, "--all"}, {"status", result.SessionID, result.SessionID}, {"list", "--sort", "wrong"}, {"list", "--orphaned"}, {"list", "--older-than", "24h"}, {"session", "list"}} {
 		if _, err := run(args...); err == nil {
 			t.Fatal("invalid list option accepted", args)
 		}
 	}
 	out, err := run("status", "--json")
 	var statusViews app.InventoryReport
-	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews.Sessions) != 1 || statusViews.Sessions[0].Name != result.Name || statusViews.Sessions[0].Desired != "NoChange" {
+	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews.Sessions) != 1 || statusViews.Sessions[0].SessionID != result.SessionID || statusViews.Sessions[0].Desired != "NoChange" {
 		t.Fatal("bulk status JSON did not include drift", out, err)
 	}
 	if out, err := run("status", "--profile", "test"); err == nil {
@@ -76,13 +76,13 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host","env":["TOKEN=private-status-value"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"status", result.Name}, {"status"}} {
+	for _, args := range [][]string{{"status", result.SessionID}, {"status"}} {
 		out, err := run(args...)
 		if err != nil || !strings.Contains(out, "[container] network: default -> host") || !strings.Contains(out, "environment variable TOKEN added") || strings.Contains(out, "private-status-value") {
 			t.Fatal("status text lost reasons or leaked env", out, err)
 		}
 	}
-	out, err = run("status", result.Name, "--json")
+	out, err = run("status", result.SessionID, "--json")
 	var single app.StatusDetails
 	if err != nil || json.Unmarshal([]byte(out), &single) != nil || len(single.PendingInputChanges) != 2 || strings.Contains(out, "private-status-value") || !strings.Contains(out, `"pending_input_changes":`) || strings.Contains(out, `"reasons":`) {
 		t.Fatal("single status JSON lost reasons or leaked env", out, err)
@@ -91,7 +91,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if err != nil || json.Unmarshal([]byte(out), &statusViews) != nil || len(statusViews.Sessions) != 1 || !reflect.DeepEqual(single.PendingInputChanges, statusViews.Sessions[0].PendingInputChanges) {
 		t.Fatal("bulk and single JSON disagree", out, err)
 	}
-	if single.Record == nil || single.Record.ID != single.SessionID || single.Record.ImageID == "" || single.Active == nil {
+	if single.Record == nil || single.Record.ID != single.SessionID || single.Record.Applied.ImageID == "" || single.Active == nil {
 		t.Fatal("single status JSON lost session details", single)
 	}
 	if strings.Contains(out, `"record":`) || strings.Contains(out, `"active":`) {
@@ -100,13 +100,13 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	out, err = run("status", result.Name)
-	for _, want := range []string{"Session: " + single.SessionID, "Harness: pi", "Image: " + single.Record.ImageID, "Active commands: 0", "Changes: Cannot check", "Desired configuration error:"} {
+	out, err = run("status", result.SessionID)
+	for _, want := range []string{"Session: " + single.SessionID, "Harness: pi", "Image: " + single.Record.Applied.ImageID, "Active commands: 0", "Changes: Cannot check", "Desired configuration error:"} {
 		if err != nil || !strings.Contains(out, want) {
 			t.Fatalf("status lost %q with invalid config: %s (%v)", want, out, err)
 		}
 	}
-	out, err = run("status", result.Name, "--json")
+	out, err = run("status", result.SessionID, "--json")
 	if err != nil || json.Unmarshal([]byte(out), &single) != nil || single.Record == nil || single.ConfigError == "" {
 		t.Fatal("JSON config error hid saved details", out, err)
 	}
@@ -114,10 +114,10 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	destination := t.TempDir()
-	if out, err := run("copy", result.Name, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {
+	if out, err := run("copy", result.SessionID, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {
 		t.Fatal(out, err)
 	}
-	if out, err := run("copy", result.Name, destination, "--json"); err != nil || !strings.Contains(out, `"mode":"clone"`) {
+	if out, err := run("copy", result.SessionID, destination, "--json"); err != nil || !strings.Contains(out, `"mode":"clone"`) {
 		t.Fatal(out, err)
 	}
 	for _, order := range []string{"name", "last-active"} {
@@ -130,7 +130,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 			t.Fatal("session JSON lost entries", out, err)
 		}
 		views := report.Sessions
-		if order == "name" && views[0].Name > views[1].Name || order == "last-active" && views[0].LastActivity.Before(views[1].LastActivity) {
+		if order == "name" && views[0].LocalName > views[1].LocalName || order == "last-active" && views[0].LastActivity.Before(views[1].LastActivity) {
 			t.Fatal("session JSON ignored sorting", out)
 		}
 		table, err := run("list", "--sort", order)
@@ -143,27 +143,27 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		}
 		for i, view := range views {
 			fields := strings.Fields(rows[i])
-			if len(fields) < 2 || fields[0] != view.Workspace || fields[1] != view.LocalName || strings.Contains(table, view.Name) {
+			if len(fields) < 2 || fields[0] != view.Workspace || fields[1] != view.LocalName || strings.Contains(table, view.SessionID) {
 				t.Fatal("session text and JSON identities/order disagree", table, views)
 			}
 		}
 	}
-	if _, err := run("copy", result.Name, "--move", "--from", "test"); err == nil {
+	if _, err := run("copy", result.SessionID, "--move", "--from", "test"); err == nil {
 		t.Fatal("incomplete slot flags accepted")
 	}
-	if _, err = run("delete", result.Name); err == nil {
+	if _, err = run("delete", result.SessionID); err == nil {
 		t.Fatal("non-interactive deletion bypassed confirmation")
 	}
-	if out, err := run("delete", result.Name, "--container"); err != nil || !strings.Contains(out, "retained") {
+	if out, err := run("delete", result.SessionID, "--container"); err != nil || !strings.Contains(out, "retained") {
 		t.Fatal(out, err)
 	}
-	if out, err := run("list", "--wide"); err != nil || !strings.Contains(out, result.Name) || !strings.Contains(out, "missing") {
+	if out, err := run("list", "--wide"); err != nil || !strings.Contains(out, result.SessionID) || !strings.Contains(out, "missing") {
 		t.Fatal("session list hid a missing container", out, err)
 	}
 	if out, err := run("delete", "--session", "--orphaned", "--dry-run"); err != nil || !strings.Contains(out, "Would delete") {
 		t.Fatal(out, err)
 	}
-	if _, err = run("delete", result.Name, "--session"); err != nil {
+	if _, err = run("delete", result.SessionID, "--session"); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -29,9 +29,9 @@ func (e *Engine) start(ctx context.Context, c docker.Container, r store.Record) 
 // their host backing source before Docker starts. This also restores parents
 // removed by reset, without loading desired configuration or changing ownership.
 func prepareMountParents(r store.Record) error {
-	d := harness.Definition{Stores: r.Stores, Auth: r.Auth}
+	d := harness.Definition{Stores: r.Applied.Stores, Auth: r.Applied.Auth}
 	sources := map[string]string{}
-	for _, mount := range r.Creation.Mounts {
+	for _, mount := range r.Applied.Creation.Mounts {
 		sources[mount.Target] = mount.Source
 	}
 	for _, parent := range d.MountParents() {

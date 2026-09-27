@@ -127,7 +127,7 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 			if len(args) > 0 {
 				// Pin folder/default lookups to the targets shown by preflight;
 				// changing a default while the form is open must not retarget deletion.
-				targets := append(slices.Clone(result.Containers), result.Retained...)
+				targets := slices.Clone(result.Targets)
 				if len(targets) == 0 {
 					return printDeleteResult(cmd.OutOrStdout(), result)
 				}

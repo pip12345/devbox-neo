@@ -28,12 +28,28 @@ func (e *Engine) readSession(ctx context.Context, name string) (store.Record, er
 	return r, err
 }
 
+func incompleteInventory(err error) bool {
+	var failure *commanderror.Error
+	return errors.As(err, &failure) && failure.Code == "inventory_incomplete"
+}
+
+func sessionAbsent(err error) bool {
+	var failure *commanderror.Error
+	if errors.As(err, &failure) {
+		return failure.Code == "session_missing"
+	}
+	return errors.Is(err, os.ErrNotExist)
+}
+
 // Locate chooses saved identity before resolving configuration. A folder needs
 // its explicit local name or saved default; inventory never supplies a fallback.
 func (e *Engine) Locate(ctx context.Context, target, localName string) (store.Record, error) {
 	if environment.IsSessionTarget(target) {
-		r, err := e.readSession(ctx, target)
-		if err == nil && localName != "" && localName != r.Identity.LocalName {
+		r, err := e.Store.Find(ctx, target, nil)
+		if sessionAbsent(err) {
+			return r, commanderror.New("session_missing", "Session not found.", target, err, commanderror.Next("List sessions", "list"))
+		}
+		if err == nil && localName != "" && localName != r.Settings.LocalName {
 			return store.Record{}, fmt.Errorf("local name does not match the recorded session")
 		}
 		return r, err
@@ -46,15 +62,14 @@ func (e *Engine) Locate(ctx context.Context, target, localName string) (store.Re
 		if err := environment.ValidateLocalName(localName); err != nil {
 			return store.Record{}, err
 		}
-		r, err := e.readSession(ctx, environment.ContainerName(workspace, localName))
+		r, err := e.Store.Find(ctx, "", &environment.Binding{Workspace: workspace, LocalName: localName})
 		if err != nil {
-			var actionable *commanderror.Error
-			if errors.As(err, &actionable) && actionable.Code == "session_missing" {
+			if sessionAbsent(err) {
 				return r, creationRequired(target, localName, err)
 			}
 			return r, err
 		}
-		if r.Identity.Workspace != workspace || r.Identity.LocalName != localName {
+		if r.Settings.Workspace != workspace || r.Settings.LocalName != localName {
 			return store.Record{}, fmt.Errorf("saved session does not match the requested workspace and name")
 		}
 		return r, nil
@@ -69,7 +84,7 @@ func (e *Engine) Locate(ctx context.Context, target, localName string) (store.Re
 			return store.Record{}, err
 		}
 		for _, entry := range entries {
-			if entry.Err == nil && entry.Record.Identity.Workspace == workspace {
+			if entry.Err == nil && entry.Record.Settings.Workspace == workspace {
 				return store.Record{}, commanderror.New("default_missing", "No default session selected.", target, nil,
 					commanderror.Next("Select a default session", "edit", target),
 					commanderror.Next("Then open it", "open", target))
@@ -80,14 +95,13 @@ func (e *Engine) Locate(ctx context.Context, target, localName string) (store.Re
 			commanderror.Next("Then select a default", "edit", target),
 			commanderror.Next("Then open it", "open", target))
 	}
-	r, err := e.readSession(ctx, selected.Name)
+	r, err := e.Store.Find(ctx, selected.ID, nil)
 	if err != nil {
-		var actionable *commanderror.Error
-		if !errors.As(err, &actionable) || actionable.Code != "session_missing" {
+		if !sessionAbsent(err) {
 			return r, err
 		}
 	}
-	if err != nil || r.ID != selected.ID || r.Identity.Workspace != workspace {
+	if err != nil || r.ID != selected.ID || r.Settings.Workspace != workspace {
 		return store.Record{}, commanderror.New("default_unavailable", "The saved default session is unavailable. Select a default again.", target, err,
 			commanderror.Next("Select a default session", "edit", target))
 	}
@@ -101,8 +115,8 @@ func loadSelected(lock *store.Locked, selected store.Record) (store.Record, erro
 	if err != nil {
 		return current, err
 	}
-	if current.ID != selected.ID || current.Identity != selected.Identity {
-		return store.Record{}, commanderror.New("session_changed", "Selected session was replaced; select it again.", selected.Identity.Name, nil)
+	if current.ID != selected.ID {
+		return store.Record{}, commanderror.New("session_changed", "Selected session was replaced; select it again.", selected.ID, nil)
 	}
 	return current, nil
 }
@@ -112,7 +126,7 @@ func (e *Engine) Start(ctx context.Context, target, localName string) (result Re
 	if err != nil {
 		return Result{}, err
 	}
-	l, err := e.Store.Lock(ctx, r.Identity.Name)
+	l, err := e.Store.Lock(ctx, r.Directory, r.ID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -125,7 +139,7 @@ func (e *Engine) Start(ctx context.Context, target, localName string) (result Re
 	if err != nil {
 		return Result{}, err
 	}
-	result = Result{Name: r.Identity.Name}
+	result = Result{SessionID: r.ID}
 	started := false
 	defer func() {
 		if err != nil && started {
@@ -148,7 +162,7 @@ func (e *Engine) Stop(ctx context.Context, target, localName string, force bool)
 	if err != nil {
 		return err
 	}
-	l, err := e.Store.Lock(ctx, r.Identity.Name)
+	l, err := e.Store.Lock(ctx, r.Directory, r.ID)
 	if err != nil {
 		return err
 	}
@@ -167,8 +181,8 @@ func (e *Engine) Stop(ctx context.Context, target, localName string, force bool)
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "Container not found.", r.Identity.Name, nil,
-			commanderror.Next("Inspect session", "status", r.Identity.Name))
+		return commanderror.New("container_missing", "Container not found.", r.ID, nil,
+			commanderror.Next("Inspect session", "status", r.ID))
 	}
 	if c.State.Running {
 		if err = e.Docker.Stop(ctx, c, e.owner(r)); err != nil {
@@ -187,7 +201,7 @@ func (e *Engine) Exec(ctx context.Context, target, localName string, argv []stri
 	if err != nil {
 		return err
 	}
-	l, err := e.Store.Lock(ctx, r.Identity.Name)
+	l, err := e.Store.Lock(ctx, r.Directory, r.ID)
 	if err != nil {
 		return err
 	}
@@ -201,8 +215,8 @@ func (e *Engine) Exec(ctx context.Context, target, localName string, argv []stri
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "Container not found.", r.Identity.Name, nil,
-			commanderror.Next("Start or restore, then retry", "start", r.Identity.Name))
+		return commanderror.New("container_missing", "Container not found.", r.ID, nil,
+			commanderror.Next("Start or restore, then retry", "start", r.ID))
 	}
 	started := false
 	defer func() {
@@ -210,7 +224,7 @@ func (e *Engine) Exec(ctx context.Context, target, localName string, argv []stri
 			err = errors.Join(err, e.stopUnattached(l, r))
 		}
 	}()
-	result := Result{Name: r.Identity.Name}
+	result := Result{SessionID: r.ID}
 	c, started, err = e.startAccess(ctx, l, c, exists, &r, nil, &result)
 	if err != nil {
 		return err
@@ -220,7 +234,7 @@ func (e *Engine) Exec(ctx context.Context, target, localName string, argv []stri
 	}
 	action := "exec"
 	if shell {
-		argv = append([]string(nil), r.Launch.Shell...)
+		argv = append([]string(nil), r.Applied.Launch.Shell...)
 		action = "shell"
 	}
 	r.Action = action

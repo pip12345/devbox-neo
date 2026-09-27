@@ -26,7 +26,7 @@ func (e *Engine) SSH(ctx context.Context, target, localName, destination string,
 	if err != nil {
 		return err
 	}
-	l, err := e.Store.Lock(ctx, r.Identity.Name)
+	l, err := e.Store.Lock(ctx, r.Directory, r.ID)
 	if err != nil {
 		return err
 	}
@@ -40,13 +40,13 @@ func (e *Engine) SSH(ctx context.Context, target, localName, destination string,
 		return err
 	}
 	mounted := false
-	for _, m := range r.Creation.Mounts {
+	for _, m := range r.Applied.Creation.Mounts {
 		if m.Target == sshshare.Mount && m.Source == root && !m.ReadOnly {
 			mounted = true
 		}
 	}
 	if !mounted {
-		return commanderror.New("ssh_mount_missing", "This environment needs recreation before SSH sharing is available.", r.Identity.Name, nil, commanderror.Next("Recreate", "recreate", r.Identity.Name))
+		return commanderror.New("ssh_mount_missing", "This environment needs recreation before SSH sharing is available.", r.ID, nil, commanderror.Next("Recreate", "recreate", r.ID))
 	}
 	c, exists, err := e.inspect(ctx, r)
 	if err != nil {
@@ -58,7 +58,7 @@ func (e *Engine) SSH(ctx context.Context, target, localName, destination string,
 			err = errors.Join(err, e.stopUnattached(l, r))
 		}
 	}()
-	result := Result{Name: r.Identity.Name}
+	result := Result{SessionID: r.ID}
 	c, started, err = e.startAccess(ctx, l, c, exists, &r, nil, &result)
 	if err != nil {
 		return err
@@ -124,7 +124,7 @@ func (e *Engine) runSSH(ctx context.Context, c docker.Container, r store.Record,
 				}
 				connected = true
 				if options.Connected != nil {
-					options.Connected(r.Identity.Name, connection.Alias)
+					options.Connected(r.ID, connection.Alias)
 				}
 			}
 			if time.Now().Before(nextInspect) {

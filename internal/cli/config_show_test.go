@@ -37,7 +37,7 @@ func TestConfigShowUsesExplicitSourcesAndRedactsEnvironment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(overlay, "config.json"), []byte(`{"harness":"pi","harness_args":["--overlay"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	r, err := e.Store.Read(context.Background(), fullName)
+	r, err := e.Store.Find(context.Background(), fullName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

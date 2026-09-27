@@ -19,10 +19,11 @@ import (
 
 func TestFrontendResumesPinnedTransferWithoutChangingEndpoints(t *testing.T) {
 	f, out, q, name := frontendFixture(t, strings.NewReader("1\n2\n3\n5\ny\n"))
-	c, _, err := f.e.Docker.Inspect(context.Background(), name)
+	c, _, err := f.e.Docker.InspectID(context.Background(), sessionRecord(t, f.e, name).Applied.SetupContainer)
 	if err != nil {
 		t.Fatal(err)
 	}
+	sourceDirectory := sessionRecord(t, f.e, name).Directory
 	daemon := f.e.Docker.Runner.(*dockertest.Daemon)
 	daemon.Fail = func(args []string) error {
 		if len(args) == 2 && args[0] == "rm" && args[1] == c.ID {
@@ -34,7 +35,7 @@ func TestFrontendResumesPinnedTransferWithoutChangingEndpoints(t *testing.T) {
 	if err == nil {
 		t.Fatal("failure injection did not interrupt cleanup")
 	}
-	journal, err := f.e.Store.ReadTransfer(name)
+	journal, err := f.e.Store.ReadTransfer(sourceDirectory)
 	if err != nil || journal == nil || journal.Phase != "committed" {
 		t.Fatal(journal, err)
 	}
@@ -46,7 +47,7 @@ func TestFrontendResumesPinnedTransferWithoutChangingEndpoints(t *testing.T) {
 	if !strings.Contains(out.String(), "recorded endpoints and mode are pinned") {
 		t.Fatal("pending transfer fields remained editable", out.String())
 	}
-	if journal, err = f.e.Store.ReadTransfer(name); err != nil || journal != nil {
+	if journal, err = f.e.Store.ReadTransfer(sourceDirectory); err != nil || journal != nil {
 		t.Fatal("transfer did not finish", journal, err)
 	}
 }
@@ -96,7 +97,7 @@ func TestNativeFrontendHandsInputToAttachmentAndResumes(t *testing.T) {
 		m := newMenu(cmd)
 		defer func() { err = errors.Join(err, m.Finish()) }()
 		f := &frontend{m: m, cmd: cmd, e: e, s: &resource.Service{Home: e.Store.Home}}
-		return f.session(app.View{Name: name})
+		return f.session(app.View{Target: name})
 	})
 	p.wait("Shell")
 	p.send("\x1b[B\x1b[B\x1b[B\r")

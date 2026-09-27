@@ -24,27 +24,27 @@ func TestConfigEnvironmentRecoveryNeverStoresOrAdoptsValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(e.Store.Home, "sessions", result.Name, "session.json")
+	path := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "session.json")
 	data := getFile(t, path)
 	if bytes.Contains(data, []byte("sentinel-secret")) || bytes.Contains(data, []byte("OTHER=literal")) {
 		t.Fatal("session persisted env values")
 	}
-	before := record(t, e, result.Name)
-	d.Forget(result.Name)
-	if _, err = e.Start(ctx, result.Name, ""); err != nil {
+	before := sessionRecord(t, e, result.SessionID)
+	forgetSession(t, e, result.SessionID)
+	if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 		t.Fatal("verified env did not recover", err)
 	}
-	d.Forget(result.Name)
+	forgetSession(t, e, result.SessionID)
 	t.Setenv("DEVBOX_TEST_TOKEN", "new-secret")
 	creates := count(d, "create")
 	var recoveryError *commanderror.Error
-	if _, err = e.Start(ctx, result.Name, ""); !errors.As(err, &recoveryError) || recoveryError.Code != "recovery_unavailable" || len(recoveryError.Next) != 1 {
+	if _, err = e.Start(ctx, result.SessionID, ""); !errors.As(err, &recoveryError) || recoveryError.Code != "recovery_unavailable" || len(recoveryError.Next) != 1 {
 		t.Fatal("changed env was adopted", err)
 	}
 	if count(d, "create") != creates {
 		t.Fatal("failed env verification mutated Docker")
 	}
-	if record(t, e, result.Name).Applied != before.Applied {
+	if sessionRecord(t, e, result.SessionID).Applied.Fingerprints != before.Applied.Fingerprints {
 		t.Fatal("failed recovery advanced fingerprints")
 	}
 }
@@ -67,12 +67,12 @@ func TestPublicSubstitutionsAndCreationOptionsUseOneSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record := record(t, e, result.Name)
-	if len(record.Creation.Ports) != 1 || len(record.Creation.RawArgs) != 1 || !strings.Contains(record.Creation.Metadata, "example.extension") {
+	record := sessionRecord(t, e, result.SessionID)
+	if len(record.Applied.Creation.Ports) != 1 || len(record.Applied.Creation.RawArgs) != 1 || !strings.Contains(record.Applied.Creation.Metadata, "example.extension") {
 		t.Fatal("creation options were dropped")
 	}
 	found := false
-	for _, mount := range record.Creation.Mounts {
+	for _, mount := range record.Applied.Creation.Mounts {
 		if mount.Target == "/data" {
 			found = mount.Source == source && mount.ReadOnly
 		}
@@ -80,7 +80,7 @@ func TestPublicSubstitutionsAndCreationOptionsUseOneSnapshot(t *testing.T) {
 	if !found {
 		t.Fatal("extra mount was not normalized")
 	}
-	b := getFile(t, filepath.Join(e.Store.Home, "sessions", result.Name, "session.json"))
+	b := getFile(t, filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "session.json"))
 	if bytes.Contains(b, []byte("changed-after-resolution")) {
 		t.Fatal("env value leaked")
 	}
@@ -106,29 +106,29 @@ func TestInvalidCreationOptionsFailBeforeDocker(t *testing.T) {
 	}
 }
 func TestSourceEditsDoNotReplaceCommittedEnvironmentRecoveryInputs(t *testing.T) {
-	e, d, q := fixture(t)
+	e, _, q := fixture(t)
 	ctx := context.Background()
 	write(t, filepath.Join(q.Sources[0].Path, "config.json"), `{"harness":"pi","env":["TOKEN=committed-value"]}`)
 	result, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := record(t, e, result.Name)
+	before := sessionRecord(t, e, result.SessionID)
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "config.json"), `{"harness":"pi","env":["TOKEN=desired-value"]}`)
 	refs := []config.Reference{{Label: "replacement", Kind: config.ReferenceFixed, Path: dir}}
 	if _, err := e.UpdateSources(ctx, before, refs); err != nil {
 		t.Fatal(err)
 	}
-	d.Forget(result.Name)
-	if _, err = e.Start(ctx, result.Name, ""); err != nil {
+	forgetSession(t, e, result.SessionID)
+	if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 		t.Fatal("source edit invalidated committed recovery provenance", err)
 	}
-	after := record(t, e, result.Name)
-	if after.Inputs.Sources[0].Path != before.Inputs.Sources[0].Path || after.Sources[0].Path != dir || after.Applied.Container != before.Applied.Container {
+	after := sessionRecord(t, e, result.SessionID)
+	if after.Applied.Inputs.Sources[0].Path != before.Applied.Inputs.Sources[0].Path || after.Settings.Sources[0].Path != dir || after.Applied.Fingerprints.Container != before.Applied.Fingerprints.Container {
 		t.Fatal("recovery applied desired container configuration instead of committed inputs")
 	}
-	data := getFile(t, filepath.Join(e.Store.Home, "sessions", result.Name, "session.json"))
+	data := getFile(t, filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "session.json"))
 	if bytes.Contains(data, []byte("committed-value")) || bytes.Contains(data, []byte("desired-value")) {
 		t.Fatal("source change persisted environment values")
 	}
@@ -146,13 +146,13 @@ func TestFileAndVolumeMountRecoveryChecksKinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.Forget(result.Name)
-	if _, err = e.Start(context.Background(), result.Name, ""); err != nil {
+	forgetSession(t, e, result.SessionID)
+	if _, err = e.Start(context.Background(), result.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
-	d.Forget(result.Name)
+	forgetSession(t, e, result.SessionID)
 	delete(d.Volumes, "shared-volume")
-	if _, err = e.Start(context.Background(), result.Name, ""); err == nil {
+	if _, err = e.Start(context.Background(), result.SessionID, ""); err == nil {
 		t.Fatal("missing volume silently recreated")
 	}
 }

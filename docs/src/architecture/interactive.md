@@ -57,6 +57,6 @@ Keep error/partial-result output visible before returning. Color-independent mar
 
 ## Completion
 
-Completion bypasses store initialization and locking record readers. Existing config/session directories provide suggestions, including corrupt records; local names are folder-scoped. Harness enumeration uses valid effective definitions. Live container suggestions use bounded installation-filtered inventory and tolerate unavailable Docker.
+Completion bypasses store initialization and locking record readers. Config directories provide named suggestions; session IDs and folder-local names come from readable saved settings, without requiring valid applied runtime state. Harness enumeration uses valid effective definitions. Live container suggestions use bounded installation-filtered inventory and tolerate unavailable Docker.
 
 Completion must not seed state, create locks, resolve a full environment, or mutate Docker. Scripts register `devbox-neo` and an existing `dbx` shortcut without defining it; Zsh advertises both names in its autoload header.

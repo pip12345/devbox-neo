@@ -21,8 +21,8 @@ func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shown := record(t, e, made.Name)
-	lock, err := e.Store.Lock(ctx, made.Name)
+	shown := sessionRecord(t, e, made.SessionID)
+	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, made.SessionID).Directory, sessionRecord(t, e, made.SessionID).ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,11 +36,11 @@ func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
 	}
 	missing := []config.Reference{{Label: "missing", Kind: config.ReferenceFixed, Path: filepath.Join(e.Store.Home, "configs", "missing")}}
 	incomplete, err := e.UpdateSources(ctx, shown, missing)
-	if err != nil || incomplete.ID != shown.ID || incomplete.Action != "exec" || incomplete.Applied != shown.Applied {
+	if err != nil || incomplete.ID != shown.ID || incomplete.Action != "exec" || incomplete.Applied.Fingerprints != shown.Applied.Fingerprints {
 		t.Fatal("source edit lost unrelated state or rejected an incomplete chain", incomplete, err)
 	}
 	var conflict *commanderror.Error
-	if _, err := e.UpdateSources(ctx, shown, shown.Sources[:1]); !errors.As(err, &conflict) || conflict.Code != "sources_changed" {
+	if _, err := e.UpdateSources(ctx, shown, shown.Settings.Sources[:1]); !errors.As(err, &conflict) || conflict.Code != "sources_changed" {
 		t.Fatal("stale source editor overwrote another edit", err)
 	}
 	if err := e.SetDefault(ctx, incomplete); err != nil {
@@ -49,26 +49,26 @@ func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
 	if _, err := e.Locate(ctx, q.Workspace, ""); err != nil {
 		t.Fatal("incomplete config blocked saved lookup", err)
 	}
-	if _, err := e.Open(ctx, Request{Workspace: made.Name}); err == nil {
+	if _, err := e.Open(ctx, Request{Workspace: made.SessionID}); err == nil {
 		t.Fatal("missing config became runnable")
 	}
-	if err := e.Stop(ctx, made.Name, "", false); err != nil {
+	if err := e.Stop(ctx, made.SessionID, "", false); err != nil {
 		t.Fatal("missing config blocked stop", err)
 	}
 	// Existing empty records remain readable and repairable. The nonempty rule
 	// belongs to saved edits, not record decoding or creation drafts.
-	lock, err = e.Store.Lock(ctx, made.Name)
+	lock, err = e.Store.Lock(ctx, sessionRecord(t, e, made.SessionID).Directory, sessionRecord(t, e, made.SessionID).ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	incomplete.Sources = nil
+	incomplete.Settings.Sources = nil
 	err = lock.Save(incomplete)
 	lock.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	empty := record(t, e, made.Name)
-	if _, err := e.UpdateSources(ctx, empty, shown.Sources); err != nil {
+	empty := sessionRecord(t, e, made.SessionID)
+	if _, err := e.UpdateSources(ctx, empty, shown.Settings.Sources); err != nil {
 		t.Fatal("could not repair an empty chain", err)
 	}
 }
@@ -80,29 +80,30 @@ func TestStaleDefaultDoesNotSelectAReusedLocalName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := record(t, e, made.Name)
+	original := sessionRecord(t, e, made.SessionID)
 	if err := e.SetDefault(ctx, original); err != nil {
 		t.Fatal(err)
 	}
 	for _, localName := range []string{"", q.LocalName} {
 		name, id, err := e.transferSource(ctx, TransferOptions{Source: q.Workspace, LocalName: localName})
-		if err != nil || name != made.Name || id != original.ID {
+		if err != nil || name != original.Directory || id != original.ID {
 			t.Fatal("transfer source selection lost its durable-ID snapshot", name, id, err)
 		}
 	}
-	key, _ := store.WorkspaceKey(original.Identity.Workspace)
+	key, _ := store.WorkspaceKey(original.Settings.Workspace)
 	path := filepath.Join(e.Store.Home, "state/workspaces", key+".json")
 	stale, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{made.Name}}, Scope: DeleteSession}); err != nil {
+	if _, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{made.SessionID}}, Scope: DeleteSession}); err != nil {
 		t.Fatal(err)
 	}
 	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {
 		t.Fatal("whole-session deletion left a default", selected, err)
 	}
-	if _, err := e.Create(ctx, q); err != nil {
+	replacement, err := e.Create(ctx, q)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, stale, 0600); err != nil {
@@ -114,8 +115,11 @@ func TestStaleDefaultDoesNotSelectAReusedLocalName(t *testing.T) {
 	if err := e.SetDefault(ctx, original); err == nil {
 		t.Fatal("stale default picker selected the replacement session")
 	}
-	if _, err := e.Locate(ctx, made.Name, ""); err != nil {
+	if _, err := e.Locate(ctx, replacement.SessionID, ""); err != nil {
 		t.Fatal("stale default blocked exact targeting", err)
+	}
+	if _, err := e.Locate(ctx, made.SessionID, ""); err == nil {
+		t.Fatal("deleted ID selected the replacement")
 	}
 	if err := os.WriteFile(path, []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
@@ -134,14 +138,14 @@ func TestConcurrentDefaultSelectionAndSessionDeletionCannotDangle(t *testing.T) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		selected := record(t, e, made.Name)
+		selected := sessionRecord(t, e, made.SessionID)
 		var wg sync.WaitGroup
 		var deletionErr error
 		wg.Add(2)
 		go func() { defer wg.Done(); _ = e.SetDefault(ctx, selected) }()
 		go func() {
 			defer wg.Done()
-			_, deletionErr = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{made.Name}}, Scope: DeleteSession})
+			_, deletionErr = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{made.SessionID}}, Scope: DeleteSession})
 		}()
 		wg.Wait()
 		if deletionErr != nil {
@@ -162,11 +166,11 @@ func TestNamedCopyAndMoveDoNotSelectDestinationDefaults(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			original := record(t, e, made.Name)
+			original := sessionRecord(t, e, made.SessionID)
 			if err := e.SetDefault(ctx, original); err != nil {
 				t.Fatal(err)
 			}
-			result, err := e.Transfer(ctx, TransferOptions{Mode: mode, Source: made.Name, As: "Experiment"})
+			result, err := e.Transfer(ctx, TransferOptions{Mode: mode, Source: made.SessionID, As: "Experiment"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -174,7 +178,7 @@ func TestNamedCopyAndMoveDoNotSelectDestinationDefaults(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if mode == "clone" && (selected == nil || selected.Name != made.Name || selected.ID != original.ID) {
+			if mode == "clone" && (selected == nil || selected.ID != original.ID) {
 				t.Fatal("copy changed the source default", selected)
 			}
 			if mode == "relocate" && selected != nil {
@@ -183,7 +187,7 @@ func TestNamedCopyAndMoveDoNotSelectDestinationDefaults(t *testing.T) {
 			if result.LocalName != "Experiment" || result.Workspace != q.Workspace {
 				t.Fatal("lost explicit same-folder destination", result)
 			}
-			data, _ := json.Marshal(record(t, e, result.Destination).Identity)
+			data, _ := json.Marshal(sessionRecord(t, e, result.Destination).Settings.Binding)
 			var identity map[string]any
 			json.Unmarshal(data, &identity)
 			for _, obsolete := range []string{"profile", "project", "slot"} {

@@ -89,7 +89,7 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 			seen++
 		}
 	}
-	if record(t, e, result.Name).ID == "" {
+	if sessionRecord(t, e, result.SessionID).ID == "" {
 		t.Fatal("creation did not commit")
 	}
 }
@@ -132,7 +132,7 @@ func TestSeedingHigherPriorityDockerfileWarnsWithoutReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Name != result.Name || count(d, "create") != 1 || count(d, "build") != 2 || len(result.Diagnostics) == 0 {
+	if first.SessionID != result.SessionID || count(d, "create") != 1 || count(d, "build") != 2 || len(result.Diagnostics) == 0 {
 		t.Fatal("Dockerfile seeding did not remain non-destructive drift")
 	}
 }

@@ -58,13 +58,6 @@ func completionDirectories(cmd *cobra.Command, directory string) []string {
 			if info, err := os.Lstat(filepath.Join(root, name, "config.json")); err == nil && info.Mode().IsRegular() {
 				names = append(names, name)
 			}
-		} else if strings.HasPrefix(name, environment.ContainerPrefix) {
-			p, err := fsutil.Path(root, filepath.Join(name, "session.json"))
-			if err == nil {
-				if info, err := os.Stat(p); err == nil && info.Mode().IsRegular() {
-					names = append(names, name)
-				}
-			}
 		}
 	}
 	return names
@@ -74,8 +67,51 @@ func completeConfigs(cmd *cobra.Command) []string {
 	return completionDirectories(cmd, "configs")
 }
 
+type completionSession struct {
+	ID       string              `json:"id"`
+	Settings environment.Binding `json:"settings"`
+}
+
+func completionSessions(cmd *cobra.Command) []completionSession {
+	root, err := fsutil.Path(completionHome(cmd), "sessions")
+	if err != nil {
+		return nil
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	var records []completionSession
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path, err := fsutil.Path(root, filepath.Join(entry.Name(), "session.json"))
+		if err != nil {
+			continue
+		}
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Size() > 8<<20 {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var record completionSession
+		if json.Unmarshal(data, &record) == nil && environment.IsSessionTarget(record.ID) && record.Settings.Validate() == nil {
+			records = append(records, record)
+		}
+	}
+	return records
+}
+
 func completeSessions(cmd *cobra.Command) []string {
-	return completionDirectories(cmd, "sessions")
+	var ids []string
+	for _, record := range completionSessions(cmd) {
+		ids = append(ids, record.ID)
+	}
+	return ids
 }
 
 func completeLocalNames(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
@@ -91,24 +127,9 @@ func completeLocalNames(cmd *cobra.Command, args []string, prefix string) ([]str
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	var values []string
-	for _, name := range completeSessions(cmd) {
-		path, err := fsutil.Path(completionHome(cmd), filepath.Join("sessions", name, "session.json"))
-		if err != nil {
-			continue
-		}
-		info, err := os.Stat(path)
-		if err != nil || info.Size() > 8<<20 {
-			continue
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		var record struct {
-			Identity environment.Identity `json:"identity"`
-		}
-		if json.Unmarshal(data, &record) == nil && record.Identity.Validate() == nil && record.Identity.Workspace == workspace {
-			values = append(values, record.Identity.LocalName)
+	for _, record := range completionSessions(cmd) {
+		if record.Settings.Workspace == workspace {
+			values = append(values, record.Settings.LocalName)
 		}
 	}
 	return completionMatches(values, nil, prefix), cobra.ShellCompDirectiveNoFileComp
@@ -231,6 +252,9 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 				}
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
+		}
+		if cmd.Flags().Lookup("workspace") != nil {
+			_ = cmd.MarkFlagDirname("workspace")
 		}
 		if cmd.Flags().Lookup("name") != nil {
 			_ = cmd.RegisterFlagCompletionFunc("name", completeLocalNames)

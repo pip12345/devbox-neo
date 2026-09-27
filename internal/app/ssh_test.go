@@ -19,7 +19,7 @@ import (
 
 func fakeContainerMaster(t *testing.T, e *Engine, name string) func(context.Context, docker.Command) error {
 	t.Helper()
-	root := filepath.Join(e.Store.Home, "sessions", name, sshshare.RelativeRoot)
+	root := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, name).Directory, sshshare.RelativeRoot)
 	return func(ctx context.Context, cmd docker.Command) error {
 		i := slices.Index(cmd.Args, sshshare.Supervisor)
 		if i < 0 {
@@ -68,13 +68,13 @@ func TestSSHStartupLeasesConcurrentConnectionsAndCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.Attached = fakeContainerMaster(t, e, result.Name)
+	d.Attached = fakeContainerMaster(t, e, result.SessionID)
 	connect := func(destination string) (context.CancelFunc, <-chan error) {
 		cctx, cancel := context.WithCancel(ctx)
 		done := make(chan error, 1)
 		ready := make(chan struct{})
 		go func() {
-			done <- e.SSH(cctx, result.Name, "", destination, SSHOptions{Connected: func(_, alias string) {
+			done <- e.SSH(cctx, result.SessionID, "", destination, SSHOptions{Connected: func(_, alias string) {
 				if alias == "" {
 					panic("missing alias")
 				}
@@ -86,17 +86,17 @@ func TestSSHStartupLeasesConcurrentConnectionsAndCleanup(t *testing.T) {
 		return cancel, done
 	}
 	cancelFirst, first := connect("staging")
-	r := record(t, e, result.Name)
+	r := sessionRecord(t, e, result.SessionID)
 	if r.Action != "ssh" {
 		t.Fatal(r.Action)
 	}
-	if err := e.Stop(ctx, result.Name, "", false); err == nil {
+	if err := e.Stop(ctx, result.SessionID, "", false); err == nil {
 		t.Fatal("SSH lease did not protect stop")
 	}
 	if _, err := e.Recreate(ctx, q, false); err == nil {
 		t.Fatal("SSH lease did not protect recreation")
 	}
-	if err := e.SSH(ctx, result.Name, "", "staging", SSHOptions{}); err == nil || !strings.Contains(err.Error(), "already in use") {
+	if err := e.SSH(ctx, result.SessionID, "", "staging", SSHOptions{}); err == nil || !strings.Contains(err.Error(), "already in use") {
 		t.Fatal("duplicate not refused", err)
 	}
 	// Running SSH access follows the same config-independent policy as exec.
@@ -104,21 +104,21 @@ func TestSSHStartupLeasesConcurrentConnectionsAndCleanup(t *testing.T) {
 	cancelSecond, second := connect("other")
 	cancelFirst()
 	finishSSH(t, first)
-	c, _ := d.Snapshot(result.Name)
+	c, _ := sessionSnapshot(t, e, result.SessionID)
 	if !c.State.Running {
 		t.Fatal("first connection stopped second")
 	}
 	cancelSecond()
 	finishSSH(t, second)
-	c, _ = d.Snapshot(result.Name)
+	c, _ = sessionSnapshot(t, e, result.SessionID)
 	if c.State.Running {
 		t.Fatal("last SSH lease did not trigger automatic shutdown")
 	}
-	entries, _ := filepath.Glob(filepath.Join(e.Store.Home, "sessions", result.Name, sshshare.RelativeRoot, "c", "*", "config"))
+	entries, _ := filepath.Glob(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, sshshare.RelativeRoot, "c", "*", "config"))
 	if len(entries) != 0 {
 		t.Fatal("dead connections still published", entries)
 	}
-	l, err := e.Store.Lock(ctx, result.Name)
+	l, err := e.Store.Lock(ctx, sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestSSHMissingMountNeedsExplicitRecreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l, err := e.Store.Lock(ctx, result.Name)
+	l, err := e.Store.Lock(ctx, sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,13 +144,13 @@ func TestSSHMissingMountNeedsExplicitRecreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.Creation.Mounts = slices.DeleteFunc(r.Creation.Mounts, func(m docker.Mount) bool { return m.Target == sshshare.Mount })
+	r.Applied.Creation.Mounts = slices.DeleteFunc(r.Applied.Creation.Mounts, func(m docker.Mount) bool { return m.Target == sshshare.Mount })
 	if err = l.Save(r); err != nil {
 		t.Fatal(err)
 	}
 	l.Close()
 	before := len(d.History())
-	err = e.SSH(ctx, result.Name, "", "staging", SSHOptions{})
+	err = e.SSH(ctx, result.SessionID, "", "staging", SSHOptions{})
 	var actionable *commanderror.Error
 	if !errors.As(err, &actionable) || actionable.Code != "ssh_mount_missing" {
 		t.Fatal(err)
@@ -169,7 +169,7 @@ func TestSSHInvalidConfigBlocksStoppedStartup(t *testing.T) {
 	}
 	before := count(d, "start")
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
-	if err := e.SSH(ctx, result.Name, "", "staging", SSHOptions{}); err == nil {
+	if err := e.SSH(ctx, result.SessionID, "", "staging", SSHOptions{}); err == nil {
 		t.Fatal("invalid config ignored")
 	}
 	if count(d, "start") != before {
@@ -178,7 +178,7 @@ func TestSSHInvalidConfigBlocksStoppedStartup(t *testing.T) {
 }
 
 func TestSSHHostAuthenticationFailureReleasesLeaseAndStops(t *testing.T) {
-	e, d, q := fixture(t)
+	e, _, q := fixture(t)
 	ctx := context.Background()
 	result, err := e.Create(ctx, q)
 	if err != nil {
@@ -189,12 +189,12 @@ func TestSSHHostAuthenticationFailureReleasesLeaseAndStops(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
-	err = e.SSH(ctx, result.Name, "", "staging", SSHOptions{HostMaster: true, Connected: func(_, _ string) { t.Error("published failed authentication") }})
+	err = e.SSH(ctx, result.SessionID, "", "staging", SSHOptions{HostMaster: true, Connected: func(_, _ string) { t.Error("published failed authentication") }})
 	var exit *sshshare.ExitError
 	if !errors.As(err, &exit) || exit.Code != 255 {
 		t.Fatal(err)
 	}
-	c, _ := d.Snapshot(result.Name)
+	c, _ := sessionSnapshot(t, e, result.SessionID)
 	if c.State.Running {
 		t.Fatal("failed login left startup running")
 	}
@@ -207,16 +207,16 @@ func TestSSHForcedStopEndsConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.Attached = fakeContainerMaster(t, e, result.Name)
+	d.Attached = fakeContainerMaster(t, e, result.SessionID)
 	ready := make(chan struct{})
 	done := make(chan error, 1)
 	cctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	go func() {
-		done <- e.SSH(cctx, result.Name, "", "staging", SSHOptions{Connected: func(_, _ string) { close(ready) }})
+		done <- e.SSH(cctx, result.SessionID, "", "staging", SSHOptions{Connected: func(_, _ string) { close(ready) }})
 	}()
 	awaitSSH(t, ready)
-	if err := e.Stop(ctx, result.Name, "", true); err != nil {
+	if err := e.Stop(ctx, result.SessionID, "", true); err != nil {
 		t.Fatal(err)
 	}
 	select {

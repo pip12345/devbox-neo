@@ -99,8 +99,9 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata, _ := json.Marshal(map[string]any{"identity": identity})
-	completionFile(t, explicit, filepath.Join("sessions", identity.Name, "session.json"), string(metadata))
+	id := strings.Repeat("a", 32)
+	metadata, _ := json.Marshal(map[string]any{"id": id, "settings": identity.Binding})
+	completionFile(t, explicit, filepath.Join("sessions", "arbitrary-storage-directory", "session.json"), string(metadata))
 	completionFile(t, explicit, "harnesses/pi/harness.json", `invalid override`)
 	custom, err := harness.Load(explicit, "opencode")
 	if err != nil {
@@ -127,7 +128,7 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 		{[]string{"--home", explicit, "edit", workspace, "--name", "M"}, []string{"Main"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "create", ".", "--config", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveDefault},
 		{[]string{"--home", explicit, "copy", ".", "--as", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "rename", "devbox-"}, []string{identity.Name}, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "rename", "aaaa"}, []string{id}, cobra.ShellCompDirectiveDefault},
 		{[]string{"--home", explicit, "rename", workspace, "--name", "M"}, []string{"Main"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "rename", workspace, "--to", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "copy", workspace, "--move", "--name", "M"}, []string{"Main"}, cobra.ShellCompDirectiveNoFileComp},
@@ -135,10 +136,10 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 		{[]string{"--home", explicit, "config", "create", "overlay", "--artifact-harness", ""}, []string{"claude", "custom", "opencode"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "list", "--sort", ""}, []string{"folder", "last-active", "name"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "list", "--sort", "f"}, []string{"folder"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "status", "devbox-"}, []string{identity.Name}, cobra.ShellCompDirectiveDefault},
-		{[]string{"--home", explicit, "copy", identity.Name, ""}, nil, cobra.ShellCompDirectiveFilterDirs},
-		{[]string{"--home", explicit, "copy", "--move", identity.Name, ""}, nil, cobra.ShellCompDirectiveFilterDirs},
-		{[]string{"--home", explicit, "copy", "--move", "devbox-"}, []string{identity.Name}, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "status", "aaaa"}, []string{id}, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "copy", id, ""}, nil, cobra.ShellCompDirectiveFilterDirs},
+		{[]string{"--home", explicit, "copy", "--move", id, ""}, nil, cobra.ShellCompDirectiveFilterDirs},
+		{[]string{"--home", explicit, "copy", "--move", "aaaa"}, []string{id}, cobra.ShellCompDirectiveDefault},
 		{[]string{"--home", explicit, "list", ""}, nil, cobra.ShellCompDirectiveFilterDirs},
 		{[]string{"--home", explicit, "create", ""}, nil, cobra.ShellCompDirectiveFilterDirs},
 		{[]string{"--home", explicit, "create", ".", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
@@ -146,7 +147,7 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 		{[]string{"--home", explicit, "open", ".", "--", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "exec", ".", "--", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "delete", "--all", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "delete", identity.Name, ""}, nil, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "delete", id, ""}, nil, cobra.ShellCompDirectiveDefault},
 	}
 	for _, tt := range cases {
 		got, dir := runCompletion(t, tt.args...)

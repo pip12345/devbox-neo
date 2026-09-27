@@ -17,9 +17,9 @@ func TestNamedSessionsRequireExplicitDefaultsAndPinSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := record(t, e, first.Name)
-	if a.Identity.LocalName != "test" || !strings.HasSuffix(first.Name, ".test") {
-		t.Fatal(a.Identity)
+	a := sessionRecord(t, e, first.SessionID)
+	if a.Settings.LocalName != "test" || !environment.IsSessionTarget(first.SessionID) {
+		t.Fatal(a.Settings.Binding)
 	}
 	// Neither a sole session nor an obsolete global config selects a default.
 	write(t, filepath.Join(e.Store.Home, "config.json"), `{"default_profile":"test"}`)
@@ -44,8 +44,8 @@ func TestNamedSessionsRequireExplicitDefaultsAndPinSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := record(t, e, second.Name)
-	if a.ID == b.ID || a.Identity.Name == b.Identity.Name {
+	b := sessionRecord(t, e, second.SessionID)
+	if a.ID == b.ID || a.Directory == b.Directory {
 		t.Fatal("shared session identity")
 	}
 	if err := e.SetDefault(ctx, b); err != nil {
@@ -54,19 +54,19 @@ func TestNamedSessionsRequireExplicitDefaultsAndPinSources(t *testing.T) {
 	if got, err := e.Locate(ctx, q.Workspace, ""); err != nil || got.ID != b.ID {
 		t.Fatal("did not select explicit default", got.ID, err)
 	}
-	if _, err = e.Open(ctx, Request{Workspace: first.Name}); err != nil {
+	if _, err = e.Open(ctx, Request{Workspace: first.SessionID}); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := e.Locate(ctx, q.Workspace, ""); err != nil || got.ID != b.ID {
 		t.Fatal("exact open changed default", got.ID, err)
 	}
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"ports":["9090:90"]}`)
-	pinned := Request{Workspace: a.Identity.Workspace, Recorded: &a.Identity, Sources: a.Sources}
+	pinned := Request{Workspace: a.Settings.Workspace, SessionID: a.ID, Sources: a.Settings.Sources}
 	if _, err = e.Recreate(ctx, pinned, false); err != nil {
 		t.Fatal(err)
 	}
-	got := record(t, e, first.Name)
-	if got.ID != a.ID || got.Identity != a.Identity || len(got.Creation.Ports) != 1 || got.Creation.Ports[0] != "9090:90" {
+	got := sessionRecord(t, e, first.SessionID)
+	if got.ID != a.ID || got.Settings.Binding != a.Settings.Binding || len(got.Applied.Creation.Ports) != 1 || got.Applied.Creation.Ports[0] != "9090:90" {
 		t.Fatal(got)
 	}
 	list, err := e.List(ctx, q.Workspace)
@@ -74,7 +74,7 @@ func TestNamedSessionsRequireExplicitDefaultsAndPinSources(t *testing.T) {
 		t.Fatal(list, err)
 	}
 	for _, view := range list.Sessions {
-		if view.Default != (view.Name == b.Identity.Name) {
+		if view.Default != (view.Target == b.ID) {
 			t.Fatal("incorrect default marker", view)
 		}
 	}
@@ -87,22 +87,22 @@ func TestDirectLookupIgnoresUnrelatedCorruptionAndRejectsConflictingSelectors(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.SetDefault(ctx, record(t, e, made.Name)); err != nil {
+	if err := e.SetDefault(ctx, sessionRecord(t, e, made.SessionID)); err != nil {
 		t.Fatal(err)
 	}
-	unrelated := environment.ContainerName("/banana", "other")
+	unrelated := environment.ResourceName("/banana", "other", "broken")
 	write(t, filepath.Join(e.Store.Home, "sessions", unrelated, "session.json"), "broken")
 	r, err := e.Locate(ctx, q.Workspace, "")
-	if err != nil || r.Identity.Name != made.Name {
+	if err != nil || r.ID != made.SessionID {
 		t.Fatal(r, err)
 	}
-	if err = e.Stop(ctx, made.Name, "wrong", false); err == nil {
+	if err = e.Stop(ctx, made.SessionID, "wrong", false); err == nil {
 		t.Fatal("ignored conflicting exact selector")
 	}
-	if _, err = e.Open(ctx, Request{Workspace: made.Name, LocalName: "wrong"}); err == nil {
+	if _, err = e.Open(ctx, Request{Workspace: made.SessionID, LocalName: "wrong"}); err == nil {
 		t.Fatal("ignored conflicting open selector")
 	}
-	file, _ := e.Store.RecordPath(made.Name)
+	file, _ := e.Store.RecordPath(sessionRecord(t, e, made.SessionID).Directory)
 	if err = os.WriteFile(file, []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -120,10 +120,13 @@ func TestFolderLookupOnlyReadsSelectedSession(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := e.SetDefault(ctx, record(t, e, made.Name)); err != nil {
+			if err := e.SetDefault(ctx, sessionRecord(t, e, made.SessionID)); err != nil {
 				t.Fatal(err)
 			}
-			broken := environment.ContainerName(q.Workspace, name)
+			broken := environment.ResourceName(q.Workspace, name, "broken")
+			if name == q.LocalName {
+				broken = sessionRecord(t, e, made.SessionID).Directory
+			}
 			write(t, filepath.Join(e.Store.Home, "sessions", broken, "session.json"), "broken")
 			for _, localName := range []string{"", q.LocalName} {
 				r, err := e.Locate(ctx, q.Workspace, localName)
@@ -131,8 +134,8 @@ func TestFolderLookupOnlyReadsSelectedSession(t *testing.T) {
 					if err == nil {
 						t.Fatal("unreadable selected session was ignored")
 					}
-				} else if err != nil || r.Identity.Name != made.Name {
-					t.Fatal("unrelated session blocked lookup", r.Identity, err)
+				} else if err != nil || r.ID != made.SessionID {
+					t.Fatal("unrelated session blocked lookup", r.Settings.Binding, err)
 				}
 			}
 		})
@@ -151,8 +154,8 @@ func TestInvocationHarnessArgumentsAreNotSaved(t *testing.T) {
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
 	}
-	r := record(t, e, made.Name)
-	if strings.Contains(strings.Join(r.Launch.Args, " "), "once") || strings.Contains(strings.Join(r.Launch.Args, " "), "only-this") || len(r.Inputs.Runtime.Args) != 0 {
-		t.Fatal("persisted invocation arguments", r.Launch)
+	r := sessionRecord(t, e, made.SessionID)
+	if strings.Contains(strings.Join(r.Applied.Launch.Args, " "), "once") || strings.Contains(strings.Join(r.Applied.Launch.Args, " "), "only-this") || len(r.Applied.Inputs.Runtime.Args) != 0 {
+		t.Fatal("persisted invocation arguments", r.Applied.Launch)
 	}
 }

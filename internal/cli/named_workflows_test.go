@@ -68,9 +68,9 @@ func TestExplicitCreateAndEditDefaultAreSeparateWorkflows(t *testing.T) {
 		t.Fatal("creation implicitly selected a default", selected, err)
 	}
 	identity, _ := environment.Identify(q.Workspace, "Second")
-	r, err := e.Store.Read(context.Background(), identity.Name)
-	if err != nil || len(r.Sources) != 1 || r.Sources[0].Path != q.Sources[0].Path {
-		t.Fatal(r.Sources, err)
+	r, err := e.Store.Find(context.Background(), "", &identity.Binding)
+	if err != nil || len(r.Settings.Sources) != 1 || r.Settings.Sources[0].Path != q.Sources[0].Path {
+		t.Fatal(r.Settings.Sources, err)
 	}
 	name = ""
 	edit := editCommand(factory, &name)
@@ -103,7 +103,7 @@ func TestEditDefaultFlagsSetAndClearWithoutSessionEditor(t *testing.T) {
 	if _, err := run(q.Workspace, "--name", "Main", "--default"); err != nil {
 		t.Fatal(err)
 	}
-	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected == nil || selected.Name != fullName {
+	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected == nil || selected.ID != fullName {
 		t.Fatal("named session was not selected", selected, err)
 	}
 	if _, err := run(q.Workspace, "--clear-default"); err != nil {
@@ -190,7 +190,7 @@ func TestEditFolderExitKeepsSavedDefault(t *testing.T) {
 		t.Fatal("exiting the folder overview lost its saved-action receipt", out.String())
 	}
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected == nil || selected.Name != fullName {
+	if err != nil || selected == nil || selected.ID != fullName {
 		t.Fatal("exiting the folder overview lost its saved default", selected, err)
 	}
 }
@@ -198,14 +198,14 @@ func TestEditFolderExitKeepsSavedDefault(t *testing.T) {
 func TestEditCanClearStaleDefaultWithoutSessions(t *testing.T) {
 	e, q, fullName := namedCLIFixture(t)
 	ctx := context.Background()
-	r, err := e.Store.Read(ctx, fullName)
+	r, err := e.Store.Find(ctx, fullName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := e.SetDefault(ctx, r); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(filepath.Join(e.Store.Home, "sessions", fullName)); err != nil {
+	if err := os.RemoveAll(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, fullName).Directory)); err != nil {
 		t.Fatal(err)
 	}
 	master, slave := testTerminal(t)
@@ -237,7 +237,7 @@ func TestEditFolderCanRecoverFromBrokenSessionSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, err := e.Store.Read(context.Background(), broken.Name)
+	record, err := e.Store.Find(context.Background(), broken.SessionID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestEditFolderCanRecoverFromBrokenSessionSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err := e.Store.RecordPath(broken.Name)
+	path, err := e.Store.RecordPath(sessionRecord(t, e, broken.SessionID).Directory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestEditFolderCanRecoverFromBrokenSessionSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("1\n13\n0\n3\n13\n0\n0\n0\n"); err != nil {
+	if _, err := master.WriteString("2\n13\n0\n3\n13\n0\n0\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -343,8 +343,8 @@ func TestInteractiveCreationRedrawsEditableNameInTerminal(t *testing.T) {
 	if !strings.Contains(text, "\x1b[?1049h") || !strings.Contains(text, "Session · Fresh") {
 		t.Fatal("creation did not return to the shared session menu", text)
 	}
-	r, err := e.Store.Read(context.Background(), environment.ContainerName(q.Workspace, "Fresh"))
-	if err != nil || r.Identity.LocalName != "Fresh" {
+	r, err := e.Locate(context.Background(), q.Workspace, "Fresh")
+	if err != nil || r.Settings.LocalName != "Fresh" {
 		t.Fatal("native draft did not create the chosen identity", r, err)
 	}
 }
@@ -374,7 +374,7 @@ func TestInteractiveCreationCanBackOutOfInputsAndCancelOverview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Store.Read(ctx, identity.Name); !os.IsNotExist(err) {
+	if _, err := e.Store.Find(ctx, "", &identity.Binding); !os.IsNotExist(err) {
 		t.Fatal("cancelling the creation overview created a session", err)
 	}
 }
@@ -406,8 +406,8 @@ func TestInteractiveCreationCanChooseSourcesBeforeNameAndChangeName(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		record, err := e.Store.Read(ctx, identity.Name)
-		if local == "First" && !os.IsNotExist(err) || local == "Renamed" && (err != nil || len(record.Sources) != 1) {
+		record, err := e.Store.Find(ctx, "", &identity.Binding)
+		if local == "First" && !os.IsNotExist(err) || local == "Renamed" && (err != nil || len(record.Settings.Sources) != 1) {
 			t.Fatal("creation saved the wrong pending name or sources", local, record, err)
 		}
 	}
@@ -492,7 +492,7 @@ func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T
 	if out, err := runSourcesCLI(t, e, fullName, "--config", "base", "--config", "incomplete"); err != nil {
 		t.Fatal(out, err)
 	}
-	r, err := e.Store.Read(context.Background(), fullName)
+	r, err := e.Store.Find(context.Background(), fullName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,8 +502,8 @@ func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T
 	if err != nil || !saved {
 		t.Fatal(out.String(), saved, err)
 	}
-	after, err := e.Store.Read(context.Background(), fullName)
-	if err != nil || after.ID != r.ID || len(after.Sources) != 1 || after.Sources[0].Label != "incomplete" || after.Applied != r.Applied {
+	after, err := e.Store.Find(context.Background(), fullName, nil)
+	if err != nil || after.ID != r.ID || len(after.Settings.Sources) != 1 || after.Settings.Sources[0].Label != "incomplete" || after.Applied.Fingerprints != r.Applied.Fingerprints {
 		t.Fatal("source edit was lost or applied container settings", after, err)
 	}
 	for _, label := range []string{"Manage configs", "Configs, in order:", "Add existing config", "Replace config", "Remove config", "Select a config", "Saved selected configs.", "Configuration error:", "[0]  Exit"} {

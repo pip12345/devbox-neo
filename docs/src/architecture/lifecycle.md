@@ -42,7 +42,7 @@ flowchart TD
 | Container | Image dependency, mounts, network, env verification, ordered setup inputs | Creation/recreation commit |
 | Runtime | Managed files, launch settings, ordered before-open inputs, runtime assets | Successful application through `Record.ApplyRuntime` |
 
-Snapshots contain public values and hashes, not file contents or secret values. Schema `5` requires these snapshots and validates their fingerprints. Committed source directories authorize environment recovery independently of the editable desired reference chain. Historical baselines are not inferred from current source files.
+Snapshots contain public values and hashes, not file contents or secret values. Schema `6` requires these snapshots and validates their fingerprints. Committed source directories authorize environment recovery independently of the editable desired reference chain. Historical baselines are not inferred from current source files.
 
 `CompareInputs` emits leaf changes in stable order. Action priority is image over container over runtime. The image-to-container hash dependency does not become a duplicate user-facing reason. Dockerfile and ignore entries also appear only once per physical change even when included in the context.
 
@@ -50,7 +50,7 @@ Source paths explain changes but do not themselves change fingerprints when effe
 
 ## New-session creation
 
-`Engine.Create` computes identity from workspace and local name, acquires its operation lock, rejects an existing record or pending transfer, resolves the explicit sources, and verifies that no unmatched container or uncommitted state occupies the target. It then enters the shared creation pipeline. Creation never changes a folder default.
+`Engine.Create` checks workspace/name uniqueness under the namespace lock, allocates a session ID and storage directory, acquires its operation lock, and resolves the explicit sources. Container creation allocates a separate Docker name. It then enters the shared creation pipeline. Creation never changes a folder default.
 
 ```mermaid
 flowchart TD
@@ -78,7 +78,7 @@ Recreation uses current desired inputs while preserving the session ID and store
 
 ## Ordinary access and synchronization
 
-`app.startAccess` is the shared boundary for `open`, `start`, `shell`, `exec`, and `ssh`.
+`app.startAccess` is the shared boundary for `open`, `start`, `shell`, `exec`, and `ssh`. A changed workspace blocks new access until explicit recreation; stopping and cleanup still use the applied runtime.
 
 ```mermaid
 flowchart TD
@@ -120,7 +120,7 @@ Recovery materializes the recorded creation contract, not a newly resolved one. 
 - every recorded setup source's content, in order;
 - recoverable environment source entries.
 
-Desired `sources` retain relative/fixed references for current resolution. Committed `inputs.sources` directories separately authorize the recorded sensitive env-source paths; changing desired references does not alter recovery authority. A new user override cannot replace a recorded built-in definition during recovery. Missing durable roots are not recreated as empty state. Environment values are reconstructed from recorded source references; changed or missing values can require explicit recreation with current configuration.
+Desired `settings.sources` retain relative/fixed references for current resolution. Committed `applied.inputs.sources` directories separately authorize the recorded sensitive env-source paths; changing desired references does not alter recovery authority. A new user override cannot replace a recorded built-in definition during recovery. Missing durable roots are not recreated as empty state. Environment values are reconstructed from recorded source references; changed or missing values can require explicit recreation with current configuration.
 
 Compatible desired runtime config can synchronize during ordinary recovery, but image/container settings remain recorded. Transaction rollback and committed-transfer recovery follow their recorded transaction rather than resolving newer desired configuration.
 

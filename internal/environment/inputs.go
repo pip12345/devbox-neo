@@ -49,7 +49,7 @@ type ImageInputs struct {
 	Arguments  map[string]string `json:"arguments"`
 }
 type ContainerInputs struct {
-	Identity    Identity          `json:"identity"`
+	Workspace   string            `json:"workspace"`
 	Network     string            `json:"network"`
 	Stores      []harness.Store   `json:"stores"`
 	Auth        []harness.Auth    `json:"auth"`
@@ -96,7 +96,7 @@ func (p ImageBuildPlan) inputs(h harness.Effective, salt string) ImageInputs {
 	return image
 }
 func (s Spec) captureInputs(salt, assetsHash string) Inputs {
-	container := ContainerInputs{Identity: s.Identity, Network: s.Settings.Network, Stores: slices.Clone(s.Harness.Definition.Stores), Auth: slices.Clone(s.Harness.Definition.Auth), Env: map[string]string{}, Setup: hookInputs(s.Setup), Mounts: slices.Clone(s.ExtraMounts), Ports: slices.Clone(s.Settings.Ports), RawArgs: slices.Clone(s.Settings.DockerArgs), RawArgsHash: Fingerprint(salt, s.Settings.DockerArgs), Metadata: s.Metadata, HostAlias: docker.HostAlias}
+	container := ContainerInputs{Workspace: s.Identity.Workspace, Network: s.Settings.Network, Stores: slices.Clone(s.Harness.Definition.Stores), Auth: slices.Clone(s.Harness.Definition.Auth), Env: map[string]string{}, Setup: hookInputs(s.Setup), Mounts: slices.Clone(s.ExtraMounts), Ports: slices.Clone(s.Settings.Ports), RawArgs: slices.Clone(s.Settings.DockerArgs), RawArgsHash: Fingerprint(salt, s.Settings.DockerArgs), Metadata: s.Metadata, HostAlias: docker.HostAlias}
 	for _, value := range s.Env() {
 		key, _, _ := strings.Cut(value, "=")
 		container.Env[key] = Fingerprint(salt, value)

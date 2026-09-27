@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"devbox/internal/commanderror"
 	"devbox/internal/store"
 )
 
@@ -38,6 +39,8 @@ type DeleteOptions struct {
 }
 
 type DeleteResult struct {
+	// Targets pins session IDs separately from the container names in receipts.
+	Targets    []string `json:"-"`
 	Containers []string `json:"containers"`
 	Sessions   []string `json:"sessions"`
 	Retained   []string `json:"retained_sessions"`
@@ -60,18 +63,39 @@ func (e *Engine) deletionTargets(ctx context.Context, options DeleteOptions, cut
 	}
 	names := []string{}
 	for _, view := range append(report.Sessions, report.UnmatchedContainers...) {
+		if view.Uncommitted {
+			continue
+		}
 		if selection.Stopped && (!view.Exists || view.Running) || options.Orphaned && view.Exists {
 			continue
 		}
 		if !cutoff.IsZero() {
 			if view.Error != "" || view.LastActivity.IsZero() {
-				return nil, fmt.Errorf("cannot determine last activity for %s; inspect this environment before filtered deletion", view.Name)
+				return nil, fmt.Errorf("cannot determine last activity for %s; inspect this environment before filtered deletion", view.Target)
 			}
 			if !view.LastActivity.Before(cutoff) {
 				continue
 			}
 		}
-		names = append(names, view.Name)
+		if view.Pending != nil {
+			return nil, commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", view.Target, nil, view.Pending.RetryStep())
+		}
+		target := view.Target
+		if view.SessionID != "" {
+			r, err := e.Store.Find(ctx, view.SessionID, nil)
+			if err != nil {
+				return nil, err
+			}
+			target = r.Directory
+			options.Selection.selectedIDs[target] = r.ID
+			options.Selection.operationIDs[target] = r.ID
+		}
+		if view.SessionID == "" {
+			options.Selection.operationIDs[target] = view.OwnerSessionID
+			options.Selection.selectedIDs[target] = ""
+			options.Selection.containerIDs[target] = view.ContainerID
+		}
+		names = append(names, target)
 	}
 	sort.Strings(names)
 	return names, nil
@@ -122,11 +146,13 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (DeleteResul
 		cutoff = time.Now().Add(-options.OlderThan)
 	}
 	options.Selection.selectedIDs = map[string]string{}
+	options.Selection.containerIDs = map[string]string{}
+	options.Selection.operationIDs = map[string]string{}
 	names, err := e.deletionTargets(ctx, options, cutoff)
 	if err != nil {
 		return result, err
 	}
-	locks, err := e.Store.LockAll(ctx, names)
+	locks, err := e.Store.LockAll(ctx, names, options.Selection.operationIDs)
 	if err != nil {
 		return result, err
 	}
@@ -142,16 +168,20 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (DeleteResul
 	for _, lock := range locks {
 		r, err := lock.Load()
 		if errors.Is(err, os.ErrNotExist) {
+			if slices.Contains(containers, lock.Name) {
+				result.Targets = append(result.Targets, lock.Name)
+			}
 			continue
 		}
 		if err != nil {
 			return result, err
 		}
-		if name := options.Selection.LocalName; name != "" && r.Identity.LocalName != name {
+		if name := options.Selection.LocalName; name != "" && r.Settings.LocalName != name {
 			return result, fmt.Errorf("local name does not match the selected session")
 		}
 		sessionLocks = append(sessionLocks, lock)
-		result.Retained = append(result.Retained, lock.Name)
+		result.Targets = append(result.Targets, r.ID)
+		result.Retained = append(result.Retained, r.ID)
 	}
 	include := options.Scope == DeleteSession
 	if include {

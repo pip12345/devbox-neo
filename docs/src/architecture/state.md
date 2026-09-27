@@ -6,30 +6,23 @@ The saved session is the top-level environment model. Docker inventory supplies 
 
 `environment.ContainerPrefix` defines the `devbox-` lookup convention independently of `docker.Namespace`, which defines `devbox-rewrite.*` labels and image tags.
 
-`environment.Identity` stores the canonical workspace, case-sensitive `local_name`, and full `name`. Full names use `devbox-<folder>-<12-hex-hash>.<local-name>`; the SHA-256 input is the canonical workspace path's bytes. All local names in a workspace share that hash and remain distinct through their exact suffixes. Config sources never enter identity.
+The immutable session ID identifies the saved session. `settings` contains the editable workspace, local name, config references, and keep-running intent. Storage directories and Docker names are independently allocated readable hints with unique suffixes; neither is parsed or required to match settings or the other name.
 
-Exact targets read that saved record. Folder plus `--name` computes the full name directly; a folder alone reads its default name and durable ID. No session-count or last-used fallback exists. Lookup does not load configuration.
+`store.Find` looks up an ID or workspace/name from saved records, without config resolution or a persistent index. Folder-only lookup reads its explicit default ID. Defaults use schema 2 under `state/workspaces/<workspace-key>.json`, keyed by the canonical workspace's SHA-256. Missing defaults are absent; malformed defaults are errors. Name reuse never inherits an old ID selection.
 
-Defaults live in `state/workspaces/<workspace-key>.json`, keyed by the full SHA-256 of canonical workspace bytes. Missing state means no default; malformed state is reported. Name plus ID prevents a newly created session from inheriting stale selection after name reuse.
-
-The readable basename is lowercased and bounded to 32 characters from `a-z0-9_.-`; invalid runs become `-`, edge punctuation is trimmed, and an empty result becomes `workspace`. Sanitization and truncation do not change the hash input. Symlink aliases therefore produce the same identity. Records validate against the naming rule.
-
-Docker ownership checks use installation ID, ownership version, session ID, workspace, and local-name labels. Application inspection additionally verifies the image and recorded container instance association. A matching name with different labels or instance identity fails rather than being adopted.
+Docker ownership uses installation ID, ownership version, and session ID. Workspace/name labels are descriptive. Existing containers are inspected by recorded Docker ID, with image/instance checks; names alone never authorize adoption or mutation.
 
 Images carry installation ownership and final session tags. Removing a tag requires verifying both ownership and its expected image association; a mutable name alone does not authorize deletion.
 
 ## Record structure
 
-`sessions/<container>/session.json` holds:
+`sessions/<directory>/session.json` holds:
 
-- stable session ID, canonical environment identity, and `manual_start` intent;
-- editable ordered config references with relative/fixed form;
-- recorded image/container association and creation settings;
-- launch settings, definition source verification, setup input, and environment source references;
-- complete applied image/container/runtime inputs and fingerprints;
-- creation time, last recorded activity, and last action.
+- immutable `id` and activity metadata;
+- `settings`: workspace, local name, ordered config references, and `manual_start`;
+- `applied`: creation/launch plans, image/container association, harness recovery contract, inputs, and fingerprints.
 
-Schema `5` requires reference structure and complete applied input snapshots. Saved-selection edits require a config; the reader still accepts empty `sources` for repair. Applied `inputs.sources` retains absolute committed source directories, so editing desired references cannot change which env files authorize recorded recovery. [Lifecycle](lifecycle.md#one-input-model) describes their contents and fingerprint rules. Older development records require a clean reset; there is no migration reader.
+Schema `6` validates settings and applied state independently. Their differences are pending changes, not corruption. Applied mounts must agree with applied inputs, not desired settings. `applied.inputs.sources` retains the committed config directories for recovery. No directory name is persisted. Older development records require an explicit reset; no migration reader exists.
 
 Records contain public settings, paths, modes, and hashes, not file contents or env/auth values. Raw env diagnostics are redacted. Records are atomically replaced with restrictive permissions; invalid records remain errors rather than being treated as missing.
 
@@ -37,23 +30,23 @@ Creation/recreation commits image and container baselines. `Record.ApplyRuntime`
 
 ## Locks and leases
 
-Operation and record locks live under `state/locks/sessions/`, outside removable session directories. Otherwise deleting a session could unlink a lock pathname while another process still holds the old inode, letting a second process acquire a different lock for the same logical resource.
+Session operation locks are keyed by immutable ID under `state/locks/sessions/`, outside removable data directories. Attached-command leases use `state/leases/<id>/`. Changing a directory or losing a record cannot bypass the same session's lock or active commands. Record reads see an atomic snapshot or absence; mutations reload under the operation lock.
 
 | Lock / record | Lifetime and job |
 |---|---|
 | Installation lock | Serialize initial home/installation identity creation |
 | Configuration-owner lock | Serialize publication or mutation of one source owner |
+| Name-namespace lock | Serialize creation, rename, workspace edits, and transfer name reservations |
 | Session operation lock | Serialize ownership checks and lifecycle transitions |
-| Session record lock | Protect short record read/write/delete operations |
 | Workspace-default lock | Serialize a canonical folder's default selection and matching clears |
 | Attached-command lease | Represent a foreground command while its operation lock is released |
-| SSH owner/master flocks | Govern transient SSH process lifetime, independently of durable record locks |
+| SSH owner/master flocks | Govern transient SSH process lifetime, independently of session operation locks |
 
-Operations involving several environments acquire the complete session lock set in sorted full-name order. If workspace locks are also needed, acquire them afterward in workspace-key order; never acquire a session lock while holding a workspace lock. Bulk operations retain their complete session lock set through preflight and mutation.
+Operations involving several environments acquire the complete session lock set in sorted unique session-ID order (Move shares one ID lock across its two directories). Name-changing operations acquire the namespace lock first. If workspace locks are also needed, acquire them afterward in workspace-key order; never acquire a session lock while holding a workspace lock. Bulk operations retain their complete session lock set through preflight and mutation.
 
-Default selection prompts before locking, then reloads the chosen session under its operation lock and verifies its ID before acquiring the workspace lock. Clearing needs only the workspace lock. Resolving a default releases its workspace lock before acquiring the session lock; the chosen name/ID is an invocation snapshot, not a reference that can retarget midway through an operation.
+Default selection prompts before locking, then reloads the chosen session under its operation lock and verifies its ID before acquiring the workspace lock. Clearing needs only the workspace lock. Resolving a default releases its workspace lock before acquiring the session lock; the chosen ID is an invocation snapshot, not a reference that can retarget midway through an operation.
 
-Source edits use the session operation lock and compare ID plus the displayed source list. Config-directory edits use only their own owner lock and same-field conflict checks. Shared-use reporting never locks all referring sessions.
+Source edits use the session operation lock and compare ID, workspace, and the displayed source list. Config-directory edits use only their own owner lock and same-field conflict checks. Shared-use reporting never locks all referring sessions.
 
 Leases use Linux process start ticks and boot identity, not PID alone. Inspection reads active state without reaping it. Mutations can reap provably stale leases; corrupt or unverifiable ones fail closed. Session deletion requires idleness even when container removal is forced.
 
@@ -71,11 +64,11 @@ Inventory joins one installation-filtered Docker list and batched inspection wit
 | Corrupt/incomplete saved state | Session diagnostic, not fabricated valid state |
 | Pending endpoint without record | Inspectable reserved endpoint |
 
-Folder filtering uses recorded workspace identity, or workspace labels for unavailable records. Unassignable broken entries remain visible in global inventory. Default-state errors appear separately in `default_errors`; they do not hide sessions. Listing does not resolve desired configuration and never repairs or adopts resources.
+Folder filtering uses saved workspace settings, or descriptive workspace labels for unmatched containers. Unassignable broken entries remain visible in global inventory. Default-state errors appear separately in `default_errors`; they do not hide sessions. Listing does not resolve desired configuration and never repairs or adopts resources.
 
 Bulk status enriches the same inventory with the normal resolver and `environment.CompareInputs`. Runtime state remains independent of configuration health: a missing container can still have comparable inputs, while a running container can have invalid desired config.
 
-Single-target `app.Status` reads the record and live leases under the operation lock, inspects the linked container, and uses the same comparison. `StatusDetails` adds full `record` and `active` fields without bloating bulk rows. It reads the workspace default after acquiring the session lock and matches both name and durable ID. Default-state read errors appear separately as `default_error`, preserving explicitly selected session details. Pending transfers skip desired resolution because their transaction, not current configuration, governs recovery.
+Single-target `app.Status` reads the record and live leases under the operation lock, inspects the linked container, and uses the same comparison. `StatusDetails` adds full `record` and `active` fields without bloating bulk rows. It reads the workspace default after acquiring the session lock and matches the durable ID. Default-state read errors appear separately as `default_error`, preserving explicitly selected session details. Pending transfers skip desired resolution because their transaction, not current configuration, governs recovery.
 
 Last activity means recorded Devbox operations, not filesystem activity or only harness launches. Container creation time in listing comes from Docker, independently of durable session creation time.
 
@@ -99,19 +92,19 @@ flowchart TD
 
 Explicit saved-data deletion is preflighted before container removal and rechecked afterward. Container failures do not advance into state deletion. `--force` only relaxes attached-command protection for the runtime phase; it cannot expand scope or bypass pending transfers and saved-state idleness.
 
-The complete operation-lock set spans confirmations and both phases. `removeSavedSession` persists a matching name-and-ID default clear before deleting state, while retaining the session operation lock. If deletion then fails, the surviving session may have no default; an old choice is never restored over a newer one. Container-only deletion and dry runs do not clear defaults. Record-directory removal also holds the short record lock. External lock files survive deletion. If cancellation or failure occurs after containers have been removed, remaining state is retained rather than pretending the whole operation rolled back.
+The complete operation-lock set spans confirmations and both phases. `removeSavedSession` persists a matching-ID default clear before deleting state, while retaining the session operation lock. If deletion then fails, the surviving session may have no default; an old choice is never restored over a newer one. Container-only deletion and dry runs do not clear defaults. External lock files survive deletion. If cancellation or failure occurs after containers have been removed, remaining state is retained rather than pretending the whole operation rolled back.
 
 Selection filters intersect. Age uses recorded activity, and unknown activity is not guessed to be old. Activity and orphan status are rechecked under lock, including after confirmation, before deletion records its own activity. Dry-run preflight examines leases without reaping them. This prevents a stale preview or prompt from selecting a newly active/recovered environment.
 
 ## Transfer state machine
 
-`app/transfer.go` owns `copy` / `copy --move` orchestration; `store` owns journal persistence and portable store copying. A single external journal at `state/transfers/<source-container>.json` reserves both endpoint names.
+`app/transfer.go` owns `copy` / `copy --move` orchestration; `store` owns journal persistence and portable store copying. A single external journal at `state/transfers/<source-directory>.json` reserves both endpoint names.
 
 Both endpoint operation locks are acquired in sorted order. Ordinary `Locked.Load` rejects pending work, while inventory and transfer operations can inspect it. Pending lookup scans unfinished journals; corrupt journals fail mutations closed because endpoint reservations cannot be trusted.
 
 The journal stores endpoint identities, session IDs, mode/phase, intended running state, and destination fingerprints. It contains no env/auth values. Destination creation uses the allocated ID, so retries cannot create a different session.
 
-Journal schema 2 records the destination local name in its endpoint identity. `--as` may select another name in the same or a different folder; otherwise preserve the source name. Retry guidance uses exact source name, destination workspace, and `--as`, without resolving a changed default.
+Journal schema 3 pins endpoint directories, bindings, IDs, the source container ID, and the separately allocated destination container name. `--as` may select another name in the same or a different folder; otherwise preserve the source name. Retry guidance uses exact source ID, destination workspace, and `--as`, without resolving a changed default.
 
 Internal modes are `clone` for `copy` and `relocate` for `copy --move`. Harness capabilities and JSON output use these same values.
 
@@ -140,4 +133,4 @@ Publishing `committed` changes authority before source removal. Once publication
 
 A committed retry does not resolve new desired config or copy state again. It verifies the recorded destination, recovers a missing destination container when recorded inputs permit, and finishes source cleanup. Copying again here could overwrite newer destination history with stale source data.
 
-The journal lives outside the source directory so deleting source state cannot lose the recovery plan or reservation. Committed move cleanup uses `removeSavedSession` too, including retries after the source record is gone; the journal supplies its workspace/name/ID. Copy preserves source defaults. Move clears only a matching source default and never selects a destination default. Only completed cleanup removes the journal and releases both names. `copy` creates a new session ID; `copy --move` preserves it. No permanent lineage record is needed after completion.
+The journal lives outside the source directory so deleting source state cannot lose the recovery plan or reservation. Committed move cleanup uses `removeSavedSession` too, including retries after the source record is gone; the journal supplies its workspace and ID. Copy preserves source defaults. Move clears only a matching source default and never selects a destination default. Only completed cleanup removes the journal and releases both names. `copy` creates a new session ID; `copy --move` preserves it. No permanent lineage record is needed after completion.

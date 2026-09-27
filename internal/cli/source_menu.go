@@ -19,13 +19,18 @@ import (
 func editCommand(factory engineFactory, name *string) *cobra.Command {
 	var show, asJSON, setDefault, clearDefault bool
 	var references []string
-	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Browse a folder's sessions or edit a session's selected configs", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
+	var workspace string
+	cmd := &cobra.Command{Use: "edit <folder|session-id>", Short: "Browse sessions or edit their settings", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		replace := cmd.Flags().Changed("config")
+		changeWorkspace := cmd.Flags().Changed("workspace")
+		if changeWorkspace && (replace || show || setDefault || clearDefault) {
+			return fmt.Errorf("use --workspace separately from config and default operations")
+		}
 		if replace && (show || setDefault || clearDefault) {
 			return fmt.Errorf("use --config alone, not with --show, --default, or --clear-default")
 		}
-		if asJSON && !show && !replace {
-			return fmt.Errorf("--json requires --show or --config")
+		if asJSON && !show && !replace && !changeWorkspace {
+			return fmt.Errorf("--json requires --show, --config, or --workspace")
 		}
 		if setDefault && clearDefault {
 			return fmt.Errorf("use --default or --clear-default, not both")
@@ -37,21 +42,35 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			return fmt.Errorf("use --show or change the folder default, not both")
 		}
 		direct := *name != "" || environment.IsSessionTarget(args[0])
+		if changeWorkspace && !direct {
+			return fmt.Errorf("--workspace requires --name or a session ID")
+		}
 		if show && !direct {
-			return fmt.Errorf("--show requires --name or an exact full session name")
+			return fmt.Errorf("--show requires --name or an session ID")
 		}
 		if setDefault && !direct {
-			return fmt.Errorf("--default requires --name or an exact full session name")
+			return fmt.Errorf("--default requires --name or an session ID")
 		}
 		if replace && !direct {
-			return fmt.Errorf("--config requires --name or an exact full session name")
+			return fmt.Errorf("--config requires --name or an session ID")
 		}
-		if !show && !setDefault && !clearDefault && !replace && !interactive(cmd) {
+		if !show && !setDefault && !clearDefault && !replace && !changeWorkspace && !interactive(cmd) {
 			return fmt.Errorf("editing requires a terminal; use --name NAME with --config to replace selected configs, --show to inspect, or --default to select without prompting")
 		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
+		}
+		if changeWorkspace {
+			r, err := e.SetWorkspace(cmd.Context(), args[0], *name, workspace)
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(r)
+			}
+			cmd.Printf("Workspace saved: %s\nRecreate to apply it. A matching old-folder default was cleared.\n%s", displayCell(r.Settings.Workspace), stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.ID)}, e.Store.Home)))
+			return nil
 		}
 		if replace {
 			return replaceSessionConfigs(cmd, e, args[0], *name, references, asJSON)
@@ -71,7 +90,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			if err := e.SetDefault(cmd.Context(), r); err != nil {
 				return err
 			}
-			cmd.Printf("Default session for %s: %s\n", displayCell(r.Identity.Workspace), r.Identity.LocalName)
+			cmd.Printf("Default session for %s: %s\n", displayCell(r.Settings.Workspace), r.Settings.LocalName)
 			return nil
 		}
 		if show {
@@ -94,7 +113,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			target = r.Identity.Name
+			target = r.ID
 		} else {
 			target, err = environment.CanonicalWorkspace(args[0])
 			if err != nil {
@@ -121,7 +140,8 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 	}}
 	cmd.Example = "  devbox-neo edit .\n  devbox-neo edit . --name work --default\n  devbox-neo edit . --name work --config base --config ./project-config"
 	cmd.Flags().BoolVar(&show, "show", false, "Show combined settings and their sources without editing")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "Print --show or --config results as JSON; never prompt")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Print explicit operation results as JSON; never prompt")
+	cmd.Flags().StringVar(&workspace, "workspace", "", "Change workspace reference and clear its old default; recreate explicitly")
 	cmd.Flags().StringArrayVar(&references, "config", nil, "Replace the entire selected config list, in order (repeatable; never additive)")
 	cmd.Flags().BoolVar(&setDefault, "default", false, "Select this session as its folder's default without prompting")
 	cmd.Flags().BoolVar(&clearDefault, "clear-default", false, "Clear the folder's default without selecting another session")
@@ -133,11 +153,11 @@ func combinedView(e *app.Engine, r store.Record) (resource.ConfigView, error) {
 	if err != nil {
 		return resource.ConfigView{}, err
 	}
-	return (resource.Service{Home: e.Store.Home}).ConfigurationView("session", r.Identity.Name, resolved)
+	return (resource.Service{Home: e.Store.Home}).ConfigurationView("session", r.ID, resolved)
 }
 
 func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved bool, err error) {
-	picker, err := newSourcePicker(m, e.Store.Home, r.Identity.Workspace)
+	picker, err := newSourcePicker(m, e.Store.Home, r.Settings.Workspace)
 	if err != nil {
 		return saved, err
 	}
@@ -148,7 +168,7 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 			if !errors.As(err, &actionable) || actionable.Code != "sources_changed" {
 				return err
 			}
-			latest, readErr := e.Store.Read(m.Context, r.Identity.Name)
+			latest, readErr := e.Store.Read(m.Context, r.Directory)
 			if readErr != nil {
 				return readErr
 			}
@@ -168,7 +188,7 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 		if configErr == nil {
 			configErr = resolved.Settings.Validate()
 		}
-		actions := picker.chainActions(r.Sources, true, apply)
+		actions := picker.chainActions(r.Settings.Sources, true, apply)
 		actions = append(actions, cliui.Action{Label: "Show combined configuration", Run: func() (bool, error) {
 			view, err := combinedView(e, r)
 			if err != nil {
@@ -177,9 +197,9 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 			return false, m.View("Combined configuration", func(out io.Writer) error { return printConfigView(out, view) })
 		}})
 		return cliui.Screen{Title: "Manage configs", Actions: actions, Back: back, Body: func(out io.Writer) error {
-			writeMenuHint(out, "Session: "+r.Identity.LocalName)
-			writeMenuHint(out, "Folder: "+displayCell(r.Identity.Workspace))
-			if err := showSourceChain(m, e.Store.Home, r.Identity.Workspace, r.Sources); err != nil {
+			writeMenuHint(out, "Session: "+r.Settings.LocalName)
+			writeMenuHint(out, "Folder: "+displayCell(r.Settings.Workspace))
+			if err := showSourceChain(m, e.Store.Home, r.Settings.Workspace, r.Settings.Sources); err != nil {
 				return err
 			}
 			if configErr != nil {

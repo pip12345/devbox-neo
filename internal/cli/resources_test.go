@@ -103,7 +103,7 @@ func TestConfigDeleteRefusesDesiredAndCommittedSessionSources(t *testing.T) {
 			t.Fatal("deleted a config used by a session", phase, err)
 		}
 		if phase == "selected" {
-			shown, err := e.Store.Read(ctx, name)
+			shown, err := e.Store.Find(ctx, name, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -135,7 +135,7 @@ func TestConfigDeleteProtectsNestedSources(t *testing.T) {
 			if _, err := service.CreateConfig(ctx, owner, resource.SetupOptions{Harness: harnessSetting("pi")}); err != nil {
 				t.Fatal(err)
 			}
-			shown, err := e.Store.Read(ctx, name)
+			shown, err := e.Store.Find(ctx, name, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -149,7 +149,7 @@ func TestConfigDeleteProtectsNestedSources(t *testing.T) {
 				}
 			}
 			if phase == "committed" {
-				shown, err = e.Store.Read(ctx, name)
+				shown, err = e.Store.Find(ctx, name, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -183,7 +183,7 @@ func TestConfigUsageReportsEveryDesiredAndCommittedSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondRecord, err := e.Store.Read(ctx, second.Name)
+	secondRecord, err := e.Store.Find(ctx, second.SessionID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestConfigUsageReportsEveryDesiredAndCommittedSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	thirdRecord, err := e.Store.Read(ctx, third.Name)
+	thirdRecord, err := e.Store.Find(ctx, third.SessionID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestConfigUsageReportsEveryDesiredAndCommittedSession(t *testing.T) {
 		}
 		uses[user.Session] = user
 	}
-	if !uses[first].Desired || !uses[first].Committed || uses[second.Name].Desired || !uses[second.Name].Committed || !uses[third.Name].Desired || uses[third.Name].Committed {
+	if !uses[first].Desired || !uses[first].Committed || uses[second.SessionID].Desired || !uses[second.SessionID].Committed || !uses[third.SessionID].Desired || uses[third.SessionID].Committed {
 		t.Fatal("incomplete usage report", uses)
 	}
 	output, err := resourceCLI(t, e.Store.Home, "config", "delete", "base", "--force")

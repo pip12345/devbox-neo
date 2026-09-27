@@ -583,7 +583,7 @@ func InventorySource(ctx context.Context, p Paths) (*Inventory, error) {
 		}
 		projectParticipates := projectSlot || (v.item("project:"+m.Folder) != nil && !g.IgnoreProject)
 		v.item(key).Project = projectParticipates
-		v.item(key).Target = environment.ContainerName(m.Folder, importLocalName(*v.item(key), m.Profile))
+		v.item(key).Target = environment.ResourceName(m.Folder, importLocalName(*v.item(key), m.Profile), v.item(key).SessionID)
 		if m.ProxyEnabled {
 			v.notice(key, "Proxy protection will not carry over.")
 		}

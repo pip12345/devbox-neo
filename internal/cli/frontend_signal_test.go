@@ -43,7 +43,7 @@ func TestForegroundSIGINTReturnsToMenu(t *testing.T) {
 		cmd.SetErr(os.Stderr)
 		m := newMenu(cmd)
 		f := frontend{m: m, cmd: cmd, e: e, s: &resource.Service{Home: e.Store.Home}}
-		err := f.session(app.View{Name: name})
+		err := f.session(app.View{Target: name})
 		finishErr := m.Finish()
 		if err != nil || finishErr != nil || ctx.Err() != nil {
 			t.Fatal("foreground SIGINT cancelled the browser", err, finishErr, ctx.Err())

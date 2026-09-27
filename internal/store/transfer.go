@@ -18,18 +18,20 @@ import (
 // both endpoints. External placement lets source deletion finish without
 // unlinking recovery. Publication/removal reserves/releases both names at once.
 type Transfer struct {
-	Version       int                      `json:"version"`
-	ID            string                   `json:"id"`
-	Mode          string                   `json:"mode"`
-	Phase         string                   `json:"phase"`
-	Source        environment.Identity     `json:"source"`
-	Destination   environment.Identity     `json:"destination"`
-	SourceID      string                   `json:"source_id"`
-	DestinationID string                   `json:"destination_id"`
-	Running       bool                     `json:"restore_running"`
-	ManualStart   bool                     `json:"manual_start"`
-	Started       time.Time                `json:"started_at"`
-	Desired       environment.Fingerprints `json:"desired"`
+	ContainerName     string                   `json:"container_name"`
+	SourceContainerID string                   `json:"source_container_id"`
+	Version           int                      `json:"version"`
+	ID                string                   `json:"id"`
+	Mode              string                   `json:"mode"`
+	Phase             string                   `json:"phase"`
+	Source            environment.Identity     `json:"source"`
+	Destination       environment.Identity     `json:"destination"`
+	SourceID          string                   `json:"source_id"`
+	DestinationID     string                   `json:"destination_id"`
+	Running           bool                     `json:"restore_running"`
+	ManualStart       bool                     `json:"manual_start"`
+	Started           time.Time                `json:"started_at"`
+	Desired           environment.Fingerprints `json:"desired"`
 }
 
 // Reservation is a read-only view derived from the journal, not another file.
@@ -60,13 +62,16 @@ func (j Transfer) RetryStep() commanderror.Step {
 	if j.Mode == "relocate" {
 		args = append(args, "--move")
 	}
-	args = append(args, j.Source.Name, j.Destination.Workspace, "--as", j.Destination.LocalName)
+	args = append(args, j.SourceID, j.Destination.Workspace, "--as", j.Destination.LocalName)
 	return commanderror.Next("Resume transfer", args...)
 }
 
 func (j Transfer) Validate() error {
-	if j.Version != 2 || !idPattern.MatchString(j.ID) || !idPattern.MatchString(j.SourceID) || !idPattern.MatchString(j.DestinationID) || j.Started.IsZero() {
+	if j.Version != 3 || !idPattern.MatchString(j.ID) || !idPattern.MatchString(j.SourceID) || !idPattern.MatchString(j.DestinationID) || j.Started.IsZero() {
 		return fmt.Errorf("invalid transfer identity")
+	}
+	if !environment.ValidResourceName(j.ContainerName) || !hashPattern.MatchString(j.SourceContainerID) {
+		return fmt.Errorf("invalid transfer container references")
 	}
 	if j.Mode != "clone" && j.Mode != "relocate" {
 		return fmt.Errorf("invalid transfer mode")
@@ -78,7 +83,10 @@ func (j Transfer) Validate() error {
 		return fmt.Errorf("invalid transfer policy")
 	}
 	for _, id := range []environment.Identity{j.Source, j.Destination} {
-		if err := id.Validate(); err != nil {
+		if !validName(id.Name) {
+			return fmt.Errorf("invalid transfer directory")
+		}
+		if err := id.Binding.Validate(); err != nil {
 			return fmt.Errorf("invalid transfer endpoint: %w", err)
 		}
 	}
@@ -170,7 +178,7 @@ func (l *Locked) RequireAvailable() error {
 	if err := l.check(); err != nil {
 		return err
 	}
-	pending, err := l.store.Pending(l.Name)
+	pending, err := l.store.PendingID(l.ID)
 	if err != nil {
 		return err
 	}
@@ -186,7 +194,7 @@ func transferLocks(source, destination *Locked, j Transfer) error {
 	if err := destination.check(); err != nil {
 		return err
 	}
-	if source.store != destination.store || source.Name != j.Source.Name || destination.Name != j.Destination.Name {
+	if source.store != destination.store || source.Name != j.Source.Name || destination.Name != j.Destination.Name || source.ID != j.SourceID || destination.ID != j.DestinationID {
 		return fmt.Errorf("transfer requires both endpoint locks")
 	}
 	return j.Validate()
@@ -273,5 +281,9 @@ func (l *Locked) ReadRecord(ctx context.Context) (Record, error) {
 	if err := l.check(); err != nil {
 		return Record{}, err
 	}
-	return l.store.Read(ctx, l.Name)
+	r, err := l.store.Read(ctx, l.Name)
+	if err == nil && r.ID != l.ID {
+		return r, fmt.Errorf("session identity changed under the operation lock")
+	}
+	return r, err
 }

@@ -41,13 +41,13 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			first := record(t, e, opened.Name)
+			first := sessionRecord(t, e, opened.SessionID)
 			for range 2 {
 				if _, err = e.Open(ctx, q); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if count(d, "create") != 1 || count(d, "build") != 2 || record(t, e, opened.Name).ID != first.ID {
+			if count(d, "create") != 1 || count(d, "build") != 2 || sessionRecord(t, e, opened.SessionID).ID != first.ID {
 				t.Fatal("opening an existing session replaced it")
 			}
 		})
@@ -64,12 +64,12 @@ func TestCreatePreparesWithoutOpeningAndLeavesStopped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := record(t, e, result.Name)
-	c, exists := d.Snapshot(result.Name)
-	if !exists || c.State.Running || r.Action != "create" || r.SetupContainer != c.ID {
+	r := sessionRecord(t, e, result.SessionID)
+	c, exists := sessionSnapshot(t, e, result.SessionID)
+	if !exists || c.State.Running || r.Action != "create" || r.Applied.SetupContainer != c.ID {
 		t.Fatal("create did not commit a prepared stopped environment", r, c)
 	}
-	launch := append([]string{r.Launch.Binary}, r.Launch.Args...)
+	launch := append([]string{r.Applied.Launch.Binary}, r.Applied.Launch.Args...)
 	hooks := 0
 	for _, args := range d.History() {
 		if args[0] == "exec" && argvSuffix(args, launch) {
@@ -85,8 +85,8 @@ func TestCreatePreparesWithoutOpeningAndLeavesStopped(t *testing.T) {
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
 	}
-	c, _ = d.Snapshot(result.Name)
-	if c.State.Running || count(d, "create") != 1 || record(t, e, result.Name).ID != r.ID {
+	c, _ = sessionSnapshot(t, e, result.SessionID)
+	if c.State.Running || count(d, "create") != 1 || sessionRecord(t, e, result.SessionID).ID != r.ID {
 		t.Fatal("open did not reuse the created environment")
 	}
 }
@@ -98,16 +98,16 @@ func TestOpenLaunchOverridesDoNotRecreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := record(t, e, created.Name)
+	before := sessionRecord(t, e, created.SessionID)
 	q.HarnessArgs = []string{"--version"}
 	q.Continue = true
 	q.Args = []string{"--one-off"}
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
 	}
-	after := record(t, e, created.Name)
-	c, _ := d.Snapshot(created.Name)
-	if count(d, "create") != 1 || count(d, "build") != 2 || c.State.Running || !reflect.DeepEqual(after.Inputs.Container, before.Inputs.Container) || !reflect.DeepEqual(after.Inputs.Image, before.Inputs.Image) {
+	after := sessionRecord(t, e, created.SessionID)
+	c, _ := sessionSnapshot(t, e, created.SessionID)
+	if count(d, "create") != 1 || count(d, "build") != 2 || c.State.Running || !reflect.DeepEqual(after.Applied.Inputs.Container, before.Applied.Inputs.Container) || !reflect.DeepEqual(after.Applied.Inputs.Image, before.Applied.Inputs.Image) {
 		t.Fatal("launch overrides changed creation settings or automatic shutdown")
 	}
 	want := []string{"pi", "--tui-mode", "fullscreen", "-c", "--version", "--one-off"}
@@ -126,10 +126,10 @@ func TestCreateRefusesExistingSessionEvenWithoutContainer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := record(t, e, result.Name)
+	first := sessionRecord(t, e, result.SessionID)
 	for _, missingContainer := range []bool{false, true} {
 		if missingContainer {
-			d.Forget(result.Name)
+			forgetSession(t, e, result.SessionID)
 		}
 		before := len(d.History())
 		_, err = e.Create(ctx, q)
@@ -137,7 +137,7 @@ func TestCreateRefusesExistingSessionEvenWithoutContainer(t *testing.T) {
 		if !errors.As(err, &exists) || exists.Code != "session_exists" {
 			t.Fatal(err)
 		}
-		if len(d.History()) != before || !reflect.DeepEqual(record(t, e, result.Name), first) {
+		if len(d.History()) != before || !reflect.DeepEqual(sessionRecord(t, e, result.SessionID), first) {
 			t.Fatal("create changed an existing session")
 		}
 	}
@@ -152,17 +152,17 @@ func TestExistingSessionRecoveryStillRestoresMissingContainer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			first := record(t, e, result.Name)
-			d.Forget(result.Name)
+			first := sessionRecord(t, e, result.SessionID)
+			forgetSession(t, e, result.SessionID)
 			if action == "open" {
 				_, err = e.Open(ctx, q)
 			} else {
-				_, err = e.Start(ctx, result.Name, "")
+				_, err = e.Start(ctx, result.SessionID, "")
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			if count(d, "create") != 2 || count(d, "build") != 2 || record(t, e, result.Name).ID != first.ID {
+			if count(d, "create") != 2 || count(d, "build") != 2 || sessionRecord(t, e, result.SessionID).ID != first.ID {
 				t.Fatal("recorded recovery changed identity or rebuilt the image")
 			}
 		})
@@ -249,7 +249,7 @@ func TestCreateStopFailureRetainsPreparedSession(t *testing.T) {
 	if !errors.Is(err, failure) || !errors.As(err, &stop) || stop.Code != "create_stop_failed" {
 		t.Fatal(err)
 	}
-	if record(t, e, result.Name).Action != "create" || count(d, "rm") != 0 {
+	if sessionRecord(t, e, result.SessionID).Action != "create" || count(d, "rm") != 0 {
 		t.Fatal("stop failure lost the committed session")
 	}
 }

@@ -9,7 +9,7 @@ import (
 
 func recreateCommand(factory engineFactory, localName *string) *cobra.Command {
 	var image, all bool
-	cmd := &cobra.Command{Use: "recreate [folder|session]", Short: "Recreate the container with current settings, keeping session data", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "recreate [folder|session-id]", Short: "Recreate the container with current settings, keeping session data", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if all && len(args) > 0 {
 			return fmt.Errorf("--all does not accept an exact target")
 		}

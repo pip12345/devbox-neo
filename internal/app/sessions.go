@@ -21,19 +21,19 @@ type StatusDetails struct {
 
 func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDetails, error) {
 	r, err := e.Locate(ctx, target, localName)
-	if errors.Is(err, os.ErrNotExist) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\") {
-		pending, pendingErr := e.Store.Pending(target)
+	if errors.Is(err, os.ErrNotExist) && environment.IsSessionTarget(target) {
+		pending, pendingErr := e.Store.PendingID(target)
 		if pendingErr != nil {
 			return StatusDetails{}, pendingErr
 		}
 		if pending != nil {
-			return StatusDetails{View: View{Name: target, Pending: pending}, Active: []store.Lease{}}, nil
+			return StatusDetails{View: View{Target: target, Pending: pending}, Active: []store.Lease{}}, nil
 		}
 	}
 	if err != nil {
 		return StatusDetails{}, err
 	}
-	lock, err := e.Store.Lock(ctx, r.Identity.Name)
+	lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
 	if err != nil {
 		return StatusDetails{}, err
 	}
@@ -46,7 +46,7 @@ func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDe
 	if r.ID != selectedID {
 		return StatusDetails{}, fmt.Errorf("selected session changed; retry status")
 	}
-	pending, err := e.Store.Pending(r.Identity.Name)
+	pending, err := e.Store.Pending(r.Directory)
 	if err != nil {
 		return StatusDetails{}, err
 	}
@@ -66,6 +66,7 @@ func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDe
 	view.Running = exists && c.State.Running
 	if exists {
 		view.ContainerID = c.ID
+		view.ContainerName = strings.TrimPrefix(c.Name, "/")
 		view.CreatedAt = c.Created
 	}
 	view.Pending = pending
@@ -73,7 +74,7 @@ func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDe
 		e.desiredStatus(&view, r)
 	}
 	details := StatusDetails{View: view, Record: &r, Active: leases}
-	selected, defaultErr := e.Store.ReadDefault(ctx, r.Identity.Workspace)
+	selected, defaultErr := e.Store.ReadDefault(ctx, r.Settings.Workspace)
 	if defaultErr != nil {
 		if errors.Is(defaultErr, context.Canceled) || errors.Is(defaultErr, context.DeadlineExceeded) {
 			return StatusDetails{}, defaultErr
@@ -82,7 +83,7 @@ func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDe
 		// saved details, container state, or configuration diagnostics.
 		details.DefaultError = defaultErr.Error()
 	} else {
-		details.Default = selected != nil && selected.Name == r.Identity.Name && selected.ID == r.ID
+		details.Default = selected != nil && selected.ID == r.ID
 	}
 	return details, nil
 }
@@ -108,10 +109,10 @@ func (e *Engine) planSessionDeletion(ctx context.Context, locks []*store.Locked,
 			return nil, err
 		}
 		if exists && !removingContainers {
-			return nil, commanderror.New("container_present", "Delete the container before deleting its session.", r.Identity.Name, nil,
-				commanderror.Next("Delete container", "delete", r.Identity.Name, "--container"))
+			return nil, commanderror.New("container_present", "Delete the container before deleting its session.", r.ID, nil,
+				commanderror.Next("Delete container", "delete", r.ID, "--container"))
 		}
-		image, tagged, err := e.Docker.TaggedImage(ctx, r.ImageTag)
+		image, tagged, err := e.Docker.TaggedImage(ctx, r.Applied.ImageTag)
 		if err != nil {
 			return nil, err
 		}
@@ -119,7 +120,7 @@ func (e *Engine) planSessionDeletion(ctx context.Context, locks []*store.Locked,
 			if err = image.Verify(e.Store.Installation); err != nil {
 				return nil, err
 			}
-			if image.ID != r.ImageID {
+			if image.ID != r.Applied.ImageID {
 				return nil, fmt.Errorf("session image tag points to another image")
 			}
 		}
@@ -135,17 +136,17 @@ func (e *Engine) removeSessionState(ctx context.Context, planned []sessionRemova
 			if err := ctx.Err(); err != nil {
 				return removed, err
 			}
-			if err := removeSavedSession(ctx, item.lock, item.record.Identity.Workspace, item.record.ID); err != nil {
+			if err := removeSavedSession(ctx, item.lock, item.record.Settings.Workspace, item.record.ID); err != nil {
 				return removed, err
 			}
-			removed = append(removed, item.record.Identity.Name)
+			removed = append(removed, item.record.ID)
 			if item.tagged {
-				if err := e.Docker.Untag(ctx, item.record.ImageTag, item.record.ImageID, e.Store.Installation); err != nil {
+				if err := e.Docker.Untag(ctx, item.record.Applied.ImageTag, item.record.Applied.ImageID, e.Store.Installation); err != nil {
 					return removed, fmt.Errorf("session state removed but image-tag cleanup failed: %w", err)
 				}
 			}
 		} else {
-			removed = append(removed, item.record.Identity.Name)
+			removed = append(removed, item.record.ID)
 		}
 	}
 	return removed, nil

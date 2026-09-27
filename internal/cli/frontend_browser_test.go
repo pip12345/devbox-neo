@@ -11,7 +11,6 @@ import (
 	"devbox/internal/app"
 	"devbox/internal/config"
 	"devbox/internal/docker/dockertest"
-	"devbox/internal/environment"
 )
 
 func TestSessionDefaultActionSetsAndClearsWithoutPicker(t *testing.T) {
@@ -29,7 +28,7 @@ func TestSessionDefaultActionSetsAndClearsWithoutPicker(t *testing.T) {
 		t.Fatal(done, err)
 	}
 	selected, err := f.e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected == nil || selected.Name != name {
+	if err != nil || selected == nil || selected.ID != name {
 		t.Fatal(selected, err)
 	}
 	report, err = f.e.List(context.Background(), "")
@@ -128,7 +127,7 @@ func TestFrontendBuildFailurePreservesDraftAndDoesNotCreateDefault(t *testing.T)
 	if strings.Count(out.String(), "Session name: Second") < 2 || !strings.Contains(out.String(), "injected build failure") {
 		t.Fatal("failed build discarded draft", out.String())
 	}
-	if _, err := f.e.Store.Read(context.Background(), environment.ContainerName(q.Workspace, "Second")); !os.IsNotExist(err) {
+	if _, err := f.e.Locate(context.Background(), q.Workspace, "Second"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("failed build published session", err)
 	}
 	selected, err := f.e.Store.ReadDefault(context.Background(), q.Workspace)
@@ -141,7 +140,11 @@ func TestFrontendCreationReturnsToStoppedSessionMenu(t *testing.T) {
 	if err := f.createSessionIn(q.Workspace); err != nil {
 		t.Fatal(err, out.String())
 	}
-	name := environment.ContainerName(q.Workspace, "Second")
+	created, err := f.e.Locate(context.Background(), q.Workspace, "Second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := created.ID
 	details, err := f.e.Status(context.Background(), name, "")
 	if err != nil || details.Running || len(details.Active) != 0 {
 		t.Fatal("creation launched or attached", details, err)
@@ -159,7 +162,7 @@ func TestFrontendCreationReturnsToStoppedSessionMenu(t *testing.T) {
 }
 func TestUnmatchedContainerHasNoDefaultAction(t *testing.T) {
 	f, _, _, _ := frontendFixture(t, strings.NewReader(""))
-	if !f.defaultAction(app.View{Name: "unmatched"}).Hidden {
+	if !f.defaultAction(app.View{Target: "unmatched"}).Hidden {
 		t.Fatal("offered default selection for container without session identity")
 	}
 }

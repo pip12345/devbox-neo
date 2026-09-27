@@ -150,7 +150,7 @@ func validateMerge(j *Journal) error {
 			return err
 		}
 		localName := importLocalName(*item, profile)
-		expected := environment.Identity{Workspace: item.Workspace, LocalName: localName, Name: environment.ContainerName(item.Workspace, localName)}
+		expected := environment.Identity{Name: environment.ResourceName(item.Workspace, localName, item.SessionID), Binding: environment.Binding{Workspace: item.Workspace, LocalName: localName}}
 		if !reflect.DeepEqual(job.Sources, importReferences(home, *item, profile)) {
 			return fmt.Errorf("imported session source chain differs from its approved selection")
 		}

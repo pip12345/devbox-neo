@@ -82,7 +82,7 @@ func TestConfigCreationReusesStandaloneSetupAndPreservesDraft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Store.Read(context.Background(), identity.Name); !os.IsNotExist(err) {
+	if _, err := e.Store.Find(context.Background(), "", &identity.Binding); !os.IsNotExist(err) {
 		t.Fatal("cancelling created a session", err)
 	}
 
@@ -228,7 +228,7 @@ func (r *workflowInput) Read(p []byte) (int, error) {
 }
 func TestCombinedConfigurationHasOwnBackOnlyScreen(t *testing.T) {
 	e, _, name := namedCLIFixture(t)
-	record, err := e.Store.Read(context.Background(), name)
+	record, err := e.Store.Find(context.Background(), name, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestCombinedConfigurationHasOwnBackOnlyScreen(t *testing.T) {
 	if err != nil || saved || strings.Count(out.String(), "Manage configs") != 2 {
 		t.Fatal(saved, err, out.String())
 	}
-	after, err := e.Store.Read(context.Background(), name)
+	after, err := e.Store.Find(context.Background(), name, nil)
 	if err != nil || !reflect.DeepEqual(record, after) {
 		t.Fatal("inspection changed saved state", err)
 	}

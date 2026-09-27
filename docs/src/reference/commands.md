@@ -7,11 +7,11 @@ Prefix commands below with `devbox-neo`. Use `<command> --help` for options. For
 | Input | Meaning |
 |---|---|
 | `--home PATH` | Devbox home; overrides `DEVBOX_HOME`, then `~/.devbox-neo` |
-| `<target>` | A project folder or exact session name from `list --wide` |
+| `<target>` | A project folder or session ID from `list --wide` |
 | `--name NAME` | Select a folder-local session instead of the folder default |
 | `.` | Current folder |
 
-A folder alone requires a saved default, even if it has only one session. An exact full name works from any directory. A local name alone is not a target.
+A folder alone requires a saved default, even if it has only one session. An exact session ID works from any directory. A local name alone is not a target.
 
 ## Interactive frontend
 
@@ -60,7 +60,7 @@ Configured arguments precede continuation and one-off arguments. One-off argumen
 
 | Command | Output |
 |---|---|
-| `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Sessions, including missing containers; `--wide` adds full names |
+| `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Sessions, including missing containers; `--wide` adds session IDs and container names |
 | `status [--json]` | Configuration health for all sessions |
 | `status <target> [--json]` | One session's state, active commands, and pending changes |
 
@@ -78,11 +78,12 @@ Checks compare local inputs, not upstream releases. See [output formats](output.
 | `config delete <name> [--force] [--json]` | Delete an unused named config and its files |
 | `edit <folder>` | Choose a session's configs or change the folder default |
 | `edit <folder> --name NAME` | Edit a folder-local session's selected configs |
-| `edit <full-name>` | Edit an exact session's selected configs |
+| `edit <session-id>` | Edit an exact session's selected configs |
+| `edit <target> --workspace PATH [--json]` | Save a new workspace reference; requires explicit recreation and clears a matching old-folder default |
 | `edit <target> --show [--json]` | Combined settings; folder targets require `--name` |
 | `edit <target> --config REF [--config REF…] [--json]` | Replace the entire ordered config selection; folder targets require `--name` |
 
-`--config` requires at least one reference and replaces the list in flag order. It cannot combine with `--show`, `--default`, or `--clear-default`.
+`--config` requires at least one reference and replaces the list in flag order. Config, workspace, inspection, and default operations cannot be combined. `--workspace` requires a session ID or explicit `--name`.
 
 Settings edits save immediately. Nested config creation adds its result to the session draft; that config remains saved if the draft is cancelled. [Config reference](configuration.md) covers paths and merge rules.
 
@@ -105,7 +106,7 @@ Supplying setup flags runs directly. A destination is required outside interacti
 |---|---|
 | `edit <folder>` | Set/Clear default from the folder overview |
 | `edit <folder> --name NAME --default` | Select a named session |
-| `edit <full-name> --default` | Select that exact session |
+| `edit <session-id> --default` | Select that exact session |
 | `edit <target> --clear-default` | Clear without selecting a replacement |
 
 The browser offers Make/Clear folder default in the session menu. Selection does not launch anything. `--clear-default` cannot combine with `--name`, `--default`, `--show`, or `--config`.
@@ -162,7 +163,7 @@ Only declared harness state transfers. Project/config files, container-local too
 
 For interrupted transfers, fix the reported problem and retry the same command. Keep pending state and destination config in place until recovery finishes. JSON uses `clone` for Copy and `relocate` for Move.
 
-`rename --to NAME` is same-folder `copy --move --as NAME`: it preserves the session ID, rebuilds with current config, loses container-local changes, and clears a matching folder default. It accepts `--name` for source selection and uses the same transfer result/retry behavior. The explicit command does not prompt.
+`rename --to NAME` changes only the session label; storage, container, history, and default are unchanged. It accepts `--name` for source selection, `--dry-run`, and `--json`, and runs without prompting.
 
 ## Deletion
 

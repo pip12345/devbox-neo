@@ -78,9 +78,9 @@ func TestListDimsOnlyInactiveRowsWithoutChangingAlignment(t *testing.T) {
 	enableTerminalColors(t)
 	now := time.Now()
 	views := []app.View{
-		{Name: "active", Exists: true, Running: true, Workspace: "/work/a"},
-		{Name: "inactive-long-name", Exists: true, Workspace: "/work/b", Error: "broken record"},
-		{Name: "missing", Workspace: "/work/c", Pending: &store.Reservation{Mode: "clone", Phase: "prepare", Source: "a", Destination: "b"}},
+		{Target: "active", Exists: true, Running: true, Workspace: "/work/a"},
+		{Target: "inactive-long-name", Exists: true, Workspace: "/work/b", Error: "broken record"},
+		{Target: "missing", Workspace: "/work/c", Pending: &store.Reservation{Mode: "clone", Phase: "prepare", Source: "a", Destination: "b"}},
 	}
 	renderers := []func(io.Writer) error{
 		func(out io.Writer) error { return printSessionList(out, views, false, now) },

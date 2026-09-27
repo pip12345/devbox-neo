@@ -60,74 +60,63 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	e := &Engine{Store: s, Docker: docker.Runtime{Runner: runner}, Streams: docker.Streams{Out: &output, Err: &output}, UID: os.Getuid(), GID: os.Getgid()}
 	e.OnDiagnostic = func(d Diagnostic) { t.Logf("diagnostic: %+v", d) }
 	q := Request{Workspace: workspace, LocalName: "test", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: profile.Root}}, Args: []string{"--version"}}
-	spec, err := e.Resolve(q)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Cleanup is limited to this unique installation and exact test identity. It
-	// never uses a prefix or a global prune command as proof of ownership.
+	var createdID string
+	// The isolated installation is the cleanup boundary, never a name prefix.
 	t.Cleanup(func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		l, err := s.Lock(cleanup, spec.Identity.Name)
+		containers, err := e.Docker.Inventory(cleanup, s.Installation)
 		if err != nil {
 			t.Error(err)
 			return
 		}
-		defer l.Close()
-		c, exists, err := e.Docker.Inspect(cleanup, spec.Identity.Name)
-		if err != nil {
-			t.Error(err)
-			return
+		ids := map[string]bool{}
+		if createdID != "" {
+			ids[createdID] = true
 		}
-		var sessionID string
-		if exists {
-			sessionID = c.Config.Labels[docker.Namespace+".session"]
-			owner := docker.Owner{Installation: s.Installation, Session: sessionID, Workspace: workspace, LocalName: spec.Identity.LocalName}
-			if err = c.Verify(owner); err != nil {
-				t.Error(err)
-				return
-			}
-			if c.State.Running {
-				if err = e.Docker.Stop(cleanup, c, owner); err != nil {
-					t.Error(err)
-					return
-				}
-			}
-			if err = e.Docker.Remove(cleanup, c, owner); err != nil {
-				t.Error(err)
-				return
-			}
-		}
-		if r, err := l.Load(); err == nil {
-			sessionID = r.ID
-		}
-		if sessionID != "" {
-			tag := docker.Namespace + "/session:" + sessionID
-			image, err := e.Docker.InspectImage(cleanup, tag)
+		for _, c := range containers {
+			owner, err := e.orphanOwner(c)
 			if err != nil {
 				t.Error(err)
-				return
+				continue
 			}
-			if err = image.Verify(s.Installation); err != nil {
-				t.Error(err)
-				return
+			ids[owner.Session] = true
+			if c.State.Running {
+				if err := e.Docker.Stop(cleanup, c, owner); err != nil {
+					t.Error(err)
+					continue
+				}
 			}
-			if err = runner.Run(cleanup, docker.Command{Args: []string{"image", "rm", tag}}); err != nil {
+			if err := e.Docker.Remove(cleanup, c, owner); err != nil {
 				t.Error(err)
+			}
+		}
+		for id := range ids {
+			tag := docker.Namespace + "/session:" + id
+			image, exists, err := e.Docker.TaggedImage(cleanup, tag)
+			if err != nil {
+				t.Error(err)
+				continue
+			}
+			if exists {
+				if err := e.Docker.Untag(cleanup, tag, image.ID, s.Installation); err != nil {
+					t.Error(err)
+				}
 			}
 		}
 	})
-	if _, err := e.Create(ctx, q); err != nil {
+	created, err := e.Create(ctx, q)
+	createdID = created.SessionID
+	if err != nil {
 		t.Fatalf("create: %v\n%s", err, output.String())
 	}
 	result, err := e.Open(ctx, q)
 	if err != nil {
 		t.Fatalf("open: %v\n%s", err, output.String())
 	}
-	first := record(t, e, result.Name)
+	first := sessionRecord(t, e, result.SessionID)
 	output.Reset()
-	if err := e.Exec(ctx, result.Name, "test", []string{"bash", "-ic", `set -eu; for tool in vim zip unzip jq ifconfig ping; do command -v "$tool"; done; alias ll; alias vi`}, false); err != nil {
+	if err := e.Exec(ctx, result.SessionID, "test", []string{"bash", "-ic", `set -eu; for tool in vim zip unzip jq ifconfig ping; do command -v "$tool"; done; alias ll; alias vi`}, false); err != nil {
 		t.Fatalf("bundled tool check: %v\n%s", err, output.String())
 	}
 	for _, alias := range []string{"alias ll='ls -alF'", "alias vi='vim'"} {
@@ -138,25 +127,25 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	// Probe sibling-directory creation as the normal container user in both
 	// image-owned and bind-backed parents. Version-only launches can miss this
 	// for custom harnesses that do not initialize state on startup.
-	parents := (harness.Definition{Stores: first.Stores, Auth: first.Auth}).MountParents()
+	parents := (harness.Definition{Stores: first.Applied.Stores, Auth: first.Applied.Auth}).MountParents()
 	argv := []string{"/bin/sh", "-eu", "-c", `for parent do probe=$(mktemp -d "$parent/.devbox-parent-XXXXXX"); rmdir -- "$probe"; done`, "mount-parent-check"}
 	for _, parent := range parents {
 		argv = append(argv, parent.Target)
 	}
-	if err = e.Exec(ctx, result.Name, "", argv, false); err != nil {
+	if err = e.Exec(ctx, result.SessionID, "", argv, false); err != nil {
 		t.Fatalf("mount parent contract: %v\n%s", err, output.String())
 	}
-	if err = e.Exec(ctx, result.Name, "", []string{"sh", "-c", `test -r /devbox/AGENTS.md && test -r /devbox/docs/index.md && test -r /devbox/network/inspect.json && test ! -w /devbox/docs/index.md && . /devbox/network/env && test -n "$DEVBOX_HOST"`}, false); err != nil {
+	if err = e.Exec(ctx, result.SessionID, "", []string{"sh", "-c", `test -r /devbox/AGENTS.md && test -r /devbox/docs/index.md && test -r /devbox/network/inspect.json && test ! -w /devbox/docs/index.md && . /devbox/network/env && test -n "$DEVBOX_HOST"`}, false); err != nil {
 		t.Fatal("runtime docs/network contract", err)
 	}
 	e.TerminalEnv = []string{"TERM=xterm-256color", "COLORTERM=truecolor"}
-	if err = e.Exec(ctx, result.Name, "", []string{"sh", "-c", `test "$TERM" = xterm-256color && test "$COLORTERM" = truecolor`}, false); err != nil {
+	if err = e.Exec(ctx, result.SessionID, "", []string{"sh", "-c", `test "$TERM" = xterm-256color && test "$COLORTERM" = truecolor`}, false); err != nil {
 		t.Fatal("existing-container terminal forwarding", err)
 	}
 	marker := ""
-	for _, declared := range first.Stores {
+	for _, declared := range first.Applied.Stores {
 		if declared.Scope == "environment" {
-			marker = filepath.Join(s.Home, "sessions", result.Name, "harnesses", harnessName, "stores", declared.Name, "preservation-check")
+			marker = filepath.Join(s.Home, "sessions", first.Directory, "harnesses", harnessName, "stores", declared.Name, "preservation-check")
 			break
 		}
 	}
@@ -165,17 +154,17 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	}
 	write(t, marker, "preserved")
 	authPaths := []string{}
-	for _, auth := range first.Auth {
+	for _, auth := range first.Applied.Auth {
 		target := auth.Target
 		source := filepath.Join(s.Home, "auth", harnessName, auth.Source)
 		if auth.Kind == "directory" {
 			target += "/acceptance.json"
 			source = filepath.Join(source, "acceptance.json")
 		}
-		if _, err = e.Start(ctx, result.Name, ""); err != nil {
+		if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 			t.Fatal(err)
 		}
-		if err = e.Exec(ctx, result.Name, "", []string{"bash", "-c", `printf '{}\n\n' > "$1"`, "auth-check", target}, false); err != nil {
+		if err = e.Exec(ctx, result.SessionID, "", []string{"bash", "-c", `printf '{}\n\n' > "$1"`, "auth-check", target}, false); err != nil {
 			t.Fatal(err)
 		}
 		if b, err := os.ReadFile(source); err != nil || string(b) != "{}\n\n" {
@@ -186,8 +175,8 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
 	}
-	reopened := record(t, e, result.Name)
-	if reopened.SetupContainer != first.SetupContainer {
+	reopened := sessionRecord(t, e, result.SessionID)
+	if reopened.Applied.SetupContainer != first.Applied.SetupContainer {
 		t.Fatal("reopen recreated container")
 	}
 	// A configured mount is a creation input but does not require another image.
@@ -202,8 +191,8 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	if _, err = e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
-	recreated := record(t, e, result.Name)
-	if recreated.ID != first.ID || recreated.SetupContainer == first.SetupContainer {
+	recreated := sessionRecord(t, e, result.SessionID)
+	if recreated.ID != first.ID || recreated.Applied.SetupContainer == first.Applied.SetupContainer {
 		t.Fatal("wrong recreation identity")
 	}
 	b, err := os.ReadFile(marker)
@@ -221,7 +210,7 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	if _, err = e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
-	if err = e.Exec(ctx, result.Name, "", argv, false); err != nil {
+	if err = e.Exec(ctx, result.SessionID, "", argv, false); err != nil {
 		t.Fatalf("mount parents after recreate/start: %v\n%s", err, output.String())
 	}
 }

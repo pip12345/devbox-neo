@@ -18,21 +18,21 @@ func TestTransfersExcludeSSHRuntimeAndUseDestinationMount(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			source := filepath.Join(e.Store.Home, "sessions", result.Name, sshshare.RelativeRoot)
+			source := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, sshshare.RelativeRoot)
 			write(t, filepath.Join(source, "config"), "old connection config")
 			write(t, filepath.Join(source, "c", "old", "config"), "old socket reference")
-			transferred, err := e.Transfer(ctx, TransferOptions{Mode: mode, Source: result.Name, Destination: t.TempDir()})
+			transferred, err := e.Transfer(ctx, TransferOptions{Mode: mode, Source: result.SessionID, Destination: t.TempDir()})
 			if err != nil {
 				t.Fatal(err)
 			}
-			destination := filepath.Join(e.Store.Home, "sessions", transferred.Destination, sshshare.RelativeRoot)
+			destination := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, transferred.Destination).Directory, sshshare.RelativeRoot)
 			entries, err := os.ReadDir(destination)
 			if err != nil || len(entries) != 0 {
 				t.Fatal("transferred live SSH runtime", entries, err)
 			}
-			r := record(t, e, transferred.Destination)
+			r := sessionRecord(t, e, transferred.Destination)
 			found := false
-			for _, mount := range r.Creation.Mounts {
+			for _, mount := range r.Applied.Creation.Mounts {
 				if mount.Target == sshshare.Mount {
 					found = true
 					if mount.Source != destination {

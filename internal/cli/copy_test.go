@@ -50,11 +50,11 @@ func TestCopyCommandModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tt.running {
-				if _, err = engine.Start(ctx, made.Name, ""); err != nil {
+				if _, err = engine.Start(ctx, made.SessionID, ""); err != nil {
 					t.Fatal(err)
 				}
 			}
-			source, err := state.Read(ctx, made.Name)
+			source, err := state.Find(ctx, made.SessionID, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -68,7 +68,7 @@ func TestCopyCommandModes(t *testing.T) {
 				var out bytes.Buffer
 				cmd.SetOut(&out)
 				cmd.SetErr(&out)
-				args := []string{made.Name, destination.Workspace}
+				args := []string{made.SessionID, destination.Workspace}
 				if tt.move {
 					args = append(args, "--move")
 				}
@@ -92,23 +92,23 @@ func TestCopyCommandModes(t *testing.T) {
 			if out, err := run(true); err != nil || !strings.Contains(out, "Would perform "+label+":") || !strings.Contains(out, "1. test") || !strings.Contains(out, owner.Root) || strings.Contains(out, "(fixed)") {
 				t.Fatal("copy preview should show source label and path without type", out, err)
 			}
-			if _, err = state.Read(ctx, destination.Name); !os.IsNotExist(err) {
+			if _, err = state.Find(ctx, "", &destination.Binding); !os.IsNotExist(err) {
 				t.Fatal("dry run created destination", err)
 			}
 			if out, err := run(false); err != nil || !strings.Contains(out, "Completed "+label+":") || !strings.Contains(out, "1. test") || !strings.Contains(out, owner.Root) || strings.Contains(out, "(fixed)") {
 				t.Fatal("copy result should show source label and path without type", out, err)
 			}
-			copied, err := state.Read(ctx, destination.Name)
+			copied, err := state.Find(ctx, "", &destination.Binding)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if (copied.ID == source.ID) != tt.move || copied.ManualStart != (tt.move && tt.running) || copied.Action != label {
+			if (copied.ID == source.ID) != tt.move || copied.Settings.ManualStart != (tt.move && tt.running) || copied.Action != label {
 				t.Fatal("incorrect destination identity or lifetime", copied)
 			}
-			if _, err = state.Read(ctx, made.Name); tt.move && !os.IsNotExist(err) || !tt.move && err != nil {
+			if _, err = state.Read(ctx, source.Directory); tt.move && !os.IsNotExist(err) || !tt.move && err != nil {
 				t.Fatal("incorrect source retention", err)
 			}
-			container, exists := daemon.Snapshot(destination.Name)
+			container, exists := daemon.Snapshot(copied.Applied.Creation.Name)
 			if !exists || container.State.Running != (tt.move && tt.running) {
 				t.Fatal("incorrect destination running state", container.State)
 			}

@@ -21,7 +21,7 @@ type NetworkFacts struct {
 }
 
 func networkFacts(r store.Record, c docker.Container) NetworkFacts {
-	primary := r.Creation.Network
+	primary := r.Applied.Creation.Network
 	if primary == "default" {
 		primary = "bridge"
 	}
@@ -32,10 +32,10 @@ func networkFacts(r store.Record, c docker.Container) NetworkFacts {
 		}
 	}
 	host := "host.docker.internal"
-	if r.Creation.Network == "host" {
+	if r.Applied.Creation.Network == "host" {
 		host = "127.0.0.1"
 	}
-	return NetworkFacts{Name: r.Identity.Name, Mode: r.Creation.Network, Primary: primary, Host: host, Gateway: c.NetworkSettings.Networks[primary].Gateway, Networks: c.NetworkSettings.Networks}
+	return NetworkFacts{Name: r.ID, Mode: r.Applied.Creation.Network, Primary: primary, Host: host, Gateway: c.NetworkSettings.Networks[primary].Gateway, Networks: c.NetworkSettings.Networks}
 }
 func (f NetworkFacts) Env() map[string]string {
 	return map[string]string{"DEVBOX_HOST": f.Host, "DEVBOX_NETWORK": f.Mode, "DEVBOX_PRIMARY_NETWORK": f.Primary, "DEVBOX_DEFAULT_GATEWAY_IP": f.Gateway}
@@ -50,8 +50,8 @@ func (e *Engine) NetworkFacts(ctx context.Context, target, localName string) (Ne
 		return NetworkFacts{}, err
 	}
 	if !exists {
-		return NetworkFacts{}, commanderror.New("container_missing", "Container not found; network details are unavailable.", r.Identity.Name, nil,
-			commanderror.Next("Start or restore", "start", r.Identity.Name))
+		return NetworkFacts{}, commanderror.New("container_missing", "Container not found; network details are unavailable.", r.ID, nil,
+			commanderror.Next("Start or restore", "start", r.ID))
 	}
 	return networkFacts(r, c), nil
 }
@@ -63,7 +63,7 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 	if err != nil {
 		return err
 	}
-	lock, err := e.Store.Lock(ctx, r.Identity.Name)
+	lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
 	if err != nil {
 		return err
 	}
@@ -77,10 +77,10 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "Container not found.", r.Identity.Name, nil,
-			commanderror.Next("Start or restore", "start", r.Identity.Name))
+		return commanderror.New("container_missing", "Container not found.", r.ID, nil,
+			commanderror.Next("Start or restore", "start", r.ID))
 	}
-	if r.Creation.Network == "host" || c.HostConfig.NetworkMode == "host" {
+	if r.Applied.Creation.Network == "host" || c.HostConfig.NetworkMode == "host" {
 		return fmt.Errorf("host-network containers cannot attach secondary networks")
 	}
 	facts := networkFacts(r, c)
@@ -92,8 +92,8 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 		}
 	}
 	if !connect && actual == facts.Primary {
-		return commanderror.New("primary_network_protected", "Cannot disconnect the primary network. Change its configuration first.", r.Identity.Name, nil,
-			commanderror.Next("Then recreate to apply the network change", "recreate", r.Identity.Name))
+		return commanderror.New("primary_network_protected", "Cannot disconnect the primary network. Change its configuration first.", r.ID, nil,
+			commanderror.Next("Then recreate to apply the network change", "recreate", r.ID))
 	}
 	_, attached := facts.Networks[actual]
 	if connect && attached {

@@ -369,7 +369,7 @@ func destinationInventory(ctx context.Context, home string) (string, []store.Rec
 		facts[part] = h
 	}
 	for _, r := range records {
-		facts["session:"+r.Identity.Name] = digest(encode(r))
+		facts["session:"+r.Directory] = digest(encode(r))
 	}
 	return id, records, digest(encode(facts)), nil
 }
@@ -675,13 +675,14 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 			}
 		}
 		identity, e := environment.Identify(i.Workspace, importLocalName(i, profile))
+		identity.Name = environment.ResourceName(i.Workspace, identity.LocalName, i.SessionID)
 		if e != nil {
 			plan.block(i.Key, i.Key, "Workspace is unavailable or noncanonical.")
 			continue
 		}
 		collision := false
 		for _, r := range records {
-			if r.Identity.Name == identity.Name || r.ID == i.SessionID {
+			if r.Directory == identity.Name || r.ID == i.SessionID || r.Settings.Binding == identity.Binding {
 				collision = true
 			}
 		}
@@ -726,7 +727,7 @@ func (m Merger) Plan(ctx context.Context, j *Journal, c MergeChoices) (plan Merg
 			}
 			proposed = &artifact.SourcePreview{Path: project.Path, Layer: l}
 		}
-		q := environment.Request{Home: preview, Workspace: i.Workspace, LocalName: identity.LocalName, Salt: id, UID: m.UID, GID: m.GID, Host: m.host(), Sources: importReferences(preview, i, profile), Recorded: &identity}
+		q := environment.Request{Home: preview, Workspace: i.Workspace, LocalName: identity.LocalName, Salt: id, UID: m.UID, GID: m.GID, Host: m.host(), Sources: importReferences(preview, i, profile)}
 		spec, e := environment.Preview(q, proposed)
 		if e != nil {
 			plan.block("config:"+i.Key, i.Key, "Final configuration cannot be resolved; review participating profiles/projects and required host environment variables.")
@@ -1223,6 +1224,11 @@ func (m Merger) runMerge(ctx context.Context, j *Journal) (err error) {
 	if err != nil {
 		return err
 	}
+	namesLock, err := st.LockNames(ctx)
+	if err != nil {
+		return err
+	}
+	defer fsutil.Unlock(namesLock)
 	release, sessionLocks, err := lockDestination(ctx, st, plan)
 	if err != nil {
 		return err
@@ -1343,6 +1349,10 @@ func lockDestination(ctx context.Context, st *store.Store, p MergePlan) (func(),
 		files = append(files, f)
 	}
 	names := map[string]bool{}
+	ids := map[string]string{}
+	for _, job := range p.Sessions {
+		ids[job.Identity.Name] = job.ID
+	}
 	entries, err = readEntries(filepath.Join(st.Home, "sessions"))
 	if err != nil {
 		release()
@@ -1350,6 +1360,17 @@ func lockDestination(ctx context.Context, st *store.Store, p MergePlan) (func(),
 	}
 	for _, entry := range entries {
 		names[entry.Name()] = true
+		r, err := st.Read(ctx, entry.Name())
+		if err == nil {
+			if planned := ids[entry.Name()]; planned != "" && planned != r.ID {
+				release()
+				return func() {}, nil, fmt.Errorf("import destination identity changed")
+			}
+			ids[entry.Name()] = r.ID
+		} else if !os.IsNotExist(err) || ids[entry.Name()] == "" {
+			release()
+			return func() {}, nil, err
+		}
 	}
 	for _, job := range p.Sessions {
 		names[job.Identity.Name] = true
@@ -1359,7 +1380,7 @@ func lockDestination(ctx context.Context, st *store.Store, p MergePlan) (func(),
 		ordered = append(ordered, name)
 	}
 	sort.Strings(ordered)
-	locks, err = st.LockAll(ctx, ordered)
+	locks, err = st.LockAll(ctx, ordered, ids)
 	if err != nil {
 		release()
 		return func() {}, nil, err
@@ -1501,7 +1522,7 @@ func (m Merger) checkAssociations(ctx context.Context, st *store.Store, j *Journ
 		if a != nil && a.Phase == "done" {
 			continue
 		}
-		if r, exists := ids[job.ID]; exists && (r.Identity != job.Identity || a == nil) {
+		if r, exists := ids[job.ID]; exists && (r.Settings.Binding != job.Identity.Binding || a == nil) {
 			return fmt.Errorf("imported session ID now belongs to another destination; refusing to recreate its old slot")
 		}
 		if r, exists := byName[job.Identity.Name]; exists && r.ID != job.ID {
@@ -1552,7 +1573,7 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 	a := j.Merge.Attempts[job.Item]
 	r, recordErr := l.ReadRecord(ctx)
 	if recordErr == nil {
-		if a == nil || r.ID != job.ID || r.Identity != job.Identity {
+		if a == nil || r.ID != job.ID || r.Settings.Binding != job.Identity.Binding {
 			return fmt.Errorf("existing session is not this import")
 		}
 		root, pathErr := l.Path(".")
@@ -1572,11 +1593,11 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 		if !exists {
 			return fmt.Errorf("committed container is missing; recover it through Neo before completing the import")
 		}
-		owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, LocalName: r.Identity.LocalName}
+		owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName}
 		if err = c.Verify(owner); err != nil {
 			return err
 		}
-		if c.Image != r.ImageID || c.ID != r.SetupContainer {
+		if c.Image != r.Applied.ImageID || c.ID != r.Applied.SetupContainer {
 			return fmt.Errorf("committed container identity changed")
 		}
 		if c.State.Running {
@@ -1614,7 +1635,7 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 			return err
 		}
 	}
-	spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, LocalName: job.Identity.LocalName, Sources: job.Sources, Recorded: &job.Identity, Host: m.host()})
+	spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, LocalName: job.Identity.LocalName, Sources: job.Sources, SessionID: job.ID, Host: m.host()})
 	if err != nil {
 		return publicFailure("Final configuration no longer resolves.", job.Identity.Name, err)
 	}
@@ -1703,14 +1724,14 @@ func (m Merger) importSession(ctx context.Context, j *Journal, e *app.Engine, l 
 		activity = j.Merge.Approved
 		action = "create"
 	}
-	r, c, err := e.CreatePrepared(ctx, l, spec, app.CreationIdentity{ID: job.ID, Created: job.Created, Activity: activity, Action: action})
+	r, c, err := e.CreatePrepared(ctx, l, spec, app.CreationIdentity{ContainerName: job.Identity.Name, ID: job.ID, Created: job.Created, Activity: activity, Action: action})
 	if err != nil {
 		return err
 	}
 	if err = m.fault("record-committed:" + job.Item); err != nil {
 		return err
 	}
-	owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, LocalName: r.Identity.LocalName}
+	owner := docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName}
 	if err = m.Docker.Stop(ctx, c, owner); err != nil {
 		return err
 	}

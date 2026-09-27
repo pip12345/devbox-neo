@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
-	"os"
 	"strings"
 
 	"devbox/internal/docker"
@@ -37,34 +35,41 @@ func (e *Engine) List(ctx context.Context, folder string) (InventoryReport, erro
 
 func (e *Engine) sessionInventory(ctx context.Context, entries []store.Entry, live []docker.Container, workspace string) InventoryReport {
 	report := InventoryReport{Sessions: []View{}, UnmatchedContainers: []View{}, DefaultErrors: map[string]string{}}
-	liveNames := map[string]bool{}
-	workspaces := map[string]string{}
-	for _, container := range live {
-		name := strings.TrimPrefix(container.Name, "/")
-		liveNames[name] = true
-		workspaces[name] = container.Config.Labels[docker.Namespace+".workspace"]
-	}
-	retained := []store.Entry{}
 	known := map[string]bool{}
 	for _, entry := range entries {
-		if liveNames[entry.Name] && errors.Is(entry.Err, os.ErrNotExist) && entry.Pending == nil {
-			continue
-		}
-		retained = append(retained, entry)
-		known[entry.Name] = true
-		if entry.Err == nil {
-			workspaces[entry.Name] = entry.Record.Identity.Workspace
+		if entry.Record.Applied.SetupContainer != "" {
+			known[entry.Record.Applied.SetupContainer] = true
 		}
 	}
-	for _, view := range e.inventoryViews(retained, live, true) {
-		if workspace == "" || workspaces[view.Name] == workspace {
+	displayEntries := []store.Entry{}
+	for _, entry := range entries {
+		if p := entry.Pending; p != nil && p.Mode == "relocate" {
+			authority := p.Source
+			if p.Phase == "committed" {
+				authority = p.Destination
+			}
+			if entry.Name != authority {
+				continue
+			}
+		}
+		displayEntries = append(displayEntries, entry)
+	}
+	for _, view := range e.inventoryViews(displayEntries, live, true) {
+		if workspace == "" || view.Workspace == workspace {
 			report.Sessions = append(report.Sessions, view)
 		}
 	}
-	for _, view := range e.inventoryViews(retained, live, false) {
-		if !known[view.Name] && (workspace == "" || workspaces[view.Name] == workspace) {
-			report.UnmatchedContainers = append(report.UnmatchedContainers, view)
+	for _, container := range live {
+		if known[container.ID] {
+			continue
 		}
+		folder := container.Config.Labels[docker.Namespace+".workspace"]
+		if workspace != "" && folder != workspace {
+			continue
+		}
+		name := strings.TrimPrefix(container.Name, "/")
+		pending, _ := e.Store.PendingID(container.Config.Labels[docker.Namespace+".session"])
+		report.UnmatchedContainers = append(report.UnmatchedContainers, View{Target: name, OwnerSessionID: container.Config.Labels[docker.Namespace+".session"], ContainerName: name, ContainerID: container.ID, Workspace: folder, Exists: true, Running: container.State.Running, Pending: pending, Error: "container has no valid durable association"})
 	}
 	defaults := map[string]*store.DefaultSession{}
 	readDefault := func(path string) {
@@ -82,7 +87,7 @@ func (e *Engine) sessionInventory(ctx context.Context, entries []store.Entry, li
 	for i := range report.Sessions {
 		view := &report.Sessions[i]
 		readDefault(view.Workspace)
-		if selected := defaults[view.Workspace]; selected != nil && selected.Name == view.Name && selected.ID == view.SessionID {
+		if selected := defaults[view.Workspace]; selected != nil && selected.ID == view.SessionID {
 			view.Default = true
 			matched[view.Workspace] = true
 		}
@@ -114,7 +119,7 @@ func (e *Engine) StatusAll(ctx context.Context, folder string) (InventoryReport,
 	records := map[string]store.Record{}
 	for _, entry := range entries {
 		if entry.Err == nil && entry.Record.ID != "" {
-			records[entry.Name] = entry.Record
+			records[entry.Record.ID] = entry.Record
 		}
 	}
 	for i := range report.Sessions {
@@ -122,7 +127,7 @@ func (e *Engine) StatusAll(ctx context.Context, folder string) (InventoryReport,
 			return InventoryReport{}, err
 		}
 		view := &report.Sessions[i]
-		if r, ok := records[view.Name]; ok && view.Error == "" && view.Pending == nil {
+		if r, ok := records[view.Target]; ok && view.Error == "" && view.Pending == nil {
 			e.desiredStatus(view, r)
 		}
 	}

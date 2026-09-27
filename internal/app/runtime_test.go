@@ -36,7 +36,7 @@ func TestRuntimeDocsAndNetworkFactsAreStagedAndCleaned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(staged) == 0 || facts.Name != result.Name || facts.Host == "" {
+	if len(staged) == 0 || facts.Name != result.SessionID || facts.Host == "" {
 		t.Fatal("runtime facts missing", facts)
 	}
 	for _, source := range staged {
@@ -44,14 +44,14 @@ func TestRuntimeDocsAndNetworkFactsAreStagedAndCleaned(t *testing.T) {
 			t.Fatal("runtime staging remained", source)
 		}
 	}
-	if _, err = e.Start(ctx, result.Name, ""); err != nil {
+	if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
-	if _, err = e.Start(ctx, result.Name, ""); err != nil {
+	if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 		t.Fatal("running access reloaded desired config", err)
 	}
-	if err = e.ChangeNetwork(ctx, result.Name, "", "secondary", true); err != nil {
+	if err = e.ChangeNetwork(ctx, result.SessionID, "", "secondary", true); err != nil {
 		t.Fatal(err)
 	}
 	if len(facts.Networks) != 2 {

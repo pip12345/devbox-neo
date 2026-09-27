@@ -16,7 +16,7 @@ import (
 
 func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 	var asJSON bool
-	cmd := &cobra.Command{Use: "status [folder|session]", Short: "Show all environments or details and pending changes for one", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "status [folder|session-id]", Short: "Show all environments or details and pending changes for one", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 && *localName != "" {
 			return fmt.Errorf("--name requires a folder target")
 		}
@@ -49,7 +49,7 @@ func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 		if asJSON {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(details)
 		}
-		return printStatusDetails(cmd.OutOrStdout(), details, scopedSteps(cmd, []commanderror.Step{commanderror.Next("To apply changes", "recreate", details.Name)}, e.Store.Home))
+		return printStatusDetails(cmd.OutOrStdout(), details, scopedSteps(cmd, []commanderror.Step{commanderror.Next("To apply changes", "recreate", details.Target)}, e.Store.Home))
 	}}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print session details and status, or bulk inventory diagnostics, as JSON")
 	return sessionNameFlag(cmd, localName)
@@ -57,7 +57,7 @@ func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 
 func printStatusDetails(out io.Writer, details app.StatusDetails, steps []commanderror.Step) error {
 	view := details.View
-	if _, err := fmt.Fprintf(out, "%s  %s  %s\n", displayCell(view.Name), containerState(view), displayCell(view.Workspace)); err != nil {
+	if _, err := fmt.Fprintf(out, "%s  %s  %s\n", displayCell(view.Target), containerState(view), displayCell(view.Workspace)); err != nil {
 		return err
 	}
 	if view.Pending != nil {
@@ -71,9 +71,9 @@ func printStatusDetails(out io.Writer, details app.StatusDetails, steps []comman
 		fmt.Fprintf(out, "Default selection unavailable: %s\n", displayCell(details.DefaultError))
 	}
 	if details.Record != nil {
-		fmt.Fprintf(out, "Session: %s\nHarness: %s\nImage: %s\nActive commands: %d\n", displayCell(details.SessionID), displayCell(details.Harness), displayCell(details.Record.ImageID), len(details.Active))
+		fmt.Fprintf(out, "Session: %s\nHarness: %s\nImage: %s\nActive commands: %d\n", displayCell(details.SessionID), displayCell(details.Harness), displayCell(details.Record.Applied.ImageID), len(details.Active))
 		lifetime := "automatic (stops after the last attached command)"
-		if details.Record.ManualStart {
+		if details.Record.Settings.ManualStart {
 			lifetime = "until stop (restarts with Docker)"
 		}
 		fmt.Fprintf(out, "Lifetime: %s\n", lifetime)
@@ -125,7 +125,7 @@ func printStatusList(out io.Writer, views []app.View) error {
 	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tCONTAINER\tCHANGE")
 	for _, view := range views {
-		fmt.Fprintf(w, "%s\t%s\t%s\n", displayCell(view.Name), containerState(view), statusChange(view))
+		fmt.Fprintf(w, "%s\t%s\t%s\n", displayCell(view.Target), containerState(view), statusChange(view))
 	}
 	if err := w.Flush(); err != nil {
 		return err
@@ -135,7 +135,7 @@ func printStatusList(out io.Writer, views []app.View) error {
 	}
 	for _, view := range views {
 		if len(view.PendingInputChanges) > 0 {
-			if _, err := fmt.Fprintf(out, "%s:\n", displayCell(view.Name)); err != nil {
+			if _, err := fmt.Fprintf(out, "%s:\n", displayCell(view.Target)); err != nil {
 				return err
 			}
 			for _, inputChange := range view.PendingInputChanges {
@@ -145,12 +145,12 @@ func printStatusList(out io.Writer, views []app.View) error {
 			}
 		}
 		if view.ConfigError != "" {
-			if _, err := fmt.Fprintf(out, "! %s: desired configuration: %s\n", displayCell(view.Name), displayCell(view.ConfigError)); err != nil {
+			if _, err := fmt.Fprintf(out, "! %s: desired configuration: %s\n", displayCell(view.Target), displayCell(view.ConfigError)); err != nil {
 				return err
 			}
 		}
 		if view.Error == "" && view.ConfigError == "" && view.Pending == nil && (view.Desired == environment.Recreate || view.Desired == environment.RebuildAndRecreate) {
-			if _, err := fmt.Fprintf(out, "  devbox-neo recreate %s\n", displayCell(view.Name)); err != nil {
+			if _, err := fmt.Fprintf(out, "  devbox-neo recreate %s\n", displayCell(view.Target)); err != nil {
 				return err
 			}
 		}

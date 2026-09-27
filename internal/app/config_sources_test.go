@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"strings"
 	"testing"
 
 	"devbox/internal/artifact"
@@ -17,7 +16,7 @@ import (
 )
 
 func TestExplicitWorkspaceSourceIsUsedByEveryAccessPath(t *testing.T) {
-	e, d, q := fixture(t)
+	e, _, q := fixture(t)
 	ctx := context.Background()
 	dir := filepath.Join(q.Workspace, ".devbox")
 	write(t, filepath.Join(dir, "config.json"), `{"env":["TOKEN=value"],"ports":["8080:80"]}`)
@@ -25,14 +24,14 @@ func TestExplicitWorkspaceSourceIsUsedByEveryAccessPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := record(t, e, made.Name)
-	if !strings.HasSuffix(made.Name, ".test") || len(r.Sources) != 2 || r.Sources[1].Path != dir {
-		t.Fatal(r.Identity, r.Sources)
+	r := sessionRecord(t, e, made.SessionID)
+	if r.Settings.LocalName != "test" || len(r.Settings.Sources) != 2 || r.Settings.Sources[1].Path != dir {
+		t.Fatal(r.Settings.Binding, r.Settings.Sources)
 	}
-	if got, err := e.Open(ctx, q); err != nil || got.Name != made.Name {
+	if got, err := e.Open(ctx, q); err != nil || got.SessionID != made.SessionID {
 		t.Fatal(got, err)
 	}
-	if status, err := e.Status(ctx, q.Workspace, q.LocalName); err != nil || status.ConfigError != "" || status.Name != made.Name {
+	if status, err := e.Status(ctx, q.Workspace, q.LocalName); err != nil || status.ConfigError != "" || status.Target != made.SessionID {
 		t.Fatal(status, err)
 	}
 	s := resource.Service{Home: e.Store.Home}
@@ -44,18 +43,20 @@ func TestExplicitWorkspaceSourceIsUsedByEveryAccessPath(t *testing.T) {
 	if err != nil || view.Path != filepath.Join(dir, "config.json") {
 		t.Fatal(view, err)
 	}
-	// Missing-container recovery restores env from the workspace's project config.
-	d.Forget(made.Name)
+	forgetSession( // Missing-container recovery restores env from the workspace's project config.
+		t, e,
+
+		made.SessionID)
 	if _, err = e.Start(ctx, q.Workspace, q.LocalName); err != nil {
 		t.Fatal(err)
 	}
-	if err = e.Stop(ctx, made.Name, "", false); err != nil {
+	if err = e.Stop(ctx, made.SessionID, "", false); err != nil {
 		t.Fatal(err)
 	}
 	if err = os.Remove(filepath.Join(dir, "config.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Open(ctx, Request{Workspace: made.Name}); err == nil {
+	if _, err = e.Open(ctx, Request{Workspace: made.SessionID}); err == nil {
 		t.Fatal("missing recorded project source was ignored")
 	}
 }
@@ -124,7 +125,7 @@ func TestProfileAndProjectScriptsRunInOrderAndStopOnFailure(t *testing.T) {
 			if !slices.Equal(hooks, []string{"profile setup", "project setup"}) {
 				t.Fatal(hooks)
 			}
-			_, err = e.Open(context.Background(), Request{Workspace: made.Name})
+			_, err = e.Open(context.Background(), Request{Workspace: made.SessionID})
 			if (err != nil) != fail {
 				t.Fatal(err)
 			}
@@ -146,10 +147,10 @@ func TestSourcesNeverDetermineSessionIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := record(t, e, made.Name)
-	after, err := e.UpdateSources(ctx, before, before.Sources[:1])
-	if err != nil || before.ID != after.ID || before.Identity != after.Identity {
-		t.Fatal("source edit changed identity", after.Identity, err)
+	before := sessionRecord(t, e, made.SessionID)
+	after, err := e.UpdateSources(ctx, before, before.Settings.Sources[:1])
+	if err != nil || before.ID != after.ID || before.Settings.Binding != after.Settings.Binding {
+		t.Fatal("source edit changed identity", after.Settings.Binding, err)
 	}
 	q.Sources = q.Sources[:1]
 	if _, err := e.Create(ctx, q); err == nil {
@@ -157,7 +158,7 @@ func TestSourcesNeverDetermineSessionIdentity(t *testing.T) {
 	}
 	q.LocalName = "another"
 	other, err := e.Create(ctx, q)
-	if err != nil || other.Name == made.Name {
+	if err != nil || other.SessionID == made.SessionID {
 		t.Fatal("independently named sessions could not share configs", other, err)
 	}
 }
@@ -172,12 +173,12 @@ func TestTransferRebasesOnlyWorkspaceRelativeSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	copied, err := e.Transfer(context.Background(), TransferOptions{Mode: "clone", Source: made.Name, Destination: destination})
+	copied, err := e.Transfer(context.Background(), TransferOptions{Mode: "clone", Source: made.SessionID, Destination: destination})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := record(t, e, copied.Destination)
-	if r.Sources[1].Path != ".devbox" || r.Inputs.Sources[1].Path != filepath.Join(destination, ".devbox") || !slices.Equal(r.Creation.Ports, []string{"9090:90"}) {
-		t.Fatal(r.Identity, r.Sources, r.Creation.Ports)
+	r := sessionRecord(t, e, copied.Destination)
+	if r.Settings.Sources[1].Path != ".devbox" || r.Applied.Inputs.Sources[1].Path != filepath.Join(destination, ".devbox") || !slices.Equal(r.Applied.Creation.Ports, []string{"9090:90"}) {
+		t.Fatal(r.Settings.Binding, r.Settings.Sources, r.Applied.Creation.Ports)
 	}
 }

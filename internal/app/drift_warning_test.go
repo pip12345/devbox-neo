@@ -32,13 +32,13 @@ func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 				write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host"}`)
 			}
 			if mode == "recovery" {
-				d.Forget(result.Name)
+				forgetSession(t, e, result.SessionID)
 			}
 			write(t, filepath.Join(e.Store.Home, "profiles/test/pi/new-file"), "new config")
 			if err := os.Symlink("new-file", filepath.Join(e.Store.Home, "profiles/test/pi/skipped-link")); err != nil {
 				t.Fatal(err)
 			}
-			liveFile := filepath.Join(e.Store.Home, "sessions", result.Name, "harnesses/pi/stores/home/new-file")
+			liveFile := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home/new-file")
 			var output bytes.Buffer
 			warned := false
 			before := len(d.History())
@@ -101,7 +101,7 @@ func TestOpenCancelledAfterCreationWarningDoesNotMutate(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host"}`)
-	p, _ := e.Store.RecordPath(result.Name)
+	p, _ := e.Store.RecordPath(sessionRecord(t, e, result.SessionID).Directory)
 	beforeRecord := string(getFile(t, p))
 	beforeCalls := len(d.History())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -120,7 +120,7 @@ func TestOpenCancelledAfterCreationWarningDoesNotMutate(t *testing.T) {
 	}
 	lockCtx, stop := context.WithTimeout(context.Background(), time.Second)
 	defer stop()
-	lock, err := e.Store.Lock(lockCtx, result.Name)
+	lock, err := e.Store.Lock(lockCtx, sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).ID)
 	if err != nil {
 		t.Fatal("cancelled open leaked operation lock", err)
 	}

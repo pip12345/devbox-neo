@@ -29,7 +29,7 @@ type Request struct {
 	LocalName   string
 	HarnessArgs []string
 	Sources     []config.Reference
-	Recorded    *environment.Identity
+	SessionID   string
 	Continue    bool
 	Args        []string
 	Host        config.Host
@@ -42,12 +42,12 @@ type Diagnostic struct {
 	PendingInputChanges []environment.InputChange
 }
 type Result struct {
-	Name        string
+	SessionID   string
 	Diagnostics []Diagnostic
 }
 
 func (e *Engine) resolveSpec(q Request) (environment.Spec, error) {
-	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, LocalName: q.LocalName, Sources: q.Sources, Recorded: q.Recorded, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
+	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, LocalName: q.LocalName, Sources: q.Sources, SessionID: q.SessionID, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
 }
 func (e *Engine) Resolve(q Request) (environment.Spec, error) {
 	spec, err := e.resolveSpec(q)
@@ -68,14 +68,21 @@ func (e *Engine) diagnose(result *Result, diagnostic Diagnostic) {
 	}
 }
 func (e *Engine) owner(r store.Record) docker.Owner {
-	return docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Identity.Workspace, LocalName: r.Identity.LocalName}
+	return docker.Owner{Installation: e.Store.Installation, Session: r.ID, Workspace: r.Applied.Inputs.Container.Workspace, LocalName: r.Settings.LocalName}
 }
 func (e *Engine) inspect(ctx context.Context, r store.Record) (docker.Container, bool, error) {
-	c, exists, err := e.Docker.Inspect(ctx, r.Identity.Name)
+	var c docker.Container
+	var exists bool
+	var err error
+	if r.Applied.SetupContainer != "" {
+		c, exists, err = e.Docker.InspectID(ctx, r.Applied.SetupContainer)
+	} else {
+		c, exists, err = e.Docker.Inspect(ctx, r.Applied.Creation.Name)
+	}
 	if err == nil && exists {
 		err = c.Verify(e.owner(r))
-		if err == nil && (c.Image != r.ImageID || (r.SetupContainer != "" && c.ID != r.SetupContainer)) {
-			err = commanderror.New("container_mismatch", "Container identity does not match this session.", r.Identity.Name, nil)
+		if err == nil && (c.Image != r.Applied.ImageID || (r.Applied.SetupContainer != "" && c.ID != r.Applied.SetupContainer)) {
+			err = commanderror.New("container_mismatch", "Container identity does not match this session.", r.ID, nil)
 		}
 	}
 	return c, exists, err

@@ -92,7 +92,7 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 		{"create", "Name a new session and select its configs"},
 		{"version", "Print the Devbox version"},
 		{"config edit", "Edit a config directory or add missing optional files"},
-		{"edit", "Browse a folder's sessions or edit a session's selected configs"},
+		{"edit", "Browse sessions or edit their settings"},
 		{"shell", "Open a shell in a session"},
 		{"exec", "Run a command in a session"},
 		{"recreate", "Recreate the container with current settings, keeping session data"},
@@ -179,7 +179,7 @@ func TestOpenCommandOwnsTargetAndFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	for _, text := range []string{"open <folder|session>", "--continue", "--harness-arg", "--name"} {
+	for _, text := range []string{"open <folder|session-id>", "--continue", "--harness-arg", "--name"} {
 		if !strings.Contains(help, text) {
 			t.Fatalf("open help is missing %q: %s", text, help)
 		}

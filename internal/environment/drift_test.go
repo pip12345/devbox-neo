@@ -92,8 +92,7 @@ func TestDetailedComparisonCoversFingerprintInputs(t *testing.T) {
 		{"context removed", "build_context", "file_removed", RebuildAndRecreate, func(i *Inputs) { delete(i.Image.Stages[0].Context, "data") }},
 		{"generated image layer", "generated_layer", "input_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Layer = newHash }},
 		{"build arguments", "build_argument", "value_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Arguments["DEVBOX_UID"] = "1001" }},
-		{"workspace", "workspace", "value_changed", Recreate, func(i *Inputs) { i.Container.Identity.Workspace += "-new" }},
-		{"local name", "local_name", "value_changed", Recreate, func(i *Inputs) { i.Container.Identity.LocalName = "project" }},
+		{"workspace", "workspace", "value_changed", Recreate, func(i *Inputs) { i.Container.Workspace += "-new" }},
 		{"network", "network", "value_changed", Recreate, func(i *Inputs) { i.Container.Network = "host" }},
 		{"stores", "harness_stores", "entry_added", Recreate, func(i *Inputs) {
 			i.Container.Stores = append(i.Container.Stores, harness.Store{Name: "new", Target: "/home/devuser/new", Scope: "environment"})

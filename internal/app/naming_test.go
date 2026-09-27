@@ -2,47 +2,39 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestSessionNamesAreIndependentOfDevelopmentOwnershipNamespace(t *testing.T) {
+func TestReadableResourceNamesAreIndependentOfSessionIdentity(t *testing.T) {
 	e, d, q := fixture(t)
-	opened, err := e.Create(context.Background(), q)
+	made, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(opened.Name, "devbox-") || strings.HasPrefix(opened.Name, "devbox-rewrite-") {
-		t.Fatal("unexpected container/session prefix", opened.Name)
-	}
-	if _, err := os.Stat(filepath.Join(e.Store.Home, "sessions", opened.Name, "session.json")); err != nil {
-		t.Fatal("session directory does not use the container name", err)
-	}
-	container, ok := d.Snapshot(opened.Name)
-	if !ok || container.Config.Labels["devbox-rewrite.managed"] != "true" || container.Config.Labels["devbox.managed"] != "" {
-		t.Fatal("renaming changed the development ownership namespace")
-	}
-	r := record(t, e, opened.Name)
-	if r.ImageTag != "devbox-rewrite/session:"+r.ID {
-		t.Fatal("renaming changed the image namespace", r.ImageTag)
-	}
-	sum := sha256.Sum256([]byte(r.Identity.Workspace + "\x00" + r.Identity.LocalName))
-	prefix := strings.TrimSuffix(opened.Name, "."+r.Identity.LocalName)
-	prefix = prefix[:len(prefix)-12]
-	previousName := prefix + hex.EncodeToString(sum[:6]) + "." + r.Identity.LocalName
-	r.Identity.Name, r.Creation.Name = previousName, previousName
-	if err := r.Validate(previousName); err == nil {
-		t.Fatal("previous local-name hash accepted without a clean reset")
-	}
-	for _, prefix := range []string{"devbox-rewrite-", "devbox-"} {
-		oldName := prefix + hex.EncodeToString(sum[:12]) + "." + strings.ReplaceAll(r.Identity.LocalName, ":", "-")
-		r.Identity.Name, r.Creation.Name = oldName, oldName
-		if err := r.Validate(oldName); err == nil {
-			t.Fatal("old naming accepted without the required clean reset")
+	r := sessionRecord(t, e, made.SessionID)
+	for _, name := range []string{r.Directory, r.Applied.Creation.Name} {
+		if !strings.HasPrefix(name, "devbox-") || !strings.HasSuffix(name, "."+q.LocalName) {
+			t.Fatal(name)
 		}
+	}
+	if r.Directory == r.Applied.Creation.Name || r.ID != made.SessionID {
+		t.Fatal("storage/runtime names became identity")
+	}
+	if _, err := os.Stat(filepath.Join(e.Store.Home, "sessions", r.Directory, "session.json")); err != nil {
+		t.Fatal(err)
+	}
+	c, ok := d.Snapshot(r.Applied.Creation.Name)
+	if !ok || c.Config.Labels["devbox-rewrite.managed"] != "true" || c.Config.Labels["devbox-rewrite.session"] != r.ID {
+		t.Fatal("ownership no longer uses session ID")
+	}
+	if r.Applied.ImageTag != "devbox-rewrite/session:"+r.ID {
+		t.Fatal(r.Applied.ImageTag)
+	}
+	r.Version = 5
+	if err := r.Validate(r.Directory); err == nil {
+		t.Fatal("old record schema accepted")
 	}
 }

@@ -64,7 +64,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		cmd.Printf("\nCreated session %s\nFull name: %s\nFolder: %s\nContainer: stopped\n", draft.name, result.Name, displayCell(workspace))
+		cmd.Printf("\nCreated session %s\nSession ID: %s\nFolder: %s\nContainer: stopped\n", draft.name, result.SessionID, displayCell(workspace))
 		if err := showSourceChain(m, e.Store.Home, workspace, draft.sources); err != nil {
 			return err
 		}
@@ -172,7 +172,7 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 			}
 			page.Fields = []cliui.Field{{Label: "Folder", Value: p.workspace}, {Label: "Name", Value: name}, {Label: "Configs", Value: selected}}
 			if len(draft.sources) > 0 {
-				resolved, err := e.CombinedConfiguration(store.Record{Identity: environment.Identity{Workspace: p.workspace}, Sources: draft.sources})
+				resolved, err := e.CombinedConfiguration(store.Record{Settings: store.Settings{Binding: environment.Binding{Workspace: p.workspace}, Sources: draft.sources}})
 				if err != nil {
 					page.Fields = append(page.Fields, cliui.Field{Label: "Error", Value: err.Error(), Warning: true})
 				} else {

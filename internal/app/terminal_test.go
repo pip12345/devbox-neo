@@ -89,8 +89,8 @@ func TestTerminalEnvCreationAttachmentAndRecovery(t *testing.T) {
 	if !slices.Equal(createdEnv[0], wantCreated) {
 		t.Fatalf("creation must put terminal defaults before configured env: %q", createdEnv[0])
 	}
-	first := record(t, e, result.Name)
-	data, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", result.Name, "session.json"))
+	first := sessionRecord(t, e, result.SessionID)
+	data, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "session.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,25 +105,25 @@ func TestTerminalEnvCreationAttachmentAndRecovery(t *testing.T) {
 		t.Fatal("terminal change caused drift or recreation", reopened, err)
 	}
 	assertAttached("pi")
-	if err := e.Exec(ctx, result.Name, "", nil, true); err != nil {
+	if err := e.Exec(ctx, result.SessionID, "", nil, true); err != nil {
 		t.Fatal(err)
 	}
 	assertAttached("bash")
-	if err := e.Exec(ctx, result.Name, "", []string{"printenv", "TERM"}, false); err != nil {
+	if err := e.Exec(ctx, result.SessionID, "", []string{"printenv", "TERM"}, false); err != nil {
 		t.Fatal(err)
 	}
 	assertAttached("TERM")
-	c, _ := d.Snapshot(result.Name)
+	c, _ := sessionSnapshot(t, e, result.SessionID)
 	if err := e.Docker.Remove(ctx, c, e.owner(first)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Start(ctx, result.Name, ""); err != nil {
+	if _, err := e.Start(ctx, result.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(createdEnv) != 2 || !slices.Equal(createdEnv[1], append(slices.Clone(e.TerminalEnv), spec.Env()...)) {
 		t.Fatal("recovery did not use current terminal defaults", createdEnv)
 	}
-	if recovered := record(t, e, result.Name); recovered.ID != first.ID || recovered.Applied != first.Applied {
+	if recovered := sessionRecord(t, e, result.SessionID); recovered.ID != first.ID || recovered.Applied.Fingerprints != first.Applied.Fingerprints {
 		t.Fatal("terminal changed the recorded identity or fingerprints")
 	}
 }

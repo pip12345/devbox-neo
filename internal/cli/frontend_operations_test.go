@@ -17,7 +17,7 @@ import (
 
 func TestSessionMenuExposesOperationsDirectly(t *testing.T) {
 	f, out, _, name := frontendFixture(t, strings.NewReader("0\n"))
-	if err := f.session(app.View{Name: name}); err != nil {
+	if err := f.session(app.View{Target: name}); err != nil {
 		t.Fatal(err)
 	}
 	text := out.String()
@@ -34,7 +34,7 @@ func TestSessionMenuExposesOperationsDirectly(t *testing.T) {
 }
 func TestSessionActivityIsRelativeInBothPanes(t *testing.T) {
 	f, _, q, name := frontendFixture(t, strings.NewReader(""))
-	v := app.View{Name: name, LocalName: "Main", Workspace: q.Workspace, LastActivity: time.Now().Add(-3 * 24 * time.Hour), Default: true}
+	v := app.View{Target: name, LocalName: "Main", Workspace: q.Workspace, LastActivity: time.Now().Add(-3 * 24 * time.Hour), Default: true}
 	c := f.sessionCollection(app.InventoryReport{Sessions: []app.View{v}}, "name")
 	item := c.Items[1]
 	if item.Activity != "3 days ago" || !item.Selected {
@@ -67,6 +67,7 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 			input += "y\n"
 		}
 		f, out, q, name := frontendFixture(t, strings.NewReader(input))
+		containerName := sessionRecord(t, f.e, name).Applied.Creation.Name
 		if err := f.delete([]string{name}); err != nil {
 			t.Fatal(err, out.String())
 		}
@@ -75,7 +76,7 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 		if whole {
 			label = "Container and saved data/history"
 		}
-		for _, want := range []string{"Delete · Main", "Folder: " + q.Workspace, "Delete: " + label, "Force: Off", "Would delete container " + name} {
+		for _, want := range []string{"Delete · Main", "Folder: " + q.Workspace, "Delete: " + label, "Force: Off", "Would delete container " + containerName} {
 			if !strings.Contains(text, want) {
 				t.Fatal("missing visible deletion choice", want, text)
 			}
@@ -83,7 +84,7 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 		if strings.Contains(text, "Preview scope") || strings.Contains(text, "Delete saved data and history?") != whole || strings.Contains(text, "Would delete session "+name) != whole {
 			t.Fatal("preview and execution disagree", text)
 		}
-		_, err := f.e.Store.Read(context.Background(), name)
+		_, err := f.e.Store.Find(context.Background(), name, nil)
 		if os.IsNotExist(err) != whole {
 			t.Fatal("wrong saved-state outcome", whole, err, text)
 		}
@@ -111,7 +112,7 @@ func TestNativeRecreateRefreshesNavigationAndRetainsFailedForm(t *testing.T) {
 					return nil
 				}
 			} else {
-				d.Forget(name)
+				forgetSession(t, e, name)
 			}
 			p := newTerminalProbe(t)
 			done := p.workflow(func(ctx context.Context, tty *os.File) (err error) {
@@ -123,7 +124,7 @@ func TestNativeRecreateRefreshesNavigationAndRetainsFailedForm(t *testing.T) {
 				m := newMenu(cmd)
 				defer func() { err = errors.Join(err, m.Finish()) }()
 				f := &frontend{m: m, cmd: cmd, e: e, s: &resource.Service{Home: e.Store.Home}}
-				return f.session(app.View{Name: name})
+				return f.session(app.View{Target: name})
 			})
 			p.wait("Session · Main")
 			p.send("/Recreate\r\r")

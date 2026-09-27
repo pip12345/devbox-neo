@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"devbox/internal/fsutil"
 )
@@ -40,9 +42,10 @@ func (s *Store) Inventory(ctx context.Context) ([]Entry, error) {
 			if journalErr != nil {
 				err = journalErr
 			} else if journal != nil {
-				record.Identity = journal.Source
+				record.Directory, record.ID = entry.Name(), journal.SourceID
+				record.Settings.Binding = journal.Source.Binding
 				if entry.Name() == journal.Destination.Name {
-					record.Identity = journal.Destination
+					record.Settings.Binding, record.ID = journal.Destination.Binding, journal.DestinationID
 				}
 				err = nil
 			}
@@ -64,9 +67,9 @@ func (s *Store) Inventory(ctx context.Context) ([]Entry, error) {
 				return nil, err
 			}
 			if pending != nil {
-				record := Record{Identity: j.Source}
+				record := Record{ID: j.SourceID, Directory: name, Settings: Settings{Binding: j.Source.Binding}}
 				if name == j.Destination.Name {
-					record.Identity = j.Destination
+					record.Settings.Binding, record.ID = j.Destination.Binding, j.DestinationID
 				}
 				result = append(result, Entry{Name: name, Record: record, Pending: pending})
 			}
@@ -75,26 +78,37 @@ func (s *Store) Inventory(ctx context.Context) ([]Entry, error) {
 	return result, nil
 }
 
-func (s *Store) LockAll(ctx context.Context, names []string) ([]*Locked, error) {
-	// Caller supplies an already sorted, unique set. Lock order is global across
-	// bulk operations and two-session transfers, not chosen per command.
+// LockAll returns handles in directory order while acquiring unique session IDs
+// in ID order. Move's two storage endpoints share one identity and one lock.
+func (s *Store) LockAll(ctx context.Context, names []string, ids map[string]string) ([]*Locked, error) {
+	byID := map[string]*Locked{}
+	order := []string{}
 	for i, name := range names {
-		if i > 0 && names[i-1] >= name {
-			return nil, os.ErrInvalid
+		if (i > 0 && names[i-1] >= name) || !validName(name) || !idPattern.MatchString(ids[name]) {
+			return nil, fmt.Errorf("invalid session lock set")
+		}
+		if _, seen := byID[ids[name]]; !seen {
+			byID[ids[name]] = nil
+			order = append(order, ids[name])
 		}
 	}
-	locks := make([]*Locked, 0, len(names))
-	for _, name := range names {
-		lock, err := s.Lock(ctx, name)
+	sort.Strings(order)
+	acquired := []*Locked{}
+	for _, id := range order {
+		operation, err := s.lockID(ctx, id)
 		if err != nil {
-			for i := len(locks) - 1; i >= 0; i-- {
-				locks[i].Close()
-			}
+			CloseAll(acquired)
 			return nil, err
 		}
-		locks = append(locks, lock)
+		lock := &Locked{ctx: ctx, store: s, ID: id, operation: operation}
+		byID[id] = lock
+		acquired = append(acquired, lock)
 	}
-	return locks, nil
+	result := make([]*Locked, 0, len(names))
+	for _, name := range names {
+		result = append(result, &Locked{ctx: ctx, store: s, Name: name, ID: ids[name], operation: byID[ids[name]].operation})
+	}
+	return result, nil
 }
 func CloseAll(locks []*Locked) {
 	for i := len(locks) - 1; i >= 0; i-- {

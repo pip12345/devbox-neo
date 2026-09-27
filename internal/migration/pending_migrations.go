@@ -53,14 +53,14 @@ func (m Merger) PendingPlan(ctx context.Context, j *Journal, accept []string) (M
 		}
 		if b, err := readRegular(ctx, filepath.Join(home, "sessions", job.Identity.Name, "session.json")); err == nil {
 			var r store.Record
-			if config.Decode(b, &r) != nil || r.Validate(job.Identity.Name) != nil || r.ID != job.ID || r.Identity != job.Identity {
+			if config.Decode(b, &r) != nil || r.Validate(job.Identity.Name) != nil || r.ID != job.ID || r.Settings.Binding != job.Identity.Binding {
 				return p, fmt.Errorf("committed session identity changed")
 			}
 			continue
 		} else if !os.IsNotExist(err) {
 			return p, err
 		}
-		spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, LocalName: job.Identity.LocalName, Sources: job.Sources, Recorded: &job.Identity, Host: m.host()})
+		spec, err := e.Resolve(app.Request{Workspace: job.Identity.Workspace, LocalName: job.Identity.LocalName, Sources: job.Sources, SessionID: job.ID, Host: m.host()})
 		if err != nil {
 			return p, publicFailure("Pending environment configuration does not resolve.", job.Identity.Name, err)
 		}

@@ -44,13 +44,13 @@ func TestDeleteSeparatesConfirmationAndSavedData(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			r := record(t, e, created.Name)
+			r := sessionRecord(t, e, created.SessionID)
 			if tc.missing {
-				d.Forget(created.Name)
+				forgetSession(t, e, created.SessionID)
 			}
-			p, _ := e.Store.RecordPath(created.Name)
+			p, _ := e.Store.RecordPath(sessionRecord(t, e, created.SessionID).Directory)
 			before := getFile(t, p)
-			options := DeleteOptions{Selection: Selection{Targets: []string{created.Name}}, Scope: DeleteContainer, DryRun: tc.dryRun}
+			options := DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}}, Scope: DeleteContainer, DryRun: tc.dryRun}
 			if tc.answers != nil {
 				options.Scope = ""
 			}
@@ -68,7 +68,7 @@ func TestDeleteSeparatesConfirmationAndSavedData(t *testing.T) {
 						t.Fatal("unexpected prompt", prompt)
 					}
 					if len(prompts) == 2 {
-						if _, exists := d.Snapshot(created.Name); exists {
+						if _, exists := sessionSnapshot(t, e, created.SessionID); exists {
 							t.Fatal("saved-data prompt ran before container removal")
 						}
 					}
@@ -82,7 +82,7 @@ func TestDeleteSeparatesConfirmationAndSavedData(t *testing.T) {
 			if len(prompts) != tc.prompts {
 				t.Fatal(prompts)
 			}
-			_, exists := d.Snapshot(created.Name)
+			_, exists := sessionSnapshot(t, e, created.SessionID)
 			if exists == tc.containerGone {
 				t.Fatal("wrong container outcome", result)
 			}
@@ -99,7 +99,7 @@ func TestDeleteSeparatesConfirmationAndSavedData(t *testing.T) {
 			if tc.dryRun && !reflect.DeepEqual(before, getFile(t, p)) {
 				t.Fatal("dry run changed record")
 			}
-			if _, tagged := d.Images[r.ImageTag]; tagged == tc.sessionGone {
+			if _, tagged := d.Images[r.Applied.ImageTag]; tagged == tc.sessionGone {
 				t.Fatal("image retention did not follow session deletion")
 			}
 		})
@@ -113,14 +113,14 @@ func TestDeleteFailureNeverDeletesSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, _ := e.Store.RecordPath(created.Name)
+	p, _ := e.Store.RecordPath(sessionRecord(t, e, created.SessionID).Directory)
 	d.Fail = func(args []string) error {
 		if len(args) > 0 && args[0] == "rm" {
 			return errors.New("remove failed")
 		}
 		return nil
 	}
-	if _, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.Name}}, Scope: DeleteSession}); err == nil {
+	if _, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}}, Scope: DeleteSession}); err == nil {
 		t.Fatal("ignored remove failure")
 	}
 	if _, err := os.Stat(p); err != nil {
@@ -129,20 +129,20 @@ func TestDeleteFailureNeverDeletesSession(t *testing.T) {
 }
 
 func TestDeleteForceNeverImpliesSavedDataDeletion(t *testing.T) {
-	e, d, q := fixture(t)
+	e, _, q := fixture(t)
 	ctx := context.Background()
 	created, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, _ := e.Store.Lock(ctx, created.Name)
+	lock, _ := e.Store.Lock(ctx, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
 	lease, err := lock.Lease("exec")
 	if err != nil {
 		t.Fatal(err)
 	}
 	lock.Close()
 	prompts := 0
-	options := DeleteOptions{Selection: Selection{Targets: []string{created.Name}}, Force: true, Scope: DeleteSession, Confirm: func(p DeletePrompt) (bool, error) {
+	options := DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}}, Force: true, Scope: DeleteSession, Confirm: func(p DeletePrompt) (bool, error) {
 		prompts++
 		if len(p.Sessions) > 0 {
 			t.Fatal("container scope asked about saved state")
@@ -152,7 +152,7 @@ func TestDeleteForceNeverImpliesSavedDataDeletion(t *testing.T) {
 	if _, err := e.Delete(ctx, options); err == nil {
 		t.Fatal("force bypassed saved-state idle protection")
 	}
-	if _, exists := d.Snapshot(created.Name); !exists || prompts != 0 {
+	if _, exists := sessionSnapshot(t, e, created.SessionID); !exists || prompts != 0 {
 		t.Fatal("explicit deletion mutated or confirmed before saved-state preflight")
 	}
 	options.Scope = DeleteContainer
@@ -160,16 +160,16 @@ func TestDeleteForceNeverImpliesSavedDataDeletion(t *testing.T) {
 	if err != nil || len(result.Containers) != 1 || len(result.Sessions) != 0 || prompts != 1 {
 		t.Fatal(result, err)
 	}
-	if _, err := e.Store.Read(ctx, created.Name); err != nil {
+	if _, err := e.Store.Find(ctx, created.SessionID, nil); err != nil {
 		t.Fatal("force lost saved state", err)
 	}
-	lock, _ = e.Store.Lock(ctx, created.Name)
+	lock, _ = e.Store.Lock(ctx, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
 	lock.Release(lease.ID)
 	lock.Close()
 }
 
 func TestDeleteAllIncludesMissingSessionsAndPreflightsWholeSelection(t *testing.T) {
-	e, d, q := fixture(t)
+	e, _, q := fixture(t)
 	ctx := context.Background()
 	first, err := e.Create(ctx, q)
 	if err != nil {
@@ -180,14 +180,14 @@ func TestDeleteAllIncludesMissingSessionsAndPreflightsWholeSelection(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.Forget(second.Name)
-	p, _ := e.Store.RecordPath(second.Name)
+	forgetSession(t, e, second.SessionID)
+	p, _ := e.Store.RecordPath(sessionRecord(t, e, second.SessionID).Directory)
 	original := getFile(t, p)
 	write(t, p, "broken")
 	if _, err := e.Delete(ctx, DeleteOptions{Selection: Selection{All: true}, Scope: DeleteSession}); err == nil {
 		t.Fatal("ignored corrupt bulk target")
 	}
-	if _, exists := d.Snapshot(first.Name); !exists {
+	if _, exists := sessionSnapshot(t, e, first.SessionID); !exists {
 		t.Fatal("partial deletion before full preflight")
 	}
 	write(t, p, string(original))
@@ -205,7 +205,7 @@ func TestDeleteCancellationAfterContainerKeepsSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.Name}}, Confirm: func(prompt DeletePrompt) (bool, error) {
+	_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}}, Confirm: func(prompt DeletePrompt) (bool, error) {
 		calls++
 		if calls == 2 {
 			return false, context.Canceled
@@ -215,7 +215,7 @@ func TestDeleteCancellationAfterContainerKeepsSession(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(e.Store.Home, "sessions", created.Name, "session.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, "session.json")); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -230,11 +230,11 @@ func TestDeleteKeepsEndpointLockAcrossBothPrompts(t *testing.T) {
 				t.Fatal(err)
 			}
 			calls := 0
-			_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.Name}}, Scope: scope, Confirm: func(DeletePrompt) (bool, error) {
+			_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}}, Scope: scope, Confirm: func(DeletePrompt) (bool, error) {
 				calls++
 				attempt, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
 				defer cancel()
-				lock, err := e.Store.Lock(attempt, created.Name)
+				lock, err := e.Store.Lock(attempt, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
 				if err == nil {
 					lock.Close()
 					t.Fatal("another operation acquired the endpoint during confirmation")
@@ -258,18 +258,18 @@ func TestDeleteExplicitSavedDataPreflightsImageAssociation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := record(t, e, created.Name)
-	image := d.Images[r.ImageTag]
+	r := sessionRecord(t, e, created.SessionID)
+	image := d.Images[r.Applied.ImageTag]
 	image.ID = "different-image"
-	d.Images[r.ImageTag] = image
-	_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.Name}}, Scope: DeleteSession})
+	d.Images[r.Applied.ImageTag] = image
+	_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}}, Scope: DeleteSession})
 	if err == nil {
 		t.Fatal("image reassociation accepted")
 	}
-	if _, exists := d.Snapshot(created.Name); !exists {
+	if _, exists := sessionSnapshot(t, e, created.SessionID); !exists {
 		t.Fatal("container removed before saved-state preflight")
 	}
-	if _, err := e.Store.Read(ctx, created.Name); err != nil {
+	if _, err := e.Store.Find(ctx, created.SessionID, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -281,8 +281,8 @@ func TestDeleteSavedDataRechecksContainerAfterConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	container, _ := d.Snapshot(created.Name)
-	_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.Name}}, Confirm: func(prompt DeletePrompt) (bool, error) {
+	container, _ := sessionSnapshot(t, e, created.SessionID)
+	_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}}, Confirm: func(prompt DeletePrompt) (bool, error) {
 		if len(prompt.Containers) == 0 {
 			// Direct Docker changes do not participate in Devbox's operation lock.
 			d.SetContainer(container)
@@ -292,7 +292,7 @@ func TestDeleteSavedDataRechecksContainerAfterConfirmation(t *testing.T) {
 	if err == nil {
 		t.Fatal("container absence was not rechecked")
 	}
-	if _, err := e.Store.Read(ctx, created.Name); err != nil {
+	if _, err := e.Store.Find(ctx, created.SessionID, nil); err != nil {
 		t.Fatal("session removed under a container", err)
 	}
 }
@@ -304,8 +304,8 @@ func TestDeleteUnmatchedContainerNeverAdoptsState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := record(t, e, created.Name)
-	p, _ := e.Store.RecordPath(created.Name)
+	r := sessionRecord(t, e, created.SessionID)
+	p, _ := e.Store.RecordPath(sessionRecord(t, e, created.SessionID).Directory)
 	if err := os.Remove(p); err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func TestDeleteUnmatchedContainerNeverAdoptsState(t *testing.T) {
 	if string(getFile(t, marker)) != "keep" {
 		t.Fatal("uncommitted state was deleted")
 	}
-	if _, exists := d.Images[r.ImageTag]; !exists {
+	if _, exists := d.Images[r.Applied.ImageTag]; !exists {
 		t.Fatal("unverifiable tag was deleted")
 	}
 }

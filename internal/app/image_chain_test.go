@@ -62,7 +62,7 @@ func TestImageChainHasSeparateContextsAndPreparedUserBoundaries(t *testing.T) {
 	if !strings.Contains(stages[4], "${PATH}") {
 		t.Fatal("harness finalization replaced user PATH", stages[4])
 	}
-	if len(record(t, e, made.Name).Inputs.Image.Stages) != 2 {
+	if len(sessionRecord(t, e, made.SessionID).Applied.Inputs.Image.Stages) != 2 {
 		t.Fatal("record lost ordered image inputs")
 	}
 }

@@ -28,24 +28,31 @@ import (
 // ContainerPrefix is a lookup convention, independent of Docker ownership labels.
 const ContainerPrefix = "devbox-"
 
-type Identity struct {
+// Binding is the user-selected workspace and folder-local name. Neither field
+// identifies storage or authorizes a Docker resource.
+type Binding struct {
 	Workspace string `json:"workspace"`
 	LocalName string `json:"local_name"`
-	Name      string `json:"name"`
+}
+
+// Identity describes a named runtime or transfer endpoint, not session identity.
+type Identity struct {
+	Binding
+	Name string `json:"name"`
 }
 
 var unsafeFolderCharacters = regexp.MustCompile(`[^a-z0-9_.-]+`)
 
-func ContainerName(workspace, localName string) string {
-	// The folder hint can be truncated or sanitized; the hash retains the full
-	// canonical workspace, while the suffix retains the exact local name.
+func ResourceName(workspace, localName, allocation string) string {
+	// Readable hints are fixed at allocation. The suffix prevents reused names
+	// and workspaces from colliding with resources whose hints are now stale.
 	folder := unsafeFolderCharacters.ReplaceAllString(strings.ToLower(filepath.Base(workspace)), "-")
 	folder = strings.Trim(folder, "-_.")
 	folder = strings.TrimRight(folder[:min(len(folder), 32)], "-_.")
 	if folder == "" {
 		folder = "workspace"
 	}
-	sum := sha256.Sum256([]byte(workspace))
+	sum := sha256.Sum256([]byte(allocation))
 	return ContainerPrefix + folder + "-" + hex.EncodeToString(sum[:6]) + "." + localName
 }
 
@@ -84,7 +91,7 @@ type Request struct {
 	Workspace string
 	LocalName string
 	Sources   []config.Reference
-	Recorded  *Identity
+	SessionID string
 	UID       int
 	GID       int
 	Host      config.Host `json:"-"`
@@ -98,15 +105,9 @@ func Preview(q Request, source *artifact.SourcePreview) (Spec, error) { return r
 
 func resolve(q Request, proposed *artifact.SourcePreview) (Spec, error) {
 	var spec Spec
-	if q.Recorded != nil && q.LocalName == "" {
-		q.LocalName = q.Recorded.LocalName
-	}
 	identity, err := Identify(q.Workspace, q.LocalName)
 	if err != nil {
 		return spec, err
-	}
-	if q.Recorded != nil && identity != *q.Recorded {
-		return spec, fmt.Errorf("requested session does not match its recorded identity")
 	}
 	q.Workspace = identity.Workspace
 	if q.Host == nil {
@@ -117,16 +118,16 @@ func resolve(q Request, proposed *artifact.SourcePreview) (Spec, error) {
 	sources, err := config.ResolveReferences(q.Workspace, q.Sources)
 	if err != nil {
 		var next []commanderror.Step
-		if q.Recorded != nil {
-			next = append(next, commanderror.Next("Repair the session's selected configs", "edit", identity.Name))
+		if q.SessionID != "" {
+			next = append(next, commanderror.Next("Repair the session's selected configs", "edit", q.SessionID))
 		}
-		return spec, commanderror.New("configuration_unavailable", "Cannot resolve selected configs: "+err.Error(), identity.Name, err, next...)
+		return spec, commanderror.New("configuration_unavailable", "Cannot resolve selected configs: "+err.Error(), q.SessionID, err, next...)
 	}
 	r, err := artifact.Preview(sources, proposed, q.Host)
 	if err != nil {
-		if q.Recorded != nil {
-			return spec, commanderror.New("invalid_configuration", err.Error(), identity.Name, err,
-				commanderror.Next("Inspect and repair selected configs", "edit", identity.Name))
+		if q.SessionID != "" {
+			return spec, commanderror.New("invalid_configuration", err.Error(), q.SessionID, err,
+				commanderror.Next("Inspect and repair selected configs", "edit", q.SessionID))
 		}
 		return spec, err
 	}
@@ -134,7 +135,7 @@ func resolve(q Request, proposed *artifact.SourcePreview) (Spec, error) {
 		var actionable *commanderror.Error
 		if errors.As(err, &actionable) && actionable.Code == "harness_required" {
 			step := commanderror.Next("Select a harness in a config", "config", "edit", sources[0].Path, "--harness", "<name>")
-			return spec, commanderror.New(actionable.Code, actionable.Message, identity.Name, err, step)
+			return spec, commanderror.New(actionable.Code, actionable.Message, q.SessionID, err, step)
 		}
 		return spec, commanderror.New("invalid_configuration", "Invalid configuration: "+err.Error(), q.Workspace, err)
 	}

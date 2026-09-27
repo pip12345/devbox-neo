@@ -13,7 +13,7 @@ func (e *Engine) validateEnvSource(r store.Record, source config.EnvSource) erro
 	if source.Field != "env" {
 		return fmt.Errorf("env field does not match its owner")
 	}
-	for _, selected := range r.Inputs.Sources {
+	for _, selected := range r.Applied.Inputs.Sources {
 		if source.Path == filepath.Join(selected.Path, "config.json") {
 			_, err := fsutil.Path(selected.Path, "config.json")
 			return err

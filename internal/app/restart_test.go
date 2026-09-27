@@ -28,10 +28,10 @@ func TestManualStartStopAndRebootPolicy(t *testing.T) {
 	}
 	check := func(running, manual bool, policy string) {
 		t.Helper()
-		c, _ := d.Snapshot(made.Name)
-		r := record(t, e, made.Name)
-		if c.State.Running != running || r.ManualStart != manual || c.HostConfig.RestartPolicy.Name != policy {
-			t.Fatalf("running=%v manual=%v policy=%s", c.State.Running, r.ManualStart, c.HostConfig.RestartPolicy.Name)
+		c, _ := sessionSnapshot(t, e, made.SessionID)
+		r := sessionRecord(t, e, made.SessionID)
+		if c.State.Running != running || r.Settings.ManualStart != manual || c.HostConfig.RestartPolicy.Name != policy {
+			t.Fatalf("running=%v manual=%v policy=%s", c.State.Running, r.Settings.ManualStart, c.HostConfig.RestartPolicy.Name)
 		}
 	}
 	check(false, false, "no")
@@ -39,24 +39,24 @@ func TestManualStartStopAndRebootPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(false, false, "no")
-	if _, err = e.Start(ctx, made.Name, ""); err != nil {
+	if _, err = e.Start(ctx, made.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
 	check(true, true, "unless-stopped")
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
 	}
-	if err = e.Exec(ctx, made.Name, "", []string{"true"}, false); err != nil {
+	if err = e.Exec(ctx, made.SessionID, "", []string{"true"}, false); err != nil {
 		t.Fatal(err)
 	}
 	check(true, true, "unless-stopped")
-	rebootDaemon(d, made.Name)
+	rebootDaemon(d, made.SessionID)
 	check(true, true, "unless-stopped")
 	if _, err = e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
 	check(true, true, "unless-stopped")
-	d.Forget(made.Name)
+	forgetSession(t, e, made.SessionID)
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
 	}
@@ -67,16 +67,16 @@ func TestManualStartStopAndRebootPolicy(t *testing.T) {
 		}
 		return nil
 	}
-	if err = e.Stop(ctx, made.Name, "", false); err == nil {
+	if err = e.Stop(ctx, made.SessionID, "", false); err == nil {
 		t.Fatal("failed stop succeeded")
 	}
 	check(true, true, "unless-stopped")
 	d.Fail = nil
-	if err = e.Stop(ctx, made.Name, "", false); err != nil {
+	if err = e.Stop(ctx, made.SessionID, "", false); err != nil {
 		t.Fatal(err)
 	}
 	check(false, false, "no")
-	rebootDaemon(d, made.Name)
+	rebootDaemon(d, made.SessionID)
 	check(false, false, "no")
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
@@ -95,8 +95,8 @@ func TestManualStartDuringConcurrentAttachmentsWinsRegardlessOfExitOrder(t *test
 				t.Fatal(err)
 			}
 			e.Streams = docker.Streams{}
-			r := record(t, e, made.Name)
-			argv := append([]string{r.Launch.Binary}, r.Launch.Args...)
+			r := sessionRecord(t, e, made.SessionID)
+			argv := append([]string{r.Applied.Launch.Binary}, r.Applied.Launch.Args...)
 			arrived := make(chan struct{}, 2)
 			release := make(chan struct{})
 			d.Attached = func(ctx context.Context, c docker.Command) error {
@@ -124,20 +124,20 @@ func TestManualStartDuringConcurrentAttachmentsWinsRegardlessOfExitOrder(t *test
 					t.Fatal(ctx.Err())
 				}
 			}
-			c, _ := d.Snapshot(made.Name)
-			if !c.State.Running || record(t, e, made.Name).ManualStart {
+			c, _ := sessionSnapshot(t, e, made.SessionID)
+			if !c.State.Running || sessionRecord(t, e, made.SessionID).Settings.ManualStart {
 				t.Fatal("open changed manual intent")
 			}
 			if manual {
 				// A fresh Engine represents a separate CLI process using the same record.
 				other := *e
-				if _, err = other.Start(ctx, made.Name, ""); err != nil {
+				if _, err = other.Start(ctx, made.SessionID, ""); err != nil {
 					t.Fatal(err)
 				}
-				if err = other.Stop(ctx, made.Name, "", false); err == nil {
+				if err = other.Stop(ctx, made.SessionID, "", false); err == nil {
 					t.Fatal("stop ignored live attachments")
 				}
-				if !record(t, e, made.Name).ManualStart {
+				if !sessionRecord(t, e, made.SessionID).Settings.ManualStart {
 					t.Fatal("rejected stop cleared manual intent")
 				}
 			}
@@ -149,12 +149,12 @@ func TestManualStartDuringConcurrentAttachmentsWinsRegardlessOfExitOrder(t *test
 					t.Fatal(err)
 				}
 			}
-			c, _ = d.Snapshot(made.Name)
+			c, _ = sessionSnapshot(t, e, made.SessionID)
 			if c.State.Running != manual {
 				t.Fatal("last attachment applied the wrong lifetime", c.State)
 			}
-			rebootDaemon(d, made.Name)
-			c, _ = d.Snapshot(made.Name)
+			rebootDaemon(d, made.SessionID)
+			c, _ = sessionSnapshot(t, e, made.SessionID)
 			if c.State.Running != manual {
 				t.Fatal("wrong reboot policy")
 			}
@@ -178,10 +178,10 @@ func TestRestartPolicyIsManagedAndStartFailureDoesNotClaimManualIntent(t *testin
 		}
 		return nil
 	}
-	if _, err = e.Start(ctx, made.Name, ""); err == nil {
+	if _, err = e.Start(ctx, made.SessionID, ""); err == nil {
 		t.Fatal("restart policy failure was ignored")
 	}
-	if record(t, e, made.Name).ManualStart {
+	if sessionRecord(t, e, made.SessionID).Settings.ManualStart {
 		t.Fatal("failed start recorded manual intent")
 	}
 }

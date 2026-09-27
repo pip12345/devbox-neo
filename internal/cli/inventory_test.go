@@ -47,30 +47,30 @@ func inventoryCLI(t *testing.T) (*app.Engine, *dockertest.Daemon, string, func()
 		cmd.AddCommand(sessionCommands(func(*cobra.Command) (*app.Engine, error) { return engine, nil }, &profile)...)
 		return cmd
 	}
-	return engine, daemon, created.Name, root
+	return engine, daemon, created.SessionID, root
 }
 
 func TestFolderListStartsWithItsHeading(t *testing.T) {
 	engine, _, name, root := inventoryCLI(t)
-	record, err := engine.Store.Read(context.Background(), name)
+	record, err := engine.Store.Find(context.Background(), name, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cmd := root()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"list", record.Identity.Workspace, "--sort", "folder"})
+	cmd.SetArgs([]string{"list", record.Settings.Workspace, "--sort", "folder"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if strings.HasPrefix(out.String(), "\n") || strings.Contains(out.String(), "\n\n") || !strings.Contains(strings.ReplaceAll(out.String(), "\n", ""), record.Identity.Workspace) || !strings.Contains(out.String(), "\nNAME") || strings.Contains(out.String(), "FOLDER") {
+	if strings.HasPrefix(out.String(), "\n") || strings.Contains(out.String(), "\n\n") || !strings.Contains(strings.ReplaceAll(out.String(), "\n", ""), record.Settings.Workspace) || !strings.Contains(out.String(), "\nNAME") || strings.Contains(out.String(), "FOLDER") {
 		t.Fatal("folder list changed its compact layout", out.String())
 	}
 }
 
 func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 	engine, _, firstName, root := inventoryCLI(t)
-	first, err := engine.Store.Read(context.Background(), firstName)
+	first, err := engine.Store.Find(context.Background(), firstName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,9 +87,9 @@ func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	folders := []string{first.Identity.Workspace, other}
+	folders := []string{first.Settings.Workspace, other}
 	sort.Strings(folders)
-	if !strings.HasPrefix(text, "FOLDER") || strings.Index(text, folders[0]) < 0 || strings.Index(text, folders[1]) < 0 || strings.Index(text, folders[0]) >= strings.Index(text, folders[1]) || strings.Contains(text, firstName) || strings.Contains(text, second.Name) || strings.Contains(text, "\n\n") {
+	if !strings.HasPrefix(text, "FOLDER") || strings.Index(text, folders[0]) < 0 || strings.Index(text, folders[1]) < 0 || strings.Index(text, folders[0]) >= strings.Index(text, folders[1]) || strings.Contains(text, firstName) || strings.Contains(text, second.SessionID) || strings.Contains(text, "\n\n") {
 		t.Fatal("global list did not render and sort folder rows", text)
 	}
 	rows := strings.Split(strings.TrimSpace(text), "\n")[1:]
@@ -113,7 +113,8 @@ func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 
 func TestListAndStatusWarnWithoutInventingSessionRows(t *testing.T) {
 	engine, _, name, root := inventoryCLI(t)
-	p, _ := engine.Store.RecordPath(name)
+	containerName := sessionRecord(t, engine, name).Applied.Creation.Name
+	p, _ := engine.Store.RecordPath(sessionRecord(t, engine, name).Directory)
 	if err := os.Remove(p); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +126,7 @@ func TestListAndStatusWarnWithoutInventingSessionRows(t *testing.T) {
 		if err := cmd.Execute(); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(out.String(), "Warning: managed containers with no session record:") || strings.Count(out.String(), name) != 1 || !strings.Contains(out.String(), "(stopped)") || strings.Contains(out.String(), "\n\n") {
+		if !strings.Contains(out.String(), "Warning: managed containers with no session record:") || strings.Count(out.String(), containerName) != 1 || !strings.Contains(out.String(), "(stopped)") || strings.Contains(out.String(), "\n\n") {
 			t.Fatal("missing warning or invented row", out.String())
 		}
 		cmd = root()
@@ -136,7 +137,7 @@ func TestListAndStatusWarnWithoutInventingSessionRows(t *testing.T) {
 			t.Fatal(err)
 		}
 		var report app.InventoryReport
-		if err := json.Unmarshal(out.Bytes(), &report); err != nil || len(report.Sessions) != 0 || len(report.UnmatchedContainers) != 1 || report.UnmatchedContainers[0].Name != name {
+		if err := json.Unmarshal(out.Bytes(), &report); err != nil || len(report.Sessions) != 1 || len(report.UnmatchedContainers) != 1 || report.UnmatchedContainers[0].ContainerName != containerName {
 			t.Fatal("JSON lost structured warning", out.String(), err)
 		}
 	}
@@ -167,7 +168,8 @@ func TestDeleteCLIFlagsAndTerminalPrompts(t *testing.T) {
 		{name: "explicit scope never prompts", flags: []string{"--session"}, input: "n\n", sessionGone: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			engine, daemon, name, root := inventoryCLI(t)
+			engine, _, name, root := inventoryCLI(t)
+			path, _ := engine.Store.RecordPath(sessionRecord(t, engine, name).Directory)
 			cmd := root()
 			var out bytes.Buffer
 			cmd.SetOut(&out)
@@ -187,13 +189,12 @@ func TestDeleteCLIFlagsAndTerminalPrompts(t *testing.T) {
 			if (err != nil) != tc.wantError {
 				t.Fatal(out.String(), err)
 			}
-			p, _ := engine.Store.RecordPath(name)
-			_, statErr := os.Stat(p)
+			_, statErr := os.Stat(path)
 			if os.IsNotExist(statErr) != tc.sessionGone {
 				t.Fatal("wrong saved-state outcome", out.String(), statErr)
 			}
 			if tc.wantError {
-				if _, exists := daemon.Snapshot(name); !exists {
+				if _, exists := sessionSnapshot(t, engine, name); !exists {
 					t.Fatal("invalid flags deleted container")
 				}
 			}
@@ -228,13 +229,13 @@ func TestDeleteConfirmationNamesBulkScopeWithoutClaimingDefault(t *testing.T) {
 }
 
 func TestDeleteFolderExplainsItsSelectedDefaultAndPhases(t *testing.T) {
-	engine, daemon, name, root := inventoryCLI(t)
+	engine, _, name, root := inventoryCLI(t)
 	ctx := context.Background()
-	selected, err := engine.Store.Read(ctx, name)
+	selected, err := engine.Store.Find(ctx, name, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := engine.Create(ctx, app.Request{Workspace: selected.Identity.Workspace, LocalName: "other", Sources: testConfigSources(engine.Store.Home, "test")})
+	other, err := engine.Create(ctx, app.Request{Workspace: selected.Settings.Workspace, LocalName: "other", Sources: testConfigSources(engine.Store.Home, "test")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,31 +253,31 @@ func TestDeleteFolderExplainsItsSelectedDefaultAndPhases(t *testing.T) {
 		cmd.SetIn(slave)
 		cmd.SetOut(&out)
 		cmd.SetErr(&out)
-		cmd.SetArgs([]string{"delete", selected.Identity.Workspace})
+		cmd.SetArgs([]string{"delete", selected.Settings.Workspace})
 		if err := cmd.ExecuteContext(ctx); err != nil {
 			t.Fatal(out.String(), err)
 		}
 		return out.String()
 	}
 	cancelled := run("1\n2\n4\nn\n0\n")
-	label := "Delete · " + selected.Identity.LocalName
-	if !strings.Contains(cancelled, label) || !strings.Contains(cancelled, "Folder: "+selected.Identity.Workspace) || !strings.Contains(cancelled, "Container: "+name) || !strings.Contains(cancelled, "Remove container? [y/N]") || !strings.Contains(cancelled, "Cancelled.") || strings.Contains(cancelled, "Delete saved data and history?") {
+	label := "Delete · " + selected.Settings.LocalName
+	if !strings.Contains(cancelled, label) || !strings.Contains(cancelled, "Folder: "+selected.Settings.Workspace) || !strings.Contains(cancelled, "Container: "+selected.Applied.Creation.Name) || !strings.Contains(cancelled, "Remove container? [y/N]") || !strings.Contains(cancelled, "Cancelled.") || strings.Contains(cancelled, "Delete saved data and history?") {
 		t.Fatal("folder default selection or first phase was unclear", cancelled)
 	}
-	if _, exists := daemon.Snapshot(name); !exists {
+	if _, exists := sessionSnapshot(t, engine, name); !exists {
 		t.Fatal("declining container deletion removed the selected default")
 	}
 	kept := run("1\n2\n4\ny\nn\n")
 	if !strings.Contains(kept, label) || !strings.Contains(kept, "Container removed. Delete saved data and history? [y/N]") || strings.Contains(kept, "Saved session data (including") || !strings.Contains(kept, "Session state and image retained") {
 		t.Fatal("saved-data decision did not explain the partial outcome", kept)
 	}
-	if _, exists := daemon.Snapshot(name); exists {
+	if _, exists := sessionSnapshot(t, engine, name); exists {
 		t.Fatal("the chosen container was not removed")
 	}
-	if _, exists := daemon.Snapshot(other.Name); !exists {
+	if _, exists := sessionSnapshot(t, engine, other.SessionID); !exists {
 		t.Fatal("deleting the folder default removed another session")
 	}
-	if _, err := engine.Store.Read(ctx, name); err != nil {
+	if _, err := engine.Store.Find(ctx, name, nil); err != nil {
 		t.Fatal("declining saved-data deletion removed the session", err)
 	}
 	missing := run("1\n2\n4\nn\n0\n")

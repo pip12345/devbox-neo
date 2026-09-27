@@ -73,7 +73,7 @@ func TestSSHContainerCtrlCBeforeAuthenticationCleansUpNormally(t *testing.T) {
 				return nil
 			}
 		}
-		err = e.SSH(ctx, result.Name, "", "staging", SSHOptions{})
+		err = e.SSH(ctx, result.SessionID, "", "staging", SSHOptions{})
 		if cleanupFails {
 			if !errors.Is(err, cleanupFailure) || strings.Contains(err.Error(), "exit 130") {
 				t.Fatal("cleanup failure lost or interrupt reported", err)
@@ -81,11 +81,11 @@ func TestSSHContainerCtrlCBeforeAuthenticationCleansUpNormally(t *testing.T) {
 		} else if err != nil {
 			t.Fatal("Ctrl-C reported as error", err)
 		}
-		files, _ := filepath.Glob(filepath.Join(e.Store.Home, "sessions", result.Name, sshshare.RelativeRoot, "c", "*", "config"))
+		files, _ := filepath.Glob(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, sshshare.RelativeRoot, "c", "*", "config"))
 		if len(files) != 0 {
 			t.Fatal("still published", files)
 		}
-		l, err := e.Store.Lock(ctx, result.Name)
+		l, err := e.Store.Lock(ctx, sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).ID)
 		if err != nil {
 			t.Fatal(err)
 		}

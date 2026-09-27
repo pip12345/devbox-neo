@@ -59,7 +59,7 @@ func (s *choiceScript) Read(p []byte) (int, error) {
 func TestConfigReplacementIsOrderedNotAdditiveAndDoesNotApply(t *testing.T) {
 	e, q, name := namedCLIFixture(t)
 	ctx := context.Background()
-	before, _ := e.Store.Read(ctx, name)
+	before, _ := e.Store.Find(ctx, name, nil)
 	cwd, _ := os.Getwd()
 	relative, err := filepath.Rel(cwd, t.TempDir())
 	if err != nil {
@@ -70,11 +70,11 @@ func TestConfigReplacementIsOrderedNotAdditiveAndDoesNotApply(t *testing.T) {
 	if err != nil || json.Unmarshal([]byte(out), &result) != nil {
 		t.Fatal(out, err)
 	}
-	after, _ := e.Store.Read(ctx, name)
-	if len(after.Sources) != 2 || after.Sources[0].Label != "unavailable,overlay" || after.Sources[1].Kind != config.ReferenceRelative || !reflect.DeepEqual(result.Sources, after.Sources) {
-		t.Fatal("replacement appended, split, or reordered references", out, after.Sources)
+	after, _ := e.Store.Find(ctx, name, nil)
+	if len(after.Settings.Sources) != 2 || after.Settings.Sources[0].Label != "unavailable,overlay" || after.Settings.Sources[1].Kind != config.ReferenceRelative || !reflect.DeepEqual(result.Sources, after.Settings.Sources) {
+		t.Fatal("replacement appended, split, or reordered references", out, after.Settings.Sources)
 	}
-	before.Sources = after.Sources
+	before.Settings.Sources = after.Settings.Sources
 	if !reflect.DeepEqual(before, after) {
 		t.Fatal("selection changed unrelated session state")
 	}
@@ -89,7 +89,7 @@ func TestConfigReplacementRejectsAmbiguityAndDuplicateAliases(t *testing.T) {
 	if err := os.Symlink(q.Sources[0].Path, alias); err != nil {
 		t.Fatal(err)
 	}
-	before, _ := e.Store.Read(context.Background(), name)
+	before, _ := e.Store.Find(context.Background(), name, nil)
 	for _, args := range [][]string{
 		{q.Workspace, "--config", "base"},
 		{name, "--config", ""},
@@ -103,7 +103,7 @@ func TestConfigReplacementRejectsAmbiguityAndDuplicateAliases(t *testing.T) {
 		if out, err := runSourcesCLI(t, e, args...); err == nil {
 			t.Fatal("accepted invalid operation", args, out)
 		}
-		after, _ := e.Store.Read(context.Background(), name)
+		after, _ := e.Store.Find(context.Background(), name, nil)
 		if !reflect.DeepEqual(before, after) {
 			t.Fatal("failed replacement changed state", args)
 		}
@@ -129,7 +129,7 @@ func TestSourceChainDraftAndSavedRemovalHaveDifferentSubmissionRules(t *testing.
 			}
 		}
 	}
-	r, _ := e.Store.Read(context.Background(), name)
+	r, _ := e.Store.Find(context.Background(), name, nil)
 	var required *commanderror.Error
 	if _, err := e.UpdateSources(context.Background(), r, nil); !errors.As(err, &required) || required.Code != "configs_required" {
 		t.Fatal("service allowed bypassing the UI guard", err)
@@ -141,21 +141,21 @@ func TestCLIAndMenuConfigReplacementHaveEquivalentResults(t *testing.T) {
 	if out, err := resourceCLI(t, e.Store.Home, "config", "create", "overlay", "--json"); err != nil {
 		t.Fatal(out, err)
 	}
-	r, _ := e.Store.Read(context.Background(), name)
+	r, _ := e.Store.Find(context.Background(), name, nil)
 	var out bytes.Buffer
 	input := &choiceScript{t: t, out: &out, steps: []string{"@Replace config", "@base", "@overlay", "@Exit"}}
 	m := testMenu(context.Background(), input, &out)
 	if saved, err := sourceChainMenu(m, e, r, "Exit"); err != nil || !saved {
 		t.Fatal(out.String(), saved, err)
 	}
-	menuResult, _ := e.Store.Read(context.Background(), name)
-	if _, err := e.UpdateSources(context.Background(), menuResult, r.Sources); err != nil {
+	menuResult, _ := e.Store.Find(context.Background(), name, nil)
+	if _, err := e.UpdateSources(context.Background(), menuResult, r.Settings.Sources); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := runSourcesCLI(t, e, name, "--config", "overlay"); err != nil || !strings.Contains(out, "Replaced selected configs") {
 		t.Fatal(out, err)
 	}
-	cliResult, _ := e.Store.Read(context.Background(), name)
+	cliResult, _ := e.Store.Find(context.Background(), name, nil)
 	if !reflect.DeepEqual(menuResult, cliResult) {
 		t.Fatal("entry points saved different state")
 	}
@@ -195,7 +195,8 @@ func TestStandaloneConfigInspectionAndIncompleteUsers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(s.Home, "sessions", broken.Name, "session.json"), []byte("broken"), 0600); err != nil {
+	brokenDirectory := sessionRecord(t, e, broken.SessionID).Directory
+	if err := os.WriteFile(filepath.Join(s.Home, "sessions", brokenDirectory, "session.json"), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	out, err = resourceCLI(t, s.Home, "config", "users", "base", "--json")
@@ -203,7 +204,7 @@ func TestStandaloneConfigInspectionAndIncompleteUsers(t *testing.T) {
 		Code    string            `json:"error"`
 		Partial configUsersResult `json:"partial_result"`
 	}
-	if err == nil || json.Unmarshal([]byte(out), &report) != nil || report.Code != "config_usage_unknown" || report.Partial.Complete || !slices.Equal(report.Partial.Users, []string{name}) || !strings.Contains(out, broken.Name) {
+	if err == nil || json.Unmarshal([]byte(out), &report) != nil || report.Code != "config_usage_unknown" || report.Partial.Complete || !slices.Equal(report.Partial.Users, []string{name}) || !strings.Contains(out, brokenDirectory) {
 		t.Fatal("incomplete usage looked authoritative", out, err)
 	}
 }
@@ -236,7 +237,7 @@ func TestDeletionPartialResultsSurviveCLIAndTUIErrors(t *testing.T) {
 				cmd.SetErr(&stderr)
 				cmd.SetContext(context.Background())
 				f := frontend{cmd: cmd, m: testMenuCommand(cmd.Context(), input, &out, cmd), e: e, s: &resource.Service{Home: e.Store.Home}}
-				if err := f.delete([]string{first, second.Name}); err != nil {
+				if err := f.delete([]string{first, second.SessionID}); err != nil {
 					t.Fatal(err)
 				}
 			} else {
@@ -246,7 +247,7 @@ func TestDeletionPartialResultsSurviveCLIAndTUIErrors(t *testing.T) {
 				cmd.SetIn(strings.NewReader(""))
 				cmd.SetOut(&out)
 				cmd.SetErr(&stderr)
-				args := []string{first, second.Name, "--container"}
+				args := []string{first, second.SessionID, "--container"}
 				if mode == "json" {
 					args = append(args, "--json")
 				}
@@ -269,8 +270,8 @@ func TestDeletionPartialResultsSurviveCLIAndTUIErrors(t *testing.T) {
 			} else if strings.Count(out.String(), "Deleted container ") != 1 || !strings.Contains(out.String(), "Session state and image retained:") {
 				t.Fatal("partial work was hidden", out.String(), stderr.String())
 			}
-			for _, name := range []string{first, second.Name} {
-				if _, err := e.Store.Read(context.Background(), name); err != nil {
+			for _, name := range []string{first, second.SessionID} {
+				if _, err := e.Store.Find(context.Background(), name, nil); err != nil {
 					t.Fatal("failure removed saved history", err)
 				}
 			}

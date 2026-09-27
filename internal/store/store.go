@@ -3,200 +3,24 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"devbox/internal/commanderror"
 	"devbox/internal/config"
-	"devbox/internal/docker"
-	"devbox/internal/environment"
 	"devbox/internal/fsutil"
-	"devbox/internal/harness"
-	"devbox/internal/sshshare"
 )
 
 type Store struct {
 	Home         string
 	Installation string
 }
-type Launch struct {
-	Binary   string   `json:"binary"`
-	Args     []string `json:"args"`
-	Continue []string `json:"continue_args"`
-	Shell    []string `json:"shell"`
-}
-type DefinitionInput struct {
-	Name   string `json:"name"`
-	Origin string `json:"origin"`
-	Hash   string `json:"hash"`
-}
-type Record struct {
-	Version         int                      `json:"version"`
-	ManualStart     bool                     `json:"manual_start"`
-	ID              string                   `json:"id"`
-	Identity        environment.Identity     `json:"identity"`
-	Sources         []config.Reference       `json:"sources"`
-	Created         time.Time                `json:"created_at"`
-	Activity        time.Time                `json:"last_activity"`
-	Action          string                   `json:"last_action"`
-	Applied         environment.Fingerprints `json:"fingerprints"`
-	Inputs          environment.Inputs       `json:"inputs"`
-	ImageTag        string                   `json:"image_tag"`
-	ImageID         string                   `json:"image_id"`
-	Creation        docker.CreatePlan        `json:"creation"`
-	EnvSources      []config.EnvSource       `json:"env_sources,omitempty"`
-	Definition      DefinitionInput          `json:"definition_input"`
-	Stores          []harness.Store          `json:"stores"`
-	Auth            []harness.Auth           `json:"auth"`
-	Config          harness.Config           `json:"config"`
-	Merge           []harness.Merge          `json:"config_merge"`
-	Prepare         [][]string               `json:"prepare"`
-	Launch          Launch                   `json:"launch"`
-	Setup           []environment.Hook       `json:"setup"`
-	SetupContainer  string                   `json:"setup_container"`
-	Ownership       int                      `json:"ownership_version"`
-	ManifestVersion int                      `json:"manifest_version"`
-}
 
-const RecordVersion = 5
-
-// Runtime synchronization must advance its explanation baseline together with
-// its fingerprint. Image/container inputs remain committed until recreation.
-func (r *Record) ApplyRuntime(inputs environment.RuntimeInputs) {
-	r.Inputs.Runtime = inputs
-	r.Applied.Runtime = inputs.Fingerprint()
-}
-
-var idPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
-var hashPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
-
-func (r Record) Validate(name string) error {
-	if r.Version != RecordVersion || r.Ownership != 1 || r.ManifestVersion != 1 {
-		return fmt.Errorf("unsupported session record version; a clean development session reset is required")
-	}
-	if !idPattern.MatchString(r.ID) || r.Identity.Name != name || !validName(name) {
-		return fmt.Errorf("invalid session identity")
-	}
-	if err := r.Identity.Validate(); err != nil {
-		return err
-	}
-	if !strings.HasPrefix(r.ImageID, "sha256:") || !hashPattern.MatchString(strings.TrimPrefix(r.ImageID, "sha256:")) || r.ImageTag != docker.Namespace+"/session:"+r.ID || r.Creation.Name != name || r.Creation.Image != r.ImageID {
-		return fmt.Errorf("incomplete recorded creation contract")
-	}
-	if !hashPattern.MatchString(r.Applied.Image) || !hashPattern.MatchString(r.Applied.Container) || !hashPattern.MatchString(r.Applied.Runtime) || !hashPattern.MatchString(r.Definition.Hash) {
-		return fmt.Errorf("invalid recorded fingerprints")
-	}
-	if err := r.Inputs.Validate(); err != nil {
-		return err
-	}
-	if r.Inputs.Container.Identity != r.Identity || r.Inputs.Image.Harness != r.Definition.Name || r.Inputs.Image.Definition.Hash != r.Definition.Hash || r.Inputs.FingerprintsFor(r.ImageID) != r.Applied {
-		return fmt.Errorf("recorded inputs do not match the committed fingerprints or identity")
-	}
-	if r.Launch.Binary == "" || len(r.Launch.Shell) == 0 || !config.Name.MatchString(r.Definition.Name) {
-		return fmt.Errorf("invalid recorded launch contract")
-	}
-	if r.Created.IsZero() || r.Activity.IsZero() || !hashPattern.MatchString(r.SetupContainer) {
-		return fmt.Errorf("incomplete creation commit")
-	}
-	if r.Definition.Origin != "builtin" && !filepath.IsAbs(r.Definition.Origin) {
-		return fmt.Errorf("invalid recorded definition source")
-	}
-	for _, source := range r.Sources {
-		if err := source.Validate(); err != nil {
-			return err
-		}
-	}
-	if len(r.Setup) != len(r.Inputs.Container.Setup) {
-		return fmt.Errorf("recorded setup chain differs from applied inputs")
-	}
-	for i, hook := range r.Setup {
-		input := r.Inputs.Container.Setup[i]
-		if !filepath.IsAbs(hook.Path) || !hashPattern.MatchString(hook.Hash) || hook.Path != input.Source || hook.Hash != input.Hash || input.Directory || input.Mode != 0 {
-			return fmt.Errorf("invalid recorded setup input")
-		}
-	}
-	for _, source := range r.EnvSources {
-		if !hashPattern.MatchString(source.RawHash) || !hashPattern.MatchString(source.ValueHash) {
-			return fmt.Errorf("invalid recorded environment fingerprint")
-		}
-		switch source.Kind {
-		case "file":
-			if !filepath.IsAbs(source.Path) || source.Index < 0 || source.Field != "env" {
-				return fmt.Errorf("invalid recorded environment source")
-			}
-		default:
-			return fmt.Errorf("unknown recorded environment source kind")
-		}
-	}
-	d := harness.Definition{Version: 1, Name: r.Definition.Name, Binary: r.Launch.Binary, Stores: r.Stores, Config: r.Config, Merge: r.Merge, Auth: r.Auth, Prepare: r.Prepare}
-	if err := d.Validate(); err != nil {
-		return fmt.Errorf("invalid recorded harness contract: %w", err)
-	}
-	targets := map[string]bool{"/workspace": false}
-	for _, s := range r.Stores {
-		targets[s.Target] = false
-	}
-	for _, a := range r.Auth {
-		targets[a.Target] = false
-	}
-	protected := []string{"/devbox"}
-	for target := range targets {
-		protected = append(protected, target)
-	}
-	extra := []docker.Mount{}
-	sshMounted := false
-	for _, m := range r.Creation.Mounts {
-		if err := docker.ValidateStoredMount(m); err != nil {
-			return err
-		}
-		if m.Target == sshshare.Mount {
-			if sshMounted || m.Kind == "volume" || m.File || m.ReadOnly {
-				return fmt.Errorf("invalid recorded SSH mount")
-			}
-			sshMounted = true
-			continue
-		}
-		seen, known := targets[m.Target]
-		if !known {
-			extra = append(extra, m)
-			continue
-		}
-		if seen || m.Kind == "volume" || (m.Target == "/workspace" && (m.Source != r.Identity.Workspace || m.ReadOnly)) {
-			return fmt.Errorf("invalid recorded managed mount")
-		}
-		targets[m.Target] = true
-	}
-	for _, seen := range targets {
-		if !seen {
-			return fmt.Errorf("incomplete recorded mounts")
-		}
-	}
-	if err := docker.ValidateExtraTargets(extra, protected); err != nil {
-		return err
-	}
-	for _, port := range r.Creation.Ports {
-		if err := docker.ValidatePort(port); err != nil {
-			return err
-		}
-	}
-	if r.Creation.Network == "host" && len(r.Creation.Ports) > 0 {
-		return fmt.Errorf("host networking cannot publish ports")
-	}
-	if r.Creation.Metadata != "" && !json.Valid([]byte(r.Creation.Metadata)) {
-		return fmt.Errorf("invalid IDE metadata")
-	}
-	if err := (config.Settings{Shell: r.Launch.Shell, Harness: r.Definition.Name, Network: r.Creation.Network}).Validate(); err != nil {
-		return fmt.Errorf("invalid recorded settings: %w", err)
-	}
-	return nil
-}
 func validName(name string) bool {
-	return strings.HasPrefix(name, environment.ContainerPrefix) && filepath.Base(name) == name && !strings.ContainsAny(name, "/\\\x00\r\n")
+	return name != "" && name != "." && name != ".." && filepath.Base(name) == name && !strings.ContainsAny(name, "/\\\x00\r\n")
 }
 func Open(ctx context.Context, home string) (*Store, error) {
 	absolute, err := filepath.Abs(home)
@@ -240,41 +64,48 @@ func Open(ctx context.Context, home string) (*Store, error) {
 	return &Store{Home: absolute, Installation: id}, nil
 }
 
+type operationLock struct{ file *os.File }
 type Locked struct {
-	ctx   context.Context
-	store *Store
-	Name  string
-	file  *os.File
+	ctx       context.Context
+	store     *Store
+	Name      string
+	ID        string
+	operation *operationLock
 }
 
-func (s *Store) lockPath(name, kind string) (string, error) {
-	if !validName(name) {
-		return "", fmt.Errorf("invalid session name")
+func (s *Store) Lock(ctx context.Context, directory, id string) (*Locked, error) {
+	if !validName(directory) || !idPattern.MatchString(id) {
+		return nil, fmt.Errorf("invalid session lock reference")
 	}
-	return fsutil.Path(s.Home, filepath.Join("state/locks/sessions", environment.Digest(name)+"."+kind+".lock"))
+	operation, err := s.lockID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &Locked{ctx: ctx, store: s, Name: directory, ID: id, operation: operation}, nil
 }
-func (s *Store) Lock(ctx context.Context, name string) (*Locked, error) {
-	p, err := s.lockPath(name, "operation")
+
+func (s *Store) lockID(ctx context.Context, id string) (*operationLock, error) {
+	path, err := fsutil.Path(s.Home, filepath.Join("state/locks/sessions", id+".lock"))
 	if err != nil {
 		return nil, err
 	}
-	f, err := fsutil.Lock(ctx, p)
+	f, err := fsutil.Lock(ctx, path)
 	if err != nil {
 		return nil, err
 	}
-	return &Locked{ctx: ctx, store: s, Name: name, file: f}, nil
+	return &operationLock{file: f}, nil
 }
 func (l *Locked) Close() error {
-	if l.file == nil {
+	if !l.Held() {
 		return nil
 	}
-	err := fsutil.Unlock(l.file)
-	l.file = nil
+	err := fsutil.Unlock(l.operation.file)
+	l.operation.file = nil
 	return err
 }
-func (l *Locked) Held() bool { return l.file != nil }
+func (l *Locked) Held() bool { return l.operation != nil && l.operation.file != nil }
 func (l *Locked) check() error {
-	if l.file == nil {
+	if !l.Held() {
 		return fmt.Errorf("session operation lock is not held")
 	}
 	return nil
@@ -301,19 +132,16 @@ func (l *Locked) Load() (Record, error) {
 	if err := l.RequireAvailable(); err != nil {
 		return Record{}, err
 	}
-	return l.store.Read(l.ctx, l.Name)
+	return l.ReadRecord(l.ctx)
 }
 func (s *Store) Read(ctx context.Context, name string) (Record, error) {
 	var record Record
-	p, err := s.lockPath(name, "record")
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return record, err
 	}
-	lock, err := fsutil.Lock(ctx, p)
-	if err != nil {
-		return record, err
+	if !validName(name) {
+		return record, fmt.Errorf("invalid session directory")
 	}
-	defer fsutil.Unlock(lock)
 	path, err := fsutil.Path(s.Home, filepath.Join("sessions", name, "session.json"))
 	if err != nil {
 		return record, err
@@ -325,6 +153,7 @@ func (s *Store) Read(ctx context.Context, name string) (Record, error) {
 	if err = config.Decode(b, &record); err != nil {
 		return record, commanderror.New("invalid_session_record", fmt.Sprintf("Invalid session state: %v", err), path, err)
 	}
+	record.Directory = name
 	if err = record.Validate(name); err != nil {
 		return record, commanderror.New("invalid_session_record", "Invalid session state: "+err.Error(), path, err)
 	}
@@ -334,19 +163,13 @@ func (l *Locked) Save(record Record) error {
 	if err := l.check(); err != nil {
 		return err
 	}
+	if record.Directory != l.Name || record.ID != l.ID {
+		return fmt.Errorf("record belongs to a different storage directory")
+	}
 	if err := record.Validate(l.Name); err != nil {
 		return err
 	}
-	p, err := l.store.lockPath(l.Name, "record")
-	if err != nil {
-		return err
-	}
-	lock, err := fsutil.Lock(l.ctx, p)
-	if err != nil {
-		return err
-	}
-	defer fsutil.Unlock(lock)
-	if _, err = l.Dir("."); err != nil {
+	if _, err := l.Dir("."); err != nil {
 		return err
 	}
 	path, err := l.Path("session.json")
@@ -356,8 +179,8 @@ func (l *Locked) Save(record Record) error {
 	return fsutil.JSON(path, record)
 }
 
-// Delete keeps record readers outside the removal window. The external
-// operation lock survives deletion and remains held until the caller releases it.
+// The ID-keyed operation lock survives deletion. Readers see an atomic record
+// or absence; mutating callers always reload after acquiring the operation lock.
 func (l *Locked) Delete() error { return l.DeleteContext(l.ctx) }
 
 // DeleteContext lets bounded cleanup retain the operation lock after the
@@ -366,20 +189,21 @@ func (l *Locked) DeleteContext(ctx context.Context) error {
 	if err := l.check(); err != nil {
 		return err
 	}
-	p, err := l.store.lockPath(l.Name, "record")
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	lock, err := fsutil.Lock(ctx, p)
-	if err != nil {
-		return err
-	}
-	defer fsutil.Unlock(lock)
 	root, err := l.Path(".")
 	if err != nil {
 		return err
 	}
 	if err = os.RemoveAll(root); err != nil {
+		return err
+	}
+	leases, err := l.leaseDirectory(false)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(leases); err != nil {
 		return err
 	}
 	dir, err := os.Open(filepath.Dir(root))

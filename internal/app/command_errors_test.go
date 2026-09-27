@@ -36,7 +36,7 @@ func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, err := e.Store.Lock(ctx, opened.Name)
+	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,17 +46,17 @@ func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 	}
 	lock.Close()
 	var busy *commanderror.Error
-	if err := e.Stop(ctx, opened.Name, "", false); !errors.As(err, &busy) || busy.Code != "session_busy" || len(busy.Next) != 1 || strings.Contains(strings.Join(busy.Next[0].Command, " "), "--force") {
+	if err := e.Stop(ctx, opened.SessionID, "", false); !errors.As(err, &busy) || busy.Code != "session_busy" || len(busy.Next) != 1 || strings.Contains(strings.Join(busy.Next[0].Command, " "), "--force") {
 		t.Fatal(err)
 	}
-	lock, _ = e.Store.Lock(ctx, opened.Name)
+	lock, _ = e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
 	lock.Release(lease.ID)
 	lock.Close()
-	path, _ := e.Store.RecordPath(opened.Name)
+	path, _ := e.Store.RecordPath(sessionRecord(t, e, opened.SessionID).Directory)
 	write(t, path, "broken")
 	before := len(d.History())
 	var invalid *commanderror.Error
-	if _, err := e.Start(ctx, opened.Name, ""); !errors.As(err, &invalid) || invalid.Code != "invalid_session_record" || errors.Is(err, os.ErrNotExist) {
+	if _, err := e.Start(ctx, opened.SessionID, ""); !errors.As(err, &invalid) || invalid.Code != "inventory_incomplete" || errors.Is(err, os.ErrNotExist) {
 		t.Fatal(err)
 	}
 	if len(d.History()) != before {
@@ -71,7 +71,7 @@ func TestRecoveryErrorRetainsDockerFailureIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.Forget(opened.Name)
+	forgetSession(t, e, opened.SessionID)
 	failure := &docker.ExitError{Code: 19, Operation: "image"}
 	d.Fail = func(args []string) error {
 		if args[0] == "image" && args[1] == "inspect" {
@@ -79,7 +79,7 @@ func TestRecoveryErrorRetainsDockerFailureIdentity(t *testing.T) {
 		}
 		return nil
 	}
-	_, err = e.Start(ctx, opened.Name, "")
+	_, err = e.Start(ctx, opened.SessionID, "")
 	var recovery *commanderror.Error
 	if !errors.As(err, &recovery) || recovery.Code != "recovery_unavailable" || !errors.Is(err, failure) {
 		t.Fatal(err)
@@ -93,9 +93,9 @@ func TestPiDefaultsToFullscreenAndAllowsLaterOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := record(t, e, opened.Name)
-	if !reflect.DeepEqual(r.Launch.Args, []string{"--tui-mode", "fullscreen"}) || !reflect.DeepEqual(r.Launch.Continue, []string{"-c"}) {
-		t.Fatal(r.Launch)
+	r := sessionRecord(t, e, opened.SessionID)
+	if !reflect.DeepEqual(r.Applied.Launch.Args, []string{"--tui-mode", "fullscreen"}) || !reflect.DeepEqual(r.Applied.Launch.Continue, []string{"-c"}) {
+		t.Fatal(r.Applied.Launch)
 	}
 	q.Continue = true
 	q.Args = []string{"--tui-mode", "regular"}
@@ -112,7 +112,7 @@ func TestPiDefaultsToFullscreenAndAllowsLaterOverrides(t *testing.T) {
 	if !found {
 		t.Fatal("one-off override was not last in launch argv")
 	}
-	if !reflect.DeepEqual(record(t, e, opened.Name).Launch.Args, r.Launch.Args) {
+	if !reflect.DeepEqual(sessionRecord(t, e, opened.SessionID).Applied.Launch.Args, r.Applied.Launch.Args) {
 		t.Fatal("one-off TUI override was persisted")
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","harness_args":["--tui-mode","regular"]}`)
@@ -121,7 +121,7 @@ func TestPiDefaultsToFullscreenAndAllowsLaterOverrides(t *testing.T) {
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
 	}
-	if got := record(t, e, opened.Name).Launch.Args; !reflect.DeepEqual(got, []string{"--tui-mode", "fullscreen", "--tui-mode", "regular"}) {
+	if got := sessionRecord(t, e, opened.SessionID).Applied.Launch.Args; !reflect.DeepEqual(got, []string{"--tui-mode", "fullscreen", "--tui-mode", "regular"}) {
 		t.Fatal("profile override lost", got)
 	}
 }

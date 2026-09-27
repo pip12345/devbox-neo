@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"devbox/internal/docker/dockertest"
 	"devbox/internal/environment"
 )
 
@@ -23,7 +24,7 @@ func TestTransferResumesJournalBeforeDestinationCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := record(t, e, opened.Name)
+	source := sessionRecord(t, e, opened.SessionID)
 	dest := t.TempDir()
 	spec, err := e.Resolve(Request{Workspace: dest, LocalName: q.LocalName, Sources: q.Sources})
 	if err != nil {
@@ -31,15 +32,16 @@ func TestTransferResumesJournalBeforeDestinationCreation(t *testing.T) {
 	}
 	nonce, _ := fsutil.ID()
 	newID, _ := fsutil.ID()
-	j := store.Transfer{Version: 2, ID: nonce, Mode: "clone", Phase: "prepare", Source: source.Identity, Destination: spec.Identity, SourceID: source.ID, DestinationID: newID, Started: time.Now().UTC(), Desired: spec.Fingerprints}
-	names := []string{source.Identity.Name, spec.Identity.Name}
+	spec.Identity.Name = environment.ResourceName(dest, q.LocalName, "directory")
+	j := store.Transfer{Version: 3, ContainerName: environment.ResourceName(dest, q.LocalName, nonce), SourceContainerID: source.Applied.SetupContainer, ID: nonce, Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: spec.Identity, SourceID: source.ID, DestinationID: newID, Started: time.Now().UTC(), Desired: spec.Fingerprints}
+	names := []string{source.Directory, spec.Identity.Name}
 	sort.Strings(names)
-	locks, err := e.Store.LockAll(ctx, names)
+	locks, err := e.Store.LockAll(ctx, names, map[string]string{source.Directory: source.ID, spec.Identity.Name: newID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	a, b := locks[0], locks[1]
-	if a.Name != source.Identity.Name {
+	if a.Name != source.Directory {
 		a, b = b, a
 	}
 	if err = a.SaveTransfer(b, j); err != nil {
@@ -56,10 +58,10 @@ func TestTransferResumesJournalBeforeDestinationCreation(t *testing.T) {
 		}
 	}
 	store.CloseAll(locks)
-	if _, err = e.Transfer(ctx, TransferOptions{Mode: "clone", Source: opened.Name, Destination: dest}); err != nil {
+	if _, err = e.Transfer(ctx, TransferOptions{Mode: "clone", Source: opened.SessionID, Destination: dest}); err != nil {
 		t.Fatal(err)
 	}
-	if record(t, e, spec.Identity.Name).ID != newID {
+	if sessionRecord(t, e, spec.Identity.Name).ID != newID {
 		t.Fatal("retry allocated another identity")
 	}
 }
@@ -67,22 +69,22 @@ func TestTransferIdentityStateAndRunningPolicy(t *testing.T) {
 	for _, mode := range []string{"clone", "relocate"} {
 		for _, running := range []bool{false, true} {
 			t.Run(mode+map[bool]string{false: "-stopped", true: "-running"}[running], func(t *testing.T) {
-				e, d, q := fixture(t)
+				e, _, q := fixture(t)
 				ctx := context.Background()
 				opened, err := e.Create(ctx, q)
 				if err != nil {
 					t.Fatal(err)
 				}
-				original := record(t, e, opened.Name)
+				original := sessionRecord(t, e, opened.SessionID)
 				rel := "harnesses/pi/stores/home/sessions/history.json"
-				write(t, filepath.Join(e.Store.Home, "sessions", opened.Name, rel), "conversation")
+				write(t, filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, opened.SessionID).Directory, rel), "conversation")
 				if running {
-					if _, err = e.Start(ctx, opened.Name, ""); err != nil {
+					if _, err = e.Start(ctx, opened.SessionID, ""); err != nil {
 						t.Fatal(err)
 					}
 				}
 				target := t.TempDir()
-				opts := TransferOptions{Mode: mode, Source: opened.Name, Destination: target}
+				opts := TransferOptions{Mode: mode, Source: opened.SessionID, Destination: target}
 				result, err := e.Transfer(ctx, opts)
 				if mode == "clone" && running {
 					var runningError *commanderror.Error
@@ -94,40 +96,40 @@ func TestTransferIdentityStateAndRunningPolicy(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				copied := record(t, e, result.Destination)
+				copied := sessionRecord(t, e, result.Destination)
 				if (copied.ID == original.ID) != (mode == "relocate") {
 					t.Fatal("wrong identity policy")
 				}
-				if copied.Identity.Workspace != target || copied.Action != store.TransferCommand(mode) {
-					t.Fatal("wrong destination contract", copied.Identity)
+				if copied.Settings.Workspace != target || copied.Action != store.TransferCommand(mode) {
+					t.Fatal("wrong destination contract", copied.Settings.Binding)
 				}
 				view, err := e.Status(ctx, result.Destination, "")
-				if err != nil || view.Desired != environment.NoChange || len(view.PendingInputChanges) != 0 || copied.Inputs.Container.Identity != copied.Identity {
+				if err != nil || view.Desired != environment.NoChange || len(view.PendingInputChanges) != 0 || copied.Applied.Inputs.Container.Workspace != copied.Settings.Workspace {
 					t.Fatal("destination did not commit its own input baseline", view, err)
 				}
-				data, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", result.Destination, rel))
+				data, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, rel))
 				if err != nil || string(data) != "conversation" {
 					t.Fatal("lost state", err)
 				}
-				c, exists := d.Snapshot(result.Destination)
+				c, exists := sessionSnapshot(t, e, result.Destination)
 				if !exists || c.State.Running != (mode == "relocate" && running) {
 					t.Fatal("wrong intended state")
 				}
-				_, sourceExists := d.Snapshot(opened.Name)
+				_, sourceExists := e.Docker.Runner.(*dockertest.Daemon).Snapshot(original.Applied.Creation.Name)
 				if sourceExists != (mode == "clone") {
 					t.Fatal("wrong source teardown")
 				}
-				for _, name := range []string{opened.Name, result.Destination} {
+				for _, name := range []string{opened.SessionID, result.Destination} {
 					pending, err := e.Store.Pending(name)
 					if err != nil || pending != nil {
 						t.Fatal("journal remained", pending, err)
 					}
 				}
 				if mode == "clone" {
-					if record(t, e, opened.Name).ID != original.ID {
+					if sessionRecord(t, e, opened.SessionID).ID != original.ID {
 						t.Fatal("source changed")
 					}
-				} else if _, err = e.Store.Read(ctx, opened.Name); !os.IsNotExist(err) {
+				} else if _, err = e.Store.Read(ctx, original.Directory); !os.IsNotExist(err) {
 					t.Fatal("source record remained", err)
 				}
 			})
@@ -137,7 +139,7 @@ func TestTransferIdentityStateAndRunningPolicy(t *testing.T) {
 func TestTransferFromMissingWorkspaceAndContainer(t *testing.T) {
 	for _, mode := range []string{"clone", "relocate"} {
 		t.Run(mode, func(t *testing.T) {
-			e, d, q := fixture(t)
+			e, _, q := fixture(t)
 			q.Sources = q.Sources[:1]
 			if err := os.RemoveAll(filepath.Join(q.Workspace, ".devbox")); err != nil {
 				t.Fatal(err)
@@ -147,11 +149,11 @@ func TestTransferFromMissingWorkspaceAndContainer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			d.Forget(opened.Name)
+			forgetSession(t, e, opened.SessionID)
 			if err = os.Remove(q.Workspace); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = e.Transfer(ctx, TransferOptions{Mode: mode, Source: opened.Name, Destination: t.TempDir()}); err != nil {
+			if _, err = e.Transfer(ctx, TransferOptions{Mode: mode, Source: opened.SessionID, Destination: t.TempDir()}); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -174,10 +176,10 @@ func TestTransferNamesAndDryRun(t *testing.T) {
 	if count(d, "create") != before {
 		t.Fatal("dry run created container")
 	}
-	if _, err = os.Stat(filepath.Join(e.Store.Home, "sessions", result.Destination)); !os.IsNotExist(err) {
+	if _, err = e.Store.Find(ctx, result.Destination, nil); !os.IsNotExist(err) {
 		t.Fatal("dry run created state", err)
 	}
-	if j, err := e.Store.ReadTransfer(opened.Name); err != nil || j != nil {
+	if j, err := pendingTransfer(e, opened.SessionID); err != nil || j != nil {
 		t.Fatal("dry run journaled", err)
 	}
 	opts.DryRun = false
@@ -185,7 +187,7 @@ func TestTransferNamesAndDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record(t, e, result.Destination).Identity.LocalName != "project" {
+	if sessionRecord(t, e, result.Destination).Settings.LocalName != "project" {
 		t.Fatal("wrong destination slot")
 	}
 }
@@ -196,14 +198,14 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Start(ctx, opened.Name, ""); err != nil {
+	if _, err = e.Start(ctx, opened.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
 	rel := "harnesses/pi/stores/home/sessions/history.json"
-	sourcePath := filepath.Join(e.Store.Home, "sessions", opened.Name, rel)
+	sourcePath := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, opened.SessionID).Directory, rel)
 	write(t, sourcePath, "before")
-	opts := TransferOptions{Mode: "relocate", Source: opened.Name, Destination: t.TempDir()}
-	source := record(t, e, opened.Name)
+	opts := TransferOptions{Mode: "relocate", Source: opened.SessionID, Destination: t.TempDir()}
+	source := sessionRecord(t, e, opened.SessionID)
 	d.Fail = func(args []string) error {
 		if args[0] == "exec" && args[len(args)-1] == "pi" {
 			return errors.New("prepare interrupted")
@@ -213,29 +215,29 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	if _, err = e.Transfer(ctx, opts); err == nil {
 		t.Fatal("ignored failure")
 	}
-	c, _ := d.Snapshot(opened.Name)
+	c, _ := sessionSnapshot(t, e, opened.SessionID)
 	if !c.State.Running {
 		t.Fatal("source not restarted")
 	}
 	var pendingError *commanderror.Error
-	if _, err = e.Start(ctx, opened.Name, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "devbox-neo copy --move "+opened.Name+" "+opts.Destination+" --as "+q.LocalName {
+	if _, err = e.Start(ctx, opened.SessionID, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "devbox-neo copy --move "+opened.SessionID+" "+opts.Destination+" --as "+q.LocalName {
 		t.Fatal("pending source not guarded", err)
 	}
-	j, err := e.Store.ReadTransfer(opened.Name)
+	j, err := pendingTransfer(e, opened.SessionID)
 	if err != nil || j == nil || j.Phase != "prepare" {
 		t.Fatal(j, err)
 	}
 	if _, err = e.Start(ctx, j.Destination.Name, ""); err == nil {
 		t.Fatal("pending destination not guarded")
 	}
-	if _, err = e.DeleteContainers(ctx, Selection{Targets: []string{opened.Name}}, true); err == nil {
+	if _, err = e.DeleteContainers(ctx, Selection{Targets: []string{opened.SessionID}}, true); err == nil {
 		t.Fatal("forced deletion bypassed transfer guard")
 	}
-	if _, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{opened.Name}}, Force: true, Scope: DeleteSession}); err == nil {
+	if _, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{opened.SessionID}}, Force: true, Scope: DeleteSession}); err == nil {
 		t.Fatal("combined deletion bypassed transfer guard")
 	}
-	image, err := e.Docker.InspectImage(ctx, source.ImageTag)
-	if err != nil || image.ID != source.ImageID {
+	image, err := e.Docker.InspectImage(ctx, source.Applied.ImageTag)
+	if err != nil || image.ID != source.Applied.ImageID {
 		t.Fatal("source image tag not restored", err)
 	}
 	configPath := filepath.Join(e.Store.Home, "profiles/test/config.json")
@@ -250,7 +252,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", result.Destination, rel))
+	data, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, rel))
 	if err != nil || string(data) != "new source write after rollback" {
 		t.Fatal("retry used stale snapshot", err)
 	}
@@ -262,10 +264,10 @@ func TestTransferCommittedRetryOnlyCleansSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := record(t, e, opened.Name)
-	opts := TransferOptions{Mode: "relocate", Source: opened.Name, Destination: t.TempDir()}
+	source := sessionRecord(t, e, opened.SessionID)
+	opts := TransferOptions{Mode: "relocate", Source: opened.SessionID, Destination: t.TempDir()}
 	d.Fail = func(args []string) error {
-		if args[0] == "rm" && args[len(args)-1] == source.SetupContainer {
+		if args[0] == "rm" && args[len(args)-1] == source.Applied.SetupContainer {
 			return errors.New("source removal interrupted")
 		}
 		return nil
@@ -274,13 +276,13 @@ func TestTransferCommittedRetryOnlyCleansSource(t *testing.T) {
 	if err == nil {
 		t.Fatal("ignored source removal error")
 	}
-	journal, err := e.Store.ReadTransfer(opened.Name)
+	journal, err := pendingTransfer(e, opened.SessionID)
 	if err != nil || journal == nil || journal.Phase != "committed" {
 		t.Fatal(journal, err)
 	}
 	created := count(d, "create")
 	rel := "harnesses/pi/stores/home/sessions/after-commit.json"
-	write(t, filepath.Join(e.Store.Home, "sessions", result.Destination, rel), "destination owns this")
+	write(t, filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, rel), "destination owns this")
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken desired config")
 	d.Fail = nil
 	if _, err = e.Transfer(ctx, opts); err != nil {
@@ -289,7 +291,7 @@ func TestTransferCommittedRetryOnlyCleansSource(t *testing.T) {
 	if count(d, "create") != created {
 		t.Fatal("committed retry recreated destination")
 	}
-	if _, err = os.Stat(filepath.Join(e.Store.Home, "sessions", result.Destination, rel)); err != nil {
+	if _, err = os.Stat(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, rel)); err != nil {
 		t.Fatal("retry replaced destination", err)
 	}
 }
@@ -306,14 +308,14 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := count(d, "create")
-	if _, err = e.Transfer(ctx, TransferOptions{Mode: "relocate", Source: opened.Name, Destination: dest}); err == nil {
+	if _, err = e.Transfer(ctx, TransferOptions{Mode: "relocate", Source: opened.SessionID, Destination: dest}); err == nil {
 		t.Fatal("adopted destination")
 	}
 	if count(d, "create") != before {
 		t.Fatal("preflight mutated destination")
 	}
-	_ = record(t, e, destOpen.Name)
-	lock, err := e.Store.Lock(ctx, opened.Name)
+	_ = sessionRecord(t, e, destOpen.SessionID)
+	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,17 +324,17 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	lock.Close()
-	opts := TransferOptions{Mode: "relocate", Source: opened.Name, Destination: t.TempDir()}
+	opts := TransferOptions{Mode: "relocate", Source: opened.SessionID, Destination: t.TempDir()}
 	if _, err = e.Transfer(ctx, opts); err == nil {
 		t.Fatal("transferred active source")
 	}
-	lock, _ = e.Store.Lock(ctx, opened.Name)
+	lock, _ = e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
 	if err = lock.Release(lease.ID); err != nil {
 		t.Fatal(err)
 	}
 	lock.Close()
 	id, _ := environment.Identify(opts.Destination, q.LocalName)
-	foreign, _ := d.Snapshot(opened.Name)
+	foreign, _ := sessionSnapshot(t, e, opened.SessionID)
 	foreign.Name = "/" + id.Name
 	foreign.Config.Labels = map[string]string{}
 	d.SetContainer(foreign)

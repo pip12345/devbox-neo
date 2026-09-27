@@ -47,7 +47,7 @@ func TestWorkspaceDefaultPersistenceAndAbsentReads(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.Home, "state/workspaces")); !os.IsNotExist(err) {
 		t.Fatalf("read or absent clear seeded workspace state: %v", err)
 	}
-	want := &DefaultSession{Name: "devbox-workspace-0123456789ab.Main", ID: strings.Repeat("a", 32)}
+	want := &DefaultSession{ID: strings.Repeat("a", 32)}
 	testDefault(t, s, workspace, want)
 	got, err := s.ReadDefault(ctx, workspace)
 	if err != nil || got == nil || *got != *want {
@@ -82,7 +82,7 @@ func TestWorkspaceDefaultCorruptionIsNotAbsence(t *testing.T) {
 	for _, contents := range []string{
 		`{`,
 		`null`,
-		`{"version":2,"workspace":"/workspace","default_session":null}`,
+		`{"version":1,"workspace":"/workspace","default_session":null}`,
 		`{"version":1,"workspace":"/other","default_session":null}`,
 		`{"version":1,"workspace":"/workspace"}`,
 		`{"version":1,"workspace":"/workspace","default_session":{"name":"devbox-name","id":"bad"}}`,
@@ -113,38 +113,26 @@ func TestWorkspaceDefaultCorruptionIsNotAbsence(t *testing.T) {
 	}
 }
 
-func TestWorkspaceDefaultClearRequiresMatchingNameAndID(t *testing.T) {
+func TestWorkspaceDefaultClearRequiresMatchingID(t *testing.T) {
 	ctx := context.Background()
 	s, err := Open(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	workspace := "/missing/workspace"
-	selected := DefaultSession{Name: "devbox-workspace-0123456789ab.Main", ID: strings.Repeat("a", 32)}
+	selected := DefaultSession{ID: strings.Repeat("a", 32)}
 	testDefault(t, s, workspace, &selected)
-	lock, err := s.Lock(ctx, selected.Name)
+	lock, err := s.Lock(ctx, "session-directory", selected.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	if err := lock.ClearMatchingDefault(ctx, workspace, strings.Repeat("b", 32)); err != nil {
-		t.Fatal(err)
+	if err := lock.ClearMatchingDefault(ctx, workspace, strings.Repeat("b", 32)); err == nil {
+		t.Fatal("wrong ID bypassed the operation lock")
 	}
 	got, err := s.ReadDefault(ctx, workspace)
 	if err != nil || got == nil || *got != selected {
 		t.Fatalf("different session ID cleared selection: %+v %v", got, err)
-	}
-	other, err := s.Lock(ctx, "devbox-workspace-0123456789ab.Other")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := other.ClearMatchingDefault(ctx, workspace, selected.ID); err != nil {
-		t.Fatal(err)
-	}
-	other.Close()
-	got, err = s.ReadDefault(ctx, workspace)
-	if err != nil || got == nil || *got != selected {
-		t.Fatalf("different name cleared selection: %+v %v", got, err)
 	}
 	// No session record or workspace directory exists. Committed move retries
 	// must still be able to clear a default using the journal's saved identity.
@@ -169,7 +157,7 @@ func TestWorkspaceLocksRemainExternalAndRespectCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.close()
-	if err := lock.set(&DefaultSession{Name: "devbox-name", ID: strings.Repeat("a", 32)}); err != nil {
+	if err := lock.set(&DefaultSession{ID: strings.Repeat("a", 32)}); err != nil {
 		t.Fatal(err)
 	}
 	path, _ := lock.path()

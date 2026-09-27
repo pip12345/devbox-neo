@@ -175,7 +175,7 @@ func TestInventoryIsReadOnlyAndReportRedactsValues(t *testing.T) {
 			t.Fatalf("report missing %s", text)
 		}
 	}
-	if item := v.item("session:" + name); item == nil || item.SessionID != strings.Repeat("b", 32) || item.Target != environment.ContainerName(item.Workspace, "profile-work") {
+	if item := v.item("session:" + name); item == nil || item.SessionID != strings.Repeat("b", 32) || item.Target != environment.ResourceName(item.Workspace, "profile-work", item.SessionID) {
 		t.Fatalf("bad session: %+v", item)
 	}
 }
@@ -277,7 +277,7 @@ func TestProjectSlotIncludesItsInheritedProfile(t *testing.T) {
 	before := treeSnapshot(t, workspace)
 	v := inventory(t, p)
 	item := v.item("session:" + name)
-	if item.Profile != "" || item.SourceProfile != "work" || !item.Project || item.Target != environment.ContainerName(workspace, "project") {
+	if item.Profile != "" || item.SourceProfile != "work" || !item.Project || item.Target != environment.ResourceName(workspace, "project", item.SessionID) {
 		t.Fatalf("wrong slot: %+v", item)
 	}
 	mustStage(t, v)

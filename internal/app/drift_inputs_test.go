@@ -17,24 +17,24 @@ import (
 func TestDriftBaselineTracksAppliedNotMerelyDesiredInputs(t *testing.T) {
 	for _, recovery := range []bool{false, true} {
 		t.Run(map[bool]string{false: "existing", true: "recovery"}[recovery], func(t *testing.T) {
-			e, d, q := fixture(t)
+			e, _, q := fixture(t)
 			ctx := context.Background()
 			result, err := createAndOpen(ctx, e, q)
 			if err != nil {
 				t.Fatal(err)
 			}
-			initial := record(t, e, result.Name)
+			initial := sessionRecord(t, e, result.SessionID)
 			write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host","env":["TOKEN=never-display-me"]}`)
 			write(t, filepath.Join(e.Store.Home, "profiles/test/pi/new-file"), "new config")
-			before, err := e.Status(ctx, result.Name, "")
+			before, err := e.Status(ctx, result.SessionID, "")
 			if err != nil || before.Desired != environment.Recreate {
 				t.Fatal(before, err)
 			}
-			if !reflect.DeepEqual(record(t, e, result.Name).Inputs, initial.Inputs) {
+			if !reflect.DeepEqual(sessionRecord(t, e, result.SessionID).Applied.Inputs, initial.Applied.Inputs) {
 				t.Fatal("status advanced the baseline")
 			}
 			if recovery {
-				d.Forget(result.Name)
+				forgetSession(t, e, result.SessionID)
 			}
 			result, err = e.Open(ctx, q)
 			if err != nil {
@@ -47,14 +47,14 @@ func TestDriftBaselineTracksAppliedNotMerelyDesiredInputs(t *testing.T) {
 			if !reflect.DeepEqual(result.Diagnostics[0].PendingInputChanges, want) {
 				t.Fatal("status/open disagree", before.PendingInputChanges, result.Diagnostics)
 			}
-			applied := record(t, e, result.Name)
-			if !reflect.DeepEqual(applied.Inputs.Image, initial.Inputs.Image) || !reflect.DeepEqual(applied.Inputs.Container, initial.Inputs.Container) {
+			applied := sessionRecord(t, e, result.SessionID)
+			if !reflect.DeepEqual(applied.Applied.Inputs.Image, initial.Applied.Inputs.Image) || !reflect.DeepEqual(applied.Applied.Inputs.Container, initial.Applied.Inputs.Container) {
 				t.Fatal("open/recovery advanced pending creation inputs")
 			}
-			if reflect.DeepEqual(applied.Inputs.Runtime, initial.Inputs.Runtime) || applied.Applied.Runtime != applied.Inputs.Runtime.Fingerprint() {
+			if reflect.DeepEqual(applied.Applied.Inputs.Runtime, initial.Applied.Inputs.Runtime) || applied.Applied.Fingerprints.Runtime != applied.Applied.Inputs.Runtime.Fingerprint() {
 				t.Fatal("runtime baseline did not advance with synchronization")
 			}
-			after, err := e.Status(ctx, result.Name, "")
+			after, err := e.Status(ctx, result.SessionID, "")
 			if err != nil || after.Desired != environment.Recreate {
 				t.Fatal(after, err)
 			}
@@ -78,7 +78,7 @@ func TestDriftBaselineTracksAppliedNotMerelyDesiredInputs(t *testing.T) {
 			if _, err := e.Recreate(ctx, q, false); err != nil {
 				t.Fatal(err)
 			}
-			final, err := e.Status(ctx, result.Name, "")
+			final, err := e.Status(ctx, result.SessionID, "")
 			if err != nil || final.Desired != environment.NoChange || len(final.PendingInputChanges) != 0 {
 				t.Fatal("recreation did not commit baseline", final, err)
 			}
@@ -99,11 +99,11 @@ func TestDeferredOrFailedOpenDoesNotAdvanceRuntimeBaseline(t *testing.T) {
 				t.Fatal(err)
 			}
 			if running {
-				if _, err = e.Start(ctx, result.Name, ""); err != nil {
+				if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 					t.Fatal(err)
 				}
 			}
-			initial := record(t, e, result.Name)
+			initial := sessionRecord(t, e, result.SessionID)
 			write(t, filepath.Join(e.Store.Home, "profiles/test/pi/new-file"), "new config")
 			if !running {
 				d.Fail = func(args []string) error {
@@ -117,12 +117,12 @@ func TestDeferredOrFailedOpenDoesNotAdvanceRuntimeBaseline(t *testing.T) {
 			if !running && err == nil || running && err != nil {
 				t.Fatal(err)
 			}
-			stored := record(t, e, result.Name)
-			if stored.Applied.Runtime != initial.Applied.Runtime || !reflect.DeepEqual(stored.Inputs.Runtime, initial.Inputs.Runtime) {
+			stored := sessionRecord(t, e, result.SessionID)
+			if stored.Applied.Fingerprints.Runtime != initial.Applied.Fingerprints.Runtime || !reflect.DeepEqual(stored.Applied.Inputs.Runtime, initial.Applied.Inputs.Runtime) {
 				t.Fatal("uncommitted/deferred runtime baseline advanced")
 			}
 			d.Fail = nil
-			view, err := e.Status(ctx, result.Name, "")
+			view, err := e.Status(ctx, result.SessionID, "")
 			if err != nil || view.Desired != environment.RuntimeSync || len(view.PendingInputChanges) == 0 {
 				t.Fatal("pending config no longer explained", view, err)
 			}
@@ -137,9 +137,9 @@ func TestFailedRecreationPreservesImageBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial := record(t, e, result.Name)
+	initial := sessionRecord(t, e, result.SessionID)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
-	view, err := e.Status(ctx, result.Name, "")
+	view, err := e.Status(ctx, result.SessionID, "")
 	if err != nil || view.Desired != environment.RebuildAndRecreate {
 		t.Fatal(view, err)
 	}
@@ -152,15 +152,15 @@ func TestFailedRecreationPreservesImageBaseline(t *testing.T) {
 	if _, err := e.Recreate(ctx, q, false); err == nil {
 		t.Fatal("expected failure")
 	}
-	stored := record(t, e, result.Name)
-	if !reflect.DeepEqual(stored.Inputs, initial.Inputs) || stored.Applied != initial.Applied {
+	stored := sessionRecord(t, e, result.SessionID)
+	if !reflect.DeepEqual(stored.Applied.Inputs, initial.Applied.Inputs) || stored.Applied.Fingerprints != initial.Applied.Fingerprints {
 		t.Fatal("failed recreation advanced baseline")
 	}
 	d.Fail = nil
 	if _, err := e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
-	view, err = e.Status(ctx, result.Name, "")
+	view, err = e.Status(ctx, result.SessionID, "")
 	if err != nil || view.Desired != environment.NoChange || len(view.PendingInputChanges) != 0 {
 		t.Fatal(view, err)
 	}
@@ -172,7 +172,7 @@ func TestSessionRecordRequiresCompleteCurrentInputSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := record(t, e, result.Name)
+	original := sessionRecord(t, e, result.SessionID)
 	if original.Version != store.RecordVersion {
 		t.Fatal("record format not updated")
 	}
@@ -185,12 +185,12 @@ func TestSessionRecordRequiresCompleteCurrentInputSnapshot(t *testing.T) {
 		edit func(*store.Record)
 	}{
 		{"old version", func(r *store.Record) { r.Version = 1 }},
-		{"missing inputs", func(r *store.Record) { r.Inputs = environment.Inputs{} }},
-		{"changed baseline", func(r *store.Record) { r.Inputs.Container.Network = "host" }},
-		{"missing env map", func(r *store.Record) { r.Inputs.Container.Env = nil }},
-		{"bad hash", func(r *store.Record) { r.Inputs.Runtime.Assets = "invalid" }},
-		{"wrong source kind", func(r *store.Record) { r.Inputs.Image.Definition.Source = "relative/path" }},
-		{"unredacted raw env", func(r *store.Record) { r.Inputs.Container.RawArgs = []string{"--env=TOKEN=private-value"} }},
+		{"missing inputs", func(r *store.Record) { r.Applied.Inputs = environment.Inputs{} }},
+		{"changed baseline", func(r *store.Record) { r.Applied.Inputs.Container.Network = "host" }},
+		{"missing env map", func(r *store.Record) { r.Applied.Inputs.Container.Env = nil }},
+		{"bad hash", func(r *store.Record) { r.Applied.Inputs.Runtime.Assets = "invalid" }},
+		{"wrong source kind", func(r *store.Record) { r.Applied.Inputs.Image.Definition.Source = "relative/path" }},
+		{"unredacted raw env", func(r *store.Record) { r.Applied.Inputs.Container.RawArgs = []string{"--env=TOKEN=private-value"} }},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var r store.Record
@@ -198,7 +198,7 @@ func TestSessionRecordRequiresCompleteCurrentInputSnapshot(t *testing.T) {
 				t.Fatal(err)
 			}
 			tt.edit(&r)
-			err := r.Validate(r.Identity.Name)
+			err := r.Validate(r.Directory)
 			if err == nil || strings.Contains(err.Error(), "private-value") {
 				t.Fatal("accepted or exposed invalid baseline", err)
 			}

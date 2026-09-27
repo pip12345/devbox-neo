@@ -70,7 +70,7 @@ func (l *Locked) Lease(action string) (Lease, error) {
 	if err != nil {
 		return lease, err
 	}
-	dir, err := l.Dir("active")
+	dir, err := l.leaseDirectory(true)
 	if err != nil {
 		return lease, err
 	}
@@ -81,7 +81,7 @@ func (l *Locked) Release(id string) error {
 	if !idPattern.MatchString(id) {
 		return fmt.Errorf("invalid lease ID")
 	}
-	p, err := l.Path(filepath.Join("active", id+".json"))
+	p, err := l.leasePath(id + ".json")
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (l *Locked) Active() ([]Lease, error)     { return l.active(true) }
 func (l *Locked) LiveLeases() ([]Lease, error) { return l.active(false) }
 
 func (l *Locked) active(reap bool) ([]Lease, error) {
-	dir, err := l.Path("active")
+	dir, err := l.leaseDirectory(false)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func (l *Locked) active(reap bool) ([]Lease, error) {
 		if strings.HasPrefix(entry.Name(), ".write-") {
 			continue
 		}
-		p, err := l.Path(filepath.Join("active", entry.Name()))
+		p, err := l.leasePath(entry.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -156,4 +156,22 @@ func (l *Locked) RequireIdle() error {
 			commanderror.Next("Inspect active commands", "status", l.Name))
 	}
 	return nil
+}
+
+func (l *Locked) leaseDirectory(create bool) (string, error) {
+	if err := l.check(); err != nil {
+		return "", err
+	}
+	rel := filepath.Join("state/leases", l.ID)
+	if create {
+		return fsutil.Dir(l.store.Home, rel, 0700)
+	}
+	return fsutil.Path(l.store.Home, rel)
+}
+func (l *Locked) leasePath(name string) (string, error) {
+	root, err := l.leaseDirectory(false)
+	if err != nil {
+		return "", err
+	}
+	return fsutil.Path(root, name)
 }

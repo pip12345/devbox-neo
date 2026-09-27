@@ -10,7 +10,7 @@ import (
 )
 
 func (e *Engine) stopUnattached(l *store.Locked, r store.Record) error {
-	if r.ID == "" || r.ManualStart {
+	if r.ID == "" || r.Settings.ManualStart {
 		return nil
 	}
 	active, err := l.Active()
@@ -42,7 +42,7 @@ func (e *Engine) attachRun(l *store.Locked, r store.Record, action string, run f
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		lock, cleanupErr := e.Store.Lock(cleanup, r.Identity.Name)
+		lock, cleanupErr := e.Store.Lock(cleanup, r.Directory, r.ID)
 		if cleanupErr == nil {
 			defer lock.Close()
 			cleanupErr = lock.Release(lease.ID)
@@ -50,7 +50,7 @@ func (e *Engine) attachRun(l *store.Locked, r store.Record, action string, run f
 				current, touchErr := lock.Touch(r.ID, action)
 				active, aerr := lock.Active()
 				cleanupErr = errors.Join(touchErr, aerr)
-				if current.ID != "" && aerr == nil && len(active) == 0 && !current.ManualStart {
+				if current.ID != "" && aerr == nil && len(active) == 0 && !current.Settings.ManualStart {
 					live, exists, ierr := e.inspect(cleanup, current)
 					cleanupErr = errors.Join(cleanupErr, ierr)
 					if ierr == nil && exists && live.State.Running {

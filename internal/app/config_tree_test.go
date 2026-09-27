@@ -53,7 +53,7 @@ func TestOpenWarnsAndSkipsConfigSymlinks(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				live := filepath.Join(e.Store.Home, "sessions", result.Name, "harnesses/pi/stores/home")
+				live := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home")
 				if _, err := os.Lstat(filepath.Join(live, name)); !os.IsNotExist(err) {
 					t.Fatal("symlink should not be copied", err)
 				}

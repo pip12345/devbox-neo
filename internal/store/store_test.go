@@ -5,10 +5,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
-	"devbox/internal/environment"
 	"devbox/internal/fsutil"
 )
 
@@ -29,23 +29,19 @@ func TestHomeAndExternalLocks(t *testing.T) {
 	if len(entries) != 0 {
 		t.Fatal("fresh home seeded configs")
 	}
-	id, err := environment.Identify(t.TempDir(), "test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	l, err := s.Lock(ctx, id.Name)
+	l, err := s.Lock(ctx, "session-directory", strings.Repeat("a", 32))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = l.Dir("."); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.RemoveAll(filepath.Join(s.Home, "sessions", id.Name)); err != nil {
+	if err = os.RemoveAll(filepath.Join(s.Home, "sessions", "session-directory")); err != nil {
 		t.Fatal(err)
 	}
 	wait, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
 	defer cancel()
-	if _, err = s.Lock(wait, id.Name); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err = s.Lock(wait, "a-different-directory", strings.Repeat("a", 32)); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("session deletion unlinked active lock: %v", err)
 	}
 	if _, err = l.Path("../../escape"); err == nil {
@@ -61,8 +57,7 @@ func TestLeasePIDReuseAndCorruption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, _ := environment.Identify(t.TempDir(), "test")
-	l, err := s.Lock(context.Background(), id.Name)
+	l, err := s.Lock(context.Background(), "session-directory", strings.Repeat("a", 32))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +70,7 @@ func TestLeasePIDReuseAndCorruption(t *testing.T) {
 		t.Fatal("live lease ignored")
 	}
 	lease.Process.Start = "0"
-	p, _ := l.Path(filepath.Join("active", lease.ID+".json"))
+	p, _ := l.leasePath(lease.ID + ".json")
 	if err = fsutil.JSON(p, lease); err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +82,7 @@ func TestLeasePIDReuseAndCorruption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, _ = l.Path(filepath.Join("active", lease.ID+".json"))
+	p, _ = l.leasePath(lease.ID + ".json")
 	os.WriteFile(p, []byte("bad"), 0600)
 	if _, err = l.Active(); err == nil {
 		t.Fatal("corrupt lease treated as absence")

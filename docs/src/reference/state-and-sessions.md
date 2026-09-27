@@ -24,14 +24,14 @@ Paths below are relative to the selected home. Use Devbox commands to manage ses
 | `harnesses/<name>/` | User definitions and defaults |
 | `auth/<harness>/` | Managed authentication |
 | `cache/harnesses/<harness>/<store>/` | Shared caches |
-| `sessions/<container>/session.json` | Saved identity, applied settings, references, and activity |
-| `sessions/<container>/active/` | Active command records |
-| `sessions/<container>/harnesses/<harness>/stores/<store>/` | Per-session harness state |
-| `sessions/<container>/harnesses/<harness>/managed-config.json` | Managed file/key tracking |
-| `sessions/<container>/runtime/ssh/` | Temporary shared SSH connections |
+| `sessions/<directory>/session.json` | Session ID, editable `settings`, recorded `applied` runtime, and activity |
+| `state/leases/<session-id>/` | Active command records |
+| `sessions/<directory>/harnesses/<harness>/stores/<store>/` | Per-session harness state |
+| `sessions/<directory>/harnesses/<harness>/managed-config.json` | Managed file/key tracking |
+| `sessions/<directory>/runtime/ssh/` | Temporary shared SSH connections |
 | `state/installation-id` | Installation identity |
 | `state/workspaces/<workspace-key>.json` | Folder default |
-| `state/transfers/<source-container>.json` | Pending transfer |
+| `state/transfers/<source-directory>.json` | Pending transfer |
 | `state/locks/` | Installation, config, folder, and session locks |
 
 Pending transfers reserve both endpoints. Retry the reported command; do not delete their files to unblock another operation. [State architecture](../architecture/state.md) documents file schemas, keys, and locking.
@@ -73,9 +73,9 @@ These are Devbox-managed runtime paths. Shared SSH data is transient, not a cred
 
 Local names are 1–64 ASCII characters: letters, digits, `_`, and `-`, starting with a letter or digit. Case matters: `work` and `Work` differ.
 
-Full names have the form `devbox-<folder>-<12-hex-hash>.<local-name>`. Use the value reported by `list --wide` rather than constructing it yourself. Configs do not determine session names.
+Exact session targets are immutable 32-hex IDs, shown by `list --wide`. Readable directory and Docker names are independently allocated hints, not identity; their hashes do not track the current workspace. Editing settings does not rename either resource.
 
-Folder-only commands require an explicit default. Defaults also identify the saved session, so deleting and reusing a name does not inherit an old selection. Docker names are lookup keys; Devbox verifies ownership labels before changing resources.
+Folder-only commands require an explicit default ID. Docker operations verify installation/session ownership and the recorded container association, not name equality.
 
 ## Recovery
 

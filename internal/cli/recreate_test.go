@@ -46,7 +46,7 @@ func TestRecreateUsesRecordedExplicitSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, err := state.Read(ctx, made.Name)
+	before, err := state.Find(ctx, made.SessionID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,13 +58,13 @@ func TestRecreateUsesRecordedExplicitSources(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{made.Name})
+	cmd.SetArgs([]string{made.SessionID})
 	if err = cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}
-	after, err := state.Read(ctx, made.Name)
-	if err != nil || after.ID != before.ID || after.Identity != before.Identity || after.Sources[1].Path != projectDir || len(after.Creation.Ports) != 1 || after.Creation.Ports[0] != "8080:80" {
-		t.Fatal(after.Identity, after.Sources, err)
+	after, err := state.Find(ctx, made.SessionID, nil)
+	if err != nil || after.ID != before.ID || after.Settings.Binding != before.Settings.Binding || after.Settings.Sources[1].Path != projectDir || len(after.Applied.Creation.Ports) != 1 || after.Applied.Creation.Ports[0] != "8080:80" {
+		t.Fatal(after.Settings.Binding, after.Settings.Sources, err)
 	}
 }
 

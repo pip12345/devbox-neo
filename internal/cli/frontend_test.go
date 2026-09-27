@@ -13,7 +13,6 @@ import (
 
 	"devbox/internal/app"
 	"devbox/internal/cliui"
-	"devbox/internal/environment"
 	"devbox/internal/resource"
 	"github.com/spf13/cobra"
 )
@@ -32,12 +31,13 @@ func frontendFixture(t *testing.T, input io.Reader) (*frontend, *bytes.Buffer, a
 }
 func TestConfigBrowserCreatesWithoutDockerOrSelectingSession(t *testing.T) {
 	f, out, _, name := frontendFixture(t, strings.NewReader("2\n1\nfrom-browser\n4\n0\n"))
+	savedPath := filepath.Join(f.s.Home, "sessions", sessionRecord(t, f.e, name).Directory, "session.json")
 	f.e = nil
 	f.engine = func(*cobra.Command) (*app.Engine, error) {
 		t.Fatal("config browser initialized Docker engine")
 		return nil, nil
 	}
-	before, err := os.ReadFile(filepath.Join(f.s.Home, "sessions", name, "session.json"))
+	before, err := os.ReadFile(savedPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestConfigBrowserCreatesWithoutDockerOrSelectingSession(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(f.s.Home, "configs", "from-browser", "config.json")); err != nil {
 		t.Fatal(err, out.String())
 	}
-	after, err := os.ReadFile(filepath.Join(f.s.Home, "sessions", name, "session.json"))
+	after, err := os.ReadFile(savedPath)
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatal("independent config creation changed a session", err)
 	}
@@ -59,16 +59,16 @@ func TestSessionBrowserDispatchesRealLifetimeOperations(t *testing.T) {
 		if step != 1 && step != 3 {
 			return
 		}
-		r, err := f.e.Store.Read(context.Background(), name)
-		if err != nil || r.ManualStart != (step == 1) {
-			t.Fatal("UI did not persist actual lifetime intent", step, r.ManualStart, err)
+		r, err := f.e.Store.Find(context.Background(), name, nil)
+		if err != nil || r.Settings.ManualStart != (step == 1) {
+			t.Fatal("UI did not persist actual lifetime intent", step, r.Settings.ManualStart, err)
 		}
 	}
-	if err := f.session(app.View{Name: name}); err != nil {
+	if err := f.session(app.View{Target: name}); err != nil {
 		t.Fatal(err, out.String())
 	}
-	r, err := f.e.Store.Read(context.Background(), name)
-	if err != nil || r.ManualStart || r.Action != "stop" {
+	r, err := f.e.Store.Find(context.Background(), name, nil)
+	if err != nil || r.Settings.ManualStart || r.Action != "stop" {
 		t.Fatal(r, err)
 	}
 }
@@ -90,7 +90,7 @@ func TestFrontendCopyAndMoveUseDurableTransfer(t *testing.T) {
 		}
 		input += "4\n0\n5\ny\n"
 		f, out, q, name := frontendFixture(t, strings.NewReader(input))
-		before, err := f.e.Store.Read(context.Background(), name)
+		before, err := f.e.Store.Find(context.Background(), name, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -98,15 +98,14 @@ func TestFrontendCopyAndMoveUseDurableTransfer(t *testing.T) {
 		if err != nil || moved != move {
 			t.Fatal(moved, err, out.String())
 		}
-		next := environment.ContainerName(q.Workspace, "Second")
-		record, err := f.e.Store.Read(context.Background(), next)
+		record, err := f.e.Locate(context.Background(), q.Workspace, "Second")
 		if err != nil {
 			t.Fatal(err, out.String())
 		}
 		if (record.ID == before.ID) != move {
 			t.Fatal("transfer lineage changed", record.ID, before.ID)
 		}
-		_, err = f.e.Store.Read(context.Background(), name)
+		_, err = f.e.Store.Read(context.Background(), before.Directory)
 		if os.IsNotExist(err) != move {
 			t.Fatal("source retention changed", move, err)
 		}
@@ -114,14 +113,14 @@ func TestFrontendCopyAndMoveUseDurableTransfer(t *testing.T) {
 }
 func TestFrontendDeletionRetainsHistoryWhenDeclined(t *testing.T) {
 	f, out, _, name := frontendFixture(t, strings.NewReader("1\n2\n4\ny\nn\n"))
-	before, err := f.e.Store.Read(context.Background(), name)
+	before, err := f.e.Store.Find(context.Background(), name, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := f.delete([]string{name}); err != nil {
 		t.Fatal(err, out.String())
 	}
-	after, err := f.e.Store.Read(context.Background(), name)
+	after, err := f.e.Store.Find(context.Background(), name, nil)
 	if err != nil || before.ID != after.ID {
 		t.Fatal("declined history deletion removed state", err)
 	}

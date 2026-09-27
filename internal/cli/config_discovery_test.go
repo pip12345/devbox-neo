@@ -44,7 +44,8 @@ func TestLocalConfigDiscoveryDoesNotSelectOrChangeSession(t *testing.T) {
 	completionFile(t, launch, "config.json", `{"version":1,"harness":"pi"}`)
 	completionFile(t, launch, ".devbox/config.json", `{"version":1}`)
 	f, out, q, name := frontendFixture(t, strings.NewReader("0\n"))
-	before, err := os.ReadFile(filepath.Join(f.s.Home, "sessions", name, "session.json"))
+	savedPath := filepath.Join(f.s.Home, "sessions", sessionRecord(t, f.e, name).Directory, "session.json")
+	before, err := os.ReadFile(savedPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +64,7 @@ func TestLocalConfigDiscoveryDoesNotSelectOrChangeSession(t *testing.T) {
 	if _, selected, err := p.choose(nil, "Back"); err != nil || selected {
 		t.Fatal("discovery selected a config", selected, err)
 	}
-	after, err := os.ReadFile(filepath.Join(f.s.Home, "sessions", name, "session.json"))
+	after, err := os.ReadFile(savedPath)
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatal("discovery changed saved sources", err)
 	}

@@ -42,16 +42,16 @@ func TestBuiltinAndCustomHarnessesShareLifecycleAndStorage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			first := record(t, e, result.Name)
+			first := sessionRecord(t, e, result.SessionID)
 			markers := []string{}
-			for _, declared := range first.Stores {
+			for _, declared := range first.Applied.Stores {
 				source := ""
-				for _, mount := range first.Creation.Mounts {
+				for _, mount := range first.Applied.Creation.Mounts {
 					if mount.Target == declared.Target {
 						source = mount.Source
 					}
 				}
-				expected := filepath.Join(e.Store.Home, "sessions", result.Name, "harnesses", name, "stores", declared.Name)
+				expected := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses", name, "stores", declared.Name)
 				if declared.Scope == "cache" {
 					expected = filepath.Join(e.Store.Home, "cache/harnesses", name, declared.Name)
 				}
@@ -62,10 +62,10 @@ func TestBuiltinAndCustomHarnessesShareLifecycleAndStorage(t *testing.T) {
 				write(t, marker, "preserved")
 				markers = append(markers, marker)
 			}
-			for _, auth := range first.Auth {
+			for _, auth := range first.Applied.Auth {
 				source := filepath.Join(e.Store.Home, "auth", name, auth.Source)
 				found := false
-				for _, mount := range first.Creation.Mounts {
+				for _, mount := range first.Applied.Creation.Mounts {
 					if mount.Target == auth.Target {
 						found = mount.Source == source
 					}
@@ -80,11 +80,11 @@ func TestBuiltinAndCustomHarnessesShareLifecycleAndStorage(t *testing.T) {
 				markers = append(markers, source)
 			}
 			for path, file := range effective.Defaults {
-				source := filepath.Join(e.Store.Home, "sessions", result.Name, "harnesses", name, "stores", first.Config.Store, first.Config.Path, path)
+				source := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses", name, "stores", first.Applied.Config.Store, first.Applied.Config.Path, path)
 				if _, err := os.Stat(source); err != nil {
 					t.Fatal("managed config did not use declared store/subpath", err)
 				}
-				if len(first.Merge) == 0 {
+				if len(first.Applied.Merge) == 0 {
 					b, _ := os.ReadFile(source)
 					if string(b) != string(file.Data) {
 						t.Fatal("ordinary config was changed")
@@ -100,8 +100,8 @@ func TestBuiltinAndCustomHarnessesShareLifecycleAndStorage(t *testing.T) {
 			if _, err = e.Recreate(ctx, q, false); err != nil {
 				t.Fatal(err)
 			}
-			after := record(t, e, result.Name)
-			if after.ID != first.ID || after.SetupContainer == first.SetupContainer {
+			after := sessionRecord(t, e, result.SessionID)
+			if after.ID != first.ID || after.Applied.SetupContainer == first.Applied.SetupContainer {
 				t.Fatal("wrong replacement identity")
 			}
 			for _, marker := range markers {
@@ -110,8 +110,8 @@ func TestBuiltinAndCustomHarnessesShareLifecycleAndStorage(t *testing.T) {
 					t.Fatal("state/auth/cache lost", err)
 				}
 			}
-			d.Forget(result.Name)
-			if _, err = e.Start(ctx, result.Name, ""); err != nil {
+			forgetSession(t, e, result.SessionID)
+			if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 				t.Fatal("recorded recovery failed", err)
 			}
 		})

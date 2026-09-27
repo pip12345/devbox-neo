@@ -33,8 +33,8 @@ func TestCreationRecordParity(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				r := record(t, e, result.Name)
-				r.ManualStart = mode == "recreate-manual"
+				r := sessionRecord(t, e, result.SessionID)
+				r.Settings.ManualStart = mode == "recreate-manual"
 				previous = &r
 			}
 			seed := CreationIdentity{}
@@ -45,7 +45,11 @@ func TestCreationRecordParity(t *testing.T) {
 			if mode == "prepared" || previous != nil {
 				seed.Activity, seed.Action, seed.ManualStart = fixed.Add(time.Hour), "open", true
 			}
-			l, err := e.Store.Lock(ctx, s.Identity.Name)
+			directory, lockedID := "prepared-directory", strings.Repeat("f", 32)
+			if previous != nil {
+				directory, lockedID = previous.Directory, previous.ID
+			}
+			l, err := e.Store.Lock(ctx, directory, lockedID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -59,7 +63,7 @@ func TestCreationRecordParity(t *testing.T) {
 			id, created, activity, action, manual := r.ID, r.Created, r.Activity, "create", false
 			switch {
 			case previous != nil:
-				id, created, activity, action, manual = previous.ID, previous.Created, previous.Activity, "recreate", previous.ManualStart
+				id, created, activity, action, manual = previous.ID, previous.Created, previous.Activity, "recreate", previous.Settings.ManualStart
 			case mode == "prepared":
 				id, created, activity, action, manual = seed.ID, seed.Created, seed.Activity, seed.Action, seed.ManualStart
 			case mode == "prepared-defaults":
@@ -71,7 +75,7 @@ func TestCreationRecordParity(t *testing.T) {
 			if (mode == "create" || mode == "prepared-defaults") && (r.Activity.Before(start) || r.Activity.After(end)) {
 				t.Fatal("default activity not set at creation", r.Activity)
 			}
-			root := filepath.Join(e.Store.Home, "sessions", s.Identity.Name)
+			root := filepath.Join(e.Store.Home, "sessions", directory)
 			mounts := []docker.Mount{{Source: s.Identity.Workspace, Target: "/workspace"}, {Source: filepath.Join(root, sshshare.RelativeRoot), Target: sshshare.Mount}}
 			d := s.Harness.Definition
 			for _, st := range d.Stores {
@@ -86,15 +90,14 @@ func TestCreationRecordParity(t *testing.T) {
 			}
 			mounts = append(mounts, s.ExtraMounts...)
 			want := store.Record{
-				Version: store.RecordVersion, ID: id, Identity: s.Identity, Sources: s.Sources,
-				Created: created, Activity: activity, Action: action, ManualStart: manual,
-				Applied: s.FingerprintsFor(c.Image), Inputs: s.Inputs,
-				ImageTag: docker.Namespace + "/session:" + id, ImageID: c.Image,
-				Creation:   docker.CreatePlan{Name: s.Identity.Name, Image: c.Image, Network: s.Settings.Network, Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports, RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata},
-				EnvSources: s.EnvSources, Definition: store.DefinitionInput{Name: d.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash},
-				Stores: d.Stores, Auth: d.Auth, Config: d.Config, Merge: d.Merge, Prepare: d.Prepare,
-				Launch: store.Launch{Binary: d.Binary, Args: append(append([]string(nil), d.Launch.Args...), s.Settings.HarnessArgs...), Continue: d.Launch.Continue, Shell: s.Settings.Shell},
-				Setup:  s.Setup, SetupContainer: c.ID, Ownership: 1, ManifestVersion: 1,
+				Version: store.RecordVersion, ID: id, Directory: directory, Created: created, Activity: activity, Action: action, Settings: store.Settings{Binding: s.Identity.Binding, Sources: s.Sources,
+					ManualStart: manual}, Applied: store.AppliedState{Fingerprints: s.FingerprintsFor(c.Image), Inputs: s.Inputs,
+					ImageTag: docker.Namespace + "/session:" + id, ImageID: c.Image,
+					Creation:   docker.CreatePlan{Name: strings.TrimPrefix(c.Name, "/"), Image: c.Image, Network: s.Settings.Network, Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports, RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata},
+					EnvSources: s.EnvSources, Definition: store.DefinitionInput{Name: d.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash},
+					Stores: d.Stores, Auth: d.Auth, Config: d.Config, Merge: d.Merge, Prepare: d.Prepare,
+					Launch: store.Launch{Binary: d.Binary, Args: append(append([]string(nil), d.Launch.Args...), s.Settings.HarnessArgs...), Continue: d.Launch.Continue, Shell: s.Settings.Shell},
+					Setup:  s.Setup, SetupContainer: c.ID, Ownership: 1, ManifestVersion: 1},
 			}
 			if !reflect.DeepEqual(r, want) {
 				t.Fatalf("returned record changed:\ngot  %#v\nwant %#v", r, want)

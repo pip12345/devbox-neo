@@ -15,11 +15,9 @@ import (
 	"devbox/internal/fsutil"
 )
 
-// DefaultSession pins durable identity as well as the lookup name. Reusing a
-// deleted session's local name must not silently inherit its default selection.
+// DefaultSession selects durable identity, independently of names and storage.
 type DefaultSession struct {
-	Name string `json:"name"`
-	ID   string `json:"id"`
+	ID string `json:"id"`
 }
 
 type workspaceState struct {
@@ -95,7 +93,7 @@ func (l *workspaceLock) load() (*workspaceState, error) {
 	if err = config.Decode(data, &state); err == nil {
 		var fields map[string]json.RawMessage
 		err = json.Unmarshal(data, &fields)
-		if err == nil && (state.Version != 1 || state.Workspace != l.workspace || fields["default_session"] == nil) {
+		if err == nil && (state.Version != 2 || state.Workspace != l.workspace || fields["default_session"] == nil) {
 			err = fmt.Errorf("workspace state does not match its version or workspace identity")
 		}
 		if err == nil && state.DefaultSession != nil {
@@ -109,7 +107,7 @@ func (l *workspaceLock) load() (*workspaceState, error) {
 }
 
 func (d DefaultSession) validate() error {
-	if !validName(d.Name) || !idPattern.MatchString(d.ID) {
+	if !idPattern.MatchString(d.ID) {
 		return fmt.Errorf("invalid default session identity")
 	}
 	return nil
@@ -129,7 +127,7 @@ func (l *workspaceLock) set(selected *DefaultSession) error {
 		if selected == nil {
 			return nil
 		}
-		state = &workspaceState{Version: 1, Workspace: l.workspace}
+		state = &workspaceState{Version: 2, Workspace: l.workspace}
 	}
 	state.DefaultSession = selected
 	if _, err := fsutil.Dir(l.store.Home, "state/workspaces", 0700); err != nil {
@@ -176,12 +174,12 @@ func (l *Locked) SelectDefault(expectedID string) error {
 	if record.ID != expectedID {
 		return commanderror.New("session_changed", "Session identity changed; select it again.", l.Name, nil)
 	}
-	lock, err := l.store.lockWorkspace(l.ctx, record.Identity.Workspace)
+	lock, err := l.store.lockWorkspace(l.ctx, record.Settings.Workspace)
 	if err != nil {
 		return err
 	}
 	defer lock.close()
-	return lock.set(&DefaultSession{Name: l.Name, ID: record.ID})
+	return lock.set(&DefaultSession{ID: record.ID})
 }
 
 // ClearMatchingDefault is part of saved-state removal, not container removal.
@@ -191,7 +189,10 @@ func (l *Locked) ClearMatchingDefault(ctx context.Context, workspace, id string)
 	if err := l.check(); err != nil {
 		return err
 	}
-	selected := DefaultSession{Name: l.Name, ID: id}
+	if id != l.ID {
+		return fmt.Errorf("default cleanup identity differs from the operation lock")
+	}
+	selected := DefaultSession{ID: id}
 	if err := selected.validate(); err != nil {
 		return err
 	}

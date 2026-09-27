@@ -79,8 +79,7 @@ func CompareInputs(before, after Inputs) Report {
 
 	d.scope = ContainerScope
 	c, n := before.Container, after.Container
-	d.scalar("workspace", c.Identity.Workspace, n.Identity.Workspace)
-	d.scalar("local_name", c.Identity.LocalName, n.Identity.LocalName)
+	d.scalar("workspace", c.Workspace, n.Workspace)
 	d.scalar("network", c.Network, n.Network)
 	d.list("harness_stores", publicEntries(c.Stores), publicEntries(n.Stores))
 	d.list("auth_mounts", publicEntries(c.Auth), publicEntries(n.Auth))

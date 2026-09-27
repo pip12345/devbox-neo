@@ -42,7 +42,7 @@ The destination name must be unused. Neither copy nor move selects a destination
 
 If interrupted, fix the reported problem and retry the same transfer. Leave pending state in place so Devbox can resume.
 
-For a new name in the same folder, choose **Rename session**. This uses Move: **the container is rebuilt, container-local changes are lost, and a matching folder default is cleared**. See [CLI syntax](../reference/commands.md#transfers).
+Choose **Rename session** to change its label without rebuilding or moving history. To point the same session at a moved project, choose **Change workspace**, then **Recreate**. The workspace edit clears a matching old-folder default; it does not move project files. See [CLI syntax](../reference/commands.md).
 
 ## Delete
 

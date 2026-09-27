@@ -16,7 +16,7 @@ func TestPreparedCreationCommitsIdentityAndActivityWithoutOverwriting(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	l, err := e.Store.Lock(ctx, spec.Identity.Name)
+	l, err := e.Store.Lock(ctx, "prepared-directory", strings.Repeat("f", 32))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestPreparedCreationCommitsIdentityAndActivityWithoutOverwriting(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.ID != seed.ID || saved.Applied != spec.FingerprintsFor(saved.ImageID) {
+	if saved.ID != seed.ID || saved.Applied.Fingerprints != spec.FingerprintsFor(saved.Applied.ImageID) {
 		t.Fatal("not a complete ordinary record")
 	}
 	history, err := os.ReadFile(filepath.Join(root, "history.jsonl"))
@@ -60,7 +60,7 @@ func TestPreparedCreationRequiresValidIdentityAndHeldLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l, err := e.Store.Lock(ctx, spec.Identity.Name)
+	l, err := e.Store.Lock(ctx, "prepared-directory", strings.Repeat("f", 32))
 	if err != nil {
 		t.Fatal(err)
 	}

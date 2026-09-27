@@ -66,14 +66,14 @@ func TestDockerSSHMastersThroughProxyJump(t *testing.T) {
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(context.Background(), time.Minute)
 		defer stop()
-		if _, err := e.Delete(cleanup, DeleteOptions{Selection: Selection{Targets: []string{result.Name}}, Scope: DeleteSession}); err != nil {
+		if _, err := e.Delete(cleanup, DeleteOptions{Selection: Selection{Targets: []string{result.SessionID}}, Scope: DeleteSession}); err != nil {
 			t.Error(err)
 		}
 	})
-	if _, err = e.Start(ctx, result.Name, ""); err != nil {
+	if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
-	r := record(t, e, result.Name)
+	r := sessionRecord(t, e, result.SessionID)
 	c, _, err := e.inspect(ctx, r)
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +152,7 @@ chmod 600 "$HOME/.ssh/config"`
 			}()
 			go func() {
 				defer close(stopped)
-				done <- e.SSH(connectionCtx, result.Name, "", "target", SSHOptions{HostMaster: hostMaster, Connected: func(_, alias string) { ready <- alias }})
+				done <- e.SSH(connectionCtx, result.SessionID, "", "target", SSHOptions{HostMaster: hostMaster, Connected: func(_, alias string) { ready <- alias }})
 			}()
 			var alias string
 			select {
@@ -164,7 +164,7 @@ chmod 600 "$HOME/.ssh/config"`
 			}
 			// Exec refreshes /devbox assets while the socket is live: it must not chown
 			// or chmod the socket mount while installing documentation.
-			if err := e.Exec(ctx, result.Name, "", []string{"ssh", "-F", "/devbox/ssh/config", alias, "printf ssh-fixture-ok"}, false); err != nil {
+			if err := e.Exec(ctx, result.SessionID, "", []string{"ssh", "-F", "/devbox/ssh/config", alias, "printf ssh-fixture-ok"}, false); err != nil {
 				t.Fatalf("shared command: %v\n%s", err, output.String())
 			}
 			if !strings.Contains(output.String(), "ssh-fixture-ok") {

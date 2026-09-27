@@ -102,6 +102,9 @@ func (d *Daemon) run(a []string) (string, error) {
 						}
 						match = match && re.MatchString(c.Name)
 					}
+					if id, ok := strings.CutPrefix(filter, "id="); ok {
+						match = match && strings.HasPrefix(c.ID, id)
+					}
 					if label, ok := strings.CutPrefix(filter, "label="); ok {
 						key, value, _ := strings.Cut(label, "=")
 						match = match && c.Config.Labels[key] == value

@@ -23,13 +23,13 @@ Read its architecture page and nearby tests. Keep behavior with its existing own
 | Terminal UI and cancellation | `docs/src/architecture/interactive.md` |
 | SSH sharing | `docs/src/architecture/ssh.md` |
 
-Approved design decisions and acceptance history live in `docs/dev/`. The named-session/config contract is `generic-config-alternative.md`; the importer follows `migration-plan.md`.
+Design history lives in `docs/dev/`; current session contracts are in the architecture pages. The importer follows `migration-plan.md`.
 
 ## Preserve these boundaries
 
 - Keep behavior explicit and predictable. Discovery and suggestions inform user choices; they do not authorize changes. Perform only the requested action and its clearly communicated consequences, without hidden selections, mutations, or extra operations. Make non-obvious effects clear before the user commits; do not add redundant prompts for already explicit choices.
 
-- Names locate resources; installation/ownership labels authorize changes. Mutations use external locks. Missing state is not corrupt state.
+- Session IDs identify sessions; readable storage and Docker names are independent hints. Installation/session ownership and recorded instances authorize changes. Mutations use external locks. Missing state is not corrupt state.
 - Creation is explicit and leaves a stopped session. Never choose a folder default or create a session implicitly.
 - Config references are explicit and ordered. Desired config is separate from applied state; execution uses captured inputs, not another config read.
 - Harness behavior belongs in definitions, not harness-name branches. Managed files replace their owned content, never unrelated history.

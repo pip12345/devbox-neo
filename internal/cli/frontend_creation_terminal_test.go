@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"devbox/internal/app"
-	"devbox/internal/environment"
 	"devbox/internal/resource"
 	"github.com/spf13/cobra"
 )
@@ -52,19 +51,23 @@ func TestNativeFirstCreationAndSessionDefaultMenu(t *testing.T) {
 	p.wait("Press Enter")
 	p.send("\r")
 	p.wait("Session · First")
-	name := environment.ContainerName(q.Workspace, "First")
+	created, err := e.Locate(context.Background(), q.Workspace, "First")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := created.ID
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
 	if err != nil || selected != nil {
 		t.Fatal("creation selected a default", selected, err)
 	}
 	report, err := e.List(context.Background(), "")
-	if err != nil || len(report.Sessions) != 1 || report.Sessions[0].Name != name || report.Sessions[0].Running {
+	if err != nil || len(report.Sessions) != 1 || report.Sessions[0].Target != name || report.Sessions[0].Running {
 		t.Fatal(report, err)
 	}
 	p.send("/Make folder\r\r")
 	p.wait("Clear folder default")
 	selected, err = e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected == nil || selected.Name != name {
+	if err != nil || selected == nil || selected.ID != name {
 		t.Fatal("session menu did not set default", selected, err)
 	}
 	p.send("\r")

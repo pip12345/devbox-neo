@@ -16,12 +16,12 @@ import (
 func TestListDetailsAndSorting(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	views := []app.View{
-		{Name: "b", Exists: true, SessionID: "api", LocalName: "basic", Harness: "pi", Workspace: "/work/api", LastActivity: now.Add(-2 * time.Hour), LastAction: "open", CreatedAt: now.Add(-24 * time.Hour)},
-		{Name: "a", Exists: true, Running: true, SessionID: "project", Harness: "opencode", Workspace: "/work/ui", LastActivity: now},
-		{Name: "unknown", Exists: true, Error: "no durable record", Pending: &store.Reservation{Mode: "clone", Phase: "prepare", Source: "a", Destination: "b"}},
+		{Target: "b", Exists: true, SessionID: "api", LocalName: "basic", Harness: "pi", Workspace: "/work/api", LastActivity: now.Add(-2 * time.Hour), LastAction: "open", CreatedAt: now.Add(-24 * time.Hour)},
+		{Target: "a", Exists: true, Running: true, SessionID: "project", Harness: "opencode", Workspace: "/work/ui", LastActivity: now},
+		{Target: "unknown", Exists: true, Error: "no durable record", Pending: &store.Reservation{Mode: "clone", Phase: "prepare", Source: "a", Destination: "b"}},
 	}
 	sortViews(views, "last-active")
-	if views[0].Name != "a" || views[1].Name != "b" || views[2].Name != "unknown" {
+	if views[0].Target != "a" || views[1].Target != "b" || views[2].Target != "unknown" {
 		t.Fatal("activity sort must put newest first and unknown last", views)
 	}
 	var out bytes.Buffer
@@ -40,22 +40,22 @@ func TestListDetailsAndSorting(t *testing.T) {
 	if err := printSessionList(&out, views, true, now); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"HARNESS", "opencode", "LAST ACTION", "CREATED", "FULL NAME", "2026-09-01T10:00:00Z", "2026-08-31T12:00:00Z", "open"} {
+	for _, want := range []string{"HARNESS", "opencode", "LAST ACTION", "CREATED", "SESSION ID", "2026-09-01T10:00:00Z", "2026-08-31T12:00:00Z", "open"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing wide detail %q: %s", want, out.String())
 		}
 	}
 	views[0].LastActivity = views[1].LastActivity
 	sortViews(views, "last-active")
-	if views[0].Name != "a" {
+	if views[0].Target != "a" {
 		t.Fatal("equal activity must use name as tie breaker")
 	}
 	sortViews(views, "name")
-	if views[0].Name != "a" {
+	if views[0].Target != "a" {
 		t.Fatal("name ordering changed")
 	}
 	sortViews(views, "folder")
-	if views[0].Name != "unknown" || views[1].Name != "b" || views[2].Name != "a" {
+	if views[0].Target != "unknown" || views[1].Target != "b" || views[2].Target != "a" {
 		t.Fatal("folder sort must put unknown paths first and sort names within each folder", views)
 	}
 }
@@ -94,10 +94,10 @@ func TestListLifetimeFollowsExplicitStartAndStop(t *testing.T) {
 func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	views := []app.View{
-		{Name: "recent", SessionID: "project", Harness: "pi", Workspace: "/work/project", LastActivity: now},
-		{Name: "older", SessionID: "older-id", ManualStart: true, LocalName: "basic", Harness: "opencode", Exists: true, Workspace: "/work/project", LastActivity: now.Add(-2 * time.Hour)},
-		{Name: "separate", Workspace: "/work/api"},
-		{Name: "broken", Error: "corrupt record", Pending: &store.Reservation{Mode: "relocate", Phase: "prepare", Source: "older", Destination: "broken"}},
+		{Target: "recent", SessionID: "project", Harness: "pi", Workspace: "/work/project", LastActivity: now},
+		{Target: "older", SessionID: "older-id", ManualStart: true, LocalName: "basic", Harness: "opencode", Exists: true, Workspace: "/work/project", LastActivity: now.Add(-2 * time.Hour)},
+		{Target: "separate", Workspace: "/work/api"},
+		{Target: "broken", Error: "corrupt record", Pending: &store.Reservation{Mode: "relocate", Phase: "prepare", Source: "older", Destination: "broken"}},
 	}
 	sortViews(views, "last-active")
 	var out bytes.Buffer
@@ -128,8 +128,8 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 
 func TestListUsesLocalNamesAndWideIncludesFullNames(t *testing.T) {
 	views := []app.View{
-		{Name: "devbox-alpha-111111111111.work", LocalName: "work", Workspace: "/projects/alpha"},
-		{Name: "devbox-beta-222222222222.work", LocalName: "work", Workspace: "/projects/beta"},
+		{Target: "devbox-alpha-111111111111.work", SessionID: "session-alpha", ContainerName: "container-alpha", LocalName: "work", Workspace: "/projects/alpha"},
+		{Target: "devbox-beta-222222222222.work", SessionID: "session-beta", ContainerName: "container-beta", LocalName: "work", Workspace: "/projects/beta"},
 	}
 	for _, local := range []bool{false, true} {
 		for _, wide := range []bool{false, true} {
@@ -144,12 +144,12 @@ func TestListUsesLocalNamesAndWideIncludesFullNames(t *testing.T) {
 				t.Fatal(err)
 			}
 			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-			if strings.Contains(lines[0], "FULL NAME") != wide || strings.Contains(lines[0], "FOLDER") == local {
+			if strings.Contains(lines[0], "SESSION ID") != wide || strings.Contains(lines[0], "FOLDER") == local {
 				t.Fatal("wrong columns", out.String())
 			}
 			for i, view := range rows {
 				fields := strings.Fields(lines[i+1])
-				if fields[nameColumn] != view.LocalName || strings.Contains(lines[i+1], view.Name) != wide {
+				if fields[nameColumn] != view.LocalName || strings.Contains(lines[i+1], view.SessionID) != wide {
 					t.Fatal("full name replaced the local name or leaked into the compact row", out.String())
 				}
 				if !local && fields[0] != view.Workspace {
@@ -197,7 +197,7 @@ func TestListNamePresentationDoesNotChangeJSONOrStatus(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if len(report.Sessions) != 1 || report.Sessions[0].Name != fullName || report.Sessions[0].LocalName != q.LocalName {
+	if len(report.Sessions) != 1 || report.Sessions[0].SessionID != fullName || report.Sessions[0].LocalName != q.LocalName {
 		t.Fatal("list JSON lost exact identity", out.String())
 	}
 	out.Reset()
@@ -222,7 +222,7 @@ func TestListTimesAndUnsafeCells(t *testing.T) {
 			t.Fatalf("got %s, want %s", got, tt.want)
 		}
 	}
-	views := []app.View{{Name: "full\x1b[31m", LocalName: "local\nforged", Harness: "pi\nforged", Workspace: "/work/\nforged\t\x1b[31m"}}
+	views := []app.View{{Target: "full\x1b[31m", LocalName: "local\nforged", Harness: "pi\nforged", Workspace: "/work/\nforged\t\x1b[31m"}}
 	var out bytes.Buffer
 	if err := printSessionList(&out, views, true, now); err != nil {
 		t.Fatal(err)

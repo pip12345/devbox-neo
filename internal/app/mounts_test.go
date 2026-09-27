@@ -34,9 +34,9 @@ func TestNestedMountParentsUseBackingSourcesAndRestoreMissingParents(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := record(t, e, opened.Name)
+	r := sessionRecord(t, e, opened.SessionID)
 	roots := map[string]string{}
-	for _, m := range r.Creation.Mounts {
+	for _, m := range r.Applied.Creation.Mounts {
 		roots[m.Target] = m.Source
 	}
 	state := roots[d.Stores[0].Target]
@@ -70,7 +70,7 @@ func TestNestedMountParentsUseBackingSourcesAndRestoreMissingParents(t *testing.
 		}
 		return nil
 	}
-	if _, err = e.Start(ctx, opened.Name, ""); err != nil {
+	if _, err = e.Start(ctx, opened.SessionID, ""); err != nil {
 		t.Fatal("recorded start did not restore parents", err)
 	}
 	info, err := os.Stat(marker)
@@ -93,8 +93,8 @@ func TestMountParentPreparationRejectsMissingRootsAndSymlinks(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			r := record(t, e, opened.Name)
-			state := filepath.Join(e.Store.Home, "sessions", opened.Name, "harnesses/third/stores/state")
+			r := sessionRecord(t, e, opened.SessionID)
+			state := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, opened.SessionID).Directory, "harnesses/third/stores/state")
 			outside := t.TempDir()
 			if kind == "missing-root" {
 				err = os.RemoveAll(state)
@@ -108,8 +108,8 @@ func TestMountParentPreparationRejectsMissingRootsAndSymlinks(t *testing.T) {
 				t.Fatal(err)
 			}
 			before := count(daemon, "start")
-			if _, err = e.Start(ctx, opened.Name, ""); err == nil {
-				t.Fatal("unsafe parent accepted", r.Identity.Name)
+			if _, err = e.Start(ctx, opened.SessionID, ""); err == nil {
+				t.Fatal("unsafe parent accepted", r.Directory)
 			}
 			if count(daemon, "start") != before {
 				t.Fatal("Docker started before parent validation")

@@ -50,7 +50,7 @@ func sshInteraction(ctx context.Context, input *os.File, out io.Writer, e *app.E
 }
 func sshCommand(factory engineFactory, localName *string) *cobra.Command {
 	var hostMaster bool
-	cmd := &cobra.Command{Use: "ssh <folder|session> <destination>", Short: "Share a user-authenticated SSH connection with an environment", Long: "Run a foreground SSH master inside the environment. Authenticate in this terminal, then let container processes reuse /devbox/ssh/config. Keep the terminal open; Ctrl-C disconnects. SSH configuration, including keys, ProxyJump, agent forwarding and X11 forwarding, comes from where the master runs. No keys or host SSH configuration are copied.", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "ssh <folder|session-id> <destination>", Short: "Share a user-authenticated SSH connection with an environment", Long: "Run a foreground SSH master inside the environment. Authenticate in this terminal, then let container processes reuse /devbox/ssh/config. Keep the terminal open; Ctrl-C disconnects. SSH configuration, including keys, ProxyJump, agent forwarding and X11 forwarding, comes from where the master runs. No keys or host SSH configuration are copied.", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		input, err := prepareSSH(cmd.InOrStdin(), cmd.ErrOrStderr(), args[1], hostMaster)
 		if err != nil {
 			return err

@@ -43,9 +43,9 @@ func (s Service) ConfigUsers(ctx context.Context, owner Owner) ([]ConfigUse, err
 			issues = errors.Join(issues, fmt.Errorf("session %s has no readable record", entry.Name))
 			continue
 		}
-		user := ConfigUse{Session: entry.Name}
-		for _, reference := range entry.Record.Sources {
-			source, err := reference.Expand(entry.Record.Identity.Workspace)
+		user := ConfigUse{Session: entry.Record.ID}
+		for _, reference := range entry.Record.Settings.Sources {
+			source, err := reference.Expand(entry.Record.Settings.Workspace)
 			if err != nil {
 				issues = errors.Join(issues, fmt.Errorf("session %s source: %w", entry.Name, err))
 				continue
@@ -57,7 +57,7 @@ func (s Service) ConfigUsers(ctx context.Context, owner Owner) ([]ConfigUse, err
 			}
 			user.Desired = user.Desired || used
 		}
-		for _, source := range entry.Record.Inputs.Sources {
+		for _, source := range entry.Record.Applied.Inputs.Sources {
 			used, err := usesConfigDirectory(owner.Root, source.Path)
 			if err != nil {
 				issues = errors.Join(issues, fmt.Errorf("session %s config source: %w", entry.Name, err))

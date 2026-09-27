@@ -53,7 +53,7 @@ func sessionCommands(factory engineFactory, name *string) []*cobra.Command {
 		return printUnmatchedContainers(cmd.OutOrStdout(), report.UnmatchedContainers)
 	}}
 	list.Flags().BoolVar(&listJSON, "json", false, "Print saved sessions and inventory diagnostics as JSON")
-	list.Flags().BoolVar(&wide, "wide", false, "Also show full container names, exact activity/creation timestamps, and the last action")
+	list.Flags().BoolVar(&wide, "wide", false, "Also show session IDs, container names, exact timestamps, and the last action")
 	list.Flags().StringVar(&sortBy, "sort", "folder", "Sort sessions by folder, name, or last-active (newest first)")
 	return []*cobra.Command{list, statusCommand(factory, name), deleteCommand(factory, name), transferCommand(factory, name), renameCommand(factory, name)}
 }
@@ -76,7 +76,7 @@ func transferCommand(factory engineFactory, name *string) *cobra.Command {
 	var options app.TransferOptions
 	var asJSON, move bool
 	description := "Copy session state to another folder or local name"
-	cmd := &cobra.Command{Use: "copy <folder|session> [destination-folder]", Short: description, Long: description + ".\nBy default, keep the source and leave the destination stopped.\nWith --move, remove the source after the destination is ready and preserve its running intent.\nUse --as NAME to choose another destination name, including within the same folder.\nRetry the same command to resume an interrupted transfer.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "copy <folder|session-id> [destination-folder]", Short: description, Long: description + ".\nBy default, keep the source and leave the destination stopped.\nWith --move, remove the source after the destination is ready and preserve its running intent.\nUse --as NAME to choose another destination name, including within the same folder.\nRetry the same command to resume an interrupted transfer.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := factory(cmd)
 		if err != nil {
 			return err

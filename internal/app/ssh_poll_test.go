@@ -19,7 +19,7 @@ func TestSSHCancelDuringInspectionIsStillNormalDisconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.Attached = fakeContainerMaster(t, e, result.Name)
+	d.Attached = fakeContainerMaster(t, e, result.SessionID)
 	ready := make(chan struct{})
 	probing := make(chan context.Context, 1)
 	resume := make(chan struct{})
@@ -40,7 +40,7 @@ func TestSSHCancelDuringInspectionIsStillNormalDisconnect(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- e.SSH(cctx, result.Name, "", "staging", SSHOptions{Connected: func(_, _ string) { close(ready) }})
+		done <- e.SSH(cctx, result.SessionID, "", "staging", SSHOptions{Connected: func(_, _ string) { close(ready) }})
 	}()
 	var pollCtx context.Context
 	select {

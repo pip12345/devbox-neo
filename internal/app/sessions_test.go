@@ -14,7 +14,7 @@ func TestSessionDeletionPreservesExternalLocksAuthCacheAndWorkspace(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := record(t, e, result.Name)
+	r := sessionRecord(t, e, result.SessionID)
 	paths := []string{
 		filepath.Join(e.Store.Home, "auth/pi/auth.json"),
 		filepath.Join(e.Store.Home, "cache/harnesses/pi/npm-cache/entry"),
@@ -23,11 +23,11 @@ func TestSessionDeletionPreservesExternalLocksAuthCacheAndWorkspace(t *testing.T
 	for _, p := range paths {
 		write(t, p, "keep")
 	}
-	options := DeleteOptions{Selection: Selection{Targets: []string{result.Name}}, Scope: DeleteSession, DryRun: true}
+	options := DeleteOptions{Selection: Selection{Targets: []string{result.SessionID}}, Scope: DeleteSession, DryRun: true}
 	if _, err := e.Delete(ctx, options); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Store.Read(ctx, result.Name); err != nil {
+	if _, err := e.Store.Find(ctx, result.SessionID, nil); err != nil {
 		t.Fatal("dry run deleted record", err)
 	}
 	options.DryRun = false
@@ -35,10 +35,10 @@ func TestSessionDeletionPreservesExternalLocksAuthCacheAndWorkspace(t *testing.T
 	if err != nil || len(removed.Sessions) != 1 {
 		t.Fatal(removed, err)
 	}
-	if _, err := e.Store.Read(ctx, result.Name); !os.IsNotExist(err) {
+	if _, err := e.Store.Find(ctx, result.SessionID, nil); !os.IsNotExist(err) {
 		t.Fatal("record survived deletion", err)
 	}
-	if _, exists := d.Images[r.ImageTag]; exists {
+	if _, exists := d.Images[r.Applied.ImageTag]; exists {
 		t.Fatal("session image tag survived deletion")
 	}
 	for _, p := range paths {
@@ -46,7 +46,7 @@ func TestSessionDeletionPreservesExternalLocksAuthCacheAndWorkspace(t *testing.T
 			t.Fatal("unrelated data removed", p)
 		}
 	}
-	lock, err := e.Store.Lock(ctx, result.Name)
+	lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
 	if err != nil {
 		t.Fatal("external operation lock was broken", err)
 	}
@@ -62,11 +62,11 @@ func TestSessionDeletionDoesNotFollowStoreSymlinks(t *testing.T) {
 	}
 	external := filepath.Join(t.TempDir(), "data")
 	write(t, external, "keep")
-	link := filepath.Join(e.Store.Home, "sessions", result.Name, "harnesses/pi/stores/home/link")
+	link := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home/link")
 	if err := os.Symlink(external, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{result.Name}}, Scope: DeleteSession}); err != nil {
+	if _, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{result.SessionID}}, Scope: DeleteSession}); err != nil {
 		t.Fatal(err)
 	}
 	if string(getFile(t, external)) != "keep" {

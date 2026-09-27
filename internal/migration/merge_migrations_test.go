@@ -89,17 +89,17 @@ func TestMergeFreshAndExistingUsesNormalRecordsAndFinalPaths(t *testing.T) {
 			if r.ID != j.Inventory.item("session:"+name).SessionID || r.Action != "open" {
 				t.Fatal("lost identity/activity")
 			}
-			b := read(t, filepath.Join(p.Destination, "sessions", r.Identity.Name, "session.json"))
+			b := read(t, filepath.Join(p.Destination, "sessions", r.Directory, "session.json"))
 			for _, forbidden := range []string{p.Work, "metadata-private", "fixture-layer-private", "fixture-private-value", "old-alias"} {
 				if strings.Contains(b, forbidden) {
 					t.Fatalf("record contains %s", forbidden)
 				}
 			}
-			history := filepath.Join(p.Destination, "sessions", r.Identity.Name, "harnesses/pi/stores/home/sessions/history.jsonl")
+			history := filepath.Join(p.Destination, "sessions", r.Directory, "harnesses/pi/stores/home/sessions/history.jsonl")
 			if read(t, history) != "fixture-conversation-private" {
 				t.Fatal("history missing")
 			}
-			if d.Containers[r.Identity.Name].State.Running {
+			if d.Containers[r.Directory].State.Running {
 				t.Fatal("import left container running")
 			}
 			if !fresh && read(t, filepath.Join(p.Destination, "keep.txt")) != "existing Neo data" {
@@ -390,7 +390,7 @@ func TestRelocatedCommittedIDIsNotRecreatedAtItsOldSlot(t *testing.T) {
 	}
 	st := &store.Store{Home: p.Destination, Installation: plan.Installation}
 	e := &app.Engine{Store: st, Docker: m.Docker, UID: 1000, GID: 1000, Streams: docker.Streams{Out: io.Discard, Err: io.Discard}}
-	oldName := plan.Sessions[0].Identity.Name
+	oldName := plan.Sessions[0].ID
 	if err := e.Stop(context.Background(), oldName, "", false); err != nil {
 		t.Fatal(err)
 	}
@@ -402,8 +402,8 @@ func TestRelocatedCommittedIDIsNotRecreatedAtItsOldSlot(t *testing.T) {
 	if _, err = m.Resume(context.Background(), p); err == nil {
 		t.Fatal("recreated a relocated ID")
 	}
-	absent(t, filepath.Join(p.Destination, "sessions", oldName))
-	if _, err = st.Read(context.Background(), moved.Destination); err != nil {
+	absent(t, filepath.Join(p.Destination, "sessions", plan.Sessions[0].Identity.Name))
+	if _, err = st.Find(context.Background(), moved.Destination, nil); err != nil {
 		t.Fatal("relocated record lost", err)
 	}
 }
@@ -525,7 +525,7 @@ func TestImportedSessionsWorkWithOrdinaryEngine(t *testing.T) {
 	}
 	st := &store.Store{Home: p.Destination, Installation: plan.Installation}
 	e := app.Engine{Store: st, Docker: m.Docker, UID: 1000, GID: 1000, Streams: docker.Streams{Out: io.Discard, Err: io.Discard}}
-	if _, err := e.Start(context.Background(), plan.Sessions[0].Identity.Name, ""); err != nil {
+	if _, err := e.Start(context.Background(), plan.Sessions[0].ID, ""); err != nil {
 		t.Fatal(err)
 	}
 }

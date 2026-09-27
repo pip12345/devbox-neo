@@ -34,9 +34,10 @@ Without full terminal input/output, bare browsers show help. Other redirected/du
 | CONTAINER | Running, stopped, or missing; `!` indicates an error, `*` a pending transfer |
 | LIFETIME | `automatic` or `until stop`, independent of current state |
 | CONFIGS | Selected configs, in order |
-| FULL NAME (`--wide`) | Exact session/container identifier |
+| SESSION ID (`--wide`) | Stable exact session target |
+| CONTAINER NAME (`--wide`) | Docker name; independent of session storage |
 
-Wide output also includes last action and exact UTC timestamps. `--sort folder` orders folders then names; `name` orders full names; `last-active` is newest first. Sorting applies to the whole command-line table.
+Wide output also includes last action and exact UTC timestamps. `--sort folder` orders folders then names; `name` orders local names, then folders; `last-active` is newest first. Sorting applies to the whole command-line table.
 
 Missing containers remain listed. Corrupt records show diagnostics; managed containers without records are reported separately.
 
@@ -62,7 +63,8 @@ Status compares local inputs, not available upstream releases. A missing contain
 
 | Common field | Meaning |
 |---|---|
-| `name`, `local_name` | Full and local session names |
+| `session_id`, `local_name` | Stable ID and editable session name |
+| `container_id`, `container_name` | Applied Docker instance and its name |
 | `default` | Matches the saved folder default |
 | `manual_start` | Keep-running intent |
 | `sources` | Desired config references |
@@ -92,7 +94,7 @@ Public values may appear before/after. Env changes show variable names, never va
 | JSON command | Fields |
 |---|---|
 | `edit <target> --config REF --json` | `name`, `workspace`, ordered `sources`, `next_steps` |
-| `config users <name\|path> --json` | `path`, `users` (full session names), `complete` |
+| `config users <name\|path> --json` | `path`, `users` (session IDs), `complete` |
 
 Incomplete usage scans exit nonzero with known users in `partial_result` and `complete: false`.
 

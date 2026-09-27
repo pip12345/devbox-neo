@@ -263,7 +263,7 @@ func (f *frontend) ssh(target string) error {
 func (f *frontend) transfer(target string) (moved bool, err error) {
 	options := app.TransferOptions{Source: target, Mode: "clone"}
 	move := false
-	pending, err := f.e.Store.Pending(target)
+	pending, err := f.e.Store.PendingID(target)
 	if err != nil {
 		return false, err
 	}
@@ -275,7 +275,7 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 		if journal == nil {
 			return false, fmt.Errorf("transfer changed; select it again")
 		}
-		options.Source, options.Destination, options.As = journal.Source.Name, journal.Destination.Workspace, journal.Destination.LocalName
+		options.Source, options.Destination, options.As = journal.SourceID, journal.Destination.Workspace, journal.Destination.LocalName
 		move = journal.Mode == "relocate"
 	}
 	err = f.form("Copy or move", func() []cliui.Action {
@@ -352,12 +352,12 @@ func (f *frontend) chooseDeleteTargets(targets *[]string) error {
 		var actions []cliui.Action
 		for _, v := range append(report.Sessions, report.UnmatchedContainers...) {
 			v := v
-			selected := slices.Contains(*targets, v.Name)
-			a := f.action(v.Name, displayCell(v.Workspace), func() error {
-				if i := slices.Index(*targets, v.Name); i >= 0 {
+			selected := slices.Contains(*targets, v.Target)
+			a := f.action(v.Target, displayCell(v.Workspace), func() error {
+				if i := slices.Index(*targets, v.Target); i >= 0 {
 					*targets = slices.Delete(*targets, i, i+1)
 				} else {
-					*targets = append(*targets, v.Name)
+					*targets = append(*targets, v.Target)
 				}
 				return nil
 			})
@@ -386,9 +386,9 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 	}
 	if len(targets) == 1 {
 		title = "Delete · " + displayCell(targets[0])
-		if record, err := f.e.Store.Read(f.m.Context, targets[0]); err == nil {
-			title = "Delete · " + displayCell(record.Identity.LocalName)
-			fields = []cliui.Field{{Label: "Folder", Value: record.Identity.Workspace}}
+		if record, err := f.e.Store.Find(f.m.Context, targets[0], nil); err == nil {
+			title = "Delete · " + displayCell(record.Settings.LocalName)
+			fields = []cliui.Field{{Label: "Folder", Value: record.Settings.Workspace}}
 		}
 	}
 	return f.m.Run(func() (cliui.Screen, error) {

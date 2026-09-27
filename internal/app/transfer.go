@@ -44,9 +44,6 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (name, i
 			return "", "", err
 		}
 	}
-	if environment.IsSessionTarget(q.Source) {
-		return q.Source, "", nil
-	}
 	// A journal pins source identity even after source deletion or config edits.
 	// Folder/default lookup must retain the ID too, not adopt a reused name.
 	workspace, pathErr := filepath.Abs(q.Source)
@@ -61,7 +58,7 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (name, i
 		return "", "", listErr
 	}
 	for _, j := range journals {
-		if j.Source.Workspace == workspace && (q.LocalName == "" || j.Source.LocalName == q.LocalName) {
+		if j.SourceID == q.Source || (j.Source.Workspace == workspace && (q.LocalName == "" || j.Source.LocalName == q.LocalName)) {
 			if name != "" {
 				return "", "", fmt.Errorf("multiple pending transfers.\nUse the exact source name.")
 			}
@@ -72,7 +69,7 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (name, i
 		return name, id, nil
 	}
 	r, err := e.Locate(ctx, q.Source, q.LocalName)
-	return r.Identity.Name, r.ID, err
+	return r.Directory, r.ID, err
 }
 func (e *Engine) transferDestination(q TransferOptions, source environment.Identity) (environment.Identity, error) {
 	workspace := q.Destination
@@ -83,7 +80,12 @@ func (e *Engine) transferDestination(q TransferOptions, source environment.Ident
 	if q.As != "" {
 		name = q.As
 	}
-	return environment.Identify(workspace, name)
+	identity, err := environment.Identify(workspace, name)
+	if err != nil {
+		return identity, err
+	}
+	identity.Name, err = store.AllocateDirectory(identity.Binding)
+	return identity, err
 }
 func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode string) ([]harness.Definition, error) {
 	root, err := l.Path("harnesses")
@@ -107,9 +109,9 @@ func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode 
 		if (mode == "clone" && !d.Session.Clone) || (mode == "relocate" && !d.Session.Relocate) {
 			return nil, fmt.Errorf("harness %s does not support %s", d.Name, store.TransferCommand(mode))
 		}
-		if d.Name == source.Definition.Name && environment.Fingerprint(e.Store.Installation, effective.Hash) != source.Definition.Hash {
-			return nil, commanderror.New("harness_definition_changed", "Harness definition changed. Recreate before transferring.", source.Identity.Name, nil,
-				commanderror.Next("Recreate with current harness definition", "recreate", source.Identity.Name))
+		if d.Name == source.Applied.Definition.Name && environment.Fingerprint(e.Store.Installation, effective.Hash) != source.Applied.Definition.Hash {
+			return nil, commanderror.New("harness_definition_changed", "Harness definition changed. Recreate before transferring.", source.ID, nil,
+				commanderror.Next("Recreate with current harness definition", "recreate", source.ID))
 		}
 		path, err := l.Path(filepath.Join("harnesses", d.Name, "stores"))
 		if err != nil {
@@ -143,6 +145,11 @@ func transferFailure(j store.Transfer, err error) error {
 // destination-authoritative cleanup. A crash before the phase switch can only
 // cause preparation to be retried; a crash after it can never repeat the copy.
 func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result TransferResult, err error) {
+	namesLock, err := e.Store.LockNames(ctx)
+	if err != nil {
+		return result, err
+	}
+	defer fsutil.Unlock(namesLock)
 	if q.Mode != "clone" && q.Mode != "relocate" {
 		return result, fmt.Errorf("select clone or relocate")
 	}
@@ -171,7 +178,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		if err != nil {
 			return result, err
 		}
-		sourceIdentity, sourceID = source.Identity, source.ID
+		sourceIdentity, sourceID = environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, source.ID
 	}
 	if selectedID != "" && sourceID != selectedID {
 		return result, commanderror.New("session_changed", "Selected source session was replaced; select it again.", sourceName, nil)
@@ -203,12 +210,26 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, err
 		}
 	}
-	if sourceName == destinationIdentity.Name {
+	if sourceIdentity.Binding == destinationIdentity.Binding {
 		return result, fmt.Errorf("source and destination are the same session; choose --as NAME or another destination folder")
+	}
+	if journal == nil {
+		if err := e.Store.RequireUnusedBinding(ctx, destinationIdentity.Binding, ""); err != nil {
+			return result, err
+		}
+	}
+	destinationID := sourceID
+	if journal != nil {
+		destinationID = journal.DestinationID
+	} else if q.Mode == "clone" {
+		destinationID, err = fsutil.ID()
+		if err != nil {
+			return result, err
+		}
 	}
 	names := []string{sourceName, destinationIdentity.Name}
 	sort.Strings(names)
-	locks, err := e.Store.LockAll(ctx, names)
+	locks, err := e.Store.LockAll(ctx, names, map[string]string{sourceName: sourceID, destinationIdentity.Name: destinationID})
 	if err != nil {
 		return result, err
 	}
@@ -236,10 +257,10 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		if readErr != nil {
 			return result, readErr
 		}
-		if committed.ID != journal.DestinationID || committed.Identity != journal.Destination {
+		if committed.ID != journal.DestinationID || committed.Settings.Binding != journal.Destination.Binding {
 			return result, fmt.Errorf("committed destination identity differs from journal")
 		}
-		result.Sources, result.ResolvedSources = committed.Sources, committed.Inputs.Sources
+		result.Sources, result.ResolvedSources = committed.Settings.Sources, committed.Applied.Inputs.Sources
 		if q.DryRun {
 			return result, nil
 		}
@@ -253,7 +274,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if err != nil {
 		return result, err
 	}
-	if source.Identity != sourceIdentity || source.ID != sourceID {
+	if source.Settings.Binding != sourceIdentity.Binding || source.ID != sourceID {
 		return result, fmt.Errorf("source identity changed during transfer selection")
 	}
 	c, exists, err := e.inspect(ctx, source)
@@ -261,8 +282,8 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		return result, err
 	}
 	if q.Mode == "clone" && exists && c.State.Running {
-		return result, commanderror.New("container_running", "Stop the source container before copying.", source.Identity.Name, nil,
-			commanderror.Next("Stop, then retry copy", "stop", source.Identity.Name))
+		return result, commanderror.New("container_running", "Stop the source container before copying.", source.ID, nil,
+			commanderror.Next("Stop, then retry copy", "stop", source.ID))
 	}
 	definitions, err := e.transferDefinitions(sourceLock, source, q.Mode)
 	if err != nil {
@@ -301,11 +322,11 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, readErr
 		}
 	}
-	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, LocalName: destinationIdentity.LocalName, Sources: source.Sources})
+	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, LocalName: destinationIdentity.LocalName, Sources: source.Settings.Sources})
 	if err != nil {
 		return result, err
 	}
-	if spec.Identity != destinationIdentity {
+	if spec.Identity.Binding != destinationIdentity.Binding {
 		return result, fmt.Errorf("destination selection changed during transfer")
 	}
 	if err = e.Docker.Network(ctx, spec.Settings.Network); err != nil {
@@ -319,14 +340,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		if idErr != nil {
 			return result, idErr
 		}
-		id := source.ID
-		if q.Mode == "clone" {
-			id, idErr = fsutil.ID()
-			if idErr != nil {
-				return result, idErr
-			}
-		}
-		journal = &store.Transfer{Version: 2, ID: nonce, Mode: q.Mode, Phase: "prepare", Source: source.Identity, Destination: destinationIdentity, SourceID: source.ID, DestinationID: id, Running: q.Mode == "relocate" && (source.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.ManualStart, Started: time.Now().UTC(), Desired: spec.Fingerprints}
+		journal = &store.Transfer{Version: 3, ContainerName: environment.ResourceName(destinationIdentity.Workspace, destinationIdentity.LocalName, nonce), ID: nonce, Mode: q.Mode, Phase: "prepare", Source: sourceIdentity, SourceContainerID: source.Applied.SetupContainer, Destination: destinationIdentity, SourceID: source.ID, DestinationID: destinationID, Running: q.Mode == "relocate" && (source.Settings.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.Settings.ManualStart, Started: time.Now().UTC(), Desired: spec.Fingerprints}
 	}
 	result = transferResult(*journal, q.DryRun)
 	result.Sources, result.ResolvedSources = spec.Sources, spec.ResolvedSources
@@ -344,7 +358,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			defer cancel()
 			err = errors.Join(err, e.clearTransferAttempt(cleanup, destLock, *journal))
 			if journal.Mode == "relocate" {
-				err = errors.Join(err, e.Docker.Tag(cleanup, source.ImageID, source.ImageTag, e.Store.Installation))
+				err = errors.Join(err, e.Docker.Tag(cleanup, source.Applied.ImageID, source.Applied.ImageTag, e.Store.Installation))
 			}
 			if journal.Running && exists {
 				live, found, inspectErr := e.inspect(cleanup, source)
@@ -373,7 +387,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if q.Mode == "relocate" {
 		created = source.Created
 	}
-	destination, _, err := e.CreatePrepared(ctx, destLock, spec, CreationIdentity{ID: journal.DestinationID, Created: created, ManualStart: journal.ManualStart})
+	destination, _, err := e.CreatePrepared(ctx, destLock, spec, CreationIdentity{ContainerName: journal.ContainerName, ID: journal.DestinationID, Created: created, ManualStart: journal.ManualStart})
 	if err != nil {
 		return result, err
 	}
@@ -383,7 +397,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	return result, e.finishTransfer(ctx, sourceLock, destLock, *journal)
 }
 func transferResult(j store.Transfer, dryRun bool) TransferResult {
-	return TransferResult{Source: j.Source.Name, Destination: j.Destination.Name, Mode: j.Mode, SessionID: j.DestinationID, DryRun: dryRun, Workspace: j.Destination.Workspace, LocalName: j.Destination.LocalName}
+	return TransferResult{Source: j.SourceID, Destination: j.DestinationID, Mode: j.Mode, SessionID: j.DestinationID, DryRun: dryRun, Workspace: j.Destination.Workspace, LocalName: j.Destination.LocalName}
 }
 func (e *Engine) verifyReservation(destination *store.Locked, j store.Transfer) error {
 	pending, err := e.Store.Pending(destination.Name)
@@ -402,7 +416,7 @@ func (e *Engine) clearTransferAttempt(ctx context.Context, destination *store.Lo
 	if err := e.verifyReservation(destination, j); err != nil {
 		return err
 	}
-	c, exists, err := e.Docker.Inspect(ctx, j.Destination.Name)
+	c, exists, err := e.Docker.Inspect(ctx, j.ContainerName)
 	if err != nil {
 		return err
 	}
@@ -411,7 +425,7 @@ func (e *Engine) clearTransferAttempt(ctx context.Context, destination *store.Lo
 		if record.ID != j.DestinationID {
 			return fmt.Errorf("destination identity differs from transfer")
 		}
-		if exists && (c.Image != record.ImageID || c.ID != record.SetupContainer) {
+		if exists && (c.Image != record.Applied.ImageID || c.ID != record.Applied.SetupContainer) {
 			return fmt.Errorf("destination instance differs from its record")
 		}
 	} else if !os.IsNotExist(readErr) {
@@ -469,7 +483,7 @@ func (e *Engine) finishTransfer(ctx context.Context, source, destination *store.
 	if err != nil {
 		return err
 	}
-	if r.ID != j.DestinationID || r.Identity != j.Destination {
+	if r.ID != j.DestinationID || r.Settings.Binding != j.Destination.Binding {
 		return fmt.Errorf("committed destination identity differs from journal")
 	}
 	live, exists, err := e.inspect(ctx, r)
@@ -510,7 +524,7 @@ func (e *Engine) finishTransfer(ctx context.Context, source, destination *store.
 		} else if !os.IsNotExist(readErr) {
 			return readErr
 		} else {
-			_, exists, inspectErr := e.Docker.Inspect(ctx, j.Source.Name)
+			_, exists, inspectErr := e.Docker.InspectID(ctx, j.SourceContainerID)
 			if inspectErr != nil {
 				return inspectErr
 			}

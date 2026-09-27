@@ -8,26 +8,25 @@ import (
 func TestLocalNamesAreExactAndBounded(t *testing.T) {
 	workspace := t.TempDir()
 	for _, name := range []string{"Main", "main", "1", "a-b_c", strings.Repeat("a", 64)} {
-		id, err := Identify(workspace, name)
-		if err != nil || id.LocalName != name || id.Validate() != nil || !strings.HasSuffix(id.Name, "."+name) {
-			t.Fatal(id, err)
+		selection, err := Identify(workspace, name)
+		if err != nil || selection.LocalName != name || selection.Binding.Validate() != nil {
+			t.Fatal(selection, err)
 		}
 	}
 	for _, name := range []string{"", ".", "..", "a.b", "-first", "_first", "two words", "a/b", "é", strings.Repeat("a", 65)} {
 		if _, err := Identify(workspace, name); err == nil {
-			t.Fatal("accepted invalid local name", name)
+			t.Fatal("accepted invalid name", name)
 		}
 	}
-	if ContainerName(workspace, "Main") == ContainerName(workspace, "main") {
-		t.Fatal("case-distinct local names share identity")
+}
+
+func TestSessionTargetsAreIDsNotStorageOrContainerNames(t *testing.T) {
+	if !IsSessionTarget(strings.Repeat("a", 32)) {
+		t.Fatal("rejected session ID")
 	}
-	if got := ContainerName("/work/api", "Main"); got != "devbox-api-c24c3b6218aa.Main" {
-		t.Fatal(got)
-	}
-	if got := ContainerName("/work/api", "main"); got != "devbox-api-c24c3b6218aa.main" {
-		t.Fatal(got)
-	}
-	if got := ContainerName("/"+strings.Repeat("x", 80), strings.Repeat("N", 64)); len(got) != 117 {
-		t.Fatal("full name length changed", len(got))
+	for _, target := range []string{"devbox-api-abc.work", "work", "/work/api", strings.Repeat("a", 31)} {
+		if IsSessionTarget(target) {
+			t.Fatal("accepted non-ID target", target)
+		}
 	}
 }

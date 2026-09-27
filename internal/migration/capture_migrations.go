@@ -99,7 +99,7 @@ func (m Merger) verifyCaptures(ctx context.Context, j *Journal, plan MergePlan) 
 			}
 			if b, e := readRegular(ctx, filepath.Join(j.Inventory.Paths.Destination, "sessions", job.Identity.Name, "session.json")); e == nil {
 				var r store.Record
-				if config.Decode(b, &r) == nil && r.Validate(job.Identity.Name) == nil && r.ID == job.ID && r.Identity == job.Identity {
+				if config.Decode(b, &r) == nil && r.Validate(job.Identity.Name) == nil && r.ID == job.ID && r.Settings.Binding == job.Identity.Binding {
 					continue
 				}
 			}

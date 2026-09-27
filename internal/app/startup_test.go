@@ -41,12 +41,12 @@ func TestAccessSynchronizesOnlyAtStartup(t *testing.T) {
 					t.Fatal(err)
 				}
 				if running {
-					if _, err := e.Start(ctx, created.Name, ""); err != nil {
+					if _, err := e.Start(ctx, created.SessionID, ""); err != nil {
 						t.Fatal(err)
 					}
 				}
-				before := record(t, e, created.Name)
-				root := filepath.Join(e.Store.Home, "sessions", created.Name, "harnesses/pi/stores/home")
+				before := sessionRecord(t, e, created.SessionID)
+				root := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, "harnesses/pi/stores/home")
 				write(t, filepath.Join(root, "managed.txt"), "local edit")
 				write(t, filepath.Join(root, "obsolete.txt"), "local obsolete edit")
 				write(t, filepath.Join(root, "settings.json"), `{"packages":["local"],"theme":"personal"}`)
@@ -65,7 +65,7 @@ func TestAccessSynchronizesOnlyAtStartup(t *testing.T) {
 					}
 					return nil
 				}
-				if err := accessAction(ctx, e, q, created.Name, action); err != nil {
+				if err := accessAction(ctx, e, q, created.SessionID, action); err != nil {
 					t.Fatal(err)
 				}
 				want := "local edit"
@@ -93,11 +93,11 @@ func TestAccessSynchronizesOnlyAtStartup(t *testing.T) {
 						t.Fatal("unmanaged state changed", file)
 					}
 				}
-				after := record(t, e, created.Name)
-				if action != "recreate" && (!reflect.DeepEqual(before.Inputs.Image, after.Inputs.Image) || !reflect.DeepEqual(before.Inputs.Container, after.Inputs.Container)) {
+				after := sessionRecord(t, e, created.SessionID)
+				if action != "recreate" && (!reflect.DeepEqual(before.Applied.Inputs.Image, after.Applied.Inputs.Image) || !reflect.DeepEqual(before.Applied.Inputs.Container, after.Applied.Inputs.Container)) {
 					t.Fatal("access adopted creation drift")
 				}
-				if (after.Applied.Runtime != before.Applied.Runtime) != wantSync {
+				if (after.Applied.Fingerprints.Runtime != before.Applied.Fingerprints.Runtime) != wantSync {
 					t.Fatal("runtime baseline did not follow sync")
 				}
 			})
@@ -115,17 +115,17 @@ func TestStartupSyncFailurePreventsStartAndBaselineCommit(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				before := record(t, e, created.Name)
+				before := sessionRecord(t, e, created.SessionID)
 				if invalidLive {
-					write(t, filepath.Join(e.Store.Home, "sessions", created.Name, "harnesses/pi/stores/home/settings.json"), `[]`)
+					write(t, filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, "harnesses/pi/stores/home/settings.json"), `[]`)
 				} else {
 					write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
 				}
 				starts := count(d, "start")
-				if err := accessAction(ctx, e, q, created.Name, action); err == nil {
+				if err := accessAction(ctx, e, q, created.SessionID, action); err == nil {
 					t.Fatal("invalid input ignored")
 				}
-				if count(d, "start") != starts || !reflect.DeepEqual(before.Inputs, record(t, e, created.Name).Inputs) {
+				if count(d, "start") != starts || !reflect.DeepEqual(before.Applied.Inputs, sessionRecord(t, e, created.SessionID).Applied.Inputs) {
 					t.Fatal("failed startup changed applied state")
 				}
 			})
@@ -141,9 +141,9 @@ func TestStartupDoesNotNeedProfileContentChangeToRestoreManagedFiles(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	live := filepath.Join(e.Store.Home, "sessions", created.Name, "harnesses/pi/stores/home/managed.txt")
+	live := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, "harnesses/pi/stores/home/managed.txt")
 	write(t, live, "temporary edit")
-	if _, err := e.Start(ctx, created.Name, ""); err != nil {
+	if _, err := e.Start(ctx, created.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
 	if string(getFile(t, live)) != "authoritative" {
@@ -159,20 +159,20 @@ func TestInspectionStopAndDeletionDoNotSynchronize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Start(ctx, created.Name, ""); err != nil {
+	if _, err := e.Start(ctx, created.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
-	live := filepath.Join(e.Store.Home, "sessions", created.Name, "harnesses/pi/stores/home/managed.txt")
+	live := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, "harnesses/pi/stores/home/managed.txt")
 	write(t, live, "local")
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
 	checks := []func() error{
 		func() error { _, err := e.List(ctx, ""); return err },
-		func() error { _, err := e.Status(ctx, created.Name, ""); return err },
-		func() error { return e.Logs(ctx, created.Name, "", false, "10") },
-		func() error { return e.ChangeNetwork(ctx, created.Name, "", "secondary", true) },
-		func() error { return e.Stop(ctx, created.Name, "", false) },
+		func() error { _, err := e.Status(ctx, created.SessionID, ""); return err },
+		func() error { return e.Logs(ctx, created.SessionID, "", false, "10") },
+		func() error { return e.ChangeNetwork(ctx, created.SessionID, "", "secondary", true) },
+		func() error { return e.Stop(ctx, created.SessionID, "", false) },
 		func() error {
-			_, err := e.Delete(ctx, DeleteOptions{Scope: DeleteContainer, Selection: Selection{Targets: []string{created.Name}}})
+			_, err := e.Delete(ctx, DeleteOptions{Scope: DeleteContainer, Selection: Selection{Targets: []string{created.SessionID}}})
 			return err
 		},
 	}

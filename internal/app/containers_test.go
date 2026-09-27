@@ -25,10 +25,10 @@ func TestContainerViewsUseBatchedInventoryAndBrokenConfigDoesNotHideState(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	owned, _ := d.Snapshot(first.Name)
+	owned, _ := sessionSnapshot(t, e, first.SessionID)
 	owned.Created = time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
 	d.SetContainer(owned)
-	foreign, _ := d.Snapshot(first.Name)
+	foreign, _ := sessionSnapshot(t, e, first.SessionID)
 	foreign.Name = "/foreign"
 	foreign.ID = strings.Repeat("f", 64)
 	foreign.Config.Labels[docker.Namespace+".installation"] = "foreign"
@@ -43,16 +43,16 @@ func TestContainerViewsUseBatchedInventoryAndBrokenConfigDoesNotHideState(t *tes
 		t.Fatal("list did not use one inventory and one batched inspect")
 	}
 	for _, view := range views {
-		if view.Name == first.Name && (!view.CreatedAt.Equal(owned.Created) || view.LastActivity.IsZero() || view.LastAction == "" || view.LocalName != q.LocalName || view.Harness == "") {
+		if view.Target == first.SessionID && (!view.CreatedAt.Equal(owned.Created) || view.LastActivity.IsZero() || view.LastAction == "" || view.LocalName != q.LocalName || view.Harness == "") {
 			t.Fatal("list lost live creation time or recorded details", view)
 		}
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
-	view, err := e.Status(ctx, first.Name, "")
+	view, err := e.Status(ctx, first.SessionID, "")
 	if err != nil || !view.Exists || view.ConfigError == "" {
 		t.Fatal("broken desired config hid live status", err)
 	}
-	if err = e.Logs(ctx, second.Name, "", false, "10"); err != nil {
+	if err = e.Logs(ctx, second.SessionID, "", false, "10"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -68,10 +68,10 @@ func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial := record(t, e, first.Name)
-	marker := filepath.Join(e.Store.Home, "sessions", first.Name, "harnesses/pi/stores/home/marker")
+	initial := sessionRecord(t, e, first.SessionID)
+	marker := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, first.SessionID).Directory, "harnesses/pi/stores/home/marker")
 	write(t, marker, "keep")
-	lock, err := e.Store.Lock(ctx, second.Name)
+	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, second.SessionID).Directory, sessionRecord(t, e, second.SessionID).ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,10 +83,10 @@ func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
 	if _, err = e.DeleteContainers(ctx, Selection{All: true}, false); err == nil {
 		t.Fatal("active bulk target was deleted")
 	}
-	if _, exists := d.Snapshot(first.Name); !exists {
+	if _, exists := sessionSnapshot(t, e, first.SessionID); !exists {
 		t.Fatal("bulk operation mutated before complete preflight")
 	}
-	lock, _ = e.Store.Lock(ctx, second.Name)
+	lock, _ = e.Store.Lock(ctx, sessionRecord(t, e, second.SessionID).Directory, sessionRecord(t, e, second.SessionID).ID)
 	lock.Release(lease.ID)
 	lock.Close()
 	removed, err := e.DeleteContainers(ctx, Selection{Stopped: true}, false)
@@ -96,13 +96,13 @@ func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
 	if string(getFile(t, marker)) != "keep" {
 		t.Fatal("container deletion removed state")
 	}
-	if _, ok := d.Images[initial.ImageTag]; !ok {
+	if _, ok := d.Images[initial.Applied.ImageTag]; !ok {
 		t.Fatal("container deletion removed session image")
 	}
-	if _, err = e.Start(ctx, first.Name, ""); err != nil {
+	if _, err = e.Start(ctx, first.SessionID, ""); err != nil {
 		t.Fatal("retained record cannot recover", err)
 	}
-	if record(t, e, first.Name).ID != initial.ID {
+	if sessionRecord(t, e, first.SessionID).ID != initial.ID {
 		t.Fatal("recovery changed session identity")
 	}
 }
@@ -115,7 +115,7 @@ func getFile(t *testing.T, p string) []byte {
 	return b
 }
 func TestRecreateAllPreflightsAndPreservesRunningIntent(t *testing.T) {
-	e, d, q := fixture(t)
+	e, _, q := fixture(t)
 	ctx := context.Background()
 	a, err := e.Create(ctx, q)
 	if err != nil {
@@ -126,16 +126,16 @@ func TestRecreateAllPreflightsAndPreservesRunningIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Start(ctx, a.Name, ""); err != nil {
+	if _, err = e.Start(ctx, a.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
-	before := record(t, e, a.Name).SetupContainer
+	before := sessionRecord(t, e, a.SessionID).Applied.SetupContainer
 	result, err := e.RecreateAll(ctx, true, Request{})
 	if err != nil || len(result) != 2 {
 		t.Fatal(result, err)
 	}
-	first, _ := d.Snapshot(a.Name)
-	second, _ := d.Snapshot(b.Name)
+	first, _ := sessionSnapshot(t, e, a.SessionID)
+	second, _ := sessionSnapshot(t, e, b.SessionID)
 	if first.ID == before || !first.State.Running || second.State.Running {
 		t.Fatal("bulk recreation lost running intent")
 	}
@@ -147,12 +147,12 @@ func TestSecondaryNetworksDoNotChangeCreationContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := record(t, e, result.Name)
-	if err = e.ChangeNetwork(ctx, result.Name, "", "extra", true); err != nil {
+	original := sessionRecord(t, e, result.SessionID)
+	if err = e.ChangeNetwork(ctx, result.SessionID, "", "extra", true); err != nil {
 		t.Fatal(err)
 	}
 	before := len(d.History())
-	if err = e.ChangeNetwork(ctx, result.Name, "", "extra", true); err != nil {
+	if err = e.ChangeNetwork(ctx, result.SessionID, "", "extra", true); err != nil {
 		t.Fatal(err)
 	}
 	for _, args := range d.History()[before:] {
@@ -160,27 +160,27 @@ func TestSecondaryNetworksDoNotChangeCreationContract(t *testing.T) {
 			t.Fatal("duplicate attachment was not a no-op")
 		}
 	}
-	facts, err := e.NetworkFacts(ctx, result.Name, "")
+	facts, err := e.NetworkFacts(ctx, result.SessionID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if facts.Primary != "bridge" || facts.Host != docker.HostAlias || len(facts.Networks) != 2 {
 		t.Fatal(facts)
 	}
-	if err = e.ChangeNetwork(ctx, result.Name, "", "bridge", false); err == nil {
+	if err = e.ChangeNetwork(ctx, result.SessionID, "", "bridge", false); err == nil {
 		t.Fatal("primary network disconnected")
 	}
-	if err = e.ChangeNetwork(ctx, result.Name, "", "extra", false); err != nil {
+	if err = e.ChangeNetwork(ctx, result.SessionID, "", "extra", false); err != nil {
 		t.Fatal(err)
 	}
-	if record(t, e, result.Name).Applied != original.Applied {
+	if sessionRecord(t, e, result.SessionID).Applied.Fingerprints != original.Applied.Fingerprints {
 		t.Fatal("secondary network changed durable fingerprints")
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host"}`)
 	if _, err = e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
-	if err = e.ChangeNetwork(ctx, result.Name, "", "extra", true); err == nil {
+	if err = e.ChangeNetwork(ctx, result.SessionID, "", "extra", true); err == nil {
 		t.Fatal("host-network container accepted secondary network")
 	}
 }
@@ -194,9 +194,9 @@ func TestExactTargetIgnoresObsoleteGlobalConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(e.Store.Home, "config.json"), `{"version":1,"default_profile":"test","ignore_project":true}`)
-	q.Workspace = first.Name
+	q.Workspace = first.SessionID
 	again, err := e.Open(ctx, q)
-	if err != nil || again.Name != first.Name {
+	if err != nil || again.SessionID != first.SessionID {
 		t.Fatal("exact target switched slots", err)
 	}
 }
@@ -207,17 +207,18 @@ func TestOwnedContainerWithoutRecordCanBeDeletedButNeverAdopted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	recordPath, _ := e.Store.RecordPath(result.Name)
+	runtimeName := sessionRecord(t, e, result.SessionID).Applied.Creation.Name
+	recordPath, _ := e.Store.RecordPath(sessionRecord(t, e, result.SessionID).Directory)
 	if err = os.Remove(recordPath); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = e.Open(ctx, q); err == nil {
 		t.Fatal("recordless container was adopted")
 	}
-	if _, err = e.DeleteContainers(ctx, Selection{Targets: []string{result.Name}}, false); err != nil {
+	if _, err = e.DeleteContainers(ctx, Selection{Targets: []string{result.SessionID}}, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, exists := d.Snapshot(result.Name); exists {
+	if _, exists := d.Snapshot(runtimeName); exists {
 		t.Fatal("owned orphan was not deleted")
 	}
 	if _, err = os.Stat(filepath.Dir(recordPath)); err != nil {
@@ -232,10 +233,10 @@ func TestExplicitProfileLocateIgnoresUnrelatedCorruptRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	other := environment.ContainerName("/unrelated", "project")
+	other := environment.ResourceName("/unrelated", "project", "broken")
 	write(t, filepath.Join(e.Store.Home, "sessions", other, "session.json"), "broken")
 	r, err := e.Locate(ctx, q.Workspace, q.LocalName)
-	if err != nil || r.Identity.Name != first.Name {
+	if err != nil || r.ID != first.SessionID {
 		t.Fatal("unrelated corrupt record blocked explicit selection", err)
 	}
 	report, err := e.List(ctx, "")

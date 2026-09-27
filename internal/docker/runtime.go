@@ -27,8 +27,13 @@ type Owner struct {
 	LocalName    string
 }
 
+func (o Owner) ownershipLabels() map[string]string {
+	return map[string]string{Namespace + ".managed": "true", Namespace + ".ownership": "1", Namespace + ".installation": o.Installation, Namespace + ".session": o.Session}
+}
 func (o Owner) Labels() map[string]string {
-	return map[string]string{Namespace + ".managed": "true", Namespace + ".ownership": "1", Namespace + ".installation": o.Installation, Namespace + ".session": o.Session, Namespace + ".workspace": o.Workspace, Namespace + ".local-name": o.LocalName}
+	labels := o.ownershipLabels()
+	labels[Namespace+".workspace"], labels[Namespace+".local-name"] = o.Workspace, o.LocalName
+	return labels
 }
 func ImageLabels(installation string) map[string]string {
 	return map[string]string{Namespace + ".managed": "true", Namespace + ".ownership": "1", Namespace + ".installation": installation}
@@ -65,10 +70,10 @@ type Endpoint struct {
 }
 
 func (c Container) Verify(o Owner) error {
-	if c.ID == "" || o.Installation == "" || o.Session == "" || o.Workspace == "" || o.LocalName == "" {
+	if c.ID == "" || o.Installation == "" || o.Session == "" {
 		return commanderror.New("ownership_mismatch", "Cannot verify Devbox ownership of this container: incomplete identity.", c.Name, nil)
 	}
-	for key, value := range o.Labels() {
+	for key, value := range o.ownershipLabels() {
 		if c.Config.Labels[key] != value {
 			return commanderror.New("ownership_mismatch", fmt.Sprintf("Cannot verify Devbox ownership of this container: label %s does not match.", key), c.Name, nil)
 		}
@@ -160,10 +165,22 @@ func (r Runtime) capture(ctx context.Context, args ...string) ([]byte, error) {
 	return out.Bytes(), err
 }
 func (r Runtime) Inspect(ctx context.Context, name string) (Container, bool, error) {
+	return r.inspect(ctx, name, false)
+}
+
+func (r Runtime) InspectID(ctx context.Context, id string) (Container, bool, error) {
+	return r.inspect(ctx, id, true)
+}
+
+func (r Runtime) inspect(ctx context.Context, target string, byID bool) (Container, bool, error) {
 	var c Container
+	filter := "name=^/" + regexp.QuoteMeta(target) + "$"
+	if byID {
+		filter = "id=" + target
+	}
 	// An empty successful inventory proves absence. A failing inspect alone cannot
 	// distinguish a missing container from an unavailable daemon or denied access.
-	b, err := r.capture(ctx, "container", "ls", "--all", "--filter", "name=^/"+regexp.QuoteMeta(name)+"$", "--format", "{{.ID}}")
+	b, err := r.capture(ctx, "container", "ls", "--all", "--filter", filter, "--format", "{{.ID}}")
 	if err != nil {
 		return c, false, err
 	}
@@ -182,7 +199,7 @@ func (r Runtime) Inspect(ctx context.Context, name string) (Container, bool, err
 	if err = json.Unmarshal(b, &list); err != nil {
 		return c, false, fmt.Errorf("invalid container inspection")
 	}
-	if len(list) != 1 || strings.TrimPrefix(list[0].Name, "/") != name || list[0].ID == "" {
+	if len(list) != 1 || list[0].ID == "" || (byID && list[0].ID != target) || (!byID && strings.TrimPrefix(list[0].Name, "/") != target) {
 		return c, false, fmt.Errorf("container identity changed during inspection")
 	}
 	return list[0], true, nil
