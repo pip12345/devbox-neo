@@ -223,7 +223,7 @@ These names reduce noise without changing merge behavior:
 | `default_shell` | `shell` |
 | `ignore_project_overrides` | `ignore_project` |
 
-Schema validation, config editors, source-entry references, help, examples, tests, and documentation use the new names. The global `global_env` contract remains separate. Old-name aliases and dual readers are not supported; only the existing explicit importer reads the old source schema.
+Schema validation, config editors, source-entry references, help, examples, tests, and documentation use the new names. The global `global_env` contract remains separate. Old-name aliases, dual readers, and legacy import are not supported.
 
 ## Implementation sequence
 
@@ -239,7 +239,7 @@ Schema validation, config editors, source-entry references, help, examples, test
 10. **Apply config naming cleanup.** Keep sparse files and existing merge rules.
 11. **Synchronize documentation and validation.** Update runtime-contract notes, contributor guidance, seeded/embedded guidance, CLI help, and the guide/reference/architecture tiers. Update progress honestly.
 
-This is a development identity/schema change. Plan for a clean reset of affected development sessions. Do not add automatic migration, adoption, compatibility readers, or legacy naming aliases. Do not delete any user sessions or state as part of implementation without explicit authorization. Audit the separate migration utility's dependencies; changes to its conversion behavior need explicit scope approval rather than hidden runtime fallbacks.
+This is a development identity/schema change. Plan for a clean reset of affected development sessions. Do not add automatic migration, adoption, compatibility readers, or legacy naming aliases. Do not delete any user sessions or state as part of implementation without explicit authorization.
 
 ## Acceptance tests
 
@@ -303,7 +303,7 @@ Run focused package tests during implementation and `make test` in `/workspace/r
 - Transfer slots use the same suffix notation: `.profile-NAME`, `.profile-NAME.project`, and `.project`. `--profile` selects the source; `--to` selects the destination combination. Cross-folder relocation retains its source combination.
 - Continuation arguments precede invocation-only harness arguments. Neither `--harness-arg` nor trailing arguments modifies the saved launch arguments.
 - Manual intent controls shutdown and Docker restart policy; clone starts automatic, while relocation and recreation preserve intent.
-- Config field renames apply without runtime aliases. The existing explicit migration utility converts legacy source fields and reports removed settings.
+- Config field renames apply without aliases or legacy conversion.
 
 ## Alternatives considered, not selected
 

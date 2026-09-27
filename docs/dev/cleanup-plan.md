@@ -105,7 +105,6 @@ Final checks:
 - New transaction or lifecycle frameworks.
 - Transfer-state-machine redesign.
 - Package splitting merely to reduce imports.
-- Migration-utility cleanup.
 
 If implementation exposes a bug or requires a behavior decision, stop that portion of the work and propose it separately. Do not fold it into cleanup.
 

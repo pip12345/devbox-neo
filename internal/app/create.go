@@ -123,14 +123,12 @@ func (e *Engine) create(ctx context.Context, l *store.Locked, s environment.Spec
 	return e.createAs(ctx, l, s, previous, force, CreationIdentity{})
 }
 
-// CreationIdentity supplies durable identity/activity for a new destination.
-// Zero activity means this creation is its first recorded activity.
+// CreationIdentity supplies identity and creation time for a new destination.
+// Transfers pin these inputs before preparing the destination's state.
 type CreationIdentity struct {
 	ContainerName string
 	ID            string
 	Created       time.Time
-	Activity      time.Time
-	Action        string
 	ManualStart   bool
 }
 

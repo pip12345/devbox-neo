@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestPreparedCreationCommitsIdentityAndActivityWithoutOverwriting(t *testing.T) {
+func TestPreparedCreationCommitsIdentityWithoutOverwriting(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	spec, err := e.Resolve(q)
@@ -26,12 +26,13 @@ func TestPreparedCreationCommitsIdentityAndActivityWithoutOverwriting(t *testing
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(root, "history.jsonl"), "portable history")
-	seed := CreationIdentity{ID: strings.Repeat("f", 32), Created: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC), Activity: time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC), Action: "open"}
+	seed := CreationIdentity{ID: strings.Repeat("f", 32), Created: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)}
+	started := time.Now().UTC()
 	r, _, err := e.CreatePrepared(ctx, l, spec, seed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.ID != seed.ID || !r.Created.Equal(seed.Created) || !r.Activity.Equal(seed.Activity) || r.Action != seed.Action {
+	if r.ID != seed.ID || !r.Created.Equal(seed.Created) || r.Activity.Before(started) || r.Action != "create" {
 		t.Fatalf("identity changed: %+v", r)
 	}
 	saved, err := l.ReadRecord(ctx)

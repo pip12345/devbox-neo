@@ -6,7 +6,7 @@ This directory is a separate Git repository and Go module. The executable is `de
 
 - Use the local toolchain: `make` finds `.tools/go` here or in the parent. Run `make install-go` if needed. Minimum Go: 1.24.2.
 - Finish implementation and review before running `make test-fast`. Fix failures and rerun affected tests. Use `make test` instead when disk-backed app temporary files matter; do not run both by default.
-- `make build` builds the CLI; `make build-migrate` builds the separate importer. `make check` adds formatting and race checks.
+- `make build` builds the CLI. `make check` adds formatting and race checks.
 - Prose-only changes need no tests. Changes to embedded runtime assets require `make test-fast`.
 - Tests use temporary homes and fake Docker resources, never the user's state. Report live-Docker and manual acceptance separately from automated results.
 
@@ -23,7 +23,7 @@ Read its architecture page and nearby tests. Keep behavior with its existing own
 | Terminal UI and cancellation | `docs/src/architecture/interactive.md` |
 | SSH sharing | `docs/src/architecture/ssh.md` |
 
-Design history lives in `docs/dev/`; current session contracts are in the architecture pages. The importer follows `migration-plan.md`.
+Design history lives in `docs/dev/`; current session contracts are in the architecture pages.
 
 ## Preserve these boundaries
 
@@ -37,7 +37,7 @@ Design history lives in `docs/dev/`; current session contracts are in the archit
 - The CLI is the source of truth. The interactive menu must fit the CLI's behavior, not the other way around. The CLI must remain fully usable without ever opening an interactive menu.
 - The UI calls shared services. Keep one terminal reader, immutable display snapshots, graceful cancellation, and foreground handoff.
 - Preserve error causes and use `commanderror.Error`/`Step` for guidance. Do not print secrets or persist env/auth values in records.
-- No unapproved compatibility readers, migrations, aliases, or automatic adoption. Importer migration code stays in dedicated `migrations.go` files.
+- No unapproved compatibility readers, migrations, aliases, or automatic adoption. Legacy chats stay in old Devbox; Neo has no migration tool.
 
 ## Documentation discipline
 

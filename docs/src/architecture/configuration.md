@@ -31,7 +31,7 @@ The full resolver starts with built-in defaults and expands every explicit sourc
 
 Harness selection precedes argument merging. A configured `harness_args` list must name its harness in the same file; only lists matching the final harness contribute arguments and provenance. One-off launch arguments are appended later and are not saved.
 
-`docker/Dockerfile`, `setup.sh`, and `before-open.sh` form ordered chains. Harness files overlay by relative path: definition defaults followed by the source chain. Import previews use the same resolver, binding proposed settings to one source directory without changing participation.
+`docker/Dockerfile`, `setup.sh`, and `before-open.sh` form ordered chains. Harness files overlay by relative path: definition defaults followed by the source chain.
 
 ### Provenance is resolution data
 
@@ -57,7 +57,7 @@ Creation checks for `config.json` before prompts, repeats the check under the ow
 
 Named-config deletion holds that owner lock, scans all saved desired and committed session sources, then removes the directory and syncs its parent. A source at or beneath the directory blocks recursive deletion; both the saved path and its canonical target are checked so deleting an alias cannot break a reference unnoticed. The same usage scan finds selected and committed users, but the directory editor, `config users`, and blocked-deletion error present each saved session once, without exposing that internal distinction. It returns known users alongside any inventory errors; symlink entries, corrupt session state, and pending transfers still block deletion, while an incomplete config directory can be deleted. Session creation and source edits do not take the config lock, so the reference check is a current-state safeguard rather than a concurrency guarantee.
 
-Prompts hold no owner locks. Cancellation discards pending text or creation choices, not completed saves. Once creation publishes its config, an artifact failure is reported as partial setup and repaired through `config edit`, not repeated creation. The standalone importer uses `artifact.SourceTree` to capture source artifacts/build contexts without flattening effective defaults.
+Prompts hold no owner locks. Cancellation discards pending text or creation choices, not completed saves. Once creation publishes its config, an artifact failure is reported as partial setup and repaired through `config edit`, not repeated creation.
 
 ### Immediate field edits
 
@@ -87,7 +87,7 @@ Store/auth declarations constrain targets to clean paths beneath the container u
 
 `artifact` discovers image stages only at `<config>/docker/Dockerfile`. `artifact.ReadBuildContext` captures that Dockerfile's parent directory (`<config>/docker/`), its effective ignore rules, regular files, directory entries, and permissions. This separates build files from settings, lifecycle scripts, and harness configuration: unrelated edits must not invalidate the image cache. Resolved image settings such as `base_image` and the selected harness definition still contribute to the image plan. `COPY`/`ADD` inputs belong under `docker/`; no files from the config root are implicitly included.
 
-Ignored paths are excluded before unsupported entries are rejected. Each captured tree supplies its own build execution and fingerprint inputs; contexts are never overlaid. `SourceTree` preserves the `docker/` prefix when capturing config artifacts, including the Dockerfile and effective ignore file even when their patterns exclude them. Resource setup and CLI artifact selection use the same `docker/Dockerfile` path.
+Ignored paths are excluded before unsupported entries are rejected. Each captured tree supplies its own build execution and fingerprint inputs; contexts are never overlaid. Resource setup and CLI artifact selection use the same `docker/Dockerfile` path.
 
 `environment.ImageBuildPlan` contains the upstream image reference, generated preparation/boundary/finalization layers, and ordered captured user stages:
 

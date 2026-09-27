@@ -5,7 +5,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS ?= -X devbox/internal/cli.Version=$(VERSION)
 DOCS_IMAGE := zensical/zensical:0.0.62@sha256:162b7e191224f57b8c584debe51b157b9802efd25d3a8948e4e0f64c1baaaee6
 
-.PHONY: install-go fmt test test-fast test-race test-integration build build-migrate docs-build docs-serve check tidy clean
+.PHONY: install-go fmt test test-fast test-race test-integration build docs-build docs-serve check tidy clean
 install-go:
 	bash scripts/install-go.sh
 fmt:
@@ -21,9 +21,6 @@ test-integration:
 build:
 	mkdir -p $(dir $(BINARY))
 	$(GO) build -ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/devbox
-build-migrate:
-	mkdir -p bin
-	$(GO) build -o bin/devbox-migrate ./cmd/devbox-migrate
 docs-build:
 	docker run --rm --user "$$(id -u):$$(id -g)" -v "$(CURDIR):/docs" $(DOCS_IMAGE) build
 docs-serve:

@@ -9,26 +9,6 @@ import (
 	"devbox/internal/config"
 )
 
-func TestSourcePreviewStaysBoundToItsDirectory(t *testing.T) {
-	base := testSource(t, "base", `{"harness":"opencode","ports":["8080:80"]}`)
-	selected := testSource(t, "selected", "replaced by preview")
-	last := testSource(t, "last", `{"network":"host"}`)
-	proposed, err := config.ParseLayer([]byte(`{"harness":"pi","network":"default"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	preview := &SourcePreview{Path: selected.Path, Layer: proposed}
-	for _, sources := range [][]config.Source{{base, last, selected}, {last, base, selected}} {
-		r, err := Preview(sources, preview, config.Host{})
-		if err != nil || r.Settings.Harness != "pi" || r.Settings.Network != "default" || !reflect.DeepEqual(r.Sources, sources) || len(r.Settings.Ports) != 1 {
-			t.Fatal("preview changed participation or followed an array position", r, err)
-		}
-	}
-	if _, err := Preview([]config.Source{base}, preview, config.Host{}); err != nil {
-		t.Fatal("an unselected preview changed composition", err)
-	}
-}
-
 func TestHarnessArgumentsRequireAndMatchTheirOwnHarness(t *testing.T) {
 	base := testSource(t, "base", `{"harness":"pi","harness_args":["--pi-only"]}`)
 	overlay := testSource(t, "overlay", `{"harness":"opencode","harness_args":["--opencode-only"]}`)

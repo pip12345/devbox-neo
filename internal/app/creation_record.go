@@ -37,13 +37,6 @@ func creationRecord(s environment.Spec, imageID string, mounts []docker.Mount, i
 	if previous != nil {
 		r.Settings.ManualStart = previous.Settings.ManualStart
 		r.Activity, r.Action = previous.Activity, "recreate"
-	} else {
-		if !seed.Activity.IsZero() {
-			r.Activity = seed.Activity
-		}
-		if seed.Action != "" {
-			r.Action = seed.Action
-		}
 	}
 	return r
 }

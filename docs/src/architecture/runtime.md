@@ -12,7 +12,7 @@ All paths below are under `internal/`.
 | `app` | Lifecycle ordering, validation, locks, and external effects |
 | `resource` | Config-directory creation, edits, optional files, deletion |
 | `config` | Schemas, substitution, validation, merges |
-| `artifact` | Ordered composition, provenance, captured source trees |
+| `artifact` | Ordered composition, provenance, captured build contexts |
 | `environment` | Identity, desired specification, image plan, input comparison |
 | `harness` | Definitions, defaults, declared mounts and capabilities |
 | `store` | Records, external locks, leases, transfer journals |

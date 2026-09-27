@@ -4,7 +4,7 @@
 
 The implemented [folder-local sessions and explicit configs](generic-config-alternative.md) contract supersedes this document's profile/project selection, global configuration, naming, menu entry points, source-reference schema, and transfer-selector sections. Those older sections are historical design context, not alternate runtime behavior. Session records are now schema 5; the lifecycle, ownership, image, synchronization, and SSH contracts remain unless that replacement explicitly updates them.
 
-This document defines the intended rewrite. The normal runtime starts with no old-code or old-state compatibility layer. An explicitly invoked, removable migration utility is planned separately in [migration-plan.md](migration-plan.md); it converts the current Go home's data into normal new-format state.
+This document defines the intended rewrite. The normal runtime starts with no old-code or old-state compatibility layer. Legacy chats remain in old Devbox; Neo starts with fresh configs and sessions.
 
 The plan is based on an inspection of the existing Go code, tests, human documentation, bundled assets, configuration model, proxy lifecycle, harness registry, session subsystem, and Docker integration.
 
@@ -71,7 +71,7 @@ The rewrite must make these retained rules explicit and give each one a single o
 - No Squid sidecar, HTTPS interception, CA management, allowlist, or proxy recovery.
 - No offline mode. AI harnesses require network access.
 - No network-security or egress-isolation claim.
-- No startup migration, dual-read, dual-write, old-format fallback, or importer inside the normal runtime. One-time cutover belongs exclusively to the separate migration utility.
+- No startup migration, dual-read, dual-write, old-format fallback, or legacy import tool.
 - No support for Claude, Copilot, or Codex as built-ins. Users may define them as custom harnesses.
 - No host command gateway or privileged host-control service.
 - No background daemon.
@@ -484,7 +484,7 @@ Strict rules:
 - use standard JSON; comments and trailing commas are not supported in the initial rewrite;
 - unknown fields fail;
 - unsupported versions fail;
-- normal config load/save code has no migration logic or dependency on the separate migration utility;
+- normal config load/save code reads only the current schema;
 - validation runs after full resolution;
 - source configuration defines creation settings; invocation-only open arguments are appended at launch and are not saved;
 - config is read once per operation.
@@ -1537,7 +1537,7 @@ For each CLI command, test:
 
 ## Complexity Guardrails
 
-1. No compatibility code in normal runtime packages. Only the separately invoked migration package reads old formats; normal packages never import it or read its journal.
+1. No old-format readers or compatibility code.
 2. No proxy abstraction remains after proxy deletion.
 3. No `switch harnessName` in lifecycle, image, state, or transfer code.
 4. No config or artifact reload after `EnvironmentSpec` resolution.
@@ -1550,9 +1550,7 @@ For each CLI command, test:
 
 ## Cutover and Development Isolation
 
-There is no automatic compatibility with the current `~/.devbox`. Users may perform a manual clean cutover or explicitly run the separate utility described in [migration-plan.md](migration-plan.md).
-
-The migration utility stages converted data, keeps the original home in place at `~/.devbox`, handles approved project-config changes separately, and creates fresh rewrite containers from copied portable state. Its journal, source schemas, and old-resource handling stay outside normal runtime packages. It never teaches the rewrite to adopt old containers or accept old records.
+Neo uses a separate home and has no legacy migration tool. Keep old Devbox available for legacy chats; create new configs and sessions in Neo.
 
 During development:
 
@@ -1562,15 +1560,7 @@ During development:
 - use `devbox-` container/session names, while retaining `devbox-rewrite.*` ownership labels and `devbox-rewrite/` image tags; earlier container/session names without a folder or with `devbox-rewrite-` require a clean session reset, with no automatic migration or deletion;
 - never inspect or mutate current Devbox resources by prefix alone.
 
-Retain this manual clean-cutover alternative for users who do not want to import old state:
-
-1. stop current Devbox containers;
-2. back up or move the current home directory;
-3. remove or rename old deterministic containers that collide;
-4. initialize a fresh rewrite home;
-5. recreate profiles/projects and authenticate Pi/OpenCode or custom harnesses.
-
-Do not turn either cutover path into hidden startup migration. The migration utility has its own implementation sequence, failure-recovery tests, and removal criteria; the normal runtime retains the same current-format contracts for fresh and imported sessions.
+Create Neo configs and authenticate the selected harnesses explicitly. Do not move or delete the old home, containers, or conversations as part of Neo setup.
 
 ## Definition of Done
 
@@ -1594,4 +1584,4 @@ The rewrite is complete when:
 - Pi and OpenCode pass the same end-to-end create/open/reopen/drift/recreate path before dashboards are implemented;
 - fresh-home unit, race, integration, build, and release checks pass;
 - human docs, command help, defaults, schemas, and tests agree;
-- no compatibility or migration path exists in the normal runtime, and removing the separate migration utility does not affect ordinary imported sessions.
+- no compatibility or legacy migration path exists, and old Devbox installations remain untouched.

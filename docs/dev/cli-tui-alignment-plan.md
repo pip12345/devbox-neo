@@ -140,7 +140,7 @@ Preserve exact argument semantics, including empty arguments; blank text is not 
 
 Keep immediate config editing, creation drafts, and independently created configs as their existing distinct save models. This work does not add whole-editor Save/Discard screens or automatic retries.
 
-Update all affected shared-runner callers, including the separate importer where the input API is shared. Keep its workflow and persistence behavior unchanged. Preserve plain-prompt cancellation/EOF rules, deliberately define initial-value presentation there, and prevent sensitive defaults or terminal echo from exposing saved values. Do not retain the old API through a compatibility wrapper.
+Update all affected shared-runner callers while preserving their workflow and persistence behavior. Preserve plain-prompt cancellation/EOF rules, deliberately define initial-value presentation there, and prevent sensitive defaults or terminal echo from exposing saved values. Do not retain the old API through a compatibility wrapper.
 
 Use typed validation/conflict distinctions where the workflow needs different retry behavior; never classify errors by their display text. No owner lock may remain held while waiting for corrected input.
 
@@ -204,7 +204,6 @@ Keep the capability matrix in `internal/cli/capabilities_test.go`, with outcome 
 - Expressions and exact argv values survive editing.
 - Sensitive defaults/input do not leak into terminal captures, errors, or receipts.
 - Plain prompts, EOF, terminal cancellation, and foreground reader handoff remain correct.
-- Shared importer callers retain their existing workflow behavior.
 
 ### Test structure
 
@@ -222,6 +221,6 @@ Use equivalent operation fixtures to compare CLI/TUI saved state and failure out
 
 Update relevant guides and command/configuration/output references, plus configuration, interactive, and runtime architecture pages. In particular, revise the current statement that rejected edits are discarded: validation failures retain pending text, while concurrency conflicts reload authoritative state without replay. Update the earlier frontend plan where its unchanged-edit-flags statement is superseded. Record implementation and acceptance status in `progress.md` when work is delivered, not as already complete in this plan.
 
-Implementation validation: `make test-fast`, focused race tests for affected CLI/UI code, the CLI build, and the importer build if shared-input callers change. Use PTY tests and manual host-terminal acceptance for editing/cancellation/output behavior. Report live Docker and manual acceptance separately from automated tests.
+Implementation validation: `make test-fast`, focused race tests for affected CLI/UI code, and the CLI build. Use PTY tests and manual host-terminal acceptance for editing/cancellation/output behavior. Report live Docker and manual acceptance separately from automated tests.
 
 Record validation results in [progress](progress.md).

@@ -97,13 +97,7 @@ type Request struct {
 	Host      config.Host `json:"-"`
 }
 
-func Resolve(q Request) (Spec, error) { return resolve(q, nil) }
-
-// Preview validates one proposed source without publishing it. Execution
-// resolves final paths; importer previews remain isolated from runtime state.
-func Preview(q Request, source *artifact.SourcePreview) (Spec, error) { return resolve(q, source) }
-
-func resolve(q Request, proposed *artifact.SourcePreview) (Spec, error) {
+func Resolve(q Request) (Spec, error) {
 	var spec Spec
 	identity, err := Identify(q.Workspace, q.LocalName)
 	if err != nil {
@@ -123,7 +117,7 @@ func resolve(q Request, proposed *artifact.SourcePreview) (Spec, error) {
 		}
 		return spec, commanderror.New("configuration_unavailable", "Cannot resolve selected configs: "+err.Error(), q.SessionID, err, next...)
 	}
-	r, err := artifact.Preview(sources, proposed, q.Host)
+	r, err := artifact.Resolve(sources, q.Host)
 	if err != nil {
 		if q.SessionID != "" {
 			return spec, commanderror.New("invalid_configuration", err.Error(), q.SessionID, err,

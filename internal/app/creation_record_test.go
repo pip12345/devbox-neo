@@ -43,7 +43,7 @@ func TestCreationRecordParity(t *testing.T) {
 				seed = CreationIdentity{ID: strings.Repeat("f", 32), Created: fixed}
 			}
 			if mode == "prepared" || previous != nil {
-				seed.Activity, seed.Action, seed.ManualStart = fixed.Add(time.Hour), "open", true
+				seed.ManualStart = true
 			}
 			directory, lockedID := "prepared-directory", strings.Repeat("f", 32)
 			if previous != nil {
@@ -65,14 +65,14 @@ func TestCreationRecordParity(t *testing.T) {
 			case previous != nil:
 				id, created, activity, action, manual = previous.ID, previous.Created, previous.Activity, "recreate", previous.Settings.ManualStart
 			case mode == "prepared":
-				id, created, activity, action, manual = seed.ID, seed.Created, seed.Activity, seed.Action, seed.ManualStart
+				id, created, manual = seed.ID, seed.Created, seed.ManualStart
 			case mode == "prepared-defaults":
 				id, created = seed.ID, seed.Created
 			}
 			if mode == "create" && (len(r.ID) != 32 || r.Created.Before(start) || r.Created.After(end)) {
 				t.Fatal("creation identity/time not allocated at creation", r.ID, r.Created)
 			}
-			if (mode == "create" || mode == "prepared-defaults") && (r.Activity.Before(start) || r.Activity.After(end)) {
+			if previous == nil && (r.Activity.Before(start) || r.Activity.After(end)) {
 				t.Fatal("default activity not set at creation", r.Activity)
 			}
 			root := filepath.Join(e.Store.Home, "sessions", directory)

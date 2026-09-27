@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"devbox/internal/artifact"
 	"devbox/internal/commanderror"
 	"devbox/internal/fsutil"
 	"devbox/internal/store"
@@ -96,9 +95,6 @@ func TestArtifactSetupKeepsDockerfilesAndExecutableIntent(t *testing.T) {
 		}
 	}
 	put(t, filepath.Join(owner.Root, "docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\nCOPY asset /opt/asset\n")
-	put(t, filepath.Join(owner.Root, "docker/asset"), "copied")
-	put(t, filepath.Join(owner.Root, "docker/omitted"), "ignored")
-	put(t, filepath.Join(owner.Root, "docker/.dockerignore"), "omitted\n")
 	if err := os.Chmod(filepath.Join(owner.Root, "setup.sh"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -108,12 +104,9 @@ func TestArtifactSetupKeepsDockerfilesAndExecutableIntent(t *testing.T) {
 	if !strings.Contains(string(get(t, filepath.Join(owner.Root, "docker/Dockerfile"))), "COPY asset") {
 		t.Fatal("setup replaced a Dockerfile")
 	}
-	tree, err := artifact.SourceTree(owner.Root, nil)
-	if err != nil || string(tree.Files["docker/asset"].Data) != "copied" || tree.Files["setup.sh"].Mode.Perm() != 0755 {
-		t.Fatal("source tree lost build context or executable intent", err)
-	}
-	if _, exists := tree.Files["docker/omitted"]; exists {
-		t.Fatal("source tree included ignored build context")
+	info, err := os.Stat(filepath.Join(owner.Root, "setup.sh"))
+	if err != nil || info.Mode().Perm() != 0755 {
+		t.Fatal("setup changed existing script permissions", err)
 	}
 	if err := fsutil.WriteNew(filepath.Join(owner.Root, "setup.sh"), []byte("overwrite"), 0600); !os.IsExist(err) {
 		t.Fatal("no-replace publication replaced an existing script", err)

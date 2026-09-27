@@ -13,6 +13,10 @@ import (
 	"devbox/internal/harness"
 )
 
+const Dockerfile = "docker/Dockerfile"
+
+var ArtifactNames = []string{Dockerfile, "setup.sh", "before-open.sh"}
+
 type Layer struct {
 	Name   string       `json:"name"`
 	Path   string       `json:"path"`
@@ -32,13 +36,9 @@ type Resolved struct {
 	Sources  []config.Source
 }
 
-func Resolve(sources []config.Source, host config.Host) (Resolved, error) {
-	return Preview(sources, nil, host)
-}
-
-// Preview accepts absolute directory inputs from the reference resolver. It is
+// Resolve accepts absolute directory inputs from the reference resolver. It is
 // also used for isolated directory inspection, where a harness may be unset.
-func Preview(sources []config.Source, proposed *SourcePreview, host config.Host) (r Resolved, err error) {
+func Resolve(sources []config.Source, host config.Host) (r Resolved, err error) {
 	defer func() {
 		var actionable *commanderror.Error
 		if err != nil && !errors.As(err, &actionable) {
@@ -63,15 +63,7 @@ func Preview(sources []config.Source, proposed *SourcePreview, host config.Host)
 		}
 		seen[source.Path] = true
 		file := filepath.Join(source.Path, "config.json")
-		var layer config.Layer
-		if preview := proposed.layer(source); preview != nil {
-			layer = *preview
-			if layer.Raw != nil {
-				layer, err = config.ResolveLayer(layer.Raw, file, host)
-			}
-		} else {
-			layer, err = config.ReadLayer(file, host)
-		}
+		layer, err := config.ReadLayer(file, host)
 		if err != nil {
 			return r, err
 		}
