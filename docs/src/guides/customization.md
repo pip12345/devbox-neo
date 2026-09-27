@@ -1,6 +1,6 @@
 # Customize your environment
 
-Open `devbox-neo config edit base` and choose **Add optional files**. Add only what you need; existing files are kept.
+Open `devbox-neo config edit base` and choose **Add optional files**. Add only what you need. Existing files are kept.
 
 These examples change the shared `base` config. Use a [project config](configuration.md#add-settings-for-one-project) when the customization belongs to one workspace.
 
@@ -33,11 +33,11 @@ These files synchronize when the container next starts. Finish attached commands
 
 ## Prepare the workspace
 
-Add **setup.sh** for tasks needing the mounted project, such as installing dependencies. It runs during container creation and recreation. Changes to this script require recreation; keep reusable tool installation in the Dockerfile instead.
+Add **setup.sh** for tasks needing the mounted project, such as installing dependencies. It runs during container creation and recreation. Changes to this script require recreation. Keep reusable tool installation in the Dockerfile instead.
 
 ## Run something before each launch
 
-Add **before-open.sh** for work needed before every harness launch. It runs inside `/workspace`; keep it quick.
+Add **before-open.sh** for work needed before every harness launch. It runs inside `/workspace`. Keep it quick.
 
 Both script types run in config order. A failure stops the chain, but does not undo completed work. See [artifacts](../reference/configuration.md#artifacts) for the complete rules.
 

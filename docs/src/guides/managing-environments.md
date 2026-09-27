@@ -1,6 +1,6 @@
 # Manage environments
 
-The container is replaceable. Saved session data holds its identity and harness history; your project files stay in their host folder.
+The container is replaceable. Saved session data holds its identity and harness history. Your project files stay in their host folder.
 
 ## Apply configuration changes
 
@@ -9,9 +9,9 @@ Choose **Status** in the session menu after changing configuration.
 | Status | Next step |
 |---|---|
 | No changes | Keep working |
-| Runtime changes | Follow the listed reasons: managed files need a container restart; launch options apply at the next Open |
+| Runtime changes | Follow the listed reasons. Managed files need a container restart. Launch options apply at the next Open. |
 | Recreate needed | Choose Recreate |
-| Rebuild + recreate needed | Choose Recreate; it also builds the changed image |
+| Rebuild + recreate needed | Choose Recreate to build the changed image and replace the container |
 | Cannot check | Fix the reported problem first |
 
 **Recreate loses container-local files and tools**, but preserves saved harness state and project files. Put repeatable tool installation in a [Dockerfile](customization.md#add-tools).
@@ -42,7 +42,7 @@ The destination name must be unused. Neither copy nor move selects a destination
 
 If interrupted, fix the reported problem and retry the same transfer. Leave pending state in place so Devbox can resume.
 
-Choose **Rename session** to change its label without rebuilding or moving history. To point the same session at a moved project, choose **Change workspace**, then **Recreate**. The workspace edit clears a matching old-folder default; it does not move project files. See [CLI syntax](../reference/commands.md).
+Choose **Rename session** to change its label without rebuilding or moving history. To point the same session at a moved project, choose **Change workspace**, then **Recreate**. The workspace edit clears a matching old-folder default. It does not move project files. See [CLI syntax](../reference/commands.md).
 
 ## Delete
 
@@ -53,6 +53,6 @@ Choose **Delete** in the session menu:
 
 Review **Preview deletion**, then choose **Delete…**. Whole-session deletion asks separately about the container and saved data. **Declining the second question does not restore a container already removed.**
 
-Neither choice deletes project files, configs, managed authentication, or shared caches. **Force** permits interrupting active container commands; it does not bypass saved-data protections.
+Neither choice deletes project files, configs, managed authentication, or shared caches. **Force** permits interrupting active container commands. It does not bypass saved-data protections.
 
 For bulk cleanup, use **All-session operations → Bulk deletion** and review the selected targets. [Deletion flags](../reference/commands.md#deletion) cover scripting and filters.

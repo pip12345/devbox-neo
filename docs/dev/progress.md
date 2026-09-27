@@ -4,7 +4,7 @@ The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-
 
 Session structure refactor implemented: schema 6 separates settings/applied runtime, with ID-based lookup/locks/leases, independent resource names, metadata-only rename, and explicit workspace edits. `make test-fast`, affected-package race tests, both builds, vet, and integration compilation pass; live Docker/manual acceptance remain unrun. No migration or automatic reset.
 
-Local config discovery and CLI/menu rename implemented; `make test-fast` passes. Live Docker and manual terminal acceptance remain unrun.
+Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
 ## CLI/TUI alignment and editing UX — implemented, host/live acceptance pending
 

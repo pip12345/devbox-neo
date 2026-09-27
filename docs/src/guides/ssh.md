@@ -1,6 +1,6 @@
 # Share SSH access
 
-You authenticate in a host terminal; the agent reuses that connection without receiving your credentials. Keep the terminal open while sharing.
+You authenticate in a host terminal. The agent reuses that connection without receiving your credentials. Keep the terminal open while sharing.
 
 ## Connect
 
@@ -12,7 +12,7 @@ devbox-neo ssh . user@server
 
 Answer password, passphrase, MFA, and host-key prompts yourself. SSH runs inside the container by default, using its SSH configuration and network.
 
-After authentication, Devbox prints the exact command the agent should use. Give it that command; some destinations receive a generated alias.
+After authentication, Devbox prints the exact command the agent should use. Give it that exact command because some destinations receive a generated alias.
 
 ## Use the shared connection
 

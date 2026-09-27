@@ -4,9 +4,9 @@ Run `devbox-neo` on the host. Highlight a session and press **Enter** for its ac
 
 ## Resume work
 
-Choose **Continue** to resume a conversation, or **Open** for a normal launch. The session list shows **Last active** times; these include recorded operations such as Stop and Exec, not just harness launches.
+Choose **Continue** to resume a conversation, or **Open** for a normal launch. The session list shows **Last active** times. These include recorded operations such as Stop and Exec, not just harness launches.
 
-The harness takes over your terminal. When it exits, acknowledge the result to return. **Ctrl-C** interrupts a foreground operation; in a menu, it exits Devbox. See [keyboard controls](../reference/output.md#interactive-menus) for navigation.
+The harness takes over your terminal. When it exits, acknowledge the result to return. **Ctrl-C** interrupts a foreground operation. In a menu, it exits Devbox. See [keyboard controls](../reference/output.md#interactive-menus) for navigation.
 
 ## Open a shell
 
@@ -16,7 +16,7 @@ Tools installed here survive stop/start, but are lost when the container is recr
 
 ## Select a folder default
 
-A project can have several named sessions. In a session's menu, choose **Make folder default** to select the one folder-only commands should use. The list marks it with `*`; the same menu then offers **Clear folder default**.
+A project can have several named sessions. In a session's menu, choose **Make folder default** to select the one folder-only commands should use. The list marks it with `*`. The same menu then offers **Clear folder default**.
 
 Selecting a default does not launch anything. Opening a session from the browser does not require a default.
 
@@ -46,7 +46,7 @@ The `--` separates Devbox options from the command. Add `--name work` before it 
 
 Normally, the container stops when its last attached command exits. Choose **Start** to keep it running until **Stop**, even after Docker restarts. This does not resume old harness processes or terminals after a reboot.
 
-Stop refuses while Devbox commands are active. Finish them first; use Force only when you intend to interrupt them.
+Stop refuses while Devbox commands are active. Finish them first. Use Force only when you intend to interrupt them.
 
 ## Pass harness options
 

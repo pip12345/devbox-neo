@@ -13,7 +13,7 @@ cd /path/to/your/project
 devbox-neo
 ```
 
-If Go is missing, run `make install-go` before building. The PATH change above applies to this terminal; [shell setup](../reference/commands.md#completion) covers future terminals.
+If Go is missing, run `make install-go` before building. The PATH change above applies to this terminal. [Shell setup](../reference/commands.md#completion) covers future terminals.
 
 ## Create a session
 
@@ -25,7 +25,7 @@ A session is a saved environment for one project folder. With no sessions yet, *
 4. Set **Name/location** to `base`. Under **Harness** (the coding tool to launch), choose Pi, OpenCode, or Claude Code.
 5. Leave **Optional files** at **None**, then choose **Create config**.
 
-Devbox adds the new config to your session draft automatically. Choose **Create session** to build the environment; the first build can take a while.
+Devbox adds the new config to your session draft automatically. Choose **Create session** to build the environment. The first build can take a while.
 
 **Claude Code runs with its permission prompts bypassed.** See [harness defaults](../reference/harnesses.md#built-in-harnesses) before choosing it.
 
@@ -39,6 +39,6 @@ When you leave the harness, the container normally stops. Project files and save
 
 ## Return later
 
-Run `devbox-neo`, highlight your session, and press **Enter**. Choose **Continue** to resume the conversation or **Open** for a normal launch. **Esc** goes back; **Tab** switches to configs while browsing.
+Run `devbox-neo`, highlight your session, and press **Enter**. Choose **Continue** to resume the conversation or **Open** for a normal launch. **Esc** goes back. **Tab** switches to configs while browsing.
 
 **Next:** [Everyday use](everyday-use.md).

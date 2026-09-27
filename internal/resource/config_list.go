@@ -52,8 +52,10 @@ func inspectConfig(name, path string) ConfigEntry {
 	return item
 }
 
-// DiscoverConfigs only supplies menu candidates. It neither registers sources
-// nor resolves a session's configuration; selecting a source remains explicit.
+// DiscoverConfigs only offers parseable config layers: a generic config.json
+// filename alone does not identify a Devbox config. It does not resolve host
+// expressions or require runnable settings, since layers may inherit values.
+// Discovery neither registers sources nor changes a session's selection.
 func DiscoverConfigs(directory string) ([]ConfigEntry, error) {
 	root, err := filepath.Abs(directory)
 	if err != nil {
@@ -76,7 +78,10 @@ func DiscoverConfigs(directory string) ([]ConfigEntry, error) {
 		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		configs = append(configs, inspectConfig(name, path))
+		item := inspectConfig(name, path)
+		if item.Error == "" {
+			configs = append(configs, item)
+		}
 	}
 	return configs, nil
 }

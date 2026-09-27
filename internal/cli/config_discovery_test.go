@@ -20,8 +20,10 @@ func TestLocalSourcePickerUsesLaunchDirectoryAndSavesRelativeReference(t *testin
 		t.Fatal(err)
 	}
 	completionFile(t, launch, ".devbox/config.json", `{"version":1}`)
+	completionFile(t, launch, "foreign-app/config.json", `{"theme":"dark"}`)
 	s := menuService(t)
 	completionFile(t, s.Home, "configs/base/config.json", `{"version":1}`)
+	completionFile(t, s.Home, "configs/broken/config.json", `invalid`)
 	before := completionSnapshot(t, launch)
 	var out bytes.Buffer
 	p := sourcePicker{menu: testMenu(context.Background(), strings.NewReader("1\n"), &out), home: s.Home, workspace: workspace, cwd: launch, userHome: t.TempDir()}
@@ -32,6 +34,9 @@ func TestLocalSourcePickerUsesLaunchDirectoryAndSavesRelativeReference(t *testin
 	text := out.String()
 	if !strings.Contains(text, "Local configs") || !strings.Contains(text, "Named configs") || strings.Index(text, "./.devbox") > strings.Index(text, "base") {
 		t.Fatal("local configs were not shown first", text)
+	}
+	if strings.Contains(text, "foreign-app") || !strings.Contains(text, "broken") {
+		t.Fatal("picker must hide invalid local configs but retain invalid named configs", text)
 	}
 	if !reflect.DeepEqual(before, completionSnapshot(t, launch)) {
 		t.Fatal("discovery or selection modified config files")
