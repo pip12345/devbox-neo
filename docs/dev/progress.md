@@ -6,6 +6,12 @@ Session structure refactor implemented: schema 6 separates settings/applied runt
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Dedicated Docker build contexts — implemented, live acceptance pending
+
+- Image customization uses only `<config>/docker/Dockerfile`, with `<config>/docker/` as its isolated build context. Settings, harness files, and lifecycle scripts no longer enter context capture or invalidate image fingerprints as unrelated files.
+- Artifact discovery, source capture, optional-file generation, CLI/menu labels, and published/installed docs use `docker/Dockerfile`. No root-Dockerfile fallback, alias, or automatic migration was added.
+- Regression coverage checks context boundaries, image fingerprints, ignore rules, source-tree paths, symlink rejection, seeding, and ordered independent build stages. `make test-fast`, `make build`, isolated CLI smoke checks, and `git diff --check` pass. Live Docker acceptance remains unrun.
+
 ## CLI/TUI alignment and editing UX — implemented, host/live acceptance pending
 
 Implemented the [alignment plan](cli-tui-alignment-plan.md): ordered config replacement and inspection, improved text editing, and consistent failure reporting. Selection keys wrap at list boundaries.

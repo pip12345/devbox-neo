@@ -47,7 +47,7 @@ func chooseConfigHarness(m menu, home string, selected *string) (*string, error)
 }
 
 func optionalFilesMenu(m menu, home string, options resource.SetupOptions) (resource.SetupOptions, bool, error) {
-	labels := []string{"Harness config files", "setup.sh", "before-open.sh", "Dockerfile"}
+	labels := []string{"Harness config files", "setup.sh", "before-open.sh", "docker/Dockerfile"}
 	proceed := false
 	err := m.Run(func() (cliui.Screen, error) {
 		var summary []string

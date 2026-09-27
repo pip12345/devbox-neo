@@ -24,6 +24,8 @@ Docker daemon or try to manage this container from inside it.
 - Container-local installations survive stop/start, but not recreation. Workspace
   files and declared harness stores persist. Other writable paths may not.
 - Do not add Dockerfiles or change persistent environment config without approval.
+  Image customization belongs in the selected host config's docker/Dockerfile;
+  only that docker/ directory supplies build inputs.
 - Do not modify /devbox. It contains Devbox-managed runtime files.
 - Managed harness files are overwritten on synchronization. Lasting changes belong
   in the selected host config directory, not its live container copy.

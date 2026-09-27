@@ -31,7 +31,7 @@ The full resolver starts with built-in defaults and expands every explicit sourc
 
 Harness selection precedes argument merging. A configured `harness_args` list must name its harness in the same file; only lists matching the final harness contribute arguments and provenance. One-off launch arguments are appended later and are not saved.
 
-Dockerfiles, `setup.sh`, and `before-open.sh` form ordered chains. Harness files overlay by relative path: definition defaults followed by the source chain. Import previews use the same resolver, binding proposed settings to one source directory without changing participation.
+`docker/Dockerfile`, `setup.sh`, and `before-open.sh` form ordered chains. Harness files overlay by relative path: definition defaults followed by the source chain. Import previews use the same resolver, binding proposed settings to one source directory without changing participation.
 
 ### Provenance is resolution data
 
@@ -85,7 +85,9 @@ Store/auth declarations constrain targets to clean paths beneath the container u
 
 ## Layered image compilation
 
-`artifact.ReadBuildContext` captures each contributing Dockerfile, its effective ignore rules, regular files, directory entries, and permissions. Ignored paths are excluded before unsupported entries are rejected. Each captured tree supplies its own build execution and fingerprint inputs; contexts are never overlaid.
+`artifact` discovers image stages only at `<config>/docker/Dockerfile`. `artifact.ReadBuildContext` captures that Dockerfile's parent directory (`<config>/docker/`), its effective ignore rules, regular files, directory entries, and permissions. This separates build files from settings, lifecycle scripts, and harness configuration: unrelated edits must not invalidate the image cache. Resolved image settings such as `base_image` and the selected harness definition still contribute to the image plan. `COPY`/`ADD` inputs belong under `docker/`; no files from the config root are implicitly included.
+
+Ignored paths are excluded before unsupported entries are rejected. Each captured tree supplies its own build execution and fingerprint inputs; contexts are never overlaid. `SourceTree` preserves the `docker/` prefix when capturing config artifacts, including the Dockerfile and effective ignore file even when their patterns exclude them. Resource setup and CLI artifact selection use the same `docker/Dockerfile` path.
 
 `environment.ImageBuildPlan` contains the upstream image reference, generated preparation/boundary/finalization layers, and ordered captured user stages:
 

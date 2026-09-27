@@ -130,7 +130,7 @@ func directoryCommand(factory resourceFactory, create bool) *cobra.Command {
 		return renderResource(cmd, result, err, asJSON, service.Home)
 	}}
 	cmd.Flags().StringVar(&selected, "harness", "", "Set this config's persistent harness selection")
-	cmd.Flags().StringSliceVar(&artifacts, "artifact", nil, "Add missing harness-config, setup.sh, before-open.sh, or Dockerfile files (repeatable)")
+	cmd.Flags().StringSliceVar(&artifacts, "artifact", nil, "Add missing harness-config, setup.sh, before-open.sh, or docker/Dockerfile files (repeatable)")
 	cmd.Flags().StringVar(&artifactHarness, "artifact-harness", "", "Choose which harness's files to add without changing the config's harness")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print the operation result as JSON; never prompt")
 	return cmd

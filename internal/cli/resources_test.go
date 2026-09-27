@@ -346,7 +346,7 @@ func TestFreshConfigSetupNeedsNeitherDockerNorManualJSON(t *testing.T) {
 	if err != nil || resolved.Settings.Harness != "pi" {
 		t.Fatal("new config is not usable", err)
 	}
-	if _, err := os.Stat(filepath.Join(home, "configs/basic/Dockerfile")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, "configs/basic/docker/Dockerfile")); !os.IsNotExist(err) {
 		t.Fatal("setup implicitly added a Dockerfile")
 	}
 	overlay := filepath.Join(t.TempDir(), "overlay")
@@ -397,7 +397,7 @@ func TestPromptParsingAndCancellation(t *testing.T) {
 	out.Reset()
 	m.Input = bufio.NewReader(strings.NewReader("2\n2\n4\n5\n"))
 	options, proceed, err := optionalFilesMenu(m, t.TempDir(), resource.SetupOptions{})
-	if err != nil || !proceed || !slices.Equal(options.Artifacts, []string{"Dockerfile"}) || strings.Contains(out.String(), "comma") || !strings.Contains(out.String(), "✓ Dockerfile") {
+	if err != nil || !proceed || !slices.Equal(options.Artifacts, []string{"docker/Dockerfile"}) || strings.Contains(out.String(), "comma") || !strings.Contains(out.String(), "✓ docker/Dockerfile") {
 		t.Fatal(options, proceed, err, out.String())
 	}
 	_, slave := testTerminal(t)

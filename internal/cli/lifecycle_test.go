@@ -193,10 +193,15 @@ func TestSessionListEmptyOutput(t *testing.T) {
 	}
 }
 
-func TestRemovedFullDockerfileIsNotAnInitChoice(t *testing.T) {
+func TestOnlyDedicatedDockerfileIsAnInitChoice(t *testing.T) {
 	home := t.TempDir()
 	resourceCLI(t, home, "config", "create", "test")
-	if _, err := resourceCLI(t, home, "config", "edit", "test", "--harness", "pi", "--artifact", "Dockerfile.full"); err == nil {
-		t.Fatal("removed full override was seeded")
+	for _, name := range []string{"Dockerfile", "Dockerfile.full"} {
+		if _, err := resourceCLI(t, home, "config", "edit", "test", "--harness", "pi", "--artifact", name); err == nil {
+			t.Fatalf("unsupported artifact %s was seeded", name)
+		}
+	}
+	if _, err := resourceCLI(t, home, "config", "edit", "test", "--artifact", "docker/Dockerfile"); err != nil {
+		t.Fatal(err)
 	}
 }

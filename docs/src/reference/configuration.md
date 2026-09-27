@@ -107,11 +107,11 @@ Set these in configs, not as overrides to Create/Recreate.
 
 ## Artifacts
 
-Artifacts live beside `config.json`.
+Artifact paths are relative to the directory containing `config.json`.
 
 | Path | Order | Runs/applies |
 |---|---|---|
-| `Dockerfile` | Each extends the preceding image | Image build |
+| `docker/Dockerfile` | Each extends the preceding image | Image build; context is `docker/` |
 | `setup.sh` | Config order | Container creation/recreation |
 | `before-open.sh` | Config order | Before each harness launch |
 | `<harness>/` | Defaults, then configs; later paths win | Managed-file synchronization |
@@ -129,11 +129,14 @@ Devbox prepares the base image, builds selected Dockerfiles in order, then insta
 | Base image | Debian/Ubuntu-compatible; conflicting development accounts are rejected |
 | Dockerfile base | `ARG DEVBOX_BASE` followed by `FROM ${DEVBOX_BASE}` |
 | Initial user/home/workdir | `devuser`, `/home/devuser`, `/workspace` |
-| Build context | Each Dockerfile's own directory |
-| Ignore file | `Dockerfile.dockerignore`, otherwise `.dockerignore` |
+| Dockerfile location | `<config>/docker/Dockerfile` |
+| Build context | Only `<config>/docker/`; `COPY`/`ADD` paths are relative to this directory |
+| Ignore file | `docker/Dockerfile.dockerignore`, otherwise `docker/.dockerignore` |
 | Context entries | Regular files/directories and permissions; unignored symlinks/special files are rejected |
 | Build arguments | `DEVBOX_BASE`, `DEVBOX_USER`, `DEVBOX_USER_HOME`, `DEVBOX_WORKSPACE`, `DEVBOX_UID`, `DEVBOX_GID` |
 | Cache | Enabled normally; `recreate --image` disables it for controlled stages |
+
+Only `docker/Dockerfile` contributes an image stage. Other config files, harness files, and lifecycle scripts are not build-context inputs. Resolved image settings such as `base_image` still affect the image. Scripts and harness files retain their separate application rules.
 
 Use sudo for system packages. Custom PATH additions carry forward. Build arguments are not a secret channel; `DEVBOX_WORKSPACE` is the container path. Install executables outside directories hidden by runtime mounts.
 

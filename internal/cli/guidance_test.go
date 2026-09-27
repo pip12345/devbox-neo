@@ -67,7 +67,7 @@ func TestResourceSuggestionsOnlyCarryExplicitHome(t *testing.T) {
 				t.Fatal("expected existing-config edit guidance")
 			}
 			check(out)
-			out, err = run("config", "edit", "missing", "--artifact", "Dockerfile")
+			out, err = run("config", "edit", "missing", "--artifact", "docker/Dockerfile")
 			if err == nil {
 				t.Fatal("expected missing-profile guidance")
 			}

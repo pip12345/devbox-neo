@@ -13,7 +13,7 @@ import (
 	"devbox/internal/harness"
 )
 
-var SetupArtifacts = []string{"harness-config", "setup.sh", "before-open.sh", "Dockerfile"}
+var SetupArtifacts = []string{"harness-config", "setup.sh", "before-open.sh", artifact.Dockerfile}
 
 type artifactSeeds struct {
 	files    map[string]harness.File
@@ -44,7 +44,7 @@ func planArtifacts(h *harness.Effective, requested []string) (artifactSeeds, err
 			if err := filesync.Validate(desiredFiles, h.Definition.Merge); err != nil {
 				return seeds, err
 			}
-		case "Dockerfile":
+		case artifact.Dockerfile:
 			seeds.files[name] = harness.File{Data: []byte("ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n\n# Runs as the prepared development user. Use sudo for system packages.\n# Devbox installs the selected harness after config customization.\n"), Mode: 0600}
 		case "setup.sh":
 			seeds.files[name] = harness.File{Data: []byte("#!/bin/bash\nset -euo pipefail\n\n# Runs once per container as devuser; use sudo for system changes.\n"), Mode: 0700}

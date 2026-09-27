@@ -234,7 +234,7 @@ func resolve(q Request, proposed *artifact.SourcePreview) (Spec, error) {
 	if err = docker.ValidateEnv(spec.Env()); err != nil {
 		return Spec{}, err
 	}
-	spec.Build, err = PlanImage(r.Trace.Artifacts["Dockerfile"], r.Settings.BaseImage, h.Definition, q.UID, q.GID)
+	spec.Build, err = PlanImage(r.Trace.Artifacts[artifact.Dockerfile], r.Settings.BaseImage, h.Definition, q.UID, q.GID)
 	if err != nil {
 		return spec, err
 	}

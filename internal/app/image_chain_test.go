@@ -15,8 +15,8 @@ func TestImageChainHasSeparateContextsAndPreparedUserBoundaries(t *testing.T) {
 	project := filepath.Join(q.Workspace, ".devbox")
 	write(t, filepath.Join(project, "config.json"), `{"base_image":"ubuntu:24.04"}`)
 	for _, pair := range []struct{ root, marker string }{{profile, "profile_asset"}, {project, "project_asset"}} {
-		write(t, filepath.Join(pair.root, "Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\nCOPY "+pair.marker+" /opt/asset\nENV PATH=\"/custom/bin:${PATH}\"\nUSER root\n")
-		write(t, filepath.Join(pair.root, pair.marker), pair.marker)
+		write(t, filepath.Join(pair.root, "docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\nCOPY "+pair.marker+" /opt/asset\nENV PATH=\"/custom/bin:${PATH}\"\nUSER root\n")
+		write(t, filepath.Join(pair.root, "docker", pair.marker), pair.marker)
 	}
 	var stages []string
 	d.Fail = func(args []string) error {
@@ -69,7 +69,7 @@ func TestImageChainHasSeparateContextsAndPreparedUserBoundaries(t *testing.T) {
 
 func TestCustomDockerfileCannotReplacePreparedBase(t *testing.T) {
 	e, _, q := fixture(t)
-	write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "FROM debian:bookworm-slim\nRUN true\n")
+	write(t, filepath.Join(e.Store.Home, "profiles/test/docker/Dockerfile"), "FROM debian:bookworm-slim\nRUN true\n")
 	if _, err := e.Create(context.Background(), q); err == nil || !strings.Contains(err.Error(), "must extend DEVBOX_BASE") {
 		t.Fatal("accepted independent image", err)
 	}

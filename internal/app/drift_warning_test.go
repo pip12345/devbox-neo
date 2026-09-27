@@ -26,8 +26,7 @@ func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 				t.Fatal(err)
 			}
 			if mode == "image" {
-				write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
-				write(t, filepath.Join(e.Store.Home, "profiles/test/.dockerignore"), "pi/\n")
+				write(t, filepath.Join(e.Store.Home, "profiles/test/docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 			} else {
 				write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host"}`)
 			}

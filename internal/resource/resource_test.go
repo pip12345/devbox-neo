@@ -86,33 +86,33 @@ func TestConfigOwnersCanonicalizeAliases(t *testing.T) {
 func TestArtifactSetupKeepsDockerfilesAndExecutableIntent(t *testing.T) {
 	s, owner := configDirectoryFixture(t)
 	ctx := context.Background()
-	if _, err := s.CreateConfig(ctx, owner, SetupOptions{Artifacts: []string{"Dockerfile", "setup.sh", "before-open.sh"}}); err != nil {
+	if _, err := s.CreateConfig(ctx, owner, SetupOptions{Artifacts: []string{"docker/Dockerfile", "setup.sh", "before-open.sh"}}); err != nil {
 		t.Fatal(err)
 	}
-	for file, mode := range map[string]os.FileMode{"config.json": 0600, "Dockerfile": 0600, "setup.sh": 0700, "before-open.sh": 0700} {
+	for file, mode := range map[string]os.FileMode{"config.json": 0600, "docker/Dockerfile": 0600, "setup.sh": 0700, "before-open.sh": 0700} {
 		info, err := os.Stat(filepath.Join(owner.Root, file))
 		if err != nil || info.Mode().Perm() != mode {
 			t.Fatal(file, info, err)
 		}
 	}
-	put(t, filepath.Join(owner.Root, "Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\nCOPY asset /opt/asset\n")
-	put(t, filepath.Join(owner.Root, "asset"), "copied")
-	put(t, filepath.Join(owner.Root, "omitted"), "ignored")
-	put(t, filepath.Join(owner.Root, ".dockerignore"), "omitted\n")
+	put(t, filepath.Join(owner.Root, "docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\nCOPY asset /opt/asset\n")
+	put(t, filepath.Join(owner.Root, "docker/asset"), "copied")
+	put(t, filepath.Join(owner.Root, "docker/omitted"), "ignored")
+	put(t, filepath.Join(owner.Root, "docker/.dockerignore"), "omitted\n")
 	if err := os.Chmod(filepath.Join(owner.Root, "setup.sh"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.EditConfig(ctx, owner, SetupOptions{Artifacts: []string{"Dockerfile", "setup.sh"}}); err != nil {
+	if _, err := s.EditConfig(ctx, owner, SetupOptions{Artifacts: []string{"docker/Dockerfile", "setup.sh"}}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(get(t, filepath.Join(owner.Root, "Dockerfile"))), "COPY asset") {
+	if !strings.Contains(string(get(t, filepath.Join(owner.Root, "docker/Dockerfile"))), "COPY asset") {
 		t.Fatal("setup replaced a Dockerfile")
 	}
 	tree, err := artifact.SourceTree(owner.Root, nil)
-	if err != nil || string(tree.Files["asset"].Data) != "copied" || tree.Files["setup.sh"].Mode.Perm() != 0755 {
+	if err != nil || string(tree.Files["docker/asset"].Data) != "copied" || tree.Files["setup.sh"].Mode.Perm() != 0755 {
 		t.Fatal("source tree lost build context or executable intent", err)
 	}
-	if _, exists := tree.Files["omitted"]; exists {
+	if _, exists := tree.Files["docker/omitted"]; exists {
 		t.Fatal("source tree included ignored build context")
 	}
 	if err := fsutil.WriteNew(filepath.Join(owner.Root, "setup.sh"), []byte("overwrite"), 0600); !os.IsExist(err) {

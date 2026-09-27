@@ -11,7 +11,9 @@ import (
 	"devbox/internal/harness"
 )
 
-var ArtifactNames = []string{"Dockerfile", "setup.sh", "before-open.sh"}
+const Dockerfile = "docker/Dockerfile"
+
+var ArtifactNames = []string{Dockerfile, "setup.sh", "before-open.sh"}
 
 // SourceTree captures the config artifact layout without injecting defaults.
 // Import staging uses it independently of any session's selected source chain.
@@ -24,7 +26,7 @@ func SourceTree(root string, harnessNames map[string]bool) (harness.Tree, error)
 	if err != nil {
 		return result, err
 	}
-	p, err := fsutil.Path(root, "Dockerfile")
+	p, err := fsutil.Path(root, Dockerfile)
 	if err != nil {
 		return result, err
 	}
@@ -40,19 +42,16 @@ func SourceTree(root string, harnessNames map[string]bool) (harness.Tree, error)
 			if file.Directory {
 				mode |= os.ModeDir
 			}
-			result.Files[name] = harness.File{Data: file.Data, Mode: mode}
+			result.Files[filepath.Join("docker", name)] = harness.File{Data: file.Data, Mode: mode}
 		}
-		result.Files["Dockerfile"] = harness.File{Data: context.Dockerfile, Mode: 0600}
+		result.Files[Dockerfile] = harness.File{Data: context.Dockerfile, Mode: 0600}
 		if context.IgnoreName != "" {
-			result.Files[context.IgnoreName] = harness.File{Data: context.Ignore, Mode: 0600}
+			result.Files[filepath.Join("docker", context.IgnoreName)] = harness.File{Data: context.Ignore, Mode: 0600}
 		}
 	}
 	for _, entry := range entries {
 		name := entry.Name()
 		if name == "config.json" || slices.Contains(ArtifactNames, name) {
-			if _, captured := result.Files[name]; captured {
-				continue
-			}
 			p, err := fsutil.Path(root, name)
 			if err != nil {
 				return result, err

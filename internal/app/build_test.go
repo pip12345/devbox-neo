@@ -14,7 +14,7 @@ import (
 
 func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 	e, d, q := fixture(t)
-	root := filepath.Join(e.Store.Home, "profiles/test")
+	root := filepath.Join(e.Store.Home, "profiles/test/docker")
 	file := "Dockerfile"
 	write(t, filepath.Join(root, file), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\nCOPY asset /opt/asset\n")
 	write(t, filepath.Join(root, "asset"), "context data")
@@ -95,7 +95,7 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 }
 func TestLayeredBuildCleansBaseTagAfterRuntimeFailure(t *testing.T) {
 	e, d, q := fixture(t)
-	write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
+	write(t, filepath.Join(e.Store.Home, "profiles/test/docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 	failure := errors.New("runtime build failed")
 	var baseTag string
 	d.Fail = func(args []string) error {
@@ -127,7 +127,7 @@ func TestSeedingHigherPriorityDockerfileWarnsWithoutReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(q.Workspace, ".devbox/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
+	write(t, filepath.Join(q.Workspace, ".devbox/docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 	result, err := e.Open(ctx, q)
 	if err != nil {
 		t.Fatal(err)

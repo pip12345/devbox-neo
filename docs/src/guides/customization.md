@@ -6,7 +6,7 @@ These examples change the shared `base` config. Use a [project config](configura
 
 ## Add tools
 
-For a quick experiment, install a tool from **Shell**. For an installation that survives recreation, add **Dockerfile**, choose **Continue**, and edit `~/.devbox-neo/configs/base/Dockerfile`:
+For a quick experiment, install a tool from **Shell**. For an installation that survives recreation, add **docker/Dockerfile**, choose **Continue**, and edit `~/.devbox-neo/configs/base/docker/Dockerfile`:
 
 ```dockerfile
 ARG DEVBOX_BASE
@@ -18,6 +18,8 @@ RUN sudo apt-get update \
 ```
 
 Keep `FROM ${DEVBOX_BASE}` so your image extends Devbox's prepared environment. Use `sudo` for system packages and normal user permissions for user tools.
+
+Put files needed by `COPY` or `ADD` inside the same `docker/` directory. For example, `COPY tools /opt/tools` reads `<config>/docker/tools`. Nothing outside `docker/` enters the build context, so editing Pi settings or setup scripts does not invalidate the image cache.
 
 Choose **Recreate** in the session menu to apply the Dockerfile. **Container-local changes will be lost.**
 

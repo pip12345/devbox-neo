@@ -63,7 +63,7 @@ func TestArtifactsFollowTheSameSelectedSources(t *testing.T) {
 	first := testSource(t, "base", `{"harness":"pi"}`)
 	second := testSource(t, "overlay", `{}`)
 	for _, source := range []config.Source{first, second} {
-		put(t, filepath.Join(source.Path, "Dockerfile"), source.Label)
+		put(t, filepath.Join(source.Path, Dockerfile), source.Label)
 		put(t, filepath.Join(source.Path, "pi/settings.json"), `{"packages":["`+source.Label+`"]}`)
 	}
 	h, err := harness.Load(t.TempDir(), "pi")
@@ -80,10 +80,10 @@ func TestArtifactsFollowTheSameSelectedSources(t *testing.T) {
 			t.Fatal(err)
 		}
 		last := sources[len(sources)-1]
-		if tree["settings.json"].Layer != last.Label || len(r.Trace.Artifacts["Dockerfile"]) != 2 {
+		if tree["settings.json"].Layer != last.Label || len(r.Trace.Artifacts[Dockerfile]) != 2 {
 			t.Fatal("artifact composition drifted from source order")
 		}
-		data, _ := os.ReadFile(r.Trace.Artifacts["Dockerfile"][1])
+		data, _ := os.ReadFile(r.Trace.Artifacts[Dockerfile][1])
 		if string(data) != last.Label {
 			t.Fatal("Dockerfile order changed")
 		}

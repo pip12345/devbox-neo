@@ -94,7 +94,7 @@ Create/edit support these setup flags:
 | Flag | Meaning |
 |---|---|
 | `--harness NAME` | Set the config's harness |
-| `--artifact NAME` | Add `harness-config`, `setup.sh`, `before-open.sh`, or `Dockerfile`; repeatable/comma-separated |
+| `--artifact NAME` | Add `harness-config`, `setup.sh`, `before-open.sh`, or `docker/Dockerfile`; repeatable/comma-separated |
 | `--artifact-harness NAME` | Harness whose files to generate; requires `harness-config` |
 | `--json` | Structured result; never prompt |
 

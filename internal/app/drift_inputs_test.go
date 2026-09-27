@@ -138,7 +138,7 @@ func TestFailedRecreationPreservesImageBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 	initial := sessionRecord(t, e, result.SessionID)
-	write(t, filepath.Join(e.Store.Home, "profiles/test/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
+	write(t, filepath.Join(e.Store.Home, "profiles/test/docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 	view, err := e.Status(ctx, result.SessionID, "")
 	if err != nil || view.Desired != environment.RebuildAndRecreate {
 		t.Fatal(view, err)
