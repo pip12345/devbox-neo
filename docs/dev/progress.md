@@ -8,6 +8,12 @@ Session structure refactor implemented: schema 6 separates settings/applied runt
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Compact session-browser folders — implemented, manual acceptance pending
+
+- Left-side folder rows show the shortest unique path suffix, adding parent components only to distinguish folders. Empty explicitly opened folders participate; filtering leaves labels unchanged.
+- Full paths remain in the detail pane, search, and stable keys. Session rows, folder ordering, and operation targets are unchanged.
+- Regression coverage includes duplicate/deep suffixes, root folders, Unicode, empty folders, full-path filtering, narrow layouts, nested navigation, and selection dispatch. The exact `make test-fast` Go command passes using the local toolchain (`make` is unavailable), as does `git diff --check`. Live Docker and manual terminal acceptance remain unrun.
+
 ## Legacy importer removal — complete
 
 - Removed the standalone command, migration package/tests/fixtures, build target, local executable, and migration plan. Neo no longer imports old Devbox data; old installations and legacy conversations remain untouched.

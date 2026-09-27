@@ -65,6 +65,49 @@ func TestBrowserSeparatesObjectsAndCommands(t *testing.T) {
 		t.Fatal("Enter ran an application action instead of opening the session", reply)
 	}
 }
+func TestBrowserCompactListLabelKeepsFullDetailsAndSearch(t *testing.T) {
+	const folder = "/home/pip/Documents/projects/devbox/rewrite"
+	req := browserRequest()
+	req.page.Collection.Items[0].Key = folder
+	req.page.Collection.Items[0].Label = folder
+	req.page.Collection.Items[0].ListLabel = "devbox/rewrite"
+	req.page.Collection = snapshotCollection(req.page.Collection)
+	req.itemKey = folder
+	m := newTerminalModel(req, true)
+	for _, width := range []int{28, 56} {
+		for _, active := range []bool{true, false} {
+			view := m.objectList(*req.page.Collection, folder, "", width, 12, active)
+			plain := ansi.Strip(view)
+			if !strings.Contains(plain, "devbox/rewrite") || strings.Contains(plain, "/home/pip") {
+				t.Fatalf("compact label missing (active=%t):\n%s", active, plain)
+			}
+			for _, line := range strings.Split(view, "\n") {
+				if ansi.StringWidth(line) > width {
+					t.Fatalf("width %d overflow: %q", width, line)
+				}
+			}
+		}
+	}
+	preview := ansi.Strip(m.browserContent(90, 20))
+	title, _, _ := strings.Cut(preview, "\n")
+	if strings.TrimSpace(title) != folder {
+		t.Fatal("details lost full path", preview)
+	}
+	key(m, '/', "/")
+	m.Update(tea.PasteMsg{Content: "/home/pip/Documents"})
+	key(m, tea.KeyEnter, "")
+	if matches := m.matches(); len(matches) != 1 || matches[0] != 0 {
+		t.Fatal("full path no longer searchable", matches)
+	}
+	if view := ansi.Strip(m.objectList(*req.page.Collection, "", "", 56, 12, true)); !strings.Contains(view, "devbox/rewrite") {
+		t.Fatal("filter changed the compact label", view)
+	}
+	key(m, tea.KeyEnter, "")
+	if reply := <-req.reply; !reply.item || reply.index != 0 {
+		t.Fatal("compact label changed dispatch", reply)
+	}
+}
+
 func TestBrowserActionFocusAndShortcuts(t *testing.T) {
 	req := browserRequest()
 	m := newTerminalModel(req, false)

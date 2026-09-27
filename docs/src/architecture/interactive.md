@@ -53,6 +53,8 @@ sequenceDiagram
 
 Keep objects separate from application actions. Session operations are direct entries; forms collect actual inputs, not another category choice. The preview is detailed, while the action menu uses compact target context. Relative activity uses existing recorded timestamps, not new session state.
 
+Folder rows use the shortest unique path suffix across the complete session inventory, including explicitly opened empty folders. Filtering does not recompute labels. The frontend supplies a separate list label; full paths remain in preview labels and stable keys, preserving search, selection, ordering, and dispatch.
+
 The direct folder editor and default picker share `folderSessionScreen` so changing the instruction does not shift rows. Default changes update markers and receipts. Source-specific settings dashboards and combined inspection remain distinct views.
 
 Keep error/partial-result output visible before returning. Color-independent markers, scrolling, and narrow-layout tests are part of the interaction contract.

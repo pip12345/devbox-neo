@@ -89,6 +89,66 @@ func TestSessionCollectionContainsOnlyFolderAndSessionObjects(t *testing.T) {
 		}
 	}
 }
+func TestSessionFolderListLabels(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		knownFolder string
+		want        map[string]string
+	}{
+		{name: "empty", want: map[string]string{}},
+		{name: "single", want: map[string]string{
+			"/home/pip/Documents/projects/devbox/rewrite": "rewrite",
+		}},
+		{name: "distinct", want: map[string]string{
+			"/work/api": "api", "/work/web": "web",
+		}},
+		{name: "duplicate basenames", want: map[string]string{
+			"/work/devbox/rewrite": "devbox/rewrite", "/work/other/rewrite": "other/rewrite",
+		}},
+		{name: "deep shared suffix", want: map[string]string{
+			"/home/pip/devbox/rewrite": "pip/devbox/rewrite", "/home/sam/devbox/rewrite": "sam/devbox/rewrite",
+		}},
+		{name: "complete suffix and root", want: map[string]string{
+			"/": "/", "/app": "/app", "/work/app": "work/app",
+		}},
+		{name: "whole components and unicode", want: map[string]string{
+			"/work/app": "app", "/work/myapp": "myapp", "/home/项目": "项目",
+		}},
+		{name: "empty known folder participates", knownFolder: "/other/rewrite", want: map[string]string{
+			"/work/rewrite": "work/rewrite", "/other/rewrite": "other/rewrite",
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := frontend{knownFolder: tt.knownFolder}
+			var report app.InventoryReport
+			for folder := range tt.want {
+				if folder != tt.knownFolder {
+					report.Sessions = append(report.Sessions, app.View{Workspace: folder, Target: folder + ":main", LocalName: "main"})
+				}
+			}
+			collection := f.sessionCollection(report, "name")
+			got := make(map[string]string)
+			previous := ""
+			for _, item := range collection.Items {
+				if !item.Folder {
+					if item.Label != "main" || item.ListLabel != "" || item.Depth != 1 {
+						t.Fatalf("session row changed: %+v", item)
+					}
+					continue
+				}
+				if item.Label != item.Key || item.Open == nil || item.Key < previous {
+					t.Fatalf("folder identity, details, action or ordering changed: %+v", item)
+				}
+				previous = item.Key
+				got[item.Key] = item.ListLabel
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("labels = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCreationCallbackRetriesSameDraft(t *testing.T) {
 	f, out, q, _ := frontendFixture(t, strings.NewReader("7\n7\n"))
 	p, err := newSourcePicker(f.m, f.s.Home, q.Workspace)

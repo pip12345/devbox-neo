@@ -189,6 +189,7 @@ func (f *frontend) sessionCollection(report app.InventoryReport, sortBy string) 
 		folders = append(folders, folder)
 	}
 	sort.Strings(folders)
+	labels := folderListLabels(folders)
 	item := func(v app.View, depth int) cliui.Item {
 		label := v.LocalName
 		if label == "" {
@@ -221,7 +222,7 @@ func (f *frontend) sessionCollection(report app.InventoryReport, sortBy string) 
 		if issue := report.DefaultErrors[folder]; issue != "" {
 			fields = append(fields, cliui.Field{Label: "Error", Value: issue, Warning: true})
 		}
-		collection.Items = append(collection.Items, cliui.Item{Key: folder, Label: folder, Folder: true, Fields: fields, Open: func() error { return f.m.report(f.folder(folder)) }})
+		collection.Items = append(collection.Items, cliui.Item{Key: folder, Label: folder, ListLabel: labels[folder], Folder: true, Fields: fields, Open: func() error { return f.m.report(f.folder(folder)) }})
 		for _, v := range rows {
 			collection.Items = append(collection.Items, item(v, 1))
 		}
@@ -231,6 +232,31 @@ func (f *frontend) sessionCollection(report app.InventoryReport, sortBy string) 
 	}
 	return collection
 }
+
+// folderListLabels uses whole path components across the complete inventory so
+// filtering cannot change labels. Absolute paths remain available when one
+// workspace is itself a suffix of another, such as /app and /work/app.
+func folderListLabels(folders []string) map[string]string {
+	counts := make(map[string]int)
+	for _, folder := range folders {
+		for suffix := folder; suffix != ""; {
+			counts[suffix]++
+			_, suffix, _ = strings.Cut(suffix, "/")
+		}
+	}
+	labels := make(map[string]string, len(folders))
+	for _, folder := range folders {
+		for suffix := folder; suffix != ""; {
+			if counts[suffix] != 1 {
+				break
+			}
+			labels[folder] = suffix
+			_, suffix, _ = strings.Cut(suffix, "/")
+		}
+	}
+	return labels
+}
+
 func (f *frontend) session(v app.View) error {
 	if err := f.loadEngine(); err != nil {
 		return err

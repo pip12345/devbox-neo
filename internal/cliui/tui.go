@@ -515,7 +515,11 @@ func (m *terminalModel) objectList(c Collection, key, query string, w, h int, ac
 				prefix = "› "
 			}
 		}
-		label := strings.Repeat("  ", item.Depth) + Safe(item.Label)
+		label := item.Label
+		if item.ListLabel != "" {
+			label = item.ListLabel
+		}
+		label = strings.Repeat("  ", item.Depth) + Safe(label)
 		marker := ""
 		if item.Selected {
 			marker = " *"

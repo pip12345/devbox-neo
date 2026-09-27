@@ -44,6 +44,8 @@ type Item struct {
 	Selected, Folder                bool
 	Fields                          []Field
 	Open                            func() error
+	// ListLabel optionally shortens the navigation row without changing details.
+	ListLabel string
 }
 
 type Field struct {
