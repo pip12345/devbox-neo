@@ -4,16 +4,26 @@ Run these commands on your **Linux host**, not inside a Devbox container. You ne
 
 ## Build and launch
 
-From the repository checkout:
+From the repository checkout, in Bash:
 
-```sh
+```bash
+make install-go
 make build
-export PATH="$PWD/bin:$PATH"
+```
+
+Add these lines to `~/.bashrc`, replacing `/path/to/devbox` with your checkout’s absolute path:
+
+```bash
+export PATH="/path/to/devbox/bin:$PATH"
+source <(dbx completion bash)
+```
+
+Open a new terminal, then:
+
+```bash
 cd /path/to/your/project
 dbx
 ```
-
-If Go is missing, run `make install-go` before building. The PATH change above applies to this terminal. [Shell setup](../reference/commands.md#completion) covers future terminals.
 
 ## Create a session
 
@@ -31,7 +41,7 @@ Devbox adds the new config to your session draft automatically. Choose **Create 
 
 ## Open it
 
-After the build, acknowledge the result. The new session's menu opens with **Continue** selected. Press **Enter** to launch the harness, then follow its login or provider setup. Choose **Open** instead to launch without requesting continuation.
+After the build, acknowledge the result. The new session's menu opens with **Continue** selected. Press **Enter**, then follow the harness's login or provider setup.
 
 Your project is at `/workspace` inside the container. **Edits there change your real project files.**
 
@@ -39,6 +49,6 @@ When you leave the harness, the container normally stops. Project files and save
 
 ## Return later
 
-From your project folder, run `dbx`. The first session in that folder is selected in the browser. Press **Enter** to open its menu, then **Enter** again to **Continue** the conversation. Choose **Open** instead for a fresh launch. **Esc** goes back. **Tab** switches to configs while browsing.
+Run `dbx`, highlight your session, and press **Enter**. Choose **Continue** to resume the conversation or **Open** for a normal launch. **Esc** goes back. **Tab** switches to configs while browsing.
 
 **Next:** [Everyday use](everyday-use.md).
