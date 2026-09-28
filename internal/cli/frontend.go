@@ -73,6 +73,10 @@ func (f *frontend) browse(configs bool) error {
 	if f.sortBy == "" {
 		f.sortBy = "name"
 	}
+	// Folder matching only chooses the initial highlight. If canonicalization
+	// fails, keep other sessions and config browsing available.
+	workspace, _ := environment.CanonicalWorkspace(cwd)
+	initialFocus := true
 	return f.m.Run(func() (cliui.Screen, error) {
 		page := cliui.Screen{Title: "Sessions", Back: "Exit", OnTab: func() (bool, error) { configs = !configs; return false, nil }, FocusItem: f.focusItem}
 		f.focusItem = ""
@@ -121,6 +125,10 @@ func (f *frontend) browse(configs bool) error {
 				f.m.Notice("Inventory unavailable: " + displayCell(err.Error()))
 			}
 			page.Collection = f.sessionCollection(report, f.sortBy)
+			if initialFocus && page.FocusItem == "" {
+				page.FocusItem = firstSessionInFolder(page.Collection, workspace)
+			}
+			initialFocus = false
 			if err != nil {
 				page.Collection.Empty = "Session inventory unavailable."
 			}
@@ -153,6 +161,15 @@ func (f *frontend) browse(configs bool) error {
 		return page, nil
 	})
 }
+func firstSessionInFolder(collection *cliui.Collection, folder string) string {
+	for i, item := range collection.Items {
+		if item.Folder && item.Key == folder && i+1 < len(collection.Items) && collection.Items[i+1].Depth == 1 {
+			return collection.Items[i+1].Key
+		}
+	}
+	return ""
+}
+
 func sessionFields(v app.View) []cliui.Field {
 	fields := []cliui.Field{{Label: "Folder", Value: v.Workspace}, {Label: "Harness", Value: v.Harness},
 		{Label: "Container", Value: strings.TrimRight(containerState(v), "!*"), Status: true}, {Label: "Lifetime", Value: lifetimeState(v)}}
@@ -290,11 +307,11 @@ func (f *frontend) session(v app.View) error {
 			}
 		}
 		addGroup("Harness",
-			f.action("Open", "Launch the recorded harness", run("Open", func(ctx context.Context) error { _, err := f.e.Open(ctx, app.Request{Workspace: v.Target}); return err })),
 			f.action("Continue", "Resume the harness conversation", run("Continue", func(ctx context.Context) error {
 				_, err := f.e.Open(ctx, app.Request{Workspace: v.Target, Continue: true})
 				return err
 			})),
+			f.action("Open", "Launch the recorded harness", run("Open", func(ctx context.Context) error { _, err := f.e.Open(ctx, app.Request{Workspace: v.Target}); return err })),
 			f.action("Open with options", "Continuation and one-off harness arguments", func() error { return f.openWithOptions(v.Target) }),
 		)
 		addGroup("Commands & access",

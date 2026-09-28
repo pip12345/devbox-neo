@@ -1,10 +1,10 @@
 # Everyday use
 
-Run `dbx` on the host. Highlight a session and press **Enter** for its actions.
+Run `dbx` on the host. From a project folder, the first session in that folder is initially selected. Press **Enter** for its actions, or highlight a different session first.
 
 ## Resume work
 
-Choose **Continue** to resume a conversation, or **Open** for a normal launch. The session list shows **Last active** times. These include recorded operations such as Stop and Exec, not just harness launches.
+**Continue** is the first action: press **Enter** again to resume a conversation, or choose **Open** for a fresh launch. The session list shows **Last active** times. These include recorded operations such as Stop and Exec, not just harness launches.
 
 The harness takes over your terminal. When it exits, acknowledge the result to return. **Ctrl-C** interrupts a foreground operation. In a menu, it exits Devbox. See [keyboard controls](../reference/output.md#interactive-menus) for navigation.
 

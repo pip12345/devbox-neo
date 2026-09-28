@@ -5,10 +5,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"devbox/internal/app"
 	"devbox/internal/resource"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 )
 
@@ -49,8 +51,12 @@ func TestNativeFirstCreationAndSessionDefaultMenu(t *testing.T) {
 	p.wait("Created config first-config.")
 	p.send("\x1b[F\r")
 	p.wait("Press Enter")
+	mark := len(p.output())
 	p.send("\r")
 	p.wait("Session · First")
+	if view := ansi.Strip(p.output()[mark:]); !strings.Contains(view, "▸ Continue") {
+		t.Fatal("new session did not start with Continue selected", view)
+	}
 	created, err := e.Locate(context.Background(), q.Workspace, "First")
 	if err != nil {
 		t.Fatal(err)

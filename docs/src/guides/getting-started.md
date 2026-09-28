@@ -31,7 +31,7 @@ Devbox adds the new config to your session draft automatically. Choose **Create 
 
 ## Open it
 
-After the build, acknowledge the result. The new session's menu opens with **Open** selected. Press **Enter**, then follow the harness's login or provider setup.
+After the build, acknowledge the result. The new session's menu opens with **Continue** selected. Press **Enter** to launch the harness, then follow its login or provider setup. Choose **Open** instead to launch without requesting continuation.
 
 Your project is at `/workspace` inside the container. **Edits there change your real project files.**
 
@@ -39,6 +39,6 @@ When you leave the harness, the container normally stops. Project files and save
 
 ## Return later
 
-Run `dbx`, highlight your session, and press **Enter**. Choose **Continue** to resume the conversation or **Open** for a normal launch. **Esc** goes back. **Tab** switches to configs while browsing.
+From your project folder, run `dbx`. The first session in that folder is selected in the browser. Press **Enter** to open its menu, then **Enter** again to **Continue** the conversation. Choose **Open** instead for a fresh launch. **Esc** goes back. **Tab** switches to configs while browsing.
 
 **Next:** [Everyday use](everyday-use.md).

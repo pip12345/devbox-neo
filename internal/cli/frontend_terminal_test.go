@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -49,6 +51,79 @@ func TestFrontendResumesPinnedTransferWithoutChangingEndpoints(t *testing.T) {
 	}
 	if journal, err = f.e.Store.ReadTransfer(sourceDirectory); err != nil || journal != nil {
 		t.Fatal("transfer did not finish", journal, err)
+	}
+}
+
+func TestNativeBrowserEnterResumesFirstCurrentFolderSession(t *testing.T) {
+	e, q, _ := namedCLIFixture(t)
+	// The existing Main session's parent folder sorts before this workspace;
+	// neither its position nor its ancestry should make it the initial target.
+	q.Workspace = filepath.Join(q.Workspace, "project")
+	if err := os.Mkdir(q.Workspace, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	q.LocalName = "Zulu"
+	if _, err := e.Create(context.Background(), q); err != nil {
+		t.Fatal(err)
+	}
+	q.LocalName = "Alpha"
+	created, err := e.Create(context.Background(), q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetContainer := sessionRecord(t, e, created.SessionID).Applied.SetupContainer
+	attached := make(chan docker.Command, 1)
+	e.Docker.Runner.(*dockertest.Daemon).Attached = func(_ context.Context, c docker.Command) error {
+		if c.Stdin != nil {
+			attached <- c
+		}
+		return nil
+	}
+	t.Chdir(q.Workspace)
+	p := newTerminalProbe(t)
+	done := p.workflow(func(ctx context.Context, tty *os.File) (err error) {
+		cmd := &cobra.Command{Use: "dbx"}
+		cmd.SetContext(ctx)
+		cmd.SetIn(tty)
+		cmd.SetOut(tty)
+		cmd.SetErr(tty)
+		e.Streams = docker.Streams{In: tty, Out: tty, Err: tty, TTY: true}
+		m := newMenu(cmd)
+		defer func() { err = errors.Join(err, m.Finish()) }()
+		f := &frontend{m: m, cmd: cmd, e: e, s: &resource.Service{Home: e.Store.Home}}
+		return f.browse(false)
+	})
+	p.wait("Sessions")
+	p.send("\r")
+	p.wait("Session · Alpha")
+	p.send("\r")
+	p.wait("Press Enter")
+	select {
+	case c := <-attached:
+		if !slices.Contains(c.Args, targetContainer) || c.Args[len(c.Args)-1] != "-c" {
+			t.Fatal("first action did not continue the selected session's harness", c.Args)
+		}
+	default:
+		t.Fatal("Enter did not launch the harness")
+	}
+	p.send("\r")
+	p.wait("Session · Alpha")
+	p.send("q")
+	p.wait("Application actions")
+	// Returning from a different session must not reapply the startup highlight.
+	p.send("\x1b[B\r")
+	p.wait("Session · Zulu")
+	p.send("q")
+	p.wait("Application actions")
+	p.send("\r")
+	p.wait("Session · Zulu")
+	p.send("q")
+	p.wait("Application actions")
+	p.send("q")
+	p.finish(done)
+	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
+	if err != nil || selected != nil {
+		t.Fatal("browser navigation selected a folder default", selected, err)
 	}
 }
 

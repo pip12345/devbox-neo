@@ -8,6 +8,12 @@ Session structure refactor implemented: schema 6 separates settings/applied runt
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Current-folder TUI focus and Continue-first — implemented, manual acceptance pending
+
+- On first opening the session browser, `dbx` focuses the first displayed session in the canonical invoking folder. No matching session leaves the existing selection behavior unchanged; this does not set a folder default. Session actions put Continue above Open, so two Enters resume the selected session.
+- Continue remains selected immediately after creation too; the harness handles continuation with empty history. No history detection or special initial action was added. Numbered session names remain a design question; creation still requires an explicit name.
+- Fake-Docker PTY coverage checks two-Enter continuation in the current folder despite an earlier-sorting parent workspace, exact launch targeting, manual selection retention, unchanged folder defaults, and Continue selected after creation. Unit coverage checks folder ordering and empty folders. The full `make test-fast` equivalent passes using `.tools/go/bin/go` (`make` is unavailable), both affected PTY workflows pass five consecutive runs, and formatting/diff checks pass. Live Docker and manual host-terminal acceptance remain unrun.
+
 ## Compact session-browser folders — implemented, manual acceptance pending
 
 - Left-side folder rows show the shortest unique path suffix, adding parent components only to distinguish folders. Empty explicitly opened folders participate; filtering leaves labels unchanged.
