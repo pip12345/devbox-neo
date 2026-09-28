@@ -98,7 +98,7 @@ Present empty values are forwarded; absent ones add no override. Host dotfiles a
 
 | Setting | Constraints |
 |---|---|
-| Mounts | Bind sources must exist. Relative sources use the workspace; bare names denote volumes. Targets cannot overlap managed mounts. |
+| Mounts | Bind sources must be existing directories, regular files, or Unix sockets. Relative sources use the workspace; bare names denote volumes. Targets cannot overlap managed mounts. |
 | Ports | `1–65535`; mapped ranges must have equal sizes. Host networking cannot publish ports. |
 | Raw Docker options | Value-taking options use `--option=value`; raw bind sources must be absolute. |
 | Protected values | Devbox owns identity/labels, user/workdir, entrypoint, primary network, restart policy, managed mounts/env, IDE metadata, and the host gateway alias. |

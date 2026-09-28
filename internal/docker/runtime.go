@@ -118,12 +118,15 @@ func (i Image) Verify(installation string) error {
 }
 
 type Mount struct {
-	Kind     string   `json:"kind,omitempty"`
-	Options  []string `json:"options,omitempty"`
-	File     bool     `json:"file,omitempty"`
-	Source   string   `json:"source"`
-	Target   string   `json:"target"`
-	ReadOnly bool     `json:"read_only"`
+	Kind    string   `json:"kind,omitempty"`
+	Options []string `json:"options,omitempty"`
+	// File and Socket are mutually exclusive. With both false, a bind source
+	// is a directory. Recovery checks the source type, not the socket inode.
+	File     bool   `json:"file,omitempty"`
+	Socket   bool   `json:"socket,omitempty"`
+	Source   string `json:"source"`
+	Target   string `json:"target"`
+	ReadOnly bool   `json:"read_only"`
 }
 type CreatePlan struct {
 	RestartPolicy string   `json:"-"`

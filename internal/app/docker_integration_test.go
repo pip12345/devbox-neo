@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -179,8 +181,23 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	if reopened.Applied.SetupContainer != first.Applied.SetupContainer {
 		t.Fatal("reopen recreated container")
 	}
-	// A configured mount is a creation input but does not require another image.
-	write(t, filepath.Join(profile.Root, "config.json"), fmt.Sprintf(`{"version":1,"harness":%q,"mounts":[%q]}`, harnessName, workspace+":/extra-workspace"))
+	socketDir, err := os.MkdirTemp("", "dbx-socket-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(socketDir) })
+	socketPath := filepath.Join(socketDir, "service.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "socket-mount-ok")
+	})}
+	t.Cleanup(func() { server.Close() })
+	go server.Serve(listener)
+	// Configured mounts are creation inputs but do not require another image.
+	write(t, filepath.Join(profile.Root, "config.json"), fmt.Sprintf(`{"version":1,"harness":%q,"mounts":[%q,%q]}`, harnessName, workspace+":/extra-workspace", socketPath+":/run/dbx-test.sock"))
 	result, err = e.Open(ctx, q)
 	if err != nil {
 		t.Fatal(err)
@@ -194,6 +211,10 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	recreated := sessionRecord(t, e, result.SessionID)
 	if recreated.ID != first.ID || recreated.Applied.SetupContainer == first.Applied.SetupContainer {
 		t.Fatal("wrong recreation identity")
+	}
+	output.Reset()
+	if err = e.Exec(ctx, result.SessionID, "", []string{"curl", "--fail", "--silent", "--max-time", "10", "--unix-socket", "/run/dbx-test.sock", "http://localhost/"}, false); err != nil || !strings.Contains(output.String(), "socket-mount-ok") {
+		t.Fatalf("socket bind connection: %v\n%s", err, output.String())
 	}
 	b, err := os.ReadFile(marker)
 	if err != nil || strings.TrimSpace(string(b)) != "preserved" {

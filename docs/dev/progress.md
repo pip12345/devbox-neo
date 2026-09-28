@@ -8,6 +8,12 @@ Session structure refactor implemented: schema 6 separates settings/applied runt
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Unix socket bind mounts — implemented, validation pending
+
+- Structured `mounts` and raw `--volume` accept existing Unix sockets alongside regular files and directories. Socket sources are recorded explicitly in creation plans and container fingerprints; recovery requires the same source type but permits a replacement socket at the same canonical path. Missing sources, type changes, managed-target overlaps, FIFOs, and devices remain rejected by structured mounts.
+- Added parser/rendering and fake-Docker lifecycle regressions, including wrong-type and missing-source recovery with changed desired config. Existing opt-in live-Docker harness tests now connect to a temporary host HTTP socket through a structured mount. Updated the reference mount constraints and contributor ownership notes.
+- Validation pending. Live Docker and manual host acceptance remain unrun.
+
 ## Current-folder TUI focus and Continue-first — implemented, manual acceptance pending
 
 - On first opening the session browser, `dbx` focuses the first displayed session in the canonical invoking folder. No matching session leaves the existing selection behavior unchanged; this does not set a folder default. Session actions put Continue above Open, so two Enters resume the selected session.

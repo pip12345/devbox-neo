@@ -105,6 +105,12 @@ Execution supplies `DEVBOX_BASE`, `DEVBOX_USER`, `DEVBOX_USER_HOME`, `DEVBOX_WOR
 
 Each build stage uses a separate temporary directory. Cleanup verifies image identity and installation ownership before removing all intermediate tags, on success or failure. Source directory permissions are restored in staging and owner access is restored before cleanup. Unchanged image inputs can reuse Docker's build cache across environments; container-only settings do not independently invalidate image installation.
 
+### Extra bind source types
+
+`docker.ParseMount` accepts directories, regular files, and Unix sockets for user bind mounts. It resolves source symlinks and records the canonical path plus mutually exclusive `File`/`Socket` markers; with neither marker, a bind source is a directory. Named volumes have neither marker. Other special files remain unsupported. Raw `--volume` uses the same parser.
+
+These markers travel with creation plans and container input fingerprints. Missing-container recovery verifies the recorded source type before materialization, including when desired config no longer mentions the mount. A replacement socket at the same canonical path is allowed; recovery records the type, not the socket inode or service lifetime. Managed workspace, store, auth, and SSH-directory mounts cannot be socket mounts. Socket service startup and access permissions remain the user's responsibility.
+
 ### Mount-parent ownership
 
 A parent directory belongs either to the image or to an enclosing bind-backed harness mount. `Definition.MountParents` makes this distinction explicit:

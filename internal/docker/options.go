@@ -80,11 +80,12 @@ func ParseMount(value, workspace, userHome string) (Mount, error) {
 	if err != nil {
 		return mount, err
 	}
-	if !info.IsDir() && !info.Mode().IsRegular() {
-		return mount, fmt.Errorf("bind source must be a file or directory")
+	if !info.IsDir() && !info.Mode().IsRegular() && info.Mode()&os.ModeSocket == 0 {
+		return mount, fmt.Errorf("bind source must be a regular file, directory, or Unix socket")
 	}
 	mount.Source = source
-	mount.File = !info.IsDir()
+	mount.File = info.Mode().IsRegular()
+	mount.Socket = info.Mode()&os.ModeSocket != 0
 	mount.Kind = "bind"
 	if len(mount.Options) > 0 && strings.Contains(source, ":") {
 		return mount, fmt.Errorf("mount options cannot be combined with a colon in the bind source")
@@ -94,6 +95,9 @@ func ParseMount(value, workspace, userHome string) (Mount, error) {
 func ValidateStoredMount(m Mount) error {
 	if !path.IsAbs(m.Target) || path.Clean(m.Target) != m.Target || strings.ContainsRune(m.Source+m.Target, '\x00') {
 		return fmt.Errorf("invalid recorded mount path")
+	}
+	if (m.File && m.Socket) || (m.Kind == "volume" && (m.File || m.Socket)) {
+		return fmt.Errorf("invalid recorded mount source type")
 	}
 	switch m.Kind {
 	case "", "bind":

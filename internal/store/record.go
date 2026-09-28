@@ -177,7 +177,7 @@ func (a AppliedState) Validate(sessionID string) error {
 			return err
 		}
 		if m.Target == sshshare.Mount {
-			if sshMounted || m.Kind == "volume" || m.File || m.ReadOnly {
+			if sshMounted || m.Kind == "volume" || m.File || m.Socket || m.ReadOnly {
 				return fmt.Errorf("invalid recorded SSH mount")
 			}
 			sshMounted = true
@@ -188,7 +188,7 @@ func (a AppliedState) Validate(sessionID string) error {
 			extra = append(extra, m)
 			continue
 		}
-		if seen || m.Kind == "volume" || (m.Target == "/workspace" && (m.Source != a.Inputs.Container.Workspace || m.ReadOnly)) {
+		if seen || m.Kind == "volume" || m.Socket || (m.Target == "/workspace" && (m.Source != a.Inputs.Container.Workspace || m.ReadOnly)) {
 			return fmt.Errorf("invalid recorded managed mount")
 		}
 		targets[m.Target] = true

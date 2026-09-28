@@ -55,7 +55,14 @@ func (e *Engine) recover(ctx context.Context, l *store.Locked, r *store.Record, 
 				file = true
 			}
 		}
-		if (file && !info.Mode().IsRegular()) || (!file && !info.IsDir()) {
+		matches := info.IsDir()
+		switch {
+		case m.Socket:
+			matches = info.Mode()&os.ModeSocket != 0
+		case file:
+			matches = info.Mode().IsRegular()
+		}
+		if !matches {
 			return unavailable("recorded bind source has the wrong kind", nil)
 		}
 	}
