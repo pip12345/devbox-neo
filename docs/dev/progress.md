@@ -8,6 +8,11 @@ Session structure refactor implemented: schema 6 separates settings/applied runt
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Bounded config-tree warnings — implemented
+
+- Each harness defaults/config source tree reports at most ten skipped-entry example paths plus a count of the rest. Regular-file copying and symlink/special-entry skipping are unchanged; no dependency-directory exclusions were added.
+- Regression coverage checks zero warnings, the limit, overflow counts, independent source limits, and unchanged regular-file copying. The `make test-fast` equivalent passes using `.tools/go/bin/go` (`make` is unavailable), and `git diff --check` passes. Live Docker and manual host-terminal acceptance remain unrun.
+
 ## Unix socket bind mounts — implemented, validation pending
 
 - Structured `mounts` and raw `--volume` accept existing Unix sockets alongside regular files and directories. Socket sources are recorded explicitly in creation plans and container fingerprints; recovery requires the same source type but permits a replacement socket at the same canonical path. Missing sources, type changes, managed-target overlaps, FIFOs, and devices remain rejected by structured mounts.

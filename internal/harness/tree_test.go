@@ -2,6 +2,7 @@ package harness
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -43,6 +44,49 @@ func TestReadTreeWarnsAndSkipsUnsupportedEntries(t *testing.T) {
 		if !strings.Contains(tree.Warnings[i], filepath.Join(root, name)) || !strings.Contains(tree.Warnings[i], "will not be copied") {
 			t.Fatal("missing qualified warning", tree.Warnings[i])
 		}
+	}
+}
+
+func TestReadTreeBoundsWarningsPerSource(t *testing.T) {
+	for _, count := range []int{0, 10, 11, 100} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			for source := 0; source < 2; source++ {
+				root := t.TempDir()
+				for i := 0; i < count; i++ {
+					if err := os.Symlink("missing", filepath.Join(root, fmt.Sprintf("link-%03d", i))); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := os.WriteFile(filepath.Join(root, "regular"), []byte("kept"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				tree, err := ReadTree(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(tree.Files) != 1 || string(tree.Files["regular"].Data) != "kept" {
+					t.Fatal("copy behavior changed", tree.Files)
+				}
+				want := count
+				if count > 10 {
+					want = 11
+				}
+				if len(tree.Warnings) != want {
+					t.Fatal("unexpected warning count", tree.Warnings)
+				}
+				for i := 0; i < min(count, 10); i++ {
+					if !strings.Contains(tree.Warnings[i], filepath.Join(root, fmt.Sprintf("link-%03d", i))) {
+						t.Fatal("missing example path", tree.Warnings[i])
+					}
+				}
+				if count > 10 {
+					wantSummary := fmt.Sprintf("skipping %d more non-regular config entries under %q; they will not be copied", count-10, root)
+					if tree.Warnings[10] != wantSummary {
+						t.Fatal("incorrect summary", tree.Warnings[10])
+					}
+				}
+			}
+		})
 	}
 }
 

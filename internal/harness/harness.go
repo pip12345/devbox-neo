@@ -238,6 +238,8 @@ func ReadTree(root string) (Tree, error) {
 
 func readTree(source fs.FS, root string) (Tree, error) {
 	tree := Tree{Files: map[string]File{}}
+	const warningLimit = 10
+	skipped := 0
 	err := fs.WalkDir(source, ".", func(p string, e fs.DirEntry, err error) error {
 		if os.IsNotExist(err) && p == "." {
 			return nil
@@ -253,7 +255,10 @@ func readTree(source fs.FS, root string) (Tree, error) {
 			return err
 		}
 		if !info.Mode().IsRegular() {
-			tree.Warnings = append(tree.Warnings, fmt.Sprintf("skipping non-regular config entry %q (%s); it will not be copied", filepath.Join(root, p), info.Mode().Type()))
+			skipped++
+			if skipped <= warningLimit {
+				tree.Warnings = append(tree.Warnings, fmt.Sprintf("skipping non-regular config entry %q (%s); it will not be copied", filepath.Join(root, p), info.Mode().Type()))
+			}
 			return nil
 		}
 		b, err := fs.ReadFile(source, p)
@@ -262,5 +267,8 @@ func readTree(source fs.FS, root string) (Tree, error) {
 		}
 		return err
 	})
+	if skipped > warningLimit {
+		tree.Warnings = append(tree.Warnings, fmt.Sprintf("skipping %d more non-regular config entries under %q; they will not be copied", skipped-warningLimit, root))
+	}
 	return tree, err
 }
