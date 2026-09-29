@@ -2,9 +2,7 @@
 package harness
 
 import (
-	"crypto/sha256"
 	"embed"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -18,12 +16,13 @@ import (
 	"devbox/internal/fsutil"
 )
 
-//go:embed builtin/*/harness.json builtin/*/defaults/*
+//go:embed builtin/*/harness.json builtin/*/defaults/* builtin/*/install/*
 var builtins embed.FS
 
 type Install struct {
-	Shell string   `json:"shell"`
-	Path  []string `json:"path"`
+	Shell  string   `json:"shell"`
+	Script string   `json:"script,omitempty"`
+	Path   []string `json:"path"`
 }
 type Launch struct {
 	Args     []string `json:"args"`
@@ -78,11 +77,12 @@ type Tree struct {
 }
 
 type Effective struct {
-	Definition Definition
-	Origin     string
-	Hash       string
-	Defaults   map[string]File
-	Warnings   []string
+	Definition   Definition
+	Origin       string
+	Hash         string
+	Defaults     map[string]File
+	InstallFiles map[string]File
+	Warnings     []string
 }
 
 func Load(home, name string) (result Effective, err error) {
@@ -129,8 +129,15 @@ func Load(home, name string) (result Effective, err error) {
 	if def.Name != name {
 		return result, fmt.Errorf("harness definition name must match its directory")
 	}
-	sum := sha256.Sum256(b)
-	return Effective{Definition: def, Origin: origin, Hash: hex.EncodeToString(sum[:]), Defaults: defaults.Files, Warnings: defaults.Warnings}, nil
+	install, err := readInstall(def, origin)
+	if err != nil {
+		return result, err
+	}
+	hash, err := definitionHash(b, install.Files)
+	if err != nil {
+		return result, err
+	}
+	return Effective{Definition: def, Origin: origin, Hash: hash, Defaults: defaults.Files, InstallFiles: install.Files, Warnings: append(defaults.Warnings, install.Warnings...)}, nil
 }
 func parseDefinition(b []byte) (Definition, error) {
 	d := Definition{Config: Config{Path: "."}}
@@ -155,6 +162,9 @@ func (d Definition) Validate() error {
 	}
 	if !config.Name.MatchString(d.Name) || d.Binary == "" || strings.ContainsAny(d.Binary, "\x00\r\n") {
 		return fmt.Errorf("invalid name or binary")
+	}
+	if d.Install.Script != "" && (d.Install.Shell != "" || !relative(d.Install.Script) || d.Install.Script == ".") {
+		return fmt.Errorf("install.script must be a clean relative path and cannot be combined with install.shell")
 	}
 	stores := map[string]Store{}
 	targets := map[string]bool{}

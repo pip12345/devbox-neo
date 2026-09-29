@@ -29,7 +29,7 @@ func TestBundledToolsAndAliasesInBothImageModes(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "Dockerfile")
 	putBuild(t, source, "FROM debian:bookworm-slim\n")
 	for _, winners := range [][]string{nil, {source}} {
-		plan, err := PlanImage(winners, "debian:bookworm-slim", h.Definition, 1000, 1000)
+		plan, err := PlanImage(winners, "debian:bookworm-slim", h, 1000, 1000)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,7 +61,7 @@ func TestImagePlansRespectCapturedContext(t *testing.T) {
 	putBuild(t, filepath.Join(root, "included"), "one")
 	putBuild(t, filepath.Join(root, "ignored"), "private")
 	putBuild(t, filepath.Join(root, ".dockerignore"), "ignored\n")
-	first, err := PlanImage([]string{normal}, "debian:bookworm-slim", h.Definition, 1000, 1001)
+	first, err := PlanImage([]string{normal}, "debian:bookworm-slim", h, 1000, 1001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,12 +73,12 @@ func TestImagePlansRespectCapturedContext(t *testing.T) {
 	}
 	hash := first.inputs(h, "test").fingerprint()
 	putBuild(t, filepath.Join(root, "ignored"), "changed")
-	second, err := PlanImage([]string{normal}, "debian:bookworm-slim", h.Definition, 1000, 1001)
+	second, err := PlanImage([]string{normal}, "debian:bookworm-slim", h, 1000, 1001)
 	if err != nil || second.inputs(h, "test").fingerprint() != hash {
 		t.Fatal("excluded file caused drift", err)
 	}
 	putBuild(t, filepath.Join(root, "included"), "two")
-	second, err = PlanImage([]string{normal}, "debian:bookworm-slim", h.Definition, 1000, 1001)
+	second, err = PlanImage([]string{normal}, "debian:bookworm-slim", h, 1000, 1001)
 	if err != nil || second.inputs(h, "test").fingerprint() == hash {
 		t.Fatal("context change missed", err)
 	}
@@ -86,7 +86,7 @@ func TestImagePlansRespectCapturedContext(t *testing.T) {
 		t.Fatal("captured plan reread source")
 	}
 	putBuild(t, normal+".dockerignore", "ignored\nincluded\n")
-	plan, err := PlanImage([]string{normal}, "debian:bookworm-slim", h.Definition, 1000, 1001)
+	plan, err := PlanImage([]string{normal}, "debian:bookworm-slim", h, 1000, 1001)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestBuildContextNegationsAndUnsafeInputs(t *testing.T) {
 	putBuild(t, filepath.Join(root, "folder/keep"), "yes")
 	putBuild(t, filepath.Join(root, "folder/drop"), "no")
 	putBuild(t, filepath.Join(root, ".dockerignore"), "folder\n!folder/keep\n")
-	plan, err := PlanImage([]string{file}, "debian:bookworm-slim", h.Definition, 1000, 1000)
+	plan, err := PlanImage([]string{file}, "debian:bookworm-slim", h, 1000, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestBuildContextNegationsAndUnsafeInputs(t *testing.T) {
 	if err = os.Symlink("Dockerfile", filepath.Join(root, "link")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = PlanImage([]string{file}, "debian:bookworm-slim", h.Definition, 1000, 1000); err == nil {
+	if _, err = PlanImage([]string{file}, "debian:bookworm-slim", h, 1000, 1000); err == nil {
 		t.Fatal("unsafe context accepted")
 	}
 }
@@ -128,7 +128,7 @@ func TestGeneratedStagesSuppressOnlyMissingDefaultBuildArgWarning(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := PlanImage(nil, "debian:bookworm-slim", h.Definition, 1000, 1000)
+	plan, err := PlanImage(nil, "debian:bookworm-slim", h, 1000, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestPiInstallDoesNotHideUnderRuntimeMounts(t *testing.T) {
 	if !slices.Contains(mountParentCommand(h.Definition), "/home/devuser/.pi") {
 		t.Fatal("Pi's config mount parent is no longer checked")
 	}
-	plan, err := PlanImage(nil, "debian:bookworm-slim", h.Definition, 1000, 1000)
+	plan, err := PlanImage(nil, "debian:bookworm-slim", h, 1000, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestRuntimeMountParentsArePreparedAsUserInBothBuildModes(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "Dockerfile")
 	putBuild(t, source, "FROM debian:bookworm-slim\n")
 	for _, winners := range [][]string{nil, {source}} {
-		plan, err := PlanImage(winners, "debian:bookworm-slim", h.Definition, 1000, 1000)
+		plan, err := PlanImage(winners, "debian:bookworm-slim", h, 1000, 1000)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -255,12 +255,12 @@ func TestMountParentCommandRejectsUnwritableImageParents(t *testing.T) {
 }
 func TestRuntimeLayerHonorsHostIDs(t *testing.T) {
 	h, _ := harness.Load(t.TempDir(), "opencode")
-	plan, err := PlanImage(nil, "debian:bookworm-slim", h.Definition, 1234, 5678)
+	plan, err := PlanImage(nil, "debian:bookworm-slim", h, 1234, 5678)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(plan.Prepared) + string(plan.Runtime)
-	for _, want := range []string{"-u 1234", "-g 5678", "opencode.ai/v2/install", "USER devuser"} {
+	for _, want := range []string{"-u 1234", "-g 5678", "COPY --chown=devuser:devuser", "/tmp/devbox-harness-install/install.sh", "USER devuser"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("template missing %s", want)
 		}

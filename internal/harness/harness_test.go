@@ -3,6 +3,7 @@ package harness
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -75,6 +76,7 @@ func TestRegistryReportsBrokenOverridesWithoutHidingValidChoices(t *testing.T) {
 	}
 	custom := h.Definition
 	custom.Name = "third"
+	custom.Install.Script, custom.Install.Shell = "", "true"
 	b, _ := json.Marshal(custom)
 	p = filepath.Join(home, "harnesses/third/harness.json")
 	os.MkdirAll(filepath.Dir(p), 0700)
@@ -138,10 +140,33 @@ func TestBuiltinOpenCodeV2(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := h.Definition
-	if !strings.Contains(d.Install.Shell, "https://opencode.ai/v2/install") || d.Binary != "opencode" || len(d.Launch.Continue) != 1 || d.Launch.Continue[0] != "-c" {
-		t.Fatal("OpenCode must install and launch the v2 CLI", d)
+	if d.Install.Script != "install.sh" || d.Install.Shell != "" || len(h.InstallFiles) != 2 {
+		t.Fatal("OpenCode must own its installer and wrapper as image files", d.Install)
+	}
+	install := string(h.InstallFiles[d.Install.Script].Data)
+	for _, want := range []string{"--branch v2", "4c33a253aa89ec0fa4faaa5d5b4aefef7d1a3963", "--frozen-lockfile", "--skip-install", "opencode-auth.sh", "opencode-native", "nodejs", "setup_22.x", "bun-v1.4.2"} {
+		if !strings.Contains(install, want) {
+			t.Fatal("OpenCode must build the pinned merged credential API and install its wrapper", want)
+		}
+	}
+	for name, file := range h.InstallFiles {
+		command := exec.Command("bash", "-n")
+		command.Stdin = strings.NewReader(string(file.Data))
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("invalid OpenCode installation file %s: %v\n%s", name, err, output)
+		}
+	}
+	if d.Binary != "opencode" || len(d.Launch.Continue) != 1 || d.Launch.Continue[0] != "-c" {
+		t.Fatal("OpenCode must retain its launch and continuation commands", d)
+	}
+	if len(d.Auth) != 1 || d.Auth[0].Source != "shared" || d.Auth[0].Kind != "directory" || d.Auth[0].Target != "/home/devuser/.local/share/devbox-opencode-auth" || !d.Auth[0].Create {
+		t.Fatal("OpenCode must mount a shared auth directory for atomic snapshot publication", d.Auth)
+	}
+	if !d.Session.Clone || !d.Session.Relocate {
+		t.Fatal("OpenCode must preserve session transfer capabilities")
 	}
 	var config struct {
+		Update       string `json:"update"`
 		Share        string `json:"share"`
 		Experimental struct {
 			Policies []struct {
@@ -154,7 +179,7 @@ func TestBuiltinOpenCodeV2(t *testing.T) {
 	if err := json.Unmarshal([]byte(d.Env["OPENCODE_CONFIG_CONTENT"]), &config); err != nil {
 		t.Fatal(err)
 	}
-	if config.Share != "disabled" || len(config.Experimental.Policies) != 1 || config.Experimental.Policies[0].Action != "provider.use" || config.Experimental.Policies[0].Resource != "opencode" || config.Experimental.Policies[0].Effect != "deny" {
+	if config.Update != "disable" || config.Share != "disabled" || len(config.Experimental.Policies) != 1 || config.Experimental.Policies[0].Action != "provider.use" || config.Experimental.Policies[0].Resource != "opencode" || config.Experimental.Policies[0].Effect != "deny" {
 		t.Fatal("OpenCode v2 defaults must keep sharing and the OpenCode provider disabled", config)
 	}
 }

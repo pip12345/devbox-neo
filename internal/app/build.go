@@ -133,5 +133,5 @@ func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force
 			}
 		}
 	}
-	return build(environment.ImageStage{Dockerfile: s.Build.Runtime}, true, true)
+	return build(environment.ImageStage{Dockerfile: s.Build.Runtime, Context: s.Build.InstallContext}, true, true)
 }

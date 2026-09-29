@@ -108,6 +108,7 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 		t.Fatal(err)
 	}
 	custom.Definition.Name = "custom"
+	custom.Definition.Install.Script = ""
 	definition, err := json.Marshal(custom.Definition)
 	if err != nil {
 		t.Fatal(err)

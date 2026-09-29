@@ -18,6 +18,9 @@ func TestRuntimeBundleContainsGuidanceAndLocalDocTargets(t *testing.T) {
 			t.Fatal("missing runtime artifact", name)
 		}
 	}
+	if _, ok := files["harness/opencode-auth.sh"]; ok {
+		t.Fatal("harness executables must belong to image installation, not runtime guidance")
+	}
 	if !bytes.Contains(files["AGENTS.md"], []byte("/workspace")) {
 		t.Fatal("missing workspace guidance")
 	}

@@ -37,20 +37,31 @@ type ImageStage struct {
 }
 
 type ImageBuildPlan struct {
-	BaseImage string
-	Prepared  []byte
-	Stages    []ImageStage
-	Boundary  []byte
-	Runtime   []byte
-	Arguments map[string]string
+	BaseImage      string
+	Prepared       []byte
+	Stages         []ImageStage
+	Boundary       []byte
+	Runtime        []byte
+	InstallContext map[string]artifact.ContextFile
+	Arguments      map[string]string
 }
 
-func PlanImage(paths []string, base string, d harness.Definition, uid, gid int) (ImageBuildPlan, error) {
+func PlanImage(paths []string, base string, h harness.Effective, uid, gid int) (ImageBuildPlan, error) {
 	if !config.ImageReference.MatchString(base) {
 		return ImageBuildPlan{}, fmt.Errorf("invalid base_image reference")
 	}
+	d := h.Definition
 	plan := ImageBuildPlan{BaseImage: base, Prepared: preparedDockerfile(base, uid, gid), Boundary: boundaryDockerfile(uid, gid), Runtime: runtimeDockerfile(d, uid, gid),
 		Arguments: map[string]string{"DEVBOX_USER": "devuser", "DEVBOX_USER_HOME": "/home/devuser", "DEVBOX_WORKSPACE": "/workspace", "DEVBOX_UID": fmt.Sprint(uid), "DEVBOX_GID": fmt.Sprint(gid)}}
+	if d.Install.Script != "" {
+		if _, ok := h.InstallFiles[d.Install.Script]; !ok {
+			return plan, fmt.Errorf("install.script must name a captured installation file")
+		}
+		plan.InstallContext = map[string]artifact.ContextFile{"harness-install": {Directory: true, Mode: 0700}}
+		for name, file := range h.InstallFiles {
+			plan.InstallContext[filepath.Join("harness-install", name)] = artifact.ContextFile{Data: file.Data, Mode: file.Mode}
+		}
+	}
 	for _, source := range paths {
 		captured, err := artifact.ReadBuildContext(source)
 		if err != nil {
@@ -103,7 +114,12 @@ func runtimeDockerfile(d harness.Definition, uid, gid int) []byte {
 	text := string(boundaryDockerfile(uid, gid))
 	// Installation must not inherit runtime cache/prefix overrides pointing at
 	// bind mounts; executables belong to the image rather than empty state roots.
-	if d.Install.Shell != "" {
+	if d.Install.Script != "" {
+		text += "COPY --chown=devuser:devuser [\"harness-install/\", \"/tmp/devbox-harness-install/\"]\n"
+		encoded, _ := json.Marshal([]string{"/bin/bash", "-o", "pipefail", "/tmp/devbox-harness-install/" + d.Install.Script})
+		text += "RUN " + string(encoded) + "\n"
+		text += "RUN [\"rm\", \"-rf\", \"/tmp/devbox-harness-install\"]\n"
+	} else if d.Install.Shell != "" {
 		encoded, _ := json.Marshal([]string{"/bin/bash", "-o", "pipefail", "-c", d.Install.Shell})
 		text += "RUN " + string(encoded) + "\n"
 	}

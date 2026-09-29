@@ -10,7 +10,7 @@ A harness is the coding tool Devbox launches. Pi, OpenCode, and Claude Code are 
 | OpenCode 2 | `opencode` | `-c` | `/home/devuser/.config/opencode` |
 | Claude Code | `claude --dangerously-skip-permissions` | `--continue` | `/home/devuser/.claude` |
 
-**Claude bypasses its permission prompts.** OpenCode's built-in launch disables sharing and the `opencode` provider.
+**Claude bypasses its permission prompts.** OpenCode's built-in launch disables sharing, automatic updates, and the `opencode` provider.
 
 Set `harness_args` in the same config as its `harness`. Only arguments matching the final selected harness apply. They follow the built-in launch arguments; continuation and one-off arguments follow them.
 
@@ -32,7 +32,7 @@ See [storage mappings](state-and-sessions.md#built-in-storage-mappings) for hist
 
 ## Custom definitions
 
-Place a definition at `<home>/harnesses/<name>/harness.json`, with optional config defaults in its sibling `defaults/` directory. A user definition replaces a built-in of the same name; an invalid override is an error.
+Place a definition at `<home>/harnesses/<name>/harness.json`, with optional config defaults in its sibling `defaults/` directory and installation files in `install/`. A user definition replaces a built-in of the same name; an invalid override is an error.
 
 Recreate existing sessions to adopt a changed definition. Definitions use strict JSON, version `1`; names match `[a-z][a-z0-9_-]{0,47}`.
 
@@ -43,7 +43,8 @@ Recreate existing sessions to adopt a changed definition. Definitions use strict
 | `version` | `1` |
 | `name` | Harness name matching its directory |
 | `binary` | Non-empty executable to launch and verify |
-| `install.shell` | Installation shell code |
+| `install.shell` | Inline Bash installation code; cannot combine with `install.script` |
+| `install.script` | Clean relative Bash entry-point path under `install/`; cannot combine with `install.shell` |
 | `install.path` | Clean absolute PATH entries |
 | `launch.args` | Default arguments |
 | `launch.continue_args` | Arguments for `open --continue` |
@@ -56,6 +57,12 @@ Recreate existing sessions to adopt a changed definition. Definitions use strict
 | `session.clone` | Supports copying declared state |
 | `session.relocate` | Supports moving declared state |
 | `prepare` | Array of non-empty preparation argv arrays |
+
+### Installation files
+
+`install.script: "install.sh"` selects `<harness>/install/install.sh`. The image captures all regular files under `install/`; symlinks and special entries are skipped. The selected script must exist as a regular file.
+
+Scripts run as `devuser` with Bash and `pipefail`. Resolve companion files relative to the script, and install executables outside persistent mounts. Installation files are literal, without `${user}` expansion, and must not contain credentials. Changes require recreation.
 
 ### Store entries
 

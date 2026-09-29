@@ -8,6 +8,12 @@ Session structure refactor implemented: schema 6 separates settings/applied runt
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Harness install files and OpenCode auth — implemented, live acceptance pending
+
+- `install.script` captures harness-owned installation files into the image and recorded definition digest. OpenCode's installer and auth wrapper are installed together, outside the runtime documentation bundle.
+- OpenCode uses a pinned `v2` source build with native auth export/import. Parallel sessions use brief snapshot/commit locks and compare-and-swap write-back; unchanged clients skip writes, conflicts retain private recovery copies, and interrupted runs retain their original baseline. Only imports into the same backing database are serialized. Copy/move remains enabled; copied database credentials are replaced on the next launch.
+- Source compilation, the full fast-suite equivalent, native auth checks, and CLI build pass. Parallel commit/conflict and killed-run recovery regressions pass ten repeated runs. Live Docker installation, real concurrent OAuth refresh, and host-terminal cancellation remain unrun.
+
 ## Bounded config-tree warnings — implemented
 
 - Each harness defaults/config source tree reports at most ten skipped-entry example paths plus a count of the rest. Regular-file copying and symlink/special-entry skipping are unchanged; no dependency-directory exclusions were added.
@@ -115,7 +121,7 @@ Validation: `make test-fast`, app/CLI/UI/importer race tests, both builds, and `
 
 ## OpenCode 2 built-in — live Docker acceptance pending
 
-- The built-in OpenCode harness now installs from the v2 endpoint. Its launch config uses a v2 provider policy to keep the `opencode` provider disabled; sharing remains disabled. The v2.0.6 CLI was checked for the `opencode` executable, `-c` continuation flag, and environment config loading. The v2.0.6 path diagnostic reports the existing config, data, and cache targets and puts its database under the data mount; the v2 auth source still uses `auth.json` there.
+- The built-in OpenCode harness now installs from the v2 endpoint. Its launch config uses a v2 provider policy to keep the `opencode` provider disabled; sharing remains disabled. The v2.0.6 CLI was checked for the `opencode` executable, `-c` continuation flag, and environment config loading. The v2.0.6 path diagnostic reports the existing config, data, and cache targets and puts its database under the data mount. The initial definition incorrectly retained the v1 `auth.json` mount; it did not establish working v2 authentication. The credential-API integration above replaces that mount without reading legacy auth.
 - Existing sessions require explicit recreation for the changed image input; no automatic OpenCode state or config migration was added. `make test-fast` and integration-tag compilation pass. `make test-integration` fails because this environment has no Docker CLI/daemon; live installation, authentication, and conversation continuation remain untested.
 
 ## Folder-local sessions and explicit configs — implemented, live acceptance pending

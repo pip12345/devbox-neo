@@ -28,9 +28,8 @@ Choose **Copy or move** in the session menu. Set the destination folder and name
 
 - **Copy** keeps the source and leaves the destination stopped. Stop the source first.
 - **Move** removes the source after the destination is ready and preserves its running intent.
-- Finish attached commands before either operation.
 
-Transfers copy saved harness state—not project files, config directories, installed container-local tools, or authentication. Prepare destination files/configs separately. [Reference rules](configuration.md#choose-where-configs-live) determine which config paths the destination uses.
+Prepare destination files/configs separately. [Reference rules](configuration.md#choose-where-configs-live) determine which config paths the destination uses.
 
 You can also copy under a new name in the same folder. From the host:
 

@@ -118,6 +118,15 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	}
 	first := sessionRecord(t, e, result.SessionID)
 	output.Reset()
+	if harnessName == "opencode" {
+		if err := e.Exec(ctx, result.SessionID, "", []string{"opencode", "auth", "export"}, false); err != nil {
+			t.Fatalf("OpenCode credential API/wrapper: %v\n%s", err, output.String())
+		}
+		if strings.TrimSpace(output.String()) != "[]" {
+			t.Fatal("fresh OpenCode auth must be an empty shared credential snapshot")
+		}
+		output.Reset()
+	}
 	if err := e.Exec(ctx, result.SessionID, "test", []string{"bash", "-ic", `set -eu; for tool in vim zip unzip jq ifconfig ping; do command -v "$tool"; done; alias ll; alias vi`}, false); err != nil {
 		t.Fatalf("bundled tool check: %v\n%s", err, output.String())
 	}

@@ -49,7 +49,7 @@ Targets are inside the container. Auth filenames are relative to `<home>/auth/<h
 | OpenCode | Session: `config` | `/home/devuser/.config/opencode` |
 | OpenCode | Session: `data` | `/home/devuser/.local/share/opencode` |
 | OpenCode | Cache: `cache` | `/home/devuser/.cache/opencode` |
-| OpenCode | Auth: `auth.json` | `/home/devuser/.local/share/opencode/auth.json` |
+| OpenCode | Auth: `shared/` | `/home/devuser/.local/share/devbox-opencode-auth` |
 | Claude | Session: `home` | `/home/devuser/.claude` |
 | Claude | Auth: `.credentials.json` | `/home/devuser/.claude/.credentials.json` |
 | Claude | Shared auth/client state: `.claude.json` | `/home/devuser/.claude.json` |

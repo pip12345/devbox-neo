@@ -1,8 +1,6 @@
 package harness
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 
@@ -27,10 +25,14 @@ func Recorded(name, origin string) (Definition, string, error) {
 	if err != nil {
 		return d, "", err
 	}
-	sum := sha256.Sum256(b)
 	d, err = parseDefinition(b)
 	if err != nil {
-		return d, "", fmt.Errorf("recorded definition input is invalid")
+		return d, "", fmt.Errorf("recorded definition input is invalid: %w", err)
 	}
-	return d, hex.EncodeToString(sum[:]), nil
+	install, err := readInstall(d, origin)
+	if err != nil {
+		return d, "", err
+	}
+	hash, err := definitionHash(b, install.Files)
+	return d, hash, err
 }
