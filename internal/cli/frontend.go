@@ -358,8 +358,18 @@ func (f *frontend) session(v app.View) error {
 				return err
 			}),
 			cliui.Action{Label: "Delete", Description: "Container first; saved data/history separately", Danger: true, Run: func() (bool, error) {
-				if err := f.delete([]string{v.Target}); err != nil {
+				options := app.DeleteOptions{Selection: app.Selection{Targets: []string{v.Target}}, Scope: app.DeleteContainer}
+				if v.Uncommitted {
+					// There is no recorded container to delete. Show the applicable
+					// data scope in the form; it still requires confirmation.
+					options.Scope = app.DeleteSession
+				}
+				if err := f.deleteWithOptions(options); err != nil {
 					return false, f.m.report(err)
+				}
+				if v.Uncommitted {
+					directory, err := f.e.Store.InspectIncompleteDirectory(f.m.Context, v.Target)
+					return directory == nil && err == nil, err
 				}
 				_, err := f.e.Store.Find(f.m.Context, v.Target, nil)
 				return os.IsNotExist(err), nil

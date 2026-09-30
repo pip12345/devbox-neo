@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"devbox/internal/commanderror"
+	"devbox/internal/fsutil"
 	"devbox/internal/store"
 )
 
 type DeletePrompt struct {
-	Containers []string
-	Sessions   []string
+	Containers            []string
+	Sessions              []string
+	IncompleteDirectories []string
 }
 
 type DeleteScope string
@@ -39,13 +41,20 @@ type DeleteOptions struct {
 }
 
 type DeleteResult struct {
-	// Targets pins session IDs separately from the container names in receipts.
-	Targets    []string `json:"-"`
-	Containers []string `json:"containers"`
-	Sessions   []string `json:"sessions"`
-	Retained   []string `json:"retained_sessions"`
-	DryRun     bool     `json:"dry_run"`
-	Cancelled  bool     `json:"cancelled"`
+	// Targets pins session IDs and exact incomplete-directory names separately
+	// from the container names in receipts.
+	Targets                       []string `json:"-"`
+	Containers                    []string `json:"containers"`
+	Sessions                      []string `json:"sessions"`
+	Retained                      []string `json:"retained_sessions"`
+	DryRun                        bool     `json:"dry_run"`
+	Cancelled                     bool     `json:"cancelled"`
+	IncompleteDirectories         []string `json:"incomplete_directories,omitempty"`
+	RetainedIncompleteDirectories []string `json:"retained_incomplete_directories,omitempty"`
+}
+
+func (r DeleteResult) DeletedCount() int {
+	return len(r.Containers) + len(r.Sessions) + len(r.IncompleteDirectories)
 }
 
 func (e *Engine) deletionTargets(ctx context.Context, options DeleteOptions, cutoff time.Time) ([]string, error) {
@@ -130,8 +139,8 @@ func (e *Engine) recheckDeleteFilters(ctx context.Context, locks []*store.Locked
 
 // Keep the same endpoint locks across both choices. A concurrent open cannot
 // recover a deleted container or replace the session between confirmations.
-func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (DeleteResult, error) {
-	result := DeleteResult{Containers: []string{}, Sessions: []string{}, Retained: []string{}, DryRun: options.DryRun}
+func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result DeleteResult, err error) {
+	result = DeleteResult{Containers: []string{}, Sessions: []string{}, Retained: []string{}, DryRun: options.DryRun}
 	if options.Scope != "" && options.Scope != DeleteContainer && options.Scope != DeleteSession {
 		return result, fmt.Errorf("invalid deletion scope")
 	}
@@ -145,12 +154,41 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (DeleteResul
 	if options.OlderThan > 0 {
 		cutoff = time.Now().Add(-options.OlderThan)
 	}
+	incomplete, remaining, err := e.incompleteDeletionTargets(ctx, options)
+	if err != nil {
+		return result, err
+	}
+	if len(incomplete) > 0 {
+		// These directories have no ID-keyed lock. Creation and transfers hold
+		// the namespace lock throughout preparation; keep it through prompts
+		// and cleanup rather than inventing a session identity for their files.
+		namespace, err := e.Store.LockNames(ctx)
+		if err != nil {
+			return result, err
+		}
+		defer fsutil.Unlock(namespace)
+		for _, directory := range incomplete {
+			if err := directory.Check(ctx); err != nil {
+				return result, err
+			}
+			result.Targets = append(result.Targets, directory.Name)
+			result.RetainedIncompleteDirectories = append(result.RetainedIncompleteDirectories, directory.Name)
+		}
+		options.Selection.Targets = remaining
+	}
+	defer func() {
+		result.Retained = slices.DeleteFunc(result.Retained, func(name string) bool { return slices.Contains(result.Sessions, name) })
+		result.RetainedIncompleteDirectories = slices.DeleteFunc(result.RetainedIncompleteDirectories, func(name string) bool { return slices.Contains(result.IncompleteDirectories, name) })
+	}()
 	options.Selection.selectedIDs = map[string]string{}
 	options.Selection.containerIDs = map[string]string{}
 	options.Selection.operationIDs = map[string]string{}
-	names, err := e.deletionTargets(ctx, options, cutoff)
-	if err != nil {
-		return result, err
+	var names []string
+	if len(incomplete) == 0 || len(remaining) > 0 {
+		names, err = e.deletionTargets(ctx, options, cutoff)
+		if err != nil {
+			return result, err
+		}
 	}
 	locks, err := e.Store.LockAll(ctx, names, options.Selection.operationIDs)
 	if err != nil {
@@ -190,6 +228,9 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (DeleteResul
 		if _, err = e.planSessionDeletion(ctx, sessionLocks, true); err != nil {
 			return result, err
 		}
+		if err = e.checkIncompleteDeletion(ctx, incomplete); err != nil {
+			return result, err
+		}
 	}
 	if options.Confirm != nil && !options.DryRun && len(containers) > 0 {
 		ok, err := options.Confirm(DeletePrompt{Containers: containers})
@@ -208,26 +249,26 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (DeleteResul
 	if err != nil {
 		return result, err
 	}
-	if options.Confirm != nil && !options.DryRun && options.Scope != DeleteContainer && len(sessionLocks) > 0 {
-		include, err = options.Confirm(DeletePrompt{Sessions: result.Retained})
+	if options.Confirm != nil && !options.DryRun && options.Scope != DeleteContainer && len(sessionLocks)+len(incomplete) > 0 {
+		include, err = options.Confirm(DeletePrompt{Sessions: result.Retained, IncompleteDirectories: result.RetainedIncompleteDirectories})
 		if err != nil {
 			return result, err
 		}
 	}
-	if !include || len(sessionLocks) == 0 {
+	if !include {
 		return result, nil
 	}
 	planned, err := e.planSessionDeletion(ctx, sessionLocks, options.DryRun)
 	if err != nil {
 		return result, err
 	}
-	result.Sessions, err = e.removeSessionState(ctx, planned, options.DryRun)
-	retained := []string{}
-	for _, name := range result.Retained {
-		if !slices.Contains(result.Sessions, name) {
-			retained = append(retained, name)
-		}
+	if err = e.checkIncompleteDeletion(ctx, incomplete); err != nil {
+		return result, err
 	}
-	result.Retained = retained
+	result.Sessions, err = e.removeSessionState(ctx, planned, options.DryRun)
+	if err != nil {
+		return result, err
+	}
+	result.IncompleteDirectories, err = e.removeIncompleteDirectories(ctx, incomplete, options.DryRun)
 	return result, err
 }

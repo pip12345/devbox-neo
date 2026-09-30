@@ -15,7 +15,29 @@ func (r Runtime) Inventory(ctx context.Context, installation string) ([]Containe
 	if installation == "" {
 		return nil, fmt.Errorf("installation identity is required")
 	}
-	b, err := r.capture(ctx, "container", "ls", "--all", "--no-trunc", "--filter", "label="+Namespace+".managed=true", "--filter", "label="+Namespace+".installation="+installation, "--format", "{{.ID}}")
+	containers, err := r.containerInventory(ctx, "--filter", "label="+Namespace+".managed=true", "--filter", "label="+Namespace+".installation="+installation)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range containers {
+		if c.Config.Labels[Namespace+".installation"] != installation || c.Config.Labels[Namespace+".managed"] != "true" {
+			return nil, fmt.Errorf("container inventory changed during inspection")
+		}
+	}
+	return containers, nil
+}
+
+// AllContainers is read-only discovery for backing-path checks. An unmanaged
+// container can bind the same files, so installation-filtered inventory cannot
+// prove that an incomplete directory is unused. This grants no mutation rights.
+func (r Runtime) AllContainers(ctx context.Context) ([]Container, error) {
+	return r.containerInventory(ctx)
+}
+
+func (r Runtime) containerInventory(ctx context.Context, filters ...string) ([]Container, error) {
+	args := append([]string{"container", "ls", "--all", "--no-trunc"}, filters...)
+	args = append(args, "--format", "{{.ID}}")
+	b, err := r.capture(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +59,7 @@ func (r Runtime) Inventory(ctx context.Context, installation string) ([]Containe
 		expected[id] = true
 	}
 	for _, c := range containers {
-		if !expected[c.ID] || c.Config.Labels[Namespace+".installation"] != installation || c.Config.Labels[Namespace+".managed"] != "true" {
+		if !expected[c.ID] {
 			return nil, fmt.Errorf("container inventory changed during inspection")
 		}
 		delete(expected, c.ID)

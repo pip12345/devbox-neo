@@ -474,7 +474,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 			if err != nil {
 				return false, f.m.report(err)
 			}
-			return len(result.Containers)+len(result.Sessions) > 0, nil
+			return result.DeletedCount() > 0, nil
 		}}
 		execute.Danger = true
 		execute.Blocked = blocked

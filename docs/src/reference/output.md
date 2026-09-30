@@ -98,9 +98,6 @@ Public values may appear before/after. Env changes show variable names, never va
 
 Incomplete usage scans exit nonzero with known users in `partial_result` and `complete: false`.
 
-## Deletion results
-
-Session deletion JSON contains `containers`, `sessions`, `retained_sessions`, `dry_run`, and `cancelled`. Use explicit `--container` or `--session` with `--json`. On partial failure, completed work is still reported; JSON places it in `partial_result` and exits nonzero.
 
 `config delete <name> --force --json` returns `path` and `deleted`. Blocked deletion reports known users in `next_steps`; incomplete usage information remains an error.
 

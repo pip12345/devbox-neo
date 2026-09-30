@@ -40,10 +40,11 @@ func ImageLabels(installation string) map[string]string {
 }
 
 type Container struct {
-	ID      string    `json:"Id"`
-	Name    string    `json:"Name"`
-	Image   string    `json:"Image"`
-	Created time.Time `json:"Created"`
+	ID      string           `json:"Id"`
+	Name    string           `json:"Name"`
+	Image   string           `json:"Image"`
+	Created time.Time        `json:"Created"`
+	Mounts  []ContainerMount `json:"Mounts"`
 	State   struct {
 		Running  bool   `json:"Running"`
 		Status   string `json:"Status"`
@@ -61,6 +62,13 @@ type Container struct {
 	NetworkSettings struct {
 		Networks map[string]Endpoint `json:"Networks"`
 	} `json:"NetworkSettings"`
+}
+
+// ContainerMount describes an actual Docker attachment, not a desired mount.
+type ContainerMount struct {
+	Type        string `json:"Type"`
+	Source      string `json:"Source"`
+	Destination string `json:"Destination"`
 }
 
 type Endpoint struct {

@@ -34,25 +34,35 @@ func (c *deletionConfirmation) confirm(prompt app.DeletePrompt) (bool, error) {
 			}
 			text.WriteString("Remove containers? [y/N] ")
 		}
-	} else if len(prompt.Sessions) > 0 {
+	} else if len(prompt.Sessions)+len(prompt.IncompleteDirectories) > 0 {
 		if c.removedContainers > 0 {
 			if c.removedContainers == 1 {
 				text.WriteString("Container removed. ")
 			} else {
 				fmt.Fprintf(&text, "%d containers removed.\n", c.removedContainers)
 			}
-		} else if c.singleTarget {
+		} else if c.singleTarget && len(prompt.Sessions) > 0 {
 			text.WriteString("No container. ")
 		}
-		if !c.singleTarget {
+		if len(prompt.Sessions) > 0 && !c.singleTarget {
 			fmt.Fprintln(&text, "Saved sessions:")
 			for _, name := range prompt.Sessions {
 				fmt.Fprintf(&text, "  %s\n", displayCell(name))
 			}
-		} else if c.removedContainers == 0 {
+		} else if len(prompt.Sessions) > 0 && c.removedContainers == 0 {
 			fmt.Fprintf(&text, "Saved session: %s\n", displayCell(prompt.Sessions[0]))
 		}
-		text.WriteString("Delete saved data and history? [y/N] ")
+		for _, name := range prompt.IncompleteDirectories {
+			fmt.Fprintf(&text, "Incomplete creation directory: %s\n", displayCell(name))
+		}
+		if len(prompt.IncompleteDirectories) > 0 {
+			text.WriteString("This removes the incomplete directories and all their copied files. Images from incomplete creations will be retained.\n")
+		}
+		if len(prompt.Sessions) == 0 {
+			text.WriteString("Delete incomplete creation files? [y/N] ")
+		} else {
+			text.WriteString("Delete saved data and history? [y/N] ")
+		}
 	}
 	confirmed, err := c.ui.Confirm(text.String())
 	if err != nil {
@@ -80,10 +90,16 @@ func printDeleteResult(out io.Writer, result app.DeleteResult) error {
 	for _, name := range result.Sessions {
 		fmt.Fprintf(&text, "%s session %s.\n", action, displayCell(name))
 	}
+	for _, name := range result.IncompleteDirectories {
+		fmt.Fprintf(&text, "%s incomplete creation directory %s; images retained.\n", action, displayCell(name))
+	}
+	for _, name := range result.RetainedIncompleteDirectories {
+		fmt.Fprintf(&text, "Incomplete creation directory retained: %s. Choose container and saved data/history (--session) to remove its files; images will be retained.\n", displayCell(name))
+	}
 	for _, name := range result.Retained {
 		fmt.Fprintf(&text, "Session state and image retained: %s\n", displayCell(name))
 	}
-	if !result.Cancelled && len(result.Containers) == 0 && len(result.Sessions) == 0 {
+	if !result.Cancelled && result.DeletedCount() == 0 {
 		text.WriteString("No resources deleted.\n")
 	}
 	_, err := io.WriteString(out, text.String())
@@ -141,7 +157,7 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 		}
 		result, err := e.Delete(cmd.Context(), options)
 		if err != nil {
-			if !result.DryRun && len(result.Containers)+len(result.Sessions) > 0 {
+			if !result.DryRun && result.DeletedCount() > 0 {
 				if !asJSON {
 					err = errors.Join(err, printDeleteResult(cmd.OutOrStdout(), result))
 				}

@@ -2,6 +2,7 @@ package dockertest
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -42,7 +43,11 @@ func (d *Daemon) Run(ctx context.Context, c docker.Command) error {
 	}
 	if d.Containers == nil {
 		d.Containers = map[string]docker.Container{}
+	}
+	if d.Images == nil {
 		d.Images = map[string]docker.Image{}
+	}
+	if d.Volumes == nil {
 		d.Volumes = map[string]bool{}
 	}
 	a := c.Args
@@ -237,6 +242,35 @@ func (d *Daemon) run(a []string) (string, error) {
 		d.Sequence++
 		c := docker.Container{ID: fmt.Sprintf("%064x", d.Sequence), Name: "/" + name, Image: a[len(a)-2]}
 		c.Config.Labels = labels()
+		for i, arg := range a {
+			switch arg {
+			case "--mount":
+				fields, err := csv.NewReader(strings.NewReader(a[i+1])).Read()
+				if err != nil {
+					return "", err
+				}
+				var mount docker.ContainerMount
+				for _, field := range fields {
+					key, value, _ := strings.Cut(field, "=")
+					switch key {
+					case "type":
+						mount.Type = value
+					case "src":
+						mount.Source = value
+					case "dst":
+						mount.Destination = value
+					}
+				}
+				c.Mounts = append(c.Mounts, mount)
+			case "--volume":
+				fields := strings.Split(a[i+1], ":")
+				kind := "volume"
+				if strings.HasPrefix(fields[0], "/") {
+					kind = "bind"
+				}
+				c.Mounts = append(c.Mounts, docker.ContainerMount{Type: kind, Source: fields[0], Destination: fields[1]})
+			}
+		}
 		c.State.Status = "created"
 		c.HostConfig.RestartPolicy.Name = flag("--restart")
 		c.HostConfig.NetworkMode = flag("--network")
@@ -333,5 +367,8 @@ func (d *Daemon) Forget(name string) { d.mu.Lock(); defer d.mu.Unlock(); delete(
 func (d *Daemon) SetContainer(c docker.Container) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.Containers == nil {
+		d.Containers = map[string]docker.Container{}
+	}
 	d.Containers[strings.TrimPrefix(c.Name, "/")] = c
 }

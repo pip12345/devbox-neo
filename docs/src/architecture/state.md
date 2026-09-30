@@ -94,6 +94,8 @@ Explicit saved-data deletion is preflighted before container removal and recheck
 
 The complete operation-lock set spans confirmations and both phases. `removeSavedSession` persists a matching-ID default clear before deleting state, while retaining the session operation lock. If deletion then fails, the surviving session may have no default; an old choice is never restored over a newer one. Container-only deletion and dry runs do not clear defaults. External lock files survive deletion. If cancellation or failure occurs after containers have been removed, remaining state is retained rather than pretending the whole operation rolled back.
 
+An incomplete creation directory has no session ID. Its cleanup therefore holds the name-namespace lock before any session locks, excluding concurrent creation and transfers through confirmation and removal. Recheck record absence, transfer reservations, directory identity, and bind use by any container before removal. Without recorded identity, cleanup cannot authorize image, default, or lease mutations.
+
 Selection filters intersect. Age uses recorded activity, and unknown activity is not guessed to be old. Activity and orphan status are rechecked under lock, including after confirmation, before deletion records its own activity. Dry-run preflight examines leases without reaping them. This prevents a stale preview or prompt from selecting a newly active/recovered environment.
 
 ## Transfer state machine
