@@ -143,7 +143,7 @@ func TestCreateRefusesExistingSessionEvenWithoutContainer(t *testing.T) {
 	}
 }
 
-func TestExistingSessionRecoveryStillRestoresMissingContainer(t *testing.T) {
+func TestExplicitRecreateRestoresMissingContainerWithOwnedImage(t *testing.T) {
 	for _, action := range []string{"open", "start"} {
 		t.Run(action, func(t *testing.T) {
 			e, d, q := fixture(t)
@@ -154,6 +154,9 @@ func TestExistingSessionRecoveryStillRestoresMissingContainer(t *testing.T) {
 			}
 			first := sessionRecord(t, e, result.SessionID)
 			forgetSession(t, e, result.SessionID)
+			if _, err = e.Recreate(ctx, q, false); err != nil {
+				t.Fatal(err)
+			}
 			if action == "open" {
 				_, err = e.Open(ctx, q)
 			} else {
@@ -163,7 +166,7 @@ func TestExistingSessionRecoveryStillRestoresMissingContainer(t *testing.T) {
 				t.Fatal(err)
 			}
 			if count(d, "create") != 2 || count(d, "build") != 2 || sessionRecord(t, e, result.SessionID).ID != first.ID {
-				t.Fatal("recorded recovery changed identity or rebuilt the image")
+				t.Fatal("explicit recreation changed identity or rebuilt the unchanged image")
 			}
 		})
 	}

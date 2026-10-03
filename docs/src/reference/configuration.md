@@ -150,6 +150,6 @@ Included tools: Bash, Git, curl, sudo, procps, OpenSSH clients, util-linux, Vim,
 | Shared JSON | Replace/remove declared keys; preserve other keys and permissions |
 | Unmanaged file/history | Leave untouched |
 
-Trees copy regular files; skipped symlinks/special entries produce warnings. Invalid shared JSON blocks synchronization. See [harness-owned keys](harnesses.md#built-in-harnesses).
+Managed configs and defaults copy regular files, excluding `.git` files and directories at every depth. Skipped symlinks/special entries produce warnings. Invalid shared JSON blocks synchronization. See [harness-owned keys](harnesses.md#built-in-harnesses).
 
 Files synchronize on creation/recreation and before starting a stopped container. Attaching to an already-running container does not synchronize them. Changed harness layouts require recreation.

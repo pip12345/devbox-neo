@@ -214,10 +214,6 @@ func (e *Engine) Exec(ctx context.Context, target, localName string, argv []stri
 	if err != nil {
 		return err
 	}
-	if !exists {
-		return commanderror.New("container_missing", "Container not found.", r.ID, nil,
-			commanderror.Next("Start or restore, then retry", "start", r.ID))
-	}
 	started := false
 	defer func() {
 		if err != nil && started && l.Held() {

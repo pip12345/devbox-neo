@@ -71,6 +71,11 @@ func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDe
 	}
 	view.Pending = pending
 	if pending == nil {
+		available, imageErr := e.Docker.ImageAvailable(ctx, r.Applied.ImageID)
+		if imageErr != nil {
+			return StatusDetails{}, imageErr
+		}
+		view.ImageMissing = !available
 		e.desiredStatus(&view, r)
 	}
 	details := StatusDetails{View: view, Record: &r, Active: leases}

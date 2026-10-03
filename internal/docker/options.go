@@ -264,7 +264,7 @@ func ValidateRaw(args []string, protected []string, workspace, userHome string) 
 				return err
 			}
 			if kind == "volume" && source == "" {
-				return fmt.Errorf("raw volumes require a named source for recorded recovery")
+				return fmt.Errorf("raw volumes require a named source so their data can be reused on recreation")
 			}
 			if kind == "bind" {
 				if !filepath.IsAbs(source) {

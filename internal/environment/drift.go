@@ -3,6 +3,7 @@ package environment
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"sort"
@@ -45,9 +46,9 @@ func (r Report) PendingCreationChanges() []InputChange {
 	return result
 }
 
-// CompareInputs explains leaf changes, while Compare retains the existing
-// image > container > runtime action priority. In particular, the image hash
-// feeding the container fingerprint is not another independent change reason.
+// CompareInputs explains public settings and content categories, while Compare
+// owns the image > container > runtime action priority. The image hash feeding
+// the container fingerprint is not another independent change reason.
 func CompareInputs(before, after Inputs) Report {
 	d := differ{inputChanges: []InputChange{}}
 	d.scope = ImageScope
@@ -66,7 +67,16 @@ func CompareInputs(before, after Inputs) Report {
 		key := strconv.Itoa(i + 1)
 		d.file("dockerfile", key, old.Dockerfile, next.Dockerfile)
 		d.file("ignore_rules", key, old.Ignore, next.Ignore)
-		d.files("build_context", old.Context, next.Context)
+		if old.Context != next.Context {
+			source := next.Dockerfile.Source
+			if source == "" {
+				source = old.Dockerfile.Source
+			}
+			if source != "" {
+				source = filepath.Dir(source)
+			}
+			d.add(InputChange{Code: "input_changed", Field: "build_context", Key: key, Path: source})
+		}
 	}
 	d.opaque("prepared_layer", a.Prepared, b.Prepared)
 	d.opaque("boundary_layer", a.Boundary, b.Boundary)
@@ -105,7 +115,7 @@ func CompareInputs(before, after Inputs) Report {
 	d.scope = RuntimeScope
 	r, s := before.Runtime, after.Runtime
 	d.opaque("runtime_assets", r.Assets, s.Assets)
-	d.files("managed_config", r.Files, s.Files)
+	d.opaque("managed_config", r.Files, s.Files)
 	d.hooks("before_open", r.BeforeOpen, s.BeforeOpen)
 	d.list("launch_args", r.Launch.Args, s.Launch.Args)
 	d.list("continue_args", r.Launch.Continue, s.Launch.Continue)
@@ -117,25 +127,10 @@ func CompareInputs(before, after Inputs) Report {
 type differ struct {
 	scope        Scope
 	inputChanges []InputChange
-	imageFiles   map[string]bool
 }
 
 func (d *differ) add(r InputChange) {
 	r.Scope = d.scope
-	// The Dockerfile/ignore file may also be present in the captured build
-	// context. Report each physical file change once, retaining the specific label.
-	if r.Scope == ImageScope && r.Path != "" && (r.Field == "dockerfile" || r.Field == "ignore_rules" || r.Field == "build_context") {
-		key := r
-		key.Field, key.Key = "", ""
-		hash := Digest(key)
-		if d.imageFiles[hash] {
-			return
-		}
-		if d.imageFiles == nil {
-			d.imageFiles = map[string]bool{}
-		}
-		d.imageFiles[hash] = true
-	}
 	d.inputChanges = append(d.inputChanges, r)
 }
 
@@ -248,12 +243,6 @@ func (d *differ) file(field, key string, before, after FileInput) {
 	}
 }
 
-func (d *differ) files(field string, before, after map[string]FileInput) {
-	for _, name := range inputKeys(before, after) {
-		d.file(field, name, before[name], after[name])
-	}
-}
-
 func inputKeys[V any](before, after map[string]V) []string {
 	keys := make([]string, 0, len(before)+len(after))
 	for key := range before {
@@ -291,13 +280,13 @@ func displayInputValue(s string) string {
 func (r InputChange) String() string {
 	labels := map[string]string{
 		"image_mode": "image build mode", "harness": "harness", "harness_definition": "harness definition",
-		"dockerfile": "Dockerfile", "ignore_rules": "Docker ignore rules", "build_context": "build context file",
+		"dockerfile": "Dockerfile", "ignore_rules": "Docker ignore rules", "build_context": "build context",
 		"generated_layer": "generated Devbox image layer", "build_argument": "build argument",
 		"workspace": "workspace", "slot": "slot", "network": "network",
 		"harness_stores": "harness stores", "auth_mounts": "auth mounts", "env": "environment variable",
 		"setup": "setup.sh", "mounts": "mounts", "ports": "ports", "docker_args": "Docker arguments",
 		"docker_env": "Docker environment arguments", "metadata": "IDE metadata", "host_alias": "host alias",
-		"runtime_assets": "bundled runtime guidance", "managed_config": "managed config file", "before_open": "before-open.sh",
+		"runtime_assets": "bundled runtime guidance", "managed_config": "managed configuration", "before_open": "before-open.sh",
 		"launch_args": "harness launch arguments", "continue_args": "continuation arguments", "harness_args": "harness arguments",
 		"shell": "shell",
 	}

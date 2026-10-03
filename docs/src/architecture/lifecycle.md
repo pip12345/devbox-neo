@@ -11,7 +11,7 @@ The lifecycle code stays in one `app` package, with files organized by responsib
 | `create.go`, `creation_record.go` | Creation/recreation, record assembly, materialization, and commit cleanup |
 | `mount_plan.go`, `mounts.go` | Store/auth mount planning, managed-config synchronization, and recorded mount-parent preparation |
 | `startup.go` | Ordinary stopped-to-running preparation |
-| `recovery.go` | Missing-container recovery from the recorded contract |
+| `durable_stores.go` | Previously committed harness-store validation |
 | `attach.go` | Attachment leases and last-command cleanup |
 
 Command-specific orchestration remains explicit; sharing preparation does not make creation, ordinary access, recovery, and transfer rollback interchangeable.
@@ -20,7 +20,7 @@ Command-specific orchestration remains explicit; sharing preparation does not ma
 
 `environment.Spec` is the captured desired environment for an operation. It includes resolved configuration, harness definition, source files, image plan, and `environment.Inputs`.
 
-The saved `store.Record` is the applied contract: identity, actual image/container association, recorded mounts and launch settings, source verification data, and applied input snapshots. Existing containers keep their recorded creation settings until recreation commits.
+The saved `store.Record` records identity, actual image/container association, current mounts/launch settings, and a compact applied comparison baseline. It is not a historical reconstruction recipe. Existing containers keep creation settings until explicit recreation commits.
 
 ```mermaid
 flowchart TD
@@ -42,9 +42,9 @@ flowchart TD
 | Container | Image dependency, mounts, network, env verification, ordered setup inputs | Creation/recreation commit |
 | Runtime | Managed files, launch settings, ordered before-open inputs, runtime assets | Successful application through `Record.ApplyRuntime` |
 
-Snapshots contain public values and hashes, not file contents or secret values. Schema `6` requires these snapshots and validates their fingerprints. Committed source directories authorize environment recovery independently of the editable desired reference chain. Historical baselines are not inferred from current source files.
+Schema `7` validates public settings and aggregate content hashes, never file contents or env values. Managed trees and build contexts contribute one digest each rather than a persisted per-file inventory. Applied source directories retain provenance for config-usage reporting, not authority to reconstruct historical inputs.
 
-`CompareInputs` emits leaf changes in stable order. Action priority is image over container over runtime. The image-to-container hash dependency does not become a duplicate user-facing reason. Dockerfile and ignore entries also appear only once per physical change even when included in the context.
+`CompareInputs` emits public-setting and category changes in stable order. Action priority is image over container over runtime. The image-to-container hash dependency does not become a duplicate user-facing reason. Dockerfiles/scripts retain specific reasons; build-context and managed-tree reasons deliberately do not enumerate changed filenames.
 
 Source paths explain changes but do not themselves change fingerprints when effective input bytes are identical. Relative context/config paths remain semantic inputs. Env diagnostics expose names, not values or hashes. The applied container fingerprint includes the actual image ID rather than only a mutable tag.
 
@@ -82,19 +82,18 @@ Recreation uses current desired inputs while preserving the session ID and store
 
 ```mermaid
 flowchart TD
-    LOCK[Load and verify under lock] --> RUN{Already running?}
+    LOCK[Load and verify under lock] --> EXISTS{Container exists?}
+    EXISTS -->|no| ERROR[Return recreate guidance]
+    EXISTS -->|yes| RUN{Already running?}
     RUN -->|yes| ACCESS[Continue access]
     RUN -->|no| IDLE[Require idle leases]
     IDLE --> RES[Use captured or resolve desired spec]
-    RES --> EXISTS{Container exists?}
-    EXISTS -->|yes| SYNC[Validate roots and sync compatible config]
+    RES --> SYNC[Validate roots and sync compatible config]
     SYNC --> START[Start recorded container]
-    EXISTS -->|no| RECOVER[Verify and recover recorded creation]
     START --> ACCESS
-    RECOVER --> ACCESS
 ```
 
-`open` resolves its invocation first and supplies that spec. Other access commands resolve only if startup is needed. A running `start`, `shell`, `exec`, or `ssh` therefore does not depend on current desired configuration. `shell`, `exec`, and `ssh` reject a missing container before this boundary; `open` and `start` may recover it.
+`open` resolves its invocation first and supplies that spec. Other access commands resolve only if an existing stopped container needs startup. A running `start`, `shell`, `exec`, or `ssh` therefore does not depend on current desired configuration. All these access paths return structured recreate guidance for a missing container; none builds images or creates replacement containers. A pruned image does not trigger replacement of a healthy existing container.
 
 For a stopped container, `syncRecordedConfig` first validates durable backing roots. A matching harness-definition hash permits managed synchronization into the recorded layout, followed by runtime input application. A different definition cannot redefine mount/config ownership in place; adoption waits for recreation. Launch updates follow the recorded-definition compatibility rules.
 
@@ -104,25 +103,21 @@ Invalid participating configuration or malformed live shared JSON blocks startup
 
 `open` still resolves desired settings and reports creation drift. It does not write managed files while running. If the existing ownership manifest already matches the desired files, runtime-only hook/launch changes can advance the runtime baseline. Otherwise it reports deferral without advancing the file manifest or claiming the files were applied.
 
-Before recovery, synchronization, startup, or before-open hook output, `open` emits image/container drift reasons and the recreation command. This is a warning, not authorization to replace the container. Runtime changes remain visible in status without being mislabeled as creation changes.
+Before Docker inspection, synchronization, startup or hook output, `open` reports source differences from the last applied creation baseline. The message explains that only explicit recreation applies creation changes or replaces missing runtime. This is a warning, not authorization to replace the container. Runtime changes remain visible in status without being mislabeled as creation changes.
 
 The engine appends each typed diagnostic to `Result.Diagnostics`, then calls `Engine.OnDiagnostic` synchronously at that reporting point. The CLI supplies the renderer in `cli/diagnostics.go`; it writes immediately to stderr, rather than waiting for the operation to return. A nil callback suppresses delivery but retains diagnostic collection. Callbacks may run under the operation lock and must not reenter session operations or mutate diagnostic slices. Resolution warnings still render directly in `app`, and child-process streams remain separate from typed diagnostic delivery.
 
 The ordered `before-open.sh` chain runs on each Open before attachment. Each script is a separate process; failure stops the chain and blocks attachment. Existing containers launch their recorded harness; a newly selected definition does not silently change the container's installed capabilities.
 
-## Missing-container recovery
+## Missing runtime and explicit recreation
 
-Recovery materializes the recorded creation contract, not a newly resolved one. Before creating anything it verifies:
+Containers and images are disposable, but their absence does not authorize replacement. Open, Start, Shell, Exec and SSH return `container_missing` with an exact `dbx recreate <session-id>` step. They leave saved identity, applied state and history unchanged. Logs/status never build runtime. A healthy container remains usable when its image has been pruned.
 
-- the recorded image and bind inputs;
-- existing named external volumes;
-- the exact recorded definition source and its installation-keyed digest;
-- every recorded setup source's content, in order;
-- recoverable environment source entries.
+Only explicit recreation replaces an existing session's runtime. Under the operation lock, it resolves current selected sources and calls the creation pipeline with the previous record. It preserves session ID, directory, creation time, history, defaults and manual-start intent. It reuses a matching available installation-owned image or builds a new one; it does not reconstruct historical configuration or adopt unowned images.
 
-Desired `settings.sources` retain relative/fixed references for current resolution. Committed `applied.inputs.sources` directories separately authorize the recorded sensitive env-source paths; changing desired references does not alter recovery authority. A new user override cannot replace a recorded built-in definition during recovery. Missing durable roots are not recreated as empty state. Environment values are reconstructed from recorded source references; changed or missing values can require explicit recreation with current configuration.
+The creation path checks previously committed harness-store roots before creating directories; missing durable stores are errors, not empty replacements. Still-requested previously mounted named volumes must exist. A new runtime association commits only after materialization succeeds.
 
-Compatible desired runtime config can synchronize during ordinary recovery, but image/container settings remain recorded. Transaction rollback and committed-transfer recovery follow their recorded transaction rather than resolving newer desired configuration.
+Committed transfer retries finish source cleanup even when destination runtime is missing. They verify any existing association but do not rebuild, resolve destination config or recopy committed stores. Once cleanup releases the endpoints, the user can explicitly recreate the destination.
 
 ## Attached-command leases
 
@@ -159,7 +154,7 @@ Leases contain Linux process start ticks and boot identity to distinguish PID re
 | Successful `stop` | Clear; a rejected stop leaves it unchanged |
 | Attach or detach a command | No change |
 
-The value survives recreation, recovery, and reboot. Docker enforces it through `unless-stopped` when set and `no` otherwise; raw Docker options cannot override this policy.
+The value survives recreation and reboot. Docker enforces it through `unless-stopped` when set and `no` otherwise; raw Docker options cannot override this policy.
 
 `saveManual` updates Docker's policy and saves the record under the operation lock. If saving fails, it attempts to restore the previous policy so a failed command does not silently change reboot behavior.
 
@@ -167,7 +162,7 @@ At boot, Docker starts the existing container without CLI preparation. It does n
 
 ## Invocation-local terminal metadata
 
-The CLI captures the `app.TerminalEnv` allowlist once into the engine. During materialization it prepends those values to a temporary env plan, before harness and configured values. The saved creation contract and fingerprints remain unchanged, including during recovery.
+The CLI captures the `app.TerminalEnv` allowlist once into the engine. During materialization it prepends those values to a temporary env plan, before harness and configured values. Terminal values do not participate in the saved comparison baseline, including during rebuilding.
 
 Attached harness, shell, and exec commands receive current terminal variables through Docker exec overrides, with or without TTY allocation. Present empty host values are forwarded; absent keys do not clear container values. Internal hooks/preparation inherit creation env rather than attachment overrides.
 

@@ -20,7 +20,11 @@ func sessionNameFlag(cmd *cobra.Command, name *string) *cobra.Command {
 }
 
 func New() *cobra.Command {
-	var home, localName string
+	return newRoot(docker.Runtime{Runner: docker.ExecRunner{}})
+}
+
+func newRoot(runtime docker.Runtime) *cobra.Command {
+	var home, localName, checkedHome string
 	root := &cobra.Command{Use: "dbx", Short: "Persistent development environments", Long: "Persistent development environments\nRun without a subcommand in a terminal to browse sessions and configs.\nUse arrows and Enter, Tab to switch browsers, / to filter, and Esc to go back.\nExplicit commands and JSON output remain available for direct use and scripts.", Example: "  # First run\n  dbx config create base\n  dbx create .\n  dbx edit .\n  dbx open .", SilenceUsage: true, SilenceErrors: true}
 	root.PersistentFlags().StringVar(&home, "home", "", "Devbox home (default ~/.devbox-neo; DEVBOX_HOME overrides)")
 	initialize := func(cmd *cobra.Command) (*store.Store, error) {
@@ -31,6 +35,12 @@ func New() *cobra.Command {
 		resolved, err := config.Home(home, os.Getenv("DEVBOX_HOME"), userHome)
 		if err != nil {
 			return nil, err
+		}
+		if checkedHome != resolved {
+			if err := requireMigration(cmd, resolved, runtime); err != nil {
+				return nil, err
+			}
+			checkedHome = resolved
 		}
 		return store.Open(cmd.Context(), resolved)
 	}
@@ -43,7 +53,7 @@ func New() *cobra.Command {
 		if file, ok := cmd.InOrStdin().(*os.File); ok {
 			tty = terminal(file)
 		}
-		return &app.Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(), TTY: tty}, OnDiagnostic: diagnosticRenderer(cmd.ErrOrStderr()), TerminalEnv: app.TerminalEnv(os.LookupEnv), UID: os.Getuid(), GID: os.Getgid()}, nil
+		return &app.Engine{Store: state, Docker: runtime, Streams: docker.Streams{In: cmd.InOrStdin(), Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(), TTY: tty}, OnDiagnostic: diagnosticRenderer(cmd.ErrOrStderr()), TerminalEnv: app.TerminalEnv(os.LookupEnv), UID: os.Getuid(), GID: os.Getgid()}, nil
 	}
 	resources := func(cmd *cobra.Command) (*resource.Service, error) {
 		state, err := initialize(cmd)
@@ -113,7 +123,7 @@ func New() *cobra.Command {
 	configGroup.RunE = func(cmd *cobra.Command, _ []string) error { return runFrontend(cmd, engine, resources, true) }
 	root.AddCommand(configGroup, editCommand(engine, &localName))
 	bindCompletionScripts(root)
-	bindCompletions(root, docker.Runtime{Runner: docker.ExecRunner{}})
+	bindCompletions(root, runtime)
 	bindCommandErrors(root)
 	return root
 }

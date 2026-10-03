@@ -12,7 +12,7 @@ import (
 )
 
 func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
-	e, d, q := fixture(t)
+	e, _, q := fixture(t)
 	ctx := context.Background()
 	result, err := e.Create(ctx, q)
 	if err != nil {
@@ -41,13 +41,7 @@ func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
 	err = e.Stop(ctx, result.SessionID, "", false)
 	check(err, "container_missing", "status", result.SessionID)
 	err = e.Exec(ctx, result.SessionID, "", []string{"true"}, false)
-	check(err, "container_missing", "start", result.SessionID)
-	d.Fail = func(args []string) error {
-		if args[0] == "image" && args[1] == "inspect" {
-			return errors.New("image unavailable")
-		}
-		return nil
-	}
+	check(err, "container_missing", "recreate", result.SessionID)
 	_, err = e.Start(ctx, result.SessionID, "")
-	check(err, "recovery_unavailable", "recreate", result.SessionID)
+	check(err, "container_missing", "recreate", result.SessionID)
 }

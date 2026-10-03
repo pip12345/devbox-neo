@@ -1,12 +1,12 @@
 # State, locking, and transfers
 
-The saved session is the top-level environment model. Docker inventory supplies live runtime facts, but container absence does not erase identity, history, or the recorded recovery contract. `store` owns durable state; `app` combines it with verified Docker state before transitions.
+The saved session is the top-level environment model. Docker inventory supplies live runtime facts, but container/image absence does not erase identity, history or the applied comparison baseline. `store` owns durable state; `app` combines it with verified Docker state before transitions.
 
 ## Identity and ownership
 
-`environment.ContainerPrefix` defines the `dbx-` lookup convention independently of `docker.Namespace`, which defines `devbox-rewrite.*` labels and image tags.
+`environment.ContainerPrefix` defines the `dbx-` lookup convention independently of `docker.Namespace`, which defines `dbx.*` labels and `dbx/session:<folder>-<name>-<session-id>` image tags.
 
-The immutable session ID identifies the saved session. `settings` contains the editable workspace, local name, config references, and keep-running intent. Storage directories and Docker names are independently allocated as `dbx-<allocation-hash>.<local-name>` hints; neither is parsed or required to match settings or the other name.
+The immutable session ID identifies the saved session. `settings` contains the editable workspace, local name, config references, and keep-running intent. Storage directories and Docker names are independently allocated as `dbx-<folder>-<allocation-hash>.<local-name>` hints; neither is parsed or required to match settings or the other name.
 
 `store.Find` looks up an ID or workspace/name from saved records, without config resolution or a persistent index. Folder-only lookup reads its explicit default ID. Defaults use schema 2 under `state/workspaces/<workspace-key>.json`, keyed by the canonical workspace's SHA-256. Missing defaults are absent; malformed defaults are errors. Name reuse never inherits an old ID selection.
 
@@ -20,9 +20,11 @@ Images carry installation ownership and final session tags. Removing a tag requi
 
 - immutable `id` and activity metadata;
 - `settings`: workspace, local name, ordered config references, and `manual_start`;
-- `applied`: creation/launch plans, image/container association, harness recovery contract, inputs, and fingerprints.
+- `applied`: current creation/launch settings, image/container association, harness layout, compact comparison inputs and fingerprints.
 
-Schema `6` validates settings and applied state independently. Their differences are pending changes, not corruption. Applied mounts must agree with applied inputs, not desired settings. `applied.inputs.sources` retains the committed config directories for recovery. No directory name is persisted. Older development records require an explicit reset; no migration reader exists.
+Schema `7` validates settings and applied state independently. Their differences are pending changes, not corruption. Applied mounts must agree with applied inputs, not desired settings. `applied.inputs.sources` retains applied provenance for config usage, not historical recovery authority. No directory name is persisted. Per-tree content digests replace per-file input inventories; setup bytes and env restoration references are not persisted.
+
+Ordinary readers reject older records. Before CLI/menu state initialization, `migration.Pending` recognizes required format updates without Docker/config resolution. A generic blocking screen requires agreement before the conversion service verifies/removes linked old-namespace containers/tags and atomically publishes compact records under the complete lock set. It refuses active commands/pending transfers and retains history/defaults. Partial retries recognize completed current-format records. Noninteractive/JSON use stays blocked; there is no separate migration command, silent conversion, old-format runtime reader or general importer.
 
 Records contain public settings, paths, modes, and hashes, not file contents or env/auth values. Raw env diagnostics are redacted. Records are atomically replaced with restrictive permissions; invalid records remain errors rather than being treated as missing.
 
@@ -135,6 +137,6 @@ If preparation fails, bounded rollback cleans the destination, restores the sour
 
 Publishing `committed` changes authority before source removal. Once publication is attempted, rollback cannot delete the destination: a directory sync error can occur after rename already succeeded.
 
-A committed retry does not resolve new desired config or copy state again. It verifies the recorded destination, recovers a missing destination container when recorded inputs permit, and finishes source cleanup. Copying again here could overwrite newer destination history with stale source data.
+A committed retry never copies source state again. It verifies the destination and finishes source cleanup. If destination runtime is missing, cleanup still finishes without resolving config or rebuilding it. After the journal releases the endpoints, explicit recreation can rebuild against the committed backing stores. Copying again here could overwrite newer destination history with stale source data.
 
 The journal lives outside the source directory so deleting source state cannot lose the recovery plan or reservation. Committed move cleanup uses `removeSavedSession` too, including retries after the source record is gone; the journal supplies its workspace and ID. Copy preserves source defaults. Move clears only a matching source default and never selects a destination default. Only completed cleanup removes the journal and releases both names. `copy` creates a new session ID; `copy --move` preserves it. No permanent lineage record is needed after completion.

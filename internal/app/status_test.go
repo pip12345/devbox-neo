@@ -233,7 +233,7 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 		t.Fatal("wrong environment scope or missing unmatched warning", report, err)
 	}
 	calls := d.History()[before:]
-	if len(calls) != 2 || !reflect.DeepEqual(calls[0][:2], []string{"container", "ls"}) || !reflect.DeepEqual(calls[1][:2], []string{"container", "inspect"}) {
+	if len(calls) != 3 || !reflect.DeepEqual(calls[0][:2], []string{"container", "ls"}) || !reflect.DeepEqual(calls[1][:2], []string{"container", "inspect"}) || !reflect.DeepEqual(calls[2][:2], []string{"image", "ls"}) {
 		t.Fatal("status did more than batched Docker inventory", calls)
 	}
 	byName := map[string]View{}

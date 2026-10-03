@@ -109,7 +109,7 @@ func completionSessions(cmd *cobra.Command) []completionSession {
 func completeSessions(cmd *cobra.Command) []string {
 	var ids []string
 	for _, record := range completionSessions(cmd) {
-		ids = append(ids, record.ID)
+		ids = append(ids, record.ID+"\t"+displayCell(record.Settings.Workspace)+" / "+displayCell(record.Settings.LocalName))
 	}
 	return ids
 }
@@ -183,7 +183,8 @@ func completionContainers(runtime docker.Runtime) completionSource {
 func completionMatches(values, used []string, prefix string) []string {
 	var matches []string
 	for _, value := range values {
-		if strings.HasPrefix(value, prefix) && !slices.Contains(used, value) && !strings.ContainsFunc(value, unicode.IsControl) {
+		target, description, _ := strings.Cut(value, "\t")
+		if strings.HasPrefix(target, prefix) && !slices.Contains(used, target) && !strings.ContainsFunc(target+description, unicode.IsControl) {
 			matches = append(matches, value)
 		}
 	}

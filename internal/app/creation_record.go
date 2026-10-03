@@ -17,13 +17,12 @@ func creationRecord(s environment.Spec, imageID string, mounts []docker.Mount, i
 		Settings: store.Settings{Binding: s.Identity.Binding, Sources: s.Sources, ManualStart: seed.ManualStart},
 		Applied: store.AppliedState{
 			Fingerprints: s.FingerprintsFor(imageID), Inputs: s.Inputs,
-			ImageTag: docker.Namespace + "/session:" + id, ImageID: imageID,
+			ImageTag: environment.ImageTag(s.Identity.Workspace, s.Identity.LocalName, id), ImageID: imageID,
 			Creation: docker.CreatePlan{
 				Name: s.Identity.Name, Image: imageID, Network: s.Settings.Network,
 				Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports,
 				RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata,
 			},
-			EnvSources: s.EnvSources,
 			Definition: store.DefinitionInput{Name: d.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash},
 			Stores:     d.Stores, Auth: d.Auth, Config: d.Config, Merge: d.Merge, Prepare: d.Prepare,
 			Launch: store.Launch{

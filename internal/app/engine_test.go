@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"devbox/internal/commanderror"
 	"devbox/internal/config"
 	"devbox/internal/docker"
 	"devbox/internal/docker/dockertest"
@@ -204,7 +203,7 @@ func TestInvalidConfigBlocksStartupButNotRunningAccess(t *testing.T) {
 		t.Fatal("escape commands loaded desired config")
 	}
 }
-func TestRecordedRecoveryUsesOriginalDefinitionAndSettings(t *testing.T) {
+func TestRecreateUsesCurrentDefinitionAndSettings(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	result, err := createAndOpen(ctx, e, q)
@@ -212,33 +211,34 @@ func TestRecordedRecoveryUsesOriginalDefinitionAndSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := sessionRecord(t, e, result.SessionID)
+	history := filepath.Join(e.Store.Home, "sessions", first.Directory, "harnesses/pi/stores/home/history")
+	write(t, history, "preserved")
+	if err := e.SetDefault(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Start(ctx, result.SessionID, ""); err != nil {
+		t.Fatal(err)
+	}
 	forgetSession(t, e, result.SessionID)
+	delete(d.Images, first.Applied.ImageID)
+	delete(d.Images, first.Applied.ImageTag)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"opencode","network":"host"}`)
 	write(t, filepath.Join(e.Store.Home, "harnesses/pi/harness.json"), "invalid unselected override")
-	if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
+	if _, err = e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
 	second := sessionRecord(t, e, result.SessionID)
-	if first.ID != second.ID || first.Applied.ImageID != second.Applied.ImageID || first.Applied.Fingerprints != second.Applied.Fingerprints {
-		t.Fatal("recovery changed recorded contract")
+	if first.ID != second.ID || first.Directory != second.Directory || second.Applied.Definition.Name != "opencode" || second.Applied.Creation.Network != "host" || !second.Settings.ManualStart {
+		t.Fatal("rebuild did not preserve identity/adopt current configuration")
 	}
-	if first.Applied.SetupContainer == second.Applied.SetupContainer {
-		t.Fatal("setup not associated with new instance")
+	if first.Applied.SetupContainer == second.Applied.SetupContainer || count(d, "build") != 4 {
+		t.Fatal("missing runtime was not rebuilt")
 	}
-	if count(d, "build") != 2 {
-		t.Fatal("recovery rebuilt")
+	if b, err := os.ReadFile(history); err != nil || string(b) != "preserved" {
+		t.Fatal("saved history lost", err)
 	}
-	forgetSession(t, e, result.SessionID)
-	if err = os.Remove(filepath.Join(e.Store.Home, "auth/pi/auth.json")); err != nil {
-		t.Fatal(err)
-	}
-	creates := count(d, "create")
-	var recoveryError *commanderror.Error
-	if _, err = e.Start(ctx, result.SessionID, ""); !errors.As(err, &recoveryError) || recoveryError.Code != "recovery_unavailable" || !slices.Equal(recoveryError.Next[0].Command, []string{"dbx", "recreate", result.SessionID}) {
-		t.Fatalf("want actionable recovery error: %v", err)
-	}
-	if count(d, "create") != creates {
-		t.Fatal("missing input mutated Docker")
+	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected == nil || selected.ID != first.ID {
+		t.Fatal("default lost", err)
 	}
 }
 func TestRunningManagedConfigIsDeferred(t *testing.T) {
@@ -450,7 +450,7 @@ func TestFailedRecordCommitIsNotSuccessfulCreation(t *testing.T) {
 	}
 }
 
-func TestMissingImageRequiresExplicitRecreate(t *testing.T) {
+func TestMissingImageIsRebuiltOnExplicitRecreate(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	result, err := createAndOpen(ctx, e, q)
@@ -461,12 +461,6 @@ func TestMissingImageRequiresExplicitRecreate(t *testing.T) {
 	forgetSession(t, e, result.SessionID)
 	delete(d.Images, old.Applied.ImageID)
 	delete(d.Images, old.Applied.ImageTag)
-	if _, err = e.Start(ctx, result.SessionID, ""); err == nil {
-		t.Fatal("missing image was implicitly rebuilt")
-	}
-	if count(d, "build") != 2 || count(d, "create") != 1 {
-		t.Fatal("recovery mutated Docker")
-	}
 	if _, err = e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
@@ -475,7 +469,7 @@ func TestMissingImageRequiresExplicitRecreate(t *testing.T) {
 		t.Fatal("explicit recreation did not rebuild missing image")
 	}
 }
-func TestFailedReplacementKeepsRecordedRecovery(t *testing.T) {
+func TestFailedReplacementKeepsStateAndRetriesCurrentConfiguration(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	result, err := createAndOpen(ctx, e, q)
@@ -498,11 +492,11 @@ func TestFailedReplacementKeepsRecordedRecovery(t *testing.T) {
 		t.Fatal("failed replacement advanced durable creation facts")
 	}
 	d.Fail = nil
-	if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
+	if _, err = e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
-	if sessionRecord(t, e, result.SessionID).Applied.Fingerprints != old.Applied.Fingerprints {
-		t.Fatal("recovery used new setup/config")
+	if sessionRecord(t, e, result.SessionID).Applied.Fingerprints.Container == old.Applied.Fingerprints.Container {
+		t.Fatal("retry did not use current setup/config")
 	}
 }
 func TestRecordedValuesNeverPersistHarnessEnv(t *testing.T) {
@@ -564,7 +558,7 @@ func TestRecordedValuesNeverPersistHarnessEnv(t *testing.T) {
 		t.Fatal("multiline transport error reached Docker")
 	}
 }
-func TestRecoverySynchronizesBeforeStartup(t *testing.T) {
+func TestRecreateSynchronizesCurrentManagedConfig(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
 	result, err := createAndOpen(ctx, e, q)
@@ -573,12 +567,12 @@ func TestRecoverySynchronizesBeforeStartup(t *testing.T) {
 	}
 	forgetSession(t, e, result.SessionID)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/pi/settings.json"), `{"packages":["recovered"]}`)
-	if _, err = e.Open(ctx, q); err != nil {
+	if _, err = e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home/settings.json"))
 	if err != nil || !bytes.Contains(b, []byte("recovered")) {
-		t.Fatalf("recovery did not synchronize: %s %v", b, err)
+		t.Fatalf("recreation did not synchronize: %s %v", b, err)
 	}
 }
 func TestHookFailureStopsNewlyStartedContainer(t *testing.T) {

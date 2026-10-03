@@ -35,6 +35,7 @@ type View struct {
 	Uncommitted         bool                      `json:"-"`
 	Exists              bool                      `json:"exists"`
 	Running             bool                      `json:"running"`
+	ImageMissing        bool                      `json:"image_missing"`
 	Error               string                    `json:"error,omitempty"`
 	Desired             environment.Change        `json:"desired_change,omitempty"`
 	PendingInputChanges []environment.InputChange `json:"pending_input_changes,omitempty"`

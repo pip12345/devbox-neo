@@ -52,6 +52,13 @@ func displayCell(value string) string {
 	return value
 }
 
+func sessionLabel(view app.View) string {
+	if view.Workspace != "" && view.LocalName != "" {
+		return displayCell(view.Workspace) + " / " + displayCell(view.LocalName)
+	}
+	return displayCell(view.Target)
+}
+
 func activityAge(at, now time.Time) string {
 	if at.IsZero() {
 		return "-"

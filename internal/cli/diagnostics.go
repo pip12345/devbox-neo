@@ -21,7 +21,7 @@ func diagnosticRenderer(stderr io.Writer) func(app.Diagnostic) {
 			fmt.Fprintf(stderr, "  - %s\n", inputChange)
 		}
 		if diagnostic.Code == "creation_drift" {
-			fmt.Fprintln(stderr, "\nUsing the existing container without applying these creation changes.")
+			fmt.Fprintln(stderr, "\nCreation settings and missing runtime are applied only through explicit recreation.")
 			if diagnostic.Change == environment.RebuildAndRecreate {
 				fmt.Fprintln(stderr, "Rebuild image and recreate:")
 			} else {

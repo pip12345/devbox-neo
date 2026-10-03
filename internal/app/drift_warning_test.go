@@ -77,6 +77,18 @@ func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
 			openCtx, cancel := context.WithTimeout(ctx, 750*time.Millisecond)
 			result, err = e.Open(openCtx, q)
 			cancel()
+			if mode == "recovery" {
+				if err == nil || count(d, "create") != 1 || count(d, "build") != 2 || strings.Contains(output.String(), "entrypoint output") {
+					t.Fatal("missing-container access rebuilt or ran hooks", err)
+				}
+				if _, err := os.Stat(liveFile); !os.IsNotExist(err) {
+					t.Fatal("missing-container access synchronized config", err)
+				}
+				if len(emitted) != 1 || emitted[0].Code != "creation_drift" {
+					t.Fatal("creation warning missing or duplicated", emitted)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}

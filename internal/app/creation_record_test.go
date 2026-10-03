@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"devbox/internal/docker"
+	"devbox/internal/environment"
 	"devbox/internal/sshshare"
 	"devbox/internal/store"
 )
@@ -92,10 +93,10 @@ func TestCreationRecordParity(t *testing.T) {
 			want := store.Record{
 				Version: store.RecordVersion, ID: id, Directory: directory, Created: created, Activity: activity, Action: action, Settings: store.Settings{Binding: s.Identity.Binding, Sources: s.Sources,
 					ManualStart: manual}, Applied: store.AppliedState{Fingerprints: s.FingerprintsFor(c.Image), Inputs: s.Inputs,
-					ImageTag: docker.Namespace + "/session:" + id, ImageID: c.Image,
+					ImageTag: environment.ImageTag(s.Identity.Workspace, s.Identity.LocalName, id), ImageID: c.Image,
 					Creation:   docker.CreatePlan{Name: strings.TrimPrefix(c.Name, "/"), Image: c.Image, Network: s.Settings.Network, Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports, RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata},
-					EnvSources: s.EnvSources, Definition: store.DefinitionInput{Name: d.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash},
-					Stores: d.Stores, Auth: d.Auth, Config: d.Config, Merge: d.Merge, Prepare: d.Prepare,
+					Definition: store.DefinitionInput{Name: d.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash},
+					Stores:     d.Stores, Auth: d.Auth, Config: d.Config, Merge: d.Merge, Prepare: d.Prepare,
 					Launch: store.Launch{Binary: d.Binary, Args: append(append([]string(nil), d.Launch.Args...), s.Settings.HarnessArgs...), Continue: d.Launch.Continue, Shell: s.Settings.Shell},
 					Setup:  s.Setup, SetupContainer: c.ID, Ownership: 1, ManifestVersion: 1},
 			}

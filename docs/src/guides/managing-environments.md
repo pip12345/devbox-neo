@@ -20,7 +20,7 @@ Use **Rebuild image without cache** only when you want to rerun the build. It do
 
 ## Restore a missing container
 
-A session marked **missing** may still have saved data. Try **Open** to restore its recorded container. If required inputs are unavailable, follow the error or choose **Recreate** to use current configuration.
+For a session marked **missing**, choose **Recreate** to build a replacement container from its current configs. Saved harness history is kept. If recreation reports missing files or invalid configs, fix the problem and retry. Then choose **Open** or **Continue**.
 
 ## Copy or move a session
 

@@ -51,7 +51,7 @@ Missing containers remain listed. Corrupt records show diagnostics; managed cont
 | Rebuild + recreate needed | Image inputs changed; Recreate also builds |
 | Cannot check | A config/state problem prevents comparison |
 
-Status compares local inputs, not available upstream releases. A missing container and invalid configuration are separate conditions. Single-session status shows detailed reasons and relevant next commands.
+Status identifies workspace and local name together and compares local inputs, not available upstream releases. Public-setting changes show values; managed-tree and build-context changes show category reasons, not exact filenames. Missing runtime and invalid configuration are separate conditions. Status reports missing images without treating them as corrupt state or replacing a healthy container. Single-session status shows reasons and relevant next commands.
 
 ## Inventory and status JSON
 
@@ -65,6 +65,7 @@ Status compares local inputs, not available upstream releases. A missing contain
 |---|---|
 | `session_id`, `local_name` | Stable ID and editable session name |
 | `container_id`, `container_name` | Applied Docker instance and its name |
+| `image_missing` | Recorded image ID is absent; existing container access is unaffected |
 | `default` | Matches the saved folder default |
 | `manual_start` | Keep-running intent |
 | `sources` | Desired config references |
@@ -83,7 +84,7 @@ Entries contain `scope`, `code`, and `field`; optional fields are `key`, `path`,
 - Scope: `image`, `container`, `runtime`.
 - Code: `value_changed`, `input_changed`, `entry_added`, `entry_removed`, `order_changed`, `file_added`, `file_removed`, `file_content_changed`, `file_kind_changed`, `file_mode_changed`.
 
-Public values may appear before/after. Env changes show variable names, never values or hashes. File contents are not printed.
+Public values may appear before/after. Env changes show variable names, never values or hashes. Managed content and build contexts use `input_changed` category entries. Dockerfiles and ordered hooks retain specific content/order reasons. File contents are not printed.
 
 ## Configuration output
 

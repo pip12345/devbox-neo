@@ -116,6 +116,10 @@ func (e *Engine) StatusAll(ctx context.Context, folder string) (InventoryReport,
 		return InventoryReport{}, err
 	}
 	report := e.sessionInventory(ctx, entries, live, workspace)
+	images, err := e.Docker.ImageIDs(ctx)
+	if err != nil {
+		return report, err
+	}
 	records := map[string]store.Record{}
 	for _, entry := range entries {
 		if entry.Err == nil && entry.Record.ID != "" {
@@ -128,6 +132,7 @@ func (e *Engine) StatusAll(ctx context.Context, folder string) (InventoryReport,
 		}
 		view := &report.Sessions[i]
 		if r, ok := records[view.Target]; ok && view.Error == "" && view.Pending == nil {
+			view.ImageMissing = !images[r.Applied.ImageID]
 			e.desiredStatus(view, r)
 		}
 	}

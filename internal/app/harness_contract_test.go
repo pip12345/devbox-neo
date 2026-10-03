@@ -111,8 +111,8 @@ func TestBuiltinAndCustomHarnessesShareLifecycleAndStorage(t *testing.T) {
 				}
 			}
 			forgetSession(t, e, result.SessionID)
-			if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
-				t.Fatal("recorded recovery failed", err)
+			if _, err = e.Recreate(ctx, q, false); err != nil {
+				t.Fatal("explicit recreation failed", err)
 			}
 		})
 	}

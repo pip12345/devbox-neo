@@ -43,10 +43,10 @@ func TestExplicitWorkspaceSourceIsUsedByEveryAccessPath(t *testing.T) {
 	if err != nil || view.Path != filepath.Join(dir, "config.json") {
 		t.Fatal(view, err)
 	}
-	forgetSession( // Missing-container recovery restores env from the workspace's project config.
-		t, e,
-
-		made.SessionID)
+	forgetSession(t, e, made.SessionID)
+	if _, err = e.Recreate(ctx, q, false); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = e.Start(ctx, q.Workspace, q.LocalName); err != nil {
 		t.Fatal(err)
 	}

@@ -99,11 +99,11 @@ func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
 	if _, ok := d.Images[initial.Applied.ImageTag]; !ok {
 		t.Fatal("container deletion removed session image")
 	}
-	if _, err = e.Start(ctx, first.SessionID, ""); err != nil {
-		t.Fatal("retained record cannot recover", err)
+	if _, err = e.Recreate(ctx, Request{Workspace: first.SessionID}, false); err != nil {
+		t.Fatal("retained record cannot recreate", err)
 	}
 	if sessionRecord(t, e, first.SessionID).ID != initial.ID {
-		t.Fatal("recovery changed session identity")
+		t.Fatal("recreation changed session identity")
 	}
 }
 func getFile(t *testing.T, p string) []byte {

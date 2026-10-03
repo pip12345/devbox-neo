@@ -27,7 +27,7 @@ func TestStatusTableSeparatesLiveStateFromChanges(t *testing.T) {
 		{Target: "unknown", Exists: true},
 	}
 	var out bytes.Buffer
-	if err := printStatusList(&out, views); err != nil {
+	if err := printStatusList(&cobra.Command{}, &out, views, ""); err != nil {
 		t.Fatal(err)
 	}
 	text := out.String()
@@ -137,6 +137,51 @@ func TestSingleStatusJSONReportsDefaultAndDefaultErrors(t *testing.T) {
 	}
 	if text := run(name); !strings.Contains(text, "Default selection unavailable:") || !strings.Contains(text, "Session: "+r.ID) {
 		t.Fatal("human status lost details or default-state diagnostic", text)
+	}
+}
+
+func TestStatusExplainsDriftAfterContainerRemoval(t *testing.T) {
+	for _, tc := range []struct {
+		name, path, content, classification, reason string
+	}{
+		{"harness", "config.json", `{"harness":"claude"}`, "Rebuild + recreate needed", "[image] harness: pi -> claude"},
+		{"setup", "setup.sh", "echo changed-setup", "Recreate needed", "[container] setup.sh"},
+		{"env", "config.json", `{"harness":"pi","env":["TOKEN=private-test-value"]}`, "Recreate needed", "[container] environment variable TOKEN added"},
+		{"build context", "docker/Dockerfile", "FROM ${DEVBOX_BASE}\n", "Rebuild + recreate needed", "[image] build context"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, _, id := namedCLIFixture(t)
+			ctx := context.Background()
+			if _, err := e.DeleteContainers(ctx, app.Selection{Targets: []string{id}}, false); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(e.Store.Home, "configs/base", tc.path)
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(tc.content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			for _, args := range [][]string{{id}, {}} {
+				local := ""
+				cmd := statusCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &local)
+				var out bytes.Buffer
+				cmd.SetOut(&out)
+				cmd.SetArgs(args)
+				if err := cmd.ExecuteContext(ctx); err != nil {
+					t.Fatal(err)
+				}
+				text := out.String()
+				for _, want := range []string{tc.classification, tc.reason, "dbx recreate " + id} {
+					if !strings.Contains(text, want) {
+						t.Fatal("lost drift reason or action", want, text)
+					}
+				}
+				if strings.Contains(text, "private-test-value") || strings.Contains(text, "echo changed-setup") {
+					t.Fatal("status exposed input contents", text)
+				}
+			}
+		})
 	}
 }
 

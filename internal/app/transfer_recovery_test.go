@@ -100,20 +100,35 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 	if _, err = e.Create(ctx, q); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" {
 		t.Fatal("create reused a reserved source during cleanup", err)
 	}
-	forgetSession( // The destination can also lose its container before cleanup finishes. Its
-		// committed record remains the recovery authority, not current config.
-		t, e,
-
-		result.Destination)
-	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
+	// Destination stores remain authoritative. Cleanup releases the endpoints
+	// without rebuilding missing runtime or recopying the deleted source.
+	dest := sessionRecord(t, e, result.Destination)
+	history := filepath.Join(e.Store.Home, "sessions", dest.Directory, "harnesses/pi/stores/home/history")
+	write(t, history, "new destination history")
+	forgetSession(t, e, result.Destination)
+	delete(d.Images, dest.Applied.ImageID)
+	delete(d.Images, dest.Applied.ImageTag)
+	creates, builds := count(d, "create"), count(d, "build")
+	configPath := filepath.Join(e.Store.Home, "profiles/test/config.json")
+	write(t, configPath, "invalid current config must not block committed cleanup")
 	if _, err = e.Transfer(ctx, opts); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = e.Store.Read(ctx, source.Directory); !os.IsNotExist(err) {
 		t.Fatal("source returned", err)
 	}
+	if count(d, "create") != creates || count(d, "build") != builds || string(getFile(t, history)) != "new destination history" {
+		t.Fatal("cleanup rebuilt runtime or recopied committed stores")
+	}
+	if _, exists := sessionSnapshot(t, e, result.Destination); exists {
+		t.Fatal("transfer cleanup rebuilt destination runtime")
+	}
+	write(t, configPath, `{"version":1,"harness":"pi","network":"host"}`)
+	if _, err := e.Recreate(ctx, Request{Workspace: result.Destination}, false); err != nil {
+		t.Fatal("explicit destination recreation failed", err)
+	}
 	if _, exists := sessionSnapshot(t, e, result.Destination); !exists {
-		t.Fatal("destination not recovered")
+		t.Fatal("destination not recreated")
 	}
 }
 func TestTransferRetriesPreparedButUncommittedDestination(t *testing.T) {

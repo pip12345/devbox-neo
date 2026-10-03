@@ -54,7 +54,7 @@ func diagnosticFixture(t *testing.T) (*app.Engine, *dockertest.Daemon, app.Reque
 	if err != nil || len(spec.Warnings) != 1 {
 		t.Fatal("expected one resolution warning", spec.Warnings, err)
 	}
-	want := "Warning: this container differs from current configuration:\n  - network: default -> host\n\nUsing the existing container without applying these creation changes.\nRecreate to apply changes:\n  dbx recreate " + result.SessionID + "\n"
+	want := "Warning: current configuration differs from the last applied creation settings:\n  - network: default -> host\n\nCreation settings and missing runtime are applied only through explicit recreation.\nRecreate to apply changes:\n  dbx recreate " + result.SessionID + "\n"
 	want += fmt.Sprintf("Warning: %s\n", spec.Warnings[0])
 	return e, d, q, want
 }
@@ -107,7 +107,7 @@ func TestRootWiresImmediateDiagnosticRendering(t *testing.T) {
 	root := New()
 	root.SetOut(&stdout)
 	root.SetErr(diagnosticWriter(func(p []byte) (int, error) {
-		if strings.Contains(string(p), "this container differs from current configuration") {
+		if strings.Contains(string(p), "current configuration differs from the last applied creation settings") {
 			cancel()
 		}
 		return stderr.Write(p)

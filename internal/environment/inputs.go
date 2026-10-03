@@ -14,11 +14,11 @@ import (
 	"devbox/internal/harness"
 )
 
-// Inputs is the single secret-free baseline for fingerprints and drift reasons.
-// Paths explain inputs; only content, order and effective settings cause drift.
+// Inputs is the compact secret-free baseline for fingerprints and drift reasons.
+// File trees contribute aggregate identities, not persistent per-file inventories.
 type Inputs struct {
-	// Committed source directories authorize environment recovery independently
-	// of the editable desired references. Runtime sync does not rewrite them.
+	// Sources retain applied provenance for inspection and config usage reporting.
+	// Rebuilding runtime always resolves the current selected references.
 	Sources   []config.Source `json:"sources"`
 	Image     ImageInputs     `json:"image"`
 	Container ContainerInputs `json:"container"`
@@ -34,9 +34,9 @@ type FileInput struct {
 	Source string `json:"source,omitempty"`
 }
 type BuildInputs struct {
-	Dockerfile FileInput            `json:"dockerfile"`
-	Ignore     FileInput            `json:"ignore"`
-	Context    map[string]FileInput `json:"context"`
+	Dockerfile FileInput `json:"dockerfile"`
+	Ignore     FileInput `json:"ignore"`
+	Context    string    `json:"context_hash"`
 }
 type ImageInputs struct {
 	BaseImage  string            `json:"base_image"`
@@ -63,12 +63,12 @@ type ContainerInputs struct {
 	HostAlias   string            `json:"host_alias"`
 }
 type RuntimeInputs struct {
-	Assets     string               `json:"assets"`
-	Files      map[string]FileInput `json:"files"`
-	BeforeOpen []FileInput          `json:"before_open"`
-	Launch     harness.Launch       `json:"launch"`
-	Args       []string             `json:"args"`
-	Shell      []string             `json:"shell"`
+	Assets     string         `json:"assets"`
+	Files      string         `json:"files_hash"`
+	BeforeOpen []FileInput    `json:"before_open"`
+	Launch     harness.Launch `json:"launch"`
+	Args       []string       `json:"args"`
+	Shell      []string       `json:"shell"`
 }
 
 func fileInput(salt, source string, data []byte, mode os.FileMode, directory bool) FileInput {
@@ -84,13 +84,15 @@ func hookInputs(hooks []Hook) []FileInput {
 func (p ImageBuildPlan) inputs(h harness.Effective, salt string) ImageInputs {
 	image := ImageInputs{BaseImage: p.BaseImage, Harness: h.Definition.Name, Definition: FileInput{FileState: FileState{Hash: h.Hash}, Source: h.Origin}, Prepared: Fingerprint(salt, p.Prepared), Boundary: Fingerprint(salt, p.Boundary), Layer: Fingerprint(salt, p.Runtime), Arguments: maps.Clone(p.Arguments)}
 	for _, stage := range p.Stages {
-		input := BuildInputs{Dockerfile: fileInput(salt, stage.Source, stage.Dockerfile, 0, false), Context: map[string]FileInput{}}
+		input := BuildInputs{Dockerfile: fileInput(salt, stage.Source, stage.Dockerfile, 0, false)}
+		files := map[string]FileInput{}
 		if stage.IgnoreSource != "" {
 			input.Ignore = fileInput(salt, stage.IgnoreSource, stage.Ignore, 0, false)
 		}
 		for name, file := range stage.Context {
-			input.Context[name] = fileInput(salt, filepath.Join(filepath.Dir(stage.Source), name), file.Data, file.Mode, file.Directory)
+			files[name] = fileInput(salt, "", file.Data, file.Mode, file.Directory)
 		}
+		input.Context = FilesDigest(files)
 		image.Stages = append(image.Stages, input)
 	}
 	return image
@@ -108,16 +110,21 @@ func (s Spec) captureInputs(salt, assetsHash string) Inputs {
 			container.RawArgs[i] = "--env=" + key + "=<redacted>"
 		}
 	}
-	runtime := RuntimeInputs{Assets: assetsHash, Files: map[string]FileInput{}, BeforeOpen: hookInputs(s.BeforeOpen), Launch: s.Harness.Definition.Launch, Args: slices.Clone(s.Settings.HarnessArgs), Shell: slices.Clone(s.Settings.Shell)}
+	runtime := RuntimeInputs{Assets: assetsHash, BeforeOpen: hookInputs(s.BeforeOpen), Launch: s.Harness.Definition.Launch, Args: slices.Clone(s.Settings.HarnessArgs), Shell: slices.Clone(s.Settings.Shell)}
+	files := map[string]FileInput{}
 	for name, file := range s.Files {
-		source := file.Source
-		if file.Layer == "harness defaults" && source != "builtin" {
-			source = filepath.Join(filepath.Dir(source), "defaults", name)
-		}
-		runtime.Files[name] = fileInput(salt, source, file.Data, file.Mode&0111, false)
+		files[name] = fileInput(salt, "", file.Data, file.Mode&0111, false)
 	}
+	runtime.Files = FilesDigest(files)
 	return Inputs{Sources: slices.Clone(s.ResolvedSources), Image: s.Build.inputs(s.Harness, salt), Container: container, Runtime: runtime}
 }
+
+// FilesDigest includes relative paths, bytes, modes and kinds, but not source
+// locations. The one-off cutover also uses it to compact preceding inventories.
+func FilesDigest(files map[string]FileInput) string {
+	return Digest(fileStates(files))
+}
+
 func fileStates(files map[string]FileInput) map[string]FileState {
 	if files == nil {
 		return nil
@@ -138,11 +145,11 @@ func hookStates(files []FileInput) []FileState {
 func (i ImageInputs) fingerprint() string {
 	type stage struct {
 		Dockerfile, Ignore FileState
-		Context            map[string]FileState
+		Context            string
 	}
 	var stages []stage
 	for _, s := range i.Stages {
-		stages = append(stages, stage{s.Dockerfile.FileState, s.Ignore.FileState, fileStates(s.Context)})
+		stages = append(stages, stage{s.Dockerfile.FileState, s.Ignore.FileState, s.Context})
 	}
 	return Digest(struct {
 		Base, Harness, Definition, Prepared, Boundary, Layer string
@@ -153,11 +160,11 @@ func (i ImageInputs) fingerprint() string {
 func (r RuntimeInputs) Fingerprint() string {
 	return Digest(struct {
 		Assets      string
-		Files       map[string]FileState
+		Files       string
 		BeforeOpen  []FileState
 		Launch      harness.Launch
 		Args, Shell []string
-	}{r.Assets, fileStates(r.Files), hookStates(r.BeforeOpen), r.Launch, r.Args, r.Shell})
+	}{r.Assets, r.Files, hookStates(r.BeforeOpen), r.Launch, r.Args, r.Shell})
 }
 func (i Inputs) Fingerprints() Fingerprints {
 	image := i.Image.fingerprint()
@@ -190,17 +197,6 @@ func (f FileInput) validate(optional bool) error {
 	}
 	return nil
 }
-func validateFiles(files map[string]FileInput) error {
-	for name, file := range files {
-		if !filepath.IsLocal(name) || filepath.Clean(name) != name || name == "." {
-			return fmt.Errorf("invalid recorded input file name")
-		}
-		if err := file.validate(false); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 func (i Inputs) Validate() error {
 	if len(i.Sources) == 0 {
 		return fmt.Errorf("committed configuration sources are missing")
@@ -213,28 +209,25 @@ func (i Inputs) Validate() error {
 	if !config.ImageReference.MatchString(i.Image.BaseImage) || !config.Name.MatchString(i.Image.Harness) {
 		return fmt.Errorf("invalid recorded image inputs")
 	}
-	for _, hash := range []string{i.Image.Prepared, i.Image.Boundary, i.Image.Layer, i.Container.RawArgsHash, i.Runtime.Assets} {
+	for _, hash := range []string{i.Image.Prepared, i.Image.Boundary, i.Image.Layer, i.Container.RawArgsHash, i.Runtime.Assets, i.Runtime.Files} {
 		if !inputHash.MatchString(hash) {
 			return fmt.Errorf("invalid recorded input fingerprint")
 		}
 	}
-	if i.Container.Env == nil || i.Runtime.Files == nil || i.Image.Arguments == nil {
+	if i.Container.Env == nil || i.Image.Arguments == nil {
 		return fmt.Errorf("incomplete recorded input snapshot")
 	}
 	if err := i.Image.Definition.validate(false); err != nil {
 		return err
 	}
 	for _, stage := range i.Image.Stages {
-		if stage.Context == nil {
-			return fmt.Errorf("incomplete recorded build context")
+		if !inputHash.MatchString(stage.Context) {
+			return fmt.Errorf("invalid recorded build context fingerprint")
 		}
 		if err := stage.Dockerfile.validate(false); err != nil {
 			return err
 		}
 		if err := stage.Ignore.validate(true); err != nil {
-			return err
-		}
-		if err := validateFiles(stage.Context); err != nil {
 			return err
 		}
 	}
@@ -244,9 +237,6 @@ func (i Inputs) Validate() error {
 				return err
 			}
 		}
-	}
-	if err := validateFiles(i.Runtime.Files); err != nil {
-		return err
 	}
 	for name, hash := range i.Container.Env {
 		if !config.EnvName.MatchString(name) || !inputHash.MatchString(hash) {

@@ -40,7 +40,7 @@ These browsers require terminal input/output. Otherwise, including `TERM=dumb`, 
 
 Creation never selects a default or launches the harness. In a terminal, missing name/config inputs open the creation form; scripts must supply both. Container settings belong in configs, not `create` flags.
 
-`open` and `start` can restore missing containers when recorded inputs remain available. Shell, Exec, and SSH require an existing container.
+Only `recreate` replaces a missing container; `open`, `start`, `shell`, `exec`, and `ssh` do not.
 
 Recreation preserves saved harness state and running intent, but **loses container-local files and tools**. `--image` disables build cache. Docker logs are not harness conversation transcripts.
 
@@ -110,6 +110,14 @@ Supplying setup flags runs directly. A destination is required outside interacti
 | `edit <target> --clear-default` | Clear without selecting a replacement |
 
 The browser offers Make/Clear folder default in the session menu. Selection does not launch anything. `--clear-default` cannot combine with `--name`, `--default`, `--show`, or `--config`.
+
+## Required migrations
+
+When **Migration required** appears, **Migrate** updates the selected home and continues your command only after success. **Exit** leaves it unchanged.
+
+The current update removes affected containers: **container-local files and tools are lost**. Saved sessions, harness history, configs, auth, caches and folder defaults remain. Use `recreate` afterward to replace missing containers from current configs.
+
+Finish active commands and pending transfers with the previous build first. If migration fails, fix the reported problem and retry. Scripts and `--json` calls cannot approve migration; run `dbx` in a terminal with the same home. Help, version and completion remain available. Migration does not import old Devbox data.
 
 ## SSH sharing
 

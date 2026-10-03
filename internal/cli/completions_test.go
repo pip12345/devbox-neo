@@ -152,9 +152,20 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 	}
 	for _, tt := range cases {
 		got, dir := runCompletion(t, tt.args...)
+		for i, candidate := range got {
+			target, description, described := strings.Cut(candidate, "\t")
+			if described && (!strings.Contains(description, workspace) || !strings.Contains(description, "Main")) {
+				t.Fatal("session candidate lost its readable identity", candidate)
+			}
+			got[i] = target
+		}
 		if !slices.Equal(got, tt.want) || dir != tt.dir {
 			t.Fatalf("%v: got %v/%d, want %v/%d", tt.args, got, dir, tt.want, tt.dir)
 		}
+	}
+	described, _ := runCompletion(t, "--home", explicit, "status", "aaaa")
+	if !slices.Equal(described, []string{id + "\t" + workspace + " / Main"}) {
+		t.Fatal("ID completion lacks readable description", described)
 	}
 	if after := completionSnapshot(t, userHome); !reflect.DeepEqual(before, after) {
 		t.Fatal("completion mutated the home", before, after)

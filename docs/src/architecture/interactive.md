@@ -12,6 +12,12 @@ Nested workflows share a navigation frame. Foreground operations refresh it afte
 
 Config browsing does not initialize Docker. Session inventory errors remain visible without removing config navigation. Inventory updates are synchronous, not background polling. Refresh failure is reported separately from the operation outcome.
 
+## Required migrations
+
+The shared CLI initialization gates state-backed commands and both browsers before opening store/resource services. `internal/migration` detects required updates and owns their explanations/conversion. One generic screen offers Exit (default) or Migrate; no second picker or confirmation is needed. Agreement runs the service, and only success releases the original operation. Decline, cancellation and failure remain blocked. Noninteractive/JSON calls never prompt or migrate; help/version and read-only completion remain available.
+
+The gate uses the existing command-scoped runner before the normal frontend starts. It pauses terminal reading during conversion, finishes the runner before handoff and writes its presentation to stderr rather than command data. Initialization remembers a successful check for this command/home so lazy engine loading cannot open a second reader inside an existing menu.
+
 ## Forms and saves
 
 Session creation and source editing share config-chain controls with different save callbacks. Both nested and standalone config creation use `cli.createConfig` and `resource.CreateConfig`.
@@ -61,6 +67,6 @@ Keep error/partial-result output visible before returning. Color-independent mar
 
 ## Completion
 
-Completion bypasses store initialization and locking record readers. Config directories provide named suggestions; session IDs and folder-local names come from readable saved settings, without requiring valid applied runtime state. Harness enumeration uses valid effective definitions. Live container suggestions use bounded installation-filtered inventory and tolerate unavailable Docker.
+Completion bypasses store initialization and locking record readers. Config directories provide named suggestions; session IDs and folder-local names come from readable saved settings, without requiring valid applied runtime state. ID candidates include escaped workspace/name descriptions for shells that display them; the inserted target remains the exact ID. Harness enumeration uses valid effective definitions. Live container suggestions use bounded installation-filtered inventory and tolerate unavailable Docker.
 
 Completion must not seed state, create locks, resolve a full environment, or mutate Docker. Generated scripts register completion for `dbx` only.

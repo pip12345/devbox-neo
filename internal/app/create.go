@@ -160,6 +160,26 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 	if err = l.RequireIdle(); err != nil {
 		return record, c, err
 	}
+	if previous != nil {
+		if err = checkDurableStores(l, *previous); err != nil {
+			return record, c, err
+		}
+		for _, mount := range s.ExtraMounts {
+			if mount.Kind != "volume" {
+				continue
+			}
+			for _, old := range previous.Applied.Creation.Mounts {
+				if old.Kind == "volume" && old.Source == mount.Source {
+					if err = e.Docker.Volume(ctx, mount.Source); err != nil {
+						return record, c, err
+					}
+				}
+			}
+		}
+	}
+	if err = e.Docker.CheckRawVolumes(ctx, s.Settings.DockerArgs); err != nil {
+		return record, c, err
+	}
 	if err = e.Docker.Network(ctx, s.Settings.Network); err != nil {
 		return record, c, err
 	}
@@ -183,6 +203,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		return record, c, fmt.Errorf("allocated container name is occupied")
 	}
 	var image docker.Image
+	reused := false
 	if previous != nil && !force && previous.Applied.Fingerprints.Image == s.Fingerprints.Image {
 		available, inspectErr := e.Docker.ImageAvailable(ctx, previous.Applied.ImageID)
 		if inspectErr != nil {
@@ -190,10 +211,14 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		}
 		if available {
 			image, err = e.Docker.InspectImage(ctx, previous.Applied.ImageID)
-			if err == nil {
-				err = image.Verify(e.Store.Installation)
+			if err != nil {
+				return record, c, err
 			}
-		} else {
+			reused = image.Verify(e.Store.Installation) == nil
+		}
+		// Cache eligibility does not authorize adoption. A missing or unowned
+		// image is replaced by a fresh owned build, never executed or mutated.
+		if !reused {
 			image, err = e.build(ctx, s, id, false)
 		}
 	} else {
@@ -201,6 +226,23 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 	}
 	if err != nil {
 		return record, c, err
+	}
+	if !reused {
+		// An uncommitted build tag must not point a surviving record at the
+		// wrong image after failure. Absence is valid: runtime is disposable.
+		tag := environment.ImageTag(s.Identity.Workspace, s.Identity.LocalName, id)
+		defer func() {
+			if err == nil {
+				return
+			}
+			cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			_, tagged, inspectErr := e.Docker.TaggedImage(cleanup, tag)
+			err = errors.Join(err, inspectErr)
+			if inspectErr == nil && tagged {
+				err = errors.Join(err, e.Docker.Untag(cleanup, tag, image.ID, e.Store.Installation))
+			}
+		}()
 	}
 	var old docker.Container
 	var existed, removed bool
@@ -211,7 +253,8 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		}
 	}
 	// Before removal, a failed sync must restore a previously running original.
-	// After removal, the old record and image remain the recovery authority.
+	// After removal, retain the saved identity and stores for explicit retry;
+	// the next attempt resolves current inputs rather than restoring old runtime.
 	defer func() {
 		if err != nil && existed && !removed && old.State.Running {
 			cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -238,6 +281,9 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		removed = true
 	}
 	record = creationRecord(s, image.ID, mounts, id, created, time.Now().UTC(), previous, seed)
+	if reused {
+		record.Applied.ImageTag = previous.Applied.ImageTag
+	}
 	record.Directory = l.Name
 	c, err = e.materialize(ctx, record)
 	if err != nil {
@@ -270,7 +316,7 @@ func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker
 		return c, err
 	}
 	// Terminal defaults are invocation-local; configured env takes precedence at
-	// creation. Recovery uses today's terminal without changing the saved contract.
+	// creation. Terminal values never enter the saved comparison baseline.
 	plan := record.Applied.Creation
 	plan.RestartPolicy = restartPolicy(record.Settings.ManualStart)
 	plan.Env = append(append([]string(nil), e.TerminalEnv...), plan.Env...)

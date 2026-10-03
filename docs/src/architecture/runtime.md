@@ -27,7 +27,7 @@ Commands translate requests; they do not implement lifecycle policy. Docker cons
 ## Core invariants
 
 - Names locate resources; labels authorize mutations.
-- Container absence does not erase saved session identity or recovery data.
+- Container/image absence does not erase saved session identity, history or its comparison baseline; only explicit recreation rebuilds an existing session from current selected config.
 - Inspection never advances applied state.
 - Ordinary startup has one synchronization boundary.
 - Long commands use leases rather than holding operation locks throughout execution.

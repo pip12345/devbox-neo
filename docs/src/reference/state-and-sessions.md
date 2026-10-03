@@ -73,14 +73,14 @@ These are Devbox-managed runtime paths. Shared SSH data is transient, not a cred
 
 Local names are 1–64 ASCII characters: letters, digits, `_`, and `-`, starting with a letter or digit. Case matters: `work` and `Work` differ.
 
-Exact session targets are immutable 32-hex IDs, shown by `list --wide`. Readable directory and Docker names are independently allocated hints, not identity; their hashes do not track the current workspace. Editing settings does not rename either resource.
+Exact session targets are immutable 32-hex IDs, shown by `list --wide`. Directory and Docker names are readable hints. Renaming a session or changing its workspace does not rename them.
 
-Folder-only commands require an explicit default ID. Docker operations verify installation/session ownership and the recorded container association, not name equality.
+Folder-only commands require a saved default. Devbox checks that Docker resources belong to the selected installation and session before changing them.
 
 ## Recovery
 
-Open and Start can restore a missing container from its recorded image and inputs. If required inputs are unavailable, follow the error or recreate from current configs.
+Recreate uses current configs, not a saved copy of an earlier environment. It cannot restore deleted harness history. Missing saved-data directories cause an error rather than being replaced with empty history. A missing image does not prevent access to an existing container.
 
 Recreation preserves identity, harness state, and keep-running intent. Copy creates a separate session identity; Move preserves the original. [Manage environments](../guides/managing-environments.md) covers those workflows.
 
-Recorded activity describes Devbox operations, not filesystem changes. For record validation, applied snapshots, and recovery verification, see [lifecycle architecture](../architecture/lifecycle.md).
+Recorded activity describes Devbox operations, not filesystem changes.

@@ -12,7 +12,7 @@ import (
 func (e *Engine) creationDrift(result *Result, r store.Record, spec environment.Spec) {
 	drift := environment.CompareInputs(r.Applied.Inputs, spec.Inputs)
 	if drift.Change == environment.Recreate || drift.Change == environment.RebuildAndRecreate {
-		e.diagnose(result, Diagnostic{Code: "creation_drift", Message: "this container differs from current configuration:", Command: []string{"dbx", "recreate", r.ID}, Change: drift.Change, PendingInputChanges: drift.PendingCreationChanges()})
+		e.diagnose(result, Diagnostic{Code: "creation_drift", Message: "current configuration differs from the last applied creation settings:", Command: []string{"dbx", "recreate", r.ID}, Change: drift.Change, PendingInputChanges: drift.PendingCreationChanges()})
 	}
 }
 
@@ -20,10 +20,14 @@ func (e *Engine) creationDrift(result *Result, r store.Record, spec environment.
 // Open supplies its resolved invocation; other access commands resolve only if
 // startup is needed. Transaction rollback uses recorded startup, not this path.
 func (e *Engine) startAccess(ctx context.Context, lock *store.Locked, c docker.Container, exists bool, r *store.Record, desired *environment.Spec, result *Result) (docker.Container, bool, error) {
+	if !exists {
+		return c, false, commanderror.New("container_missing", "Container not found; recreate the session before accessing it.", r.ID, nil,
+			commanderror.Next("Recreate from current configuration", "recreate", r.ID))
+	}
 	if r.Settings.Workspace != r.Applied.Inputs.Container.Workspace {
 		return c, false, commanderror.New("workspace_changed", "Workspace changed; recreate before accessing the container.", r.ID, nil, commanderror.Next("Apply the new workspace", "recreate", r.ID))
 	}
-	if exists && c.State.Running {
+	if c.State.Running {
 		return c, false, e.syncRestart(ctx, c, *r)
 	}
 	if err := lock.RequireIdle(); err != nil {
@@ -38,10 +42,6 @@ func (e *Engine) startAccess(ctx context.Context, lock *store.Locked, c docker.C
 		e.creationDrift(result, *r, spec)
 		e.resolutionWarnings(spec)
 		desired = &spec
-	}
-	if !exists {
-		c, err := e.recover(ctx, lock, r, desired)
-		return c, err == nil, err
 	}
 	if err := e.syncRecordedConfig(lock, r, *desired); err != nil {
 		return c, false, err
@@ -61,10 +61,13 @@ func applyLaunch(r *store.Record, spec environment.Spec) {
 }
 
 func (e *Engine) syncRecordedConfig(lock *store.Locked, r *store.Record, desired environment.Spec) error {
+	if err := checkDurableStores(lock, *r); err != nil {
+		return err
+	}
 	// A changed harness definition may describe different mounts or ownership.
 	// Only recreation can adopt that contract; ordinary access keeps the old one.
 	if r.Applied.Definition.Hash == desired.Harness.Hash {
-		// Validate durable backing roots before sync can create subdirectories.
+		// Prepare nested mount ancestors only after checking every durable store.
 		if err := prepareMountParents(*r); err != nil {
 			return err
 		}

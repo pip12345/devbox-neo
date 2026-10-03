@@ -117,11 +117,11 @@ func TestTerminalEnvCreationAttachmentAndRecovery(t *testing.T) {
 	if err := e.Docker.Remove(ctx, c, e.owner(first)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Start(ctx, result.SessionID, ""); err != nil {
+	if _, err := e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}
 	if len(createdEnv) != 2 || !slices.Equal(createdEnv[1], append(slices.Clone(e.TerminalEnv), spec.Env()...)) {
-		t.Fatal("recovery did not use current terminal defaults", createdEnv)
+		t.Fatal("recreation did not use current terminal defaults", createdEnv)
 	}
 	if recovered := sessionRecord(t, e, result.SessionID); recovered.ID != first.ID || recovered.Applied.Fingerprints != first.Applied.Fingerprints {
 		t.Fatal("terminal changed the recorded identity or fingerprints")

@@ -1,10 +1,10 @@
 # Implementation progress
 
-The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). Legacy chats remain in old Devbox; the standalone migration tool has been removed. Earlier milestone entries below are historical delivery records, not current build instructions.
+The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). Legacy chats remain in old Devbox; the legacy Devbox import tool has been removed. Earlier milestone entries below are historical delivery records, not current build instructions.
 
-Executable and readable resource rename implemented: the built command is `dbx`, generated completion targets only `dbx`, and newly allocated session/container names use the `dbx-` prefix. The existing `~/.devbox-neo` home and `devbox-rewrite.*` Docker ownership namespace remain unchanged; no compatibility executable, alias, state migration, or automatic adoption was added. `make test-fast`, `make build`, and a direct `dbx version`/help smoke check pass; live Docker and manual terminal acceptance remain unrun.
+The executable and completion target are `dbx`; the home remains `~/.devbox-neo`. New session/container allocations include workspace hints, and image tags/ownership labels use the `dbx` namespace. Schema-6 development state requires agreement through the blocking migration gate described below; there is no automatic adoption or legacy Devbox importer.
 
-Session structure refactor implemented: schema 6 separates settings/applied runtime, with ID-based lookup/locks/leases, independent resource names, metadata-only rename, and explicit workspace edits. `make test-fast`, affected-package race tests, both builds, vet, and integration compilation pass; live Docker/manual acceptance remain unrun. No migration or automatic reset.
+The initial session-structure refactor delivered schema 6 with ID-based lookup/locks/leases, independent resource names, metadata-only rename and explicit workspace edits. Its validation passed without a migration/reset path at that stage. The current schema-7 cutover and validation are recorded below.
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
@@ -18,6 +18,23 @@ Local config discovery and CLI/menu rename implemented. Local discovery filters 
 
 - Each harness defaults/config source tree reports at most ten skipped-entry example paths plus a count of the rest. Regular-file copying and symlink/special-entry skipping are unchanged; no dependency-directory exclusions were added.
 - Regression coverage checks zero warnings, the limit, overflow counts, independent source limits, and unchanged regular-file copying. The `make test-fast` equivalent passes using `.tools/go/bin/go` (`make` is unavailable), and `git diff --check` passes. Live Docker and manual host-terminal acceptance remain unrun.
+
+## Interrupted creation cleanup — implemented, live acceptance pending
+
+- CLI and menu deletion support explicit cleanup of incomplete-creation files; images remain retained.
+- Fast-suite equivalent and CLI build pass (`make` unavailable). Race checks unavailable without CGO/a C compiler; live Docker and host-terminal acceptance remain unrun.
+
+## Readable sessions and disposable runtime — implemented, live acceptance pending
+
+Delivered the approved [first-phase plan](applied-config-snapshot-plan.md):
+
+- Only explicit Recreate replaces missing runtime, using current configs while retaining session identity, history, defaults and keep-running intent. Healthy-container config application is unchanged. Missing history stores block startup and transfers; committed retries never recopy source state.
+- Resource names include folder hints; status and completion identify workspace/name. Compact applied comparisons retain change reasons, and status gives exact recreate guidance for missing containers.
+- Managed configs and defaults exclude nested `.git` metadata. Installation files and Docker build contexts keep their existing rules.
+- Schema 6 → 7 migration requires agreement before continuing. Saved data remains; container-local files/tools are lost. Interrupted allocations remain available for explicit cleanup. No migration has run against user state.
+- User docs cover recreation, migration consequences and managed-file exclusions; implementation contracts remain in architecture. Deferred work is listed in the plan.
+
+Validation: full `make test-fast` equivalent, regression checks, vet, CLI build/smoke checks, integration compilation and diff checks pass using `.tools/go` (`make` is unavailable). Live Docker and manual terminal acceptance remain unrun; race checks require a C compiler.
 
 ## Unix socket bind mounts — implemented, validation pending
 

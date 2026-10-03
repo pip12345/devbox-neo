@@ -20,10 +20,10 @@ func readInstall(d Definition, origin string) (Tree, error) {
 		var source fs.FS
 		source, err = fs.Sub(builtins, root)
 		if err == nil {
-			tree, err = readTree(source, root)
+			tree, err = readTreeFiltered(source, root, false)
 		}
 	} else {
-		tree, err = ReadTree(filepath.Join(filepath.Dir(origin), "install"))
+		tree, err = readTreeRoot(filepath.Join(filepath.Dir(origin), "install"), false)
 	}
 	if err != nil {
 		return tree, err
@@ -34,8 +34,8 @@ func readInstall(d Definition, origin string) (Tree, error) {
 	return tree, nil
 }
 
-// The recorded definition contract includes its installation files, not just
-// the JSON. Recovery must reject changed scripts just as it rejects changed env.
+// Installation files participate in the definition identity so image reuse and
+// runtime compatibility cannot overlook changed installed code.
 func definitionHash(definition []byte, install map[string]File) (string, error) {
 	data := definition
 	if len(install) != 0 {

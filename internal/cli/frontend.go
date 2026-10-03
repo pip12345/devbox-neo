@@ -432,7 +432,7 @@ func (f *frontend) status(target string) error {
 			return err
 		}
 		return f.m.View("Status · all sessions", func(out io.Writer) error {
-			if err := printStatusList(out, report.Sessions); err != nil {
+			if err := printStatusList(f.cmd, out, report.Sessions, f.s.Home); err != nil {
 				return err
 			}
 			if err := printDefaultErrors(out, report.DefaultErrors); err != nil {
@@ -446,7 +446,7 @@ func (f *frontend) status(target string) error {
 		return err
 	}
 	return f.m.View("Status", func(out io.Writer) error {
-		return printStatusDetails(out, details, scopedSteps(f.cmd, []commanderror.Step{commanderror.Next("To apply changes", "recreate", details.Target)}, f.s.Home))
+		return printStatusDetails(out, details, statusRecreateSteps(f.cmd, details.View, f.s.Home))
 	})
 }
 func (f *frontend) editSession(name string) error {

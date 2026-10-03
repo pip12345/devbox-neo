@@ -64,7 +64,7 @@ func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 	}
 }
 
-func TestRecoveryErrorRetainsDockerFailureIdentity(t *testing.T) {
+func TestRecreateErrorRetainsDockerFailureIdentity(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	opened, err := e.Create(ctx, q)
@@ -79,9 +79,8 @@ func TestRecoveryErrorRetainsDockerFailureIdentity(t *testing.T) {
 		}
 		return nil
 	}
-	_, err = e.Start(ctx, opened.SessionID, "")
-	var recovery *commanderror.Error
-	if !errors.As(err, &recovery) || recovery.Code != "recovery_unavailable" || !errors.Is(err, failure) {
+	_, err = e.Recreate(ctx, q, false)
+	if !errors.Is(err, failure) {
 		t.Fatal(err)
 	}
 }

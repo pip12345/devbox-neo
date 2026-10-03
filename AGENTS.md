@@ -37,7 +37,7 @@ Design history lives in `docs/dev/`; current session contracts are in the archit
 - The CLI is the source of truth. The interactive menu must fit the CLI's behavior, not the other way around. The CLI must remain fully usable without ever opening an interactive menu.
 - The UI calls shared services. Keep one terminal reader, immutable display snapshots, graceful cancellation, and foreground handoff.
 - Preserve error causes and use `commanderror.Error`/`Step` for guidance. Do not print secrets or persist env/auth values in records.
-- No unapproved compatibility readers, migrations, aliases, or automatic adoption. Legacy chats stay in old Devbox; Neo has no migration tool.
+- No unapproved compatibility readers, migrations, aliases, or automatic adoption. Legacy chats stay in old Devbox; Neo does not import them.
 
 ## Documentation discipline
 

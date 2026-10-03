@@ -37,6 +37,15 @@ func TestDriftBaselineTracksAppliedNotMerelyDesiredInputs(t *testing.T) {
 				forgetSession(t, e, result.SessionID)
 			}
 			result, err = e.Open(ctx, q)
+			if recovery {
+				if err == nil {
+					t.Fatal("missing runtime was rebuilt by open")
+				}
+				if !reflect.DeepEqual(sessionRecord(t, e, result.SessionID).Applied.Inputs, initial.Applied.Inputs) {
+					t.Fatal("failed access advanced baseline")
+				}
+				_, err = e.Recreate(ctx, q, false)
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -48,14 +57,18 @@ func TestDriftBaselineTracksAppliedNotMerelyDesiredInputs(t *testing.T) {
 				t.Fatal("status/open disagree", before.PendingInputChanges, result.Diagnostics)
 			}
 			applied := sessionRecord(t, e, result.SessionID)
-			if !reflect.DeepEqual(applied.Applied.Inputs.Image, initial.Applied.Inputs.Image) || !reflect.DeepEqual(applied.Applied.Inputs.Container, initial.Applied.Inputs.Container) {
-				t.Fatal("open/recovery advanced pending creation inputs")
+			if !recovery && (!reflect.DeepEqual(applied.Applied.Inputs.Image, initial.Applied.Inputs.Image) || !reflect.DeepEqual(applied.Applied.Inputs.Container, initial.Applied.Inputs.Container)) {
+				t.Fatal("healthy open advanced pending creation inputs")
 			}
 			if reflect.DeepEqual(applied.Applied.Inputs.Runtime, initial.Applied.Inputs.Runtime) || applied.Applied.Fingerprints.Runtime != applied.Applied.Inputs.Runtime.Fingerprint() {
 				t.Fatal("runtime baseline did not advance with synchronization")
 			}
 			after, err := e.Status(ctx, result.SessionID, "")
-			if err != nil || after.Desired != environment.Recreate {
+			wantChange := environment.Recreate
+			if recovery {
+				wantChange = environment.NoChange
+			}
+			if err != nil || after.Desired != wantChange {
 				t.Fatal(after, err)
 			}
 			for _, inputChange := range after.PendingInputChanges {
@@ -68,7 +81,10 @@ func TestDriftBaselineTracksAppliedNotMerelyDesiredInputs(t *testing.T) {
 			if _, err := e.Open(ctx, q); err != nil {
 				t.Fatal(err)
 			}
-			if len(emitted) != 1 || !reflect.DeepEqual(emitted[0].PendingInputChanges, want) {
+			if recovery && len(emitted) != 0 {
+				t.Fatal("rebuilt current inputs still reported drift", emitted)
+			}
+			if !recovery && (len(emitted) != 1 || !reflect.DeepEqual(emitted[0].PendingInputChanges, want)) {
 				t.Fatal("callback lost creation reasons", emitted)
 			}
 			encoded, err := json.Marshal(emitted)
@@ -157,6 +173,15 @@ func TestFailedRecreationPreservesImageBaseline(t *testing.T) {
 		t.Fatal("failed recreation advanced baseline")
 	}
 	d.Fail = nil
+	lock, err := e.Store.Lock(ctx, stored.Directory, stored.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.planSessionDeletion(ctx, []*store.Locked{lock}, true)
+	lock.Close()
+	if err != nil {
+		t.Fatal("failed build left a wrong image-tag association blocking deletion", err)
+	}
 	if _, err := e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)
 	}

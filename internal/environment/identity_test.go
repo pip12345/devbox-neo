@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
+
+	"devbox/internal/config"
 	"testing"
 )
 
@@ -15,8 +18,23 @@ func TestResourceNamesUseCompactReadableHintsAndAnAllocationSuffix(t *testing.T)
 	if a == ResourceName("/work/api", "Main", "allocation-two") {
 		t.Fatal("reused settings collided with an old resource")
 	}
-	if !regexp.MustCompile(`^dbx-[a-f0-9]{12}\.Main$`).MatchString(a) {
+	if !regexp.MustCompile(`^dbx-api-[a-f0-9]{12}\.Main$`).MatchString(a) {
 		t.Fatal(a)
+	}
+}
+
+func TestResourceHintsAndImageTagsAreBounded(t *testing.T) {
+	id := strings.Repeat("a", 32)
+	local := strings.Repeat("N", 64)
+	for _, workspace := range []string{"/work/My Folder!", "/work/💥", "/work/" + strings.Repeat("x", 200)} {
+		name := ResourceName(workspace, local, id)
+		if !regexp.MustCompile(`^dbx-[a-z0-9_.-]+-[a-f0-9]{12}\.[A-Za-z0-9_-]+$`).MatchString(name) {
+			t.Fatal(name)
+		}
+		tag := ImageTag(workspace, local, id)
+		if !config.ImageReference.MatchString(tag) || len(strings.SplitN(tag, ":", 2)[1]) > 128 {
+			t.Fatal(tag)
+		}
 	}
 }
 

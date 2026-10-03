@@ -207,8 +207,8 @@ func TestListNamePresentationDoesNotChangeJSONOrStatus(t *testing.T) {
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out.String(), fullName+"  ") {
-		t.Fatal("status must retain the exact container name", out.String())
+	if !strings.HasPrefix(out.String(), q.Workspace+" / "+q.LocalName+"  ") || !strings.Contains(out.String(), "Session: "+fullName) || !strings.Contains(out.String(), "Container: ") {
+		t.Fatal("status must identify the session and retain exact details", out.String())
 	}
 }
 

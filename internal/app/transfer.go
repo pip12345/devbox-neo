@@ -88,6 +88,9 @@ func (e *Engine) transferDestination(q TransferOptions, source environment.Ident
 	return identity, err
 }
 func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode string) ([]harness.Definition, error) {
+	if err := checkDurableStores(l, source); err != nil {
+		return nil, err
+	}
 	root, err := l.Path("harnesses")
 	if err != nil {
 		return nil, err
@@ -358,7 +361,13 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			defer cancel()
 			err = errors.Join(err, e.clearTransferAttempt(cleanup, destLock, *journal))
 			if journal.Mode == "relocate" {
-				err = errors.Join(err, e.Docker.Tag(cleanup, source.Applied.ImageID, source.Applied.ImageTag, e.Store.Installation))
+				available, imageErr := e.Docker.ImageAvailable(cleanup, source.Applied.ImageID)
+				err = errors.Join(err, imageErr)
+				// Restore a moved tag only while its image still exists. Pruning
+				// runtime does not invalidate source-authoritative saved stores.
+				if imageErr == nil && available {
+					err = errors.Join(err, e.Docker.Tag(cleanup, source.Applied.ImageID, source.Applied.ImageTag, e.Store.Installation))
+				}
 			}
 			if journal.Running && exists {
 				live, found, inspectErr := e.inspect(cleanup, source)
@@ -486,20 +495,14 @@ func (e *Engine) finishTransfer(ctx context.Context, source, destination *store.
 	if r.ID != j.DestinationID || r.Settings.Binding != j.Destination.Binding {
 		return fmt.Errorf("committed destination identity differs from journal")
 	}
-	live, exists, err := e.inspect(ctx, r)
-	if err != nil {
+	if err := checkDurableStores(destination, r); err != nil {
 		return err
 	}
-	if !exists {
-		live, err = e.recover(ctx, destination, &r, nil)
-		if err != nil {
-			return err
-		}
-		if !j.Running {
-			if err = e.Docker.Stop(ctx, live, e.owner(r)); err != nil {
-				return err
-			}
-		}
+	// Commitment makes destination stores authoritative, not its disposable
+	// container. Finish cleanup even if runtime was removed; only an explicit
+	// recreate may replace it after the journal releases the endpoints.
+	if _, _, err := e.inspect(ctx, r); err != nil {
+		return err
 	}
 	if j.Mode == "relocate" {
 		original, readErr := source.ReadRecord(ctx)
