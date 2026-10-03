@@ -50,11 +50,7 @@ func TestStatusDefaultMatchesSavedNameAndID(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := sessionRecord(t, e, made.SessionID)
-	key, err := store.WorkspaceKey(r.Settings.Workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(e.Store.Home, "state/workspaces", key+".json")
+	path := filepath.Join(e.Store.Home, "state/folder-defaults.json")
 	check := func(want bool) {
 		t.Helper()
 		for _, target := range []struct{ path, name string }{{made.SessionID, ""}, {q.Workspace, q.LocalName}} {
@@ -80,7 +76,7 @@ func TestStatusDefaultMatchesSavedNameAndID(t *testing.T) {
 		{ID: strings.Repeat("a", 32)},
 		{ID: strings.Repeat("b", 32)},
 	} {
-		data, err := json.Marshal(map[string]any{"version": 2, "workspace": q.Workspace, "default_session": selected})
+		data, err := json.Marshal(store.FolderDefaults{Version: 1, Defaults: map[string]string{q.Workspace: selected.ID}})
 		if err != nil {
 			t.Fatal(err)
 		}

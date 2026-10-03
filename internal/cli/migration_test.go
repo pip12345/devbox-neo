@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -75,6 +77,41 @@ func TestRequiredMigrationBlocksStateBackedCommandsWithoutPromptingScripts(t *te
 				}
 			}
 		})
+	}
+}
+
+func TestFolderDefaultsMigrationBlocksScriptsWithoutMutation(t *testing.T) {
+	home := t.TempDir()
+	hash := sha256.Sum256([]byte("/old-folder"))
+	path := filepath.Join(home, "state/workspaces", hex.EncodeToString(hash[:])+".json")
+	data := `{"version":2,"workspace":"/old-folder","default_session":null}`
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"status"}, {"status", "--json"}, {"config", "list"}} {
+		d := &dockertest.Daemon{}
+		cmd := newRoot(docker.Runtime{Runner: d})
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&out)
+		cmd.SetIn(strings.NewReader("2\n"))
+		cmd.SetArgs(append([]string{"--home", home}, args...))
+		var blocked *commanderror.Error
+		if err := cmd.Execute(); !errors.As(err, &blocked) || blocked.Code != "migration_required" {
+			t.Fatal(err)
+		}
+		if len(d.History()) != 0 || out.Len() != 0 {
+			t.Fatal("script entered migration", out.String())
+		}
+	}
+	if after, err := os.ReadFile(path); err != nil || string(after) != data {
+		t.Fatal("blocked command changed preferences", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "state/folder-defaults.json")); !os.IsNotExist(err) {
+		t.Fatal("blocked command converted preferences", err)
 	}
 }
 

@@ -28,7 +28,7 @@ These browsers require terminal input/output. Otherwise, including `TERM=dumb`, 
 
 | Command | Effect |
 |---|---|
-| `create <folder> --name NAME --config REF` | Create a stopped session; repeat `--config` for an ordered list |
+| `create <folder> --name NAME --config REF [--default]` | Create a stopped session; repeat `--config` for an ordered list |
 | `open <target> [-- args...]` | Launch the harness |
 | `start <target>` | Keep running until Stop, including after Docker restarts |
 | `stop <target> [--force]` | Stop and clear keep-running intent |
@@ -38,7 +38,7 @@ These browsers require terminal input/output. Otherwise, including `TERM=dumb`, 
 | `recreate <target> [--image]` | Apply current config by replacing the container |
 | `recreate --all [--image]` | Recreate all managed containers |
 
-Creation never selects a default or launches the harness. In a terminal, missing name/config inputs open the creation form; scripts must supply both. Container settings belong in configs, not `create` flags.
+Creation selects a folder default only when requested and never launches the harness. In a terminal, missing name/config inputs open the creation form; scripts must supply both. Container settings belong in configs, not `create` flags.
 
 Only `recreate` replaces a missing container; `open`, `start`, `shell`, `exec`, and `ssh` do not.
 
@@ -50,6 +50,7 @@ Recreation preserves saved harness state and running intent, but **loses contain
 |---|---|---|
 | `--name NAME` | create | Required local name; prompted when omitted in a terminal |
 | `--config REF` | create | Config name/path; repeat in application order |
+| `--default` | create | Make the new session the folder default, replacing any existing selection |
 | `--continue`, `-c` | open | Resume the previous harness conversation |
 | `--harness-arg ARG` | open | One-off argument; repeatable |
 | `-- args...` | open | One-off arguments appended last |
@@ -115,9 +116,12 @@ The browser offers Make/Clear folder default in the session menu. Selection does
 
 When **Migration required** appears, **Migrate** updates the selected home and continues your command only after success. **Exit** leaves it unchanged.
 
-The current update removes affected containers: **container-local files and tools are lost**. Saved sessions, harness history, configs, auth, caches and folder defaults remain. Use `recreate` afterward to replace missing containers from current configs.
+Review the listed effects before agreeing:
 
-Finish active commands and pending transfers with the previous build first. If migration fails, fix the reported problem and retry. Scripts and `--json` calls cannot approve migration; run `dbx` in a terminal with the same home. Help, version and completion remain available. Migration does not import old Devbox data.
+- **Folder-default update:** preserves selected defaults; containers and history are unchanged.
+- **Docker runtime update for older installations:** removes affected containers, so **container-local files and tools are lost**. Saved sessions, harness history, configs, auth, caches and defaults remain. Use `recreate` afterward.
+
+Follow the screen's prerequisites and close other Devbox commands before migrating. Do not use older builds with the updated home. If migration fails, fix the reported problem and retry. Scripts and `--json` calls cannot approve migration; run `dbx` in a terminal with the same home. Help, version and completion remain available. Migration does not import old Devbox data.
 
 ## SSH sharing
 

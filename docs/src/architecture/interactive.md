@@ -26,7 +26,7 @@ The shared source picker orders suggestions as named configs, workspace configs,
 
 Drafts remain local until explicit submission. Optional-file drafts copy slices so cancellation cannot mutate the accepted selection. A successfully created config is independently saved; cancellation of its parent session draft does not remove it.
 
-Browser creation supplies a materialization callback so build errors return to the populated form. A committed creation whose final Stop failed opens the saved session for recovery rather than retrying Create. Other successful one-shot forms close; failures retain inputs.
+Browser creation supplies a materialization callback so build errors return to the populated form. Its unchecked Make folder default toggle corresponds to CLI `create --default`; the form shows any selection it would replace and does not save that choice before submission. A committed creation whose final stop or default selection failed opens the saved session for repair rather than retrying Create. Other successful one-shot forms close; failures retain inputs.
 
 `cliui.TextRequest` supplies initial source values, validation, and sensitivity. Pending text belongs to the workflow. Control characters use JSON-string input because the single-line widget sanitizes them. Sensitive input is masked; plain prompts suppress echo and restore termios.
 

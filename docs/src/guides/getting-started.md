@@ -35,7 +35,7 @@ A session is a saved environment for one project folder. With no sessions yet, *
 4. Set **Name/location** to `base`. Under **Harness** (the coding tool to launch), choose Pi, OpenCode, or Claude Code.
 5. Leave **Optional files** at **None**, then choose **Create config**.
 
-Devbox adds the new config to your session draft automatically. Choose **Create session** to build the environment. The first build can take a while.
+Devbox adds the new config to your session draft automatically. Optionally check **Make folder default** to select this session for commands such as `dbx open .`; it replaces any existing default. Choose **Create session** to build the environment. The first build can take a while.
 
 **Claude Code runs with its permission prompts bypassed.** See [harness defaults](../reference/harnesses.md#built-in-harnesses) before choosing it.
 

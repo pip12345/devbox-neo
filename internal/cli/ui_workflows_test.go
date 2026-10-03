@@ -35,9 +35,9 @@ func TestCreateSessionAlwaysVisibleAndReportsMissingInputs(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			choice := 5
+			choice := 6
 			if len(tc.draft.sources) > 0 {
-				choice = 7
+				choice = 8
 			}
 			m := testMenu(context.Background(), strings.NewReader(fmt.Sprintf("%d\n0\n", choice)), &out)
 			p, err := newSourcePicker(m, e.Store.Home, q.Workspace)

@@ -30,7 +30,7 @@ Paths below are relative to the selected home. Use Devbox commands to manage ses
 | `sessions/<directory>/harnesses/<harness>/managed-config.json` | Managed file/key tracking |
 | `sessions/<directory>/runtime/ssh/` | Temporary shared SSH connections |
 | `state/installation-id` | Installation identity |
-| `state/workspaces/<workspace-key>.json` | Folder default |
+| `state/folder-defaults.json` | Folder-to-default-session selections |
 | `state/transfers/<source-directory>.json` | Pending transfer |
 | `state/locks/` | Installation, config, folder, and session locks |
 

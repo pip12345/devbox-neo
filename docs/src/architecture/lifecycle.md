@@ -50,7 +50,7 @@ Source paths explain changes but do not themselves change fingerprints when effe
 
 ## New-session creation
 
-`Engine.Create` checks workspace/name uniqueness under the namespace lock, allocates a session ID and storage directory, acquires its operation lock, and resolves the explicit sources. Container creation allocates a separate Docker name. It then enters the shared creation pipeline. Creation never changes a folder default.
+`Engine.Create` checks workspace/name uniqueness under the namespace lock, allocates a session ID and storage directory, acquires its operation lock, and resolves the explicit sources. Container creation allocates a separate Docker name. It then enters the shared creation pipeline. `Request.MakeDefault` is an explicit creation-only option; neither the first session nor a transfer destination becomes a default implicitly.
 
 ```mermaid
 flowchart TD
@@ -70,7 +70,7 @@ The ordered `setup.sh` chain belongs to the per-container contract. Before-open 
 
 `createAs` prepares resources before passing explicit inputs to the side-effect-free `creationRecord` helper. The caller owns ID allocation and clock reads; the helper assembles fields and applies the existing activity/action/manual-start rules for new sessions, recreation, and prepared destinations. Materialization supplies the setup-container ID before publication.
 
-The record commits only after startup, declared preparation, setup, and binary-availability checks succeed. If the final stop fails, the committed environment remains usable and the error recommends `stop`; it is not presented as an absent session that can be created again.
+The record commits only after startup, declared preparation, setup, and binary-availability checks succeed. Creation then stops the container and, if requested, selects the saved session as the folder default while retaining its operation lock. A stop failure does not prevent the requested default selection. A default-selection failure retains the created session and returns an exact `edit --default` repair step. Neither failure is presented as an absent session that can be created again.
 
 Recreation selects saved identity and rereads it under the operation lock before resolving its current desired references. A later default change cannot retarget the invocation. Source edits do not rename the session; a replaced durable ID fails rather than being adopted.
 

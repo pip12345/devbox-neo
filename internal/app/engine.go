@@ -31,6 +31,7 @@ type Request struct {
 	Sources     []config.Reference
 	SessionID   string
 	Continue    bool
+	MakeDefault bool
 	Args        []string
 	Host        config.Host
 }

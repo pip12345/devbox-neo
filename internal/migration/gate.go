@@ -30,6 +30,38 @@ func (r Requirement) Apply(ctx context.Context, runtime docker.Runtime) error {
 // configuration resolution. Ordinary readers still diagnose broken records and
 // incomplete allocations when no known migration is required.
 func Pending(ctx context.Context, home string) (*Requirement, error) {
+	runtimeUpdate, err := runtimeMigration(ctx, home)
+	if err != nil {
+		return nil, err
+	}
+	defaults, err := defaultsPending(home)
+	if err != nil {
+		return nil, err
+	}
+	if !defaults {
+		return runtimeUpdate, nil
+	}
+	required := &Requirement{
+		Name:        "Consolidate folder defaults",
+		Description: "Saved folder defaults move into one file. Existing selections are kept, including references to unavailable sessions. Empty selections are omitted.\nContainers, session data and history are unchanged.",
+		Warning:     "Close other dbx commands before migrating. Do not use older builds with this home afterward.",
+		apply:       func(ctx context.Context, _ docker.Runtime) error { return migrateFolderDefaults(ctx, home) },
+	}
+	if runtimeUpdate != nil {
+		required.Name = runtimeUpdate.Name + " and folder defaults"
+		required.Description = runtimeUpdate.Description + "\nSaved folder defaults also move into one file, preserving existing selections."
+		required.Warning = runtimeUpdate.Warning + " " + required.Warning
+		required.apply = func(ctx context.Context, runtime docker.Runtime) error {
+			if err := runtimeUpdate.Apply(ctx, runtime); err != nil {
+				return err
+			}
+			return migrateFolderDefaults(ctx, home)
+		}
+	}
+	return required, nil
+}
+
+func runtimeMigration(ctx context.Context, home string) (*Requirement, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

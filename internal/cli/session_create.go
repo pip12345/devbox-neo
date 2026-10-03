@@ -18,6 +18,7 @@ import (
 
 func createCommand(factory engineFactory, name *string) *cobra.Command {
 	var references []string
+	var makeDefault bool
 	cmd := &cobra.Command{Use: "create <folder>", Short: "Name a new session and select its configs", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		missing := *name == "" || len(references) == 0
 		if missing && !interactive(cmd) {
@@ -46,7 +47,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 			}
 			sources = append(sources, reference)
 		}
-		draft := sessionCreationDraft{workspace: workspace, name: *name, sources: sources}
+		draft := sessionCreationDraft{workspace: workspace, name: *name, sources: sources, makeDefault: makeDefault}
 		if draft.name != "" {
 			if err := environment.ValidateLocalName(draft.name); err != nil {
 				return err
@@ -60,7 +61,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		if err := m.Finish(); err != nil {
 			return err
 		}
-		result, err := e.Create(cmd.Context(), app.Request{Workspace: workspace, LocalName: draft.name, Sources: draft.sources})
+		result, err := e.Create(cmd.Context(), app.Request{Workspace: workspace, LocalName: draft.name, Sources: draft.sources, MakeDefault: draft.makeDefault})
 		if err != nil {
 			return err
 		}
@@ -72,19 +73,25 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		if interactive(cmd) {
 			selectDefault = commanderror.Next("Choose this folder's default session", "edit", args[0])
 		}
-		steps := scopedSteps(cmd, []commanderror.Step{selectDefault, commanderror.Next("Then open it", "open", args[0])}, e.Store.Home)
-		cmd.Printf("\n%s", stepsText(steps))
+		steps := []commanderror.Step{selectDefault, commanderror.Next("Then open it", "open", args[0])}
+		if draft.makeDefault {
+			cmd.Printf("Folder default: %s\n", draft.name)
+			steps = []commanderror.Step{commanderror.Next("Open it", "open", result.SessionID)}
+		}
+		cmd.Printf("\n%s", stepsText(scopedSteps(cmd, steps, e.Store.Home)))
 		return nil
 	}}
 	cmd.Example = "  dbx create .\n  dbx create . --name work --config base"
 	cmd.Flags().StringArrayVar(&references, "config", nil, "Existing config name or directory path, in order (repeatable)")
+	cmd.Flags().BoolVar(&makeDefault, "default", false, "Make the created session the folder default, replacing any existing selection")
 	return sessionNameFlag(cmd, name)
 }
 
 type sessionCreationDraft struct {
-	workspace string
-	name      string
-	sources   []config.Reference
+	workspace   string
+	name        string
+	sources     []config.Reference
+	makeDefault bool
 }
 
 func (d sessionCreationDraft) missing() string {
@@ -142,7 +149,21 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 			}
 			return false, err
 		}})
-		actions = append(actions, createAction)
+		defaultDescription := ""
+		selected, defaultErr := e.Store.ReadDefault(p.Context, draft.workspace)
+		if defaultErr != nil {
+			defaultDescription = "Cannot read current default: " + displayCell(defaultErr.Error())
+		} else if selected != nil {
+			label := selected.ID
+			if current, err := e.Locate(p.Context, selected.ID, ""); err == nil && current.Settings.Workspace == draft.workspace {
+				label = current.Settings.LocalName
+			}
+			defaultDescription = "Replaces " + displayCell(label)
+		}
+		actions = append(actions, cliui.Action{Label: "Make folder default", Value: defaultDescription, Description: "Select this session after creation; unchecked keeps the current selection", Checked: &draft.makeDefault, Run: func() (bool, error) {
+			draft.makeDefault = !draft.makeDefault
+			return false, nil
+		}}, createAction)
 		page := cliui.Screen{Title: "Create session", Actions: actions, Back: "Cancel", Body: func(out io.Writer) error {
 			if err := writeMenuHint(out, "Folder: "+displayCell(p.workspace)); err != nil {
 				return err

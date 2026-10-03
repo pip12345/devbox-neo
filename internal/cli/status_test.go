@@ -125,11 +125,7 @@ func TestSingleStatusJSONReportsDefaultAndDefaultErrors(t *testing.T) {
 	if err := json.Unmarshal([]byte(run(q.Workspace, "--json")), &result); err != nil || !result.Default || result.DefaultError != "" {
 		t.Fatal(result, err)
 	}
-	key, err := store.WorkspaceKey(q.Workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(e.Store.Home, "state/workspaces", key+".json"), []byte("broken"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(e.Store.Home, "state/folder-defaults.json"), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal([]byte(run(name, "--json")), &result); err != nil || result.Default || result.DefaultError == "" {

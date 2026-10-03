@@ -277,7 +277,7 @@ func TestEditFolderCanRecoverFromBrokenSessionSelection(t *testing.T) {
 func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("1\nFresh\n2\n1\n7\n0\n"); err != nil {
+	if _, err := master.WriteString("1\nFresh\n2\n1\n8\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -305,7 +305,7 @@ func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 	if nameIndex < 0 || pickerIndex < nameIndex || !strings.Contains(text, "[1]  Change session name") {
 		t.Fatal("creation overview did not keep pending inputs editable", text)
 	}
-	for _, label := range []string{"Configs, in order:", "[2]  Add existing config", "[3]  Create config", "[4]  Replace config", "[5]  Remove config", "[6]  Change folder", "[7]  Create session"} {
+	for _, label := range []string{"Configs, in order:", "[2]  Add existing config", "[3]  Create config", "[4]  Replace config", "[5]  Remove config", "[6]  Change folder", "[8]  Create session"} {
 		if !strings.Contains(text, label) {
 			t.Fatal("creation menu mixed config and source labels", label, text)
 		}
@@ -382,7 +382,7 @@ func TestInteractiveCreationCanBackOutOfInputsAndCancelOverview(t *testing.T) {
 func TestInteractiveCreationCanChooseSourcesBeforeNameAndChangeName(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("2\n1\n1\nbad name\nFirst\n1\n:back\n1\nRenamed\n7\n0\n"); err != nil {
+	if _, err := master.WriteString("2\n1\n1\nbad name\nFirst\n1\n:back\n1\nRenamed\n8\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -420,8 +420,8 @@ func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
 		input      string
 		wantPicker bool
 	}{
-		{"name", []string{"--name", "OnlyName"}, "2\n1\n7\n0\n", true},
-		{"config", []string{"--config", "base"}, "1\nOnlyConfig\n7\n0\n", false},
+		{"name", []string{"--name", "OnlyName"}, "2\n1\n8\n0\n", true},
+		{"config", []string{"--config", "base"}, "1\nOnlyConfig\n8\n0\n", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, q, _ := namedCLIFixture(t)

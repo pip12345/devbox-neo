@@ -606,7 +606,7 @@ func (f *frontend) createSessionFromDraft(draft sessionCreationDraft) error {
 	draft, proceed, err := sessionCreationMenu(picker, f.e, draft, func(draft sessionCreationDraft) (bool, error) {
 		err := f.foreground("Create session", func(ctx context.Context) error {
 			var err error
-			result, err = f.e.Create(ctx, app.Request{Workspace: draft.workspace, LocalName: draft.name, Sources: draft.sources})
+			result, err = f.e.Create(ctx, app.Request{Workspace: draft.workspace, LocalName: draft.name, Sources: draft.sources, MakeDefault: draft.makeDefault})
 			return err
 		})
 		if err == nil {
@@ -616,8 +616,8 @@ func (f *frontend) createSessionFromDraft(draft sessionCreationDraft) error {
 			return false, f.m.Context.Err()
 		}
 		var failure *commanderror.Error
-		if errors.As(err, &failure) && failure.Code == "create_stop_failed" {
-			f.m.Notice("Session created, but stopping it failed. Use Stop in the session menu.")
+		if errors.As(err, &failure) && (failure.Code == "create_stop_failed" || failure.Code == "create_default_failed") {
+			f.m.Notice("Session created. Use its menu to finish the reported steps.")
 			return true, nil
 		}
 		return false, f.m.report(err)
@@ -625,7 +625,7 @@ func (f *frontend) createSessionFromDraft(draft sessionCreationDraft) error {
 	if err != nil || !proceed {
 		return err
 	}
-	// Creation never selects a default or launches the harness.
+	// Return to the saved session without launching its harness.
 	f.focusItem = result.SessionID
 	return f.session(app.View{Target: result.SessionID, LocalName: draft.name, Workspace: draft.workspace})
 }

@@ -11,7 +11,6 @@ import (
 
 	"devbox/internal/commanderror"
 	"devbox/internal/config"
-	"devbox/internal/store"
 )
 
 func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
@@ -90,8 +89,7 @@ func TestStaleDefaultDoesNotSelectAReusedLocalName(t *testing.T) {
 			t.Fatal("transfer source selection lost its durable-ID snapshot", name, id, err)
 		}
 	}
-	key, _ := store.WorkspaceKey(original.Settings.Workspace)
-	path := filepath.Join(e.Store.Home, "state/workspaces", key+".json")
+	path := filepath.Join(e.Store.Home, "state/folder-defaults.json")
 	stale, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

@@ -578,6 +578,21 @@ func (m *terminalModel) objectList(c Collection, key, query string, w, h int, ac
 	}
 	return title + "\n" + fit(strings.Join(rows, "\n"), w, capacity, max(0, selectedEnd-capacity)) + "\n" + clip(search, w)
 }
+func actionLabel(a Action) string {
+	label := Safe(a.Label)
+	if a.Selected {
+		label = "* " + label
+	}
+	if a.Checked != nil {
+		if *a.Checked {
+			label = "✓ " + label
+		} else {
+			label = "○ " + label
+		}
+	}
+	return label
+}
+
 func (m *terminalModel) actionList(w, h int, active bool) string {
 	if h <= 0 {
 		return ""
@@ -598,7 +613,7 @@ func (m *terminalModel) actionList(w, h int, active bool) string {
 	for _, index := range indices {
 		a := m.req.page.Actions[index]
 		if a.Value != "" {
-			labelWidth = max(labelWidth, ansi.StringWidth(Safe(a.Label)))
+			labelWidth = max(labelWidth, ansi.StringWidth(actionLabel(a)))
 		}
 	}
 	labelWidth = min(labelWidth, max(8, w/2))
@@ -618,17 +633,7 @@ func (m *terminalModel) actionList(w, h int, active bool) string {
 		if pos == cursor {
 			prefix = "▸ "
 		}
-		label := Safe(a.Label)
-		if a.Selected {
-			label = "* " + label
-		}
-		if a.Checked != nil {
-			if *a.Checked {
-				label = "✓ " + label
-			} else {
-				label = "○ " + label
-			}
-		}
+		label := actionLabel(a)
 		color := tuiWhite
 		if a.Danger {
 			color = tuiRed

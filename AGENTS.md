@@ -30,7 +30,7 @@ Design history lives in `docs/dev/`; current session contracts are in the archit
 - Keep behavior explicit and predictable. Discovery and suggestions inform user choices; they do not authorize changes. Perform only the requested action and its clearly communicated consequences, without hidden selections, mutations, or extra operations. Make non-obvious effects clear before the user commits; do not add redundant prompts for already explicit choices.
 
 - Session IDs identify sessions; readable storage and Docker names are independent hints. Installation/session ownership and recorded instances authorize changes. Mutations use external locks. Missing state is not corrupt state.
-- Creation is explicit and leaves a stopped session. Never choose a folder default or create a session implicitly.
+- Creation is explicit and leaves a stopped session. Folder-default selection is opt-in; never create a session implicitly.
 - Config references are explicit and ordered. Desired config is separate from applied state; execution uses captured inputs, not another config read.
 - Harness behavior belongs in definitions, not harness-name branches. Managed files replace their owned content, never unrelated history.
 - Deletion retains scope, confirmations, idle checks, and locks across phases. Transfer retries retain exact endpoints and never recopy after commitment.
@@ -42,6 +42,7 @@ Design history lives in `docs/dev/`; current session contracts are in the archit
 ## Documentation discipline
 
 Write for the reader's next task, not to catalogue the implementation.
+Do not write extra documentation if it has no added value and just bloats the docs more.
 
 - **Guides:** one concept at a time, simplest working path first. Explain notation and show what happens next. Put alternatives and edge cases later or link to reference.
 - **Reference:** scannable syntax, defaults, fields, and constraints. Do not repeat walkthroughs or implementation rationale.

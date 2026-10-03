@@ -8,7 +8,7 @@ The saved session is the top-level environment model. Docker inventory supplies 
 
 The immutable session ID identifies the saved session. `settings` contains the editable workspace, local name, config references, and keep-running intent. Storage directories and Docker names are independently allocated as `dbx-<folder>-<allocation-hash>.<local-name>` hints; neither is parsed or required to match settings or the other name.
 
-`store.Find` looks up an ID or workspace/name from saved records, without config resolution or a persistent index. Folder-only lookup reads its explicit default ID. Defaults use schema 2 under `state/workspaces/<workspace-key>.json`, keyed by the canonical workspace's SHA-256. Missing defaults are absent; malformed defaults are errors. Name reuse never inherits an old ID selection.
+`store.Find` looks up an ID or workspace/name from saved records, without config resolution or a persistent index. Folder-only lookup reads its explicit default ID. `state/folder-defaults.json` uses schema 1 with a `defaults` map from canonical folder paths to session IDs. Only selected folders appear; clearing removes the entry. An absent file means no selections; malformed defaults are errors. Name reuse never inherits an old ID selection.
 
 Docker ownership uses installation ID, ownership version, and session ID. Workspace/name labels are descriptive. Existing containers are inspected by recorded Docker ID, with image/instance checks; names alone never authorize adoption or mutation.
 
@@ -26,6 +26,8 @@ Schema `7` validates settings and applied state independently. Their differences
 
 Ordinary readers reject older records. Before CLI/menu state initialization, `migration.Pending` recognizes required format updates without Docker/config resolution. A generic blocking screen requires agreement before the conversion service verifies/removes linked old-namespace containers/tags and atomically publishes compact records under the complete lock set. It refuses active commands/pending transfers and retains history/defaults. Partial retries recognize completed current-format records. Noninteractive/JSON use stays blocked; there is no separate migration command, silent conversion, old-format runtime reader or general importer.
 
+The same gate offers a separate folder-default conversion for the preceding per-folder files. It uses the namespace, preceding folder locks and current defaults lock, publishes the complete mapping before removing known old files, and retries matching partial conversions without overwriting conflicting selections. It preserves stale session IDs rather than guessing new defaults. This conversion does not touch Docker or session data; ordinary defaults readers only support the new file. Older builds must not use the home after conversion.
+
 Records contain public settings, paths, modes, and hashes, not file contents or env/auth values. Raw env diagnostics are redacted. Records are atomically replaced with restrictive permissions; invalid records remain errors rather than being treated as missing.
 
 Creation/recreation commits image and container baselines. `Record.ApplyRuntime` advances runtime inputs with their fingerprint at application commit points. Status and warning generation never alter either baseline.
@@ -40,13 +42,13 @@ Session operation locks are keyed by immutable ID under `state/locks/sessions/`,
 | Configuration-owner lock | Serialize publication or mutation of one source owner |
 | Name-namespace lock | Serialize creation, rename, workspace edits, and transfer name reservations |
 | Session operation lock | Serialize ownership checks and lifecycle transitions |
-| Workspace-default lock | Serialize a canonical folder's default selection and matching clears |
+| Folder-defaults lock | Serialize updates to the complete folder-to-session mapping |
 | Attached-command lease | Represent a foreground command while its operation lock is released |
 | SSH owner/master flocks | Govern transient SSH process lifetime, independently of session operation locks |
 
-Operations involving several environments acquire the complete session lock set in sorted unique session-ID order (Move shares one ID lock across its two directories). Name-changing operations acquire the namespace lock first. If workspace locks are also needed, acquire them afterward in workspace-key order; never acquire a session lock while holding a workspace lock. Bulk operations retain their complete session lock set through preflight and mutation.
+Operations involving several environments acquire the complete session lock set in sorted unique session-ID order (Move shares one ID lock across its two directories). Name-changing operations acquire the namespace lock first. Acquire `state/locks/folder-defaults.lock` after any session locks; never acquire a session lock while holding the defaults lock. Every folder shares this lock so concurrent updates cannot overwrite each other's entries. Bulk operations retain their complete session lock set through preflight and mutation.
 
-Default selection prompts before locking, then reloads the chosen session under its operation lock and verifies its ID before acquiring the workspace lock. Clearing needs only the workspace lock. Resolving a default releases its workspace lock before acquiring the session lock; the chosen ID is an invocation snapshot, not a reference that can retarget midway through an operation.
+Default selection prompts before locking, then reloads the chosen session under its operation lock and verifies its ID before acquiring the defaults lock. Clearing needs only the defaults lock. Resolving a default releases that lock before acquiring the session lock; the chosen ID is an invocation snapshot, not a reference that can retarget midway through an operation.
 
 Source edits use the session operation lock and compare ID, workspace, and the displayed source list. Config-directory edits use only their own owner lock and same-field conflict checks. Shared-use reporting never locks all referring sessions.
 

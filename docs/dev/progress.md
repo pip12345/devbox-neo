@@ -24,6 +24,12 @@ Local config discovery and CLI/menu rename implemented. Local discovery filters 
 - CLI and menu deletion support explicit cleanup of incomplete-creation files; images remain retained.
 - Fast-suite equivalent and CLI build pass (`make` unavailable). Race checks unavailable without CGO/a C compiler; live Docker and host-terminal acceptance remain unrun.
 
+## Folder defaults and opt-in creation selection — implemented, live acceptance pending
+
+- Defaults use one `state/folder-defaults.json`; clearing/deleting removes the matching selection. The migration gate preserves existing choices without changing containers or history. No migration has run against user state.
+- Create session offers an unchecked Make folder default option, mirrored by `create --default`, and identifies the current choice it would replace. Failed builds leave defaults unchanged; a later selection failure retains the created session with repair guidance. No automatic first-session or survivor selection was added.
+- Updated the creation guide, command/storage references and contributor contracts. Fast-suite package runs and affected regressions, vet and integration compilation pass. Coverage includes concurrent default changes, opt-in selection, cancellation/partial creation, terminal presentation and migration preservation/retries. Live Docker and manual terminal acceptance remain unrun; race checks require a C compiler.
+
 ## Readable sessions and disposable runtime — implemented, live acceptance pending
 
 Delivered the approved [first-phase plan](applied-config-snapshot-plan.md):

@@ -12,6 +12,10 @@ import (
 
 func TestRequiredMigrationDetectionAndApplication(t *testing.T) {
 	e, d, old, history := oldFixture(t)
+	if err := os.Remove(filepath.Join(e.Store.Home, "state/folder-defaults.json")); err != nil {
+		t.Fatal(err)
+	}
+	oldDefault(t, e.Store.Home, old.Settings.Workspace, old.ID)
 	ctx := context.Background()
 	before := len(d.History())
 	required, err := Pending(ctx, e.Store.Home)
@@ -29,6 +33,9 @@ func TestRequiredMigrationDetectionAndApplication(t *testing.T) {
 	}
 	if r, err := e.Store.Read(ctx, old.Directory); err != nil || r.ID != old.ID {
 		t.Fatal("identity lost", err)
+	}
+	if selected, err := e.Store.ReadDefault(ctx, old.Settings.Workspace); err != nil || selected == nil || selected.ID != old.ID {
+		t.Fatal("combined update lost default", selected, err)
 	}
 	if data, err := os.ReadFile(history); err != nil || string(data) != "saved history" {
 		t.Fatal("history lost", err)

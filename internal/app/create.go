@@ -61,17 +61,31 @@ func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
 	if err = e.requireNew(ctx, lock); err != nil {
 		return result, err
 	}
+	if q.MakeDefault {
+		if _, err := e.Store.ReadDefault(ctx, identity.Workspace); err != nil {
+			return result, err
+		}
+	}
 	record, c, err := e.createAs(ctx, lock, spec, nil, false, CreationIdentity{ID: id})
 	if err != nil {
 		cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		return result, errors.Join(err, e.discardUncommittedCreation(cleanup, lock, id))
 	}
+	var stopErr, defaultErr error
 	if err = e.Docker.Stop(ctx, c, e.owner(record)); err != nil {
-		return result, commanderror.New("create_stop_failed", "Environment created, but stopping it failed.", result.SessionID, err,
+		stopErr = commanderror.New("create_stop_failed", "Environment created, but stopping it failed.", result.SessionID, err,
 			commanderror.Next("Stop", "stop", result.SessionID))
 	}
-	return result, nil
+	// The session is committed. A failed preference update must not discard it
+	// or encourage retrying Create; default selection has its own repair step.
+	if q.MakeDefault {
+		if err := lock.SelectDefault(record.ID); err != nil {
+			defaultErr = commanderror.New("create_default_failed", "Session created, but selecting it as the folder default failed.", record.ID, err,
+				commanderror.Next("Select the created session as default", "edit", record.ID, "--default"))
+		}
+	}
+	return result, errors.Join(stopErr, defaultErr)
 }
 
 // A failed new allocation has no prior session history. Retain it if a record
