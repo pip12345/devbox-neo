@@ -14,95 +14,45 @@ import (
 	"devbox/internal/store"
 )
 
-func TestDriftBaselineTracksAppliedNotMerelyDesiredInputs(t *testing.T) {
-	for _, recovery := range []bool{false, true} {
-		t.Run(map[bool]string{false: "existing", true: "recovery"}[recovery], func(t *testing.T) {
-			e, _, q := fixture(t)
-			ctx := context.Background()
-			result, err := createAndOpen(ctx, e, q)
-			if err != nil {
-				t.Fatal(err)
-			}
-			initial := sessionRecord(t, e, result.SessionID)
-			write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host","env":["TOKEN=never-display-me"]}`)
-			write(t, filepath.Join(e.Store.Home, "profiles/test/pi/new-file"), "new config")
-			before, err := e.Status(ctx, result.SessionID, "")
-			if err != nil || before.Desired != environment.Recreate {
-				t.Fatal(before, err)
-			}
-			if !reflect.DeepEqual(sessionRecord(t, e, result.SessionID).Applied.Inputs, initial.Applied.Inputs) {
-				t.Fatal("status advanced the baseline")
-			}
-			if recovery {
-				forgetSession(t, e, result.SessionID)
-			}
-			result, err = e.Open(ctx, q)
-			if recovery {
-				if err == nil {
-					t.Fatal("missing runtime was rebuilt by open")
-				}
-				if !reflect.DeepEqual(sessionRecord(t, e, result.SessionID).Applied.Inputs, initial.Applied.Inputs) {
-					t.Fatal("failed access advanced baseline")
-				}
-				_, err = e.Recreate(ctx, q, false)
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(result.Diagnostics) == 0 {
-				t.Fatal("creation reasons missing")
-			}
-			want := environment.Report{PendingInputChanges: before.PendingInputChanges}.PendingCreationChanges()
-			if !reflect.DeepEqual(result.Diagnostics[0].PendingInputChanges, want) {
-				t.Fatal("status/open disagree", before.PendingInputChanges, result.Diagnostics)
-			}
-			applied := sessionRecord(t, e, result.SessionID)
-			if !recovery && (!reflect.DeepEqual(applied.Applied.Inputs.Image, initial.Applied.Inputs.Image) || !reflect.DeepEqual(applied.Applied.Inputs.Container, initial.Applied.Inputs.Container)) {
-				t.Fatal("healthy open advanced pending creation inputs")
-			}
-			if reflect.DeepEqual(applied.Applied.Inputs.Runtime, initial.Applied.Inputs.Runtime) || applied.Applied.Fingerprints.Runtime != applied.Applied.Inputs.Runtime.Fingerprint() {
-				t.Fatal("runtime baseline did not advance with synchronization")
-			}
-			after, err := e.Status(ctx, result.SessionID, "")
-			wantChange := environment.Recreate
-			if recovery {
-				wantChange = environment.NoChange
-			}
-			if err != nil || after.Desired != wantChange {
-				t.Fatal(after, err)
-			}
-			for _, inputChange := range after.PendingInputChanges {
-				if inputChange.Scope == environment.RuntimeScope {
-					t.Fatal("applied runtime input remained pending", inputChange)
-				}
-			}
-			var emitted []Diagnostic
-			e.OnDiagnostic = func(diagnostic Diagnostic) { emitted = append(emitted, diagnostic) }
-			if _, err := e.Open(ctx, q); err != nil {
-				t.Fatal(err)
-			}
-			if recovery && len(emitted) != 0 {
-				t.Fatal("rebuilt current inputs still reported drift", emitted)
-			}
-			if !recovery && (len(emitted) != 1 || !reflect.DeepEqual(emitted[0].PendingInputChanges, want)) {
-				t.Fatal("callback lost creation reasons", emitted)
-			}
-			encoded, err := json.Marshal(emitted)
-			if err != nil || bytes.Contains(encoded, []byte("never-display-me")) {
-				t.Fatal("unsafe diagnostic", string(encoded), err)
-			}
-			if _, err := e.Recreate(ctx, q, false); err != nil {
-				t.Fatal(err)
-			}
-			final, err := e.Status(ctx, result.SessionID, "")
-			if err != nil || final.Desired != environment.NoChange || len(final.PendingInputChanges) != 0 {
-				t.Fatal("recreation did not commit baseline", final, err)
-			}
-		})
+func TestDriftBaselineTracksExplicitApplication(t *testing.T) {
+	e, _, q := fixture(t)
+	ctx := context.Background()
+	made, err := e.Create(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := sessionRecord(t, e, made.SessionID)
+	write(t, filepath.Join(q.Sources[0].Path, "config.json"), `{"harness":"pi","network":"host","env":["TOKEN=never-display-me"]}`)
+	write(t, filepath.Join(q.Sources[0].Path, "pi/new-file"), "new config")
+	before, err := e.Status(ctx, made.SessionID, "")
+	if err != nil || before.Desired != environment.Recreate {
+		t.Fatal(before, err)
+	}
+	opened, err := e.Open(ctx, q)
+	if err != nil || len(opened.Diagnostics) != 0 {
+		t.Fatal(opened, err)
+	}
+	if current := sessionRecord(t, e, made.SessionID); !reflect.DeepEqual(current.Applied.Inputs, initial.Applied.Inputs) {
+		t.Fatal("inspection/access advanced applied inputs")
+	}
+	after, err := e.Status(ctx, made.SessionID, "")
+	if err != nil || !reflect.DeepEqual(before.PendingInputChanges, after.PendingInputChanges) {
+		t.Fatal("access hid pending changes", err)
+	}
+	encoded, err := json.Marshal(after)
+	if err != nil || bytes.Contains(encoded, []byte("never-display-me")) {
+		t.Fatal("status exposed env values", err)
+	}
+	if _, err := e.Recreate(ctx, q, false); err != nil {
+		t.Fatal(err)
+	}
+	final, err := e.Status(ctx, made.SessionID, "")
+	if err != nil || final.Desired != environment.NoChange || len(final.PendingInputChanges) != 0 {
+		t.Fatal("apply did not commit baseline", final, err)
 	}
 }
 
-func TestDeferredOrFailedOpenDoesNotAdvanceRuntimeBaseline(t *testing.T) {
+func TestAccessDoesNotAdvanceRuntimeBaseline(t *testing.T) {
 	for _, running := range []bool{false, true} {
 		t.Run(map[bool]string{false: "failed", true: "deferred"}[running], func(t *testing.T) {
 			e, d, q := fixture(t)

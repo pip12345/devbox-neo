@@ -36,16 +36,6 @@ type Report struct {
 	PendingInputChanges []InputChange `json:"pending_input_changes"`
 }
 
-func (r Report) PendingCreationChanges() []InputChange {
-	result := []InputChange{}
-	for _, inputChange := range r.PendingInputChanges {
-		if inputChange.Scope != RuntimeScope {
-			result = append(result, inputChange)
-		}
-	}
-	return result
-}
-
 // CompareInputs explains public settings and content categories, while Compare
 // owns the image > container > runtime action priority. The image hash feeding
 // the container fingerprint is not another independent change reason.

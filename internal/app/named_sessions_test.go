@@ -48,8 +48,11 @@ func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
 	if _, err := e.Locate(ctx, q.Workspace, ""); err != nil {
 		t.Fatal("incomplete config blocked saved lookup", err)
 	}
-	if _, err := e.Open(ctx, Request{Workspace: made.SessionID}); err == nil {
-		t.Fatal("missing config became runnable")
+	if _, err := e.Open(ctx, Request{Workspace: made.SessionID}); err != nil {
+		t.Fatal("missing desired config blocked applied access", err)
+	}
+	if _, err := e.Recreate(ctx, Request{Workspace: made.SessionID}, false); err == nil {
+		t.Fatal("missing config became applicable")
 	}
 	if err := e.Stop(ctx, made.SessionID, "", false); err != nil {
 		t.Fatal("missing config blocked stop", err)

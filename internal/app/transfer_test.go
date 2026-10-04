@@ -33,7 +33,7 @@ func TestTransferResumesJournalBeforeDestinationCreation(t *testing.T) {
 	nonce, _ := fsutil.ID()
 	newID, _ := fsutil.ID()
 	spec.Identity.Name = environment.ResourceName(dest, q.LocalName, "directory")
-	j := store.Transfer{Version: 3, ContainerName: environment.ResourceName(dest, q.LocalName, nonce), SourceContainerID: source.Applied.SetupContainer, ID: nonce, Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: spec.Identity, SourceID: source.ID, DestinationID: newID, Started: time.Now().UTC(), Desired: spec.Fingerprints}
+	j := store.Transfer{Version: 4, ContainerName: environment.ResourceName(dest, q.LocalName, nonce), SourceContainerID: source.Applied.SetupContainer, ID: nonce, Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: spec.Identity, SourceID: source.ID, DestinationID: newID, Started: time.Now().UTC()}
 	names := []string{source.Directory, spec.Identity.Name}
 	sort.Strings(names)
 	locks, err := e.Store.LockAll(ctx, names, map[string]string{source.Directory: source.ID, spec.Identity.Name: newID})
@@ -242,10 +242,13 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	}
 	configPath := filepath.Join(e.Store.Home, "profiles/test/config.json")
 	write(t, configPath, `{"version":1,"harness":"pi","env":["TOKEN=not-for-journals"]}`)
-	if _, err = e.Transfer(ctx, opts); err == nil || !strings.Contains(err.Error(), "inputs changed") || strings.Contains(err.Error(), "not-for-journals") {
-		t.Fatal("changed destination was accepted or leaked", err)
+	if _, err = e.Transfer(ctx, opts); err == nil || !strings.Contains(err.Error(), "prepare interrupted") || strings.Contains(err.Error(), "not-for-journals") {
+		t.Fatal("changed config did not reach preparation or leaked", err)
 	}
-	write(t, configPath, `{"version":1,"harness":"pi"}`)
+	journalData := getFile(t, filepath.Join(e.Store.Home, "state/transfers", source.Directory+".json"))
+	if strings.Contains(string(journalData), "not-for-journals") {
+		t.Fatal("retry persisted env values")
+	}
 	write(t, sourcePath, "new source write after rollback")
 	d.Fail = nil
 	result, err := e.Transfer(ctx, opts)

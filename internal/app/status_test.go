@@ -142,7 +142,7 @@ func TestStatusAllLeavesPendingTransfersUnclassified(t *testing.T) {
 		t.Fatal(err)
 	}
 	destination.Name = environment.ResourceName(destination.Workspace, destination.LocalName, "destination")
-	journal := store.Transfer{Version: 3, ContainerName: environment.ResourceName(destination.Workspace, destination.LocalName, "container"), SourceContainerID: source.Applied.SetupContainer, ID: strings.Repeat("a", 32), Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: destination, SourceID: source.ID, DestinationID: strings.Repeat("b", 32), Started: time.Now().UTC(), Desired: source.Applied.Fingerprints}
+	journal := store.Transfer{Version: 4, ContainerName: environment.ResourceName(destination.Workspace, destination.LocalName, "container"), SourceContainerID: source.Applied.SetupContainer, ID: strings.Repeat("a", 32), Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: destination, SourceID: source.ID, DestinationID: strings.Repeat("b", 32), Started: time.Now().UTC()}
 	if err := journal.Validate(); err != nil {
 		t.Fatal(err)
 	}

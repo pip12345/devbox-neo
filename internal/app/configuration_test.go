@@ -86,18 +86,18 @@ func TestPublicSubstitutionsAndCreationOptionsUseOneSnapshot(t *testing.T) {
 	}
 }
 func TestInvalidCreationOptionsFailBeforeDocker(t *testing.T) {
-	for _, body := range []string{
-		`{"harness":"pi","ports":["99999:80"]}`,
-		`{"harness":"pi","network":"host","ports":["80:80"]}`,
-		`{"harness":"pi","docker_args":["--name=foreign"]}`,
-		`{"harness":"pi","docker_args":["--memory","4g"]}`,
-		`{"harness":"pi","env":["DEVBOX_HOST=bad"]}`,
+	for body, want := range map[string]string{
+		`{"harness":"pi","ports":["99999:80"]}`:               "ports:",
+		`{"harness":"pi","network":"host","ports":["80:80"]}`: "host networking cannot publish ports",
+		`{"harness":"pi","docker_args":["--name=foreign"]}`:   "option --name is owned by Devbox",
+		`{"harness":"pi","docker_args":["--memory","4g"]}`:    "require --option=value",
+		`{"harness":"pi","env":["DEVBOX_HOST=bad"]}`:          "DEVBOX_* environment is reserved",
 	} {
 		t.Run(body, func(t *testing.T) {
 			e, d, q := fixture(t)
 			write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), body)
-			if _, err := e.Open(context.Background(), q); err == nil {
-				t.Fatal("invalid configuration accepted")
+			if _, err := e.Create(context.Background(), q); err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatal("creation did not reach the intended validator", want, err)
 			}
 			if len(d.History()) != 0 {
 				t.Fatal("invalid inputs reached Docker")

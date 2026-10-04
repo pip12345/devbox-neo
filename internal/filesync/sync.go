@@ -100,58 +100,6 @@ func privateMode(mode os.FileMode) os.FileMode {
 	return 0600
 }
 
-// Current compares desired inputs with the applied manifest, not live files a
-// running harness may be changing. It distinguishes file deferral from changes
-// to runtime-only hooks or launch settings without adding another fingerprint.
-func Current(manifestPath string, desired map[string]artifact.File, merges []harness.Merge) (bool, error) {
-	if err := Validate(desired, merges); err != nil {
-		return false, err
-	}
-	m, err := loadManifest(manifestPath)
-	if err != nil {
-		return false, err
-	}
-	if len(m.Files) != len(desired) {
-		return false, nil
-	}
-	rules := map[string]harness.Merge{}
-	for _, r := range merges {
-		rules[r.Path] = r
-	}
-	for p, f := range desired {
-		e, ok := m.Files[p]
-		if !ok || e.Conflict {
-			return false, nil
-		}
-		if r, structured := rules[p]; structured {
-			if e.Strategy != "json-keys" || len(e.Keys) != len(r.Keys) {
-				return false, nil
-			}
-			obj, err := object(f.Data)
-			if err != nil {
-				return false, err
-			}
-			keys := map[string]bool{}
-			for _, k := range e.Keys {
-				keys[k] = true
-			}
-			for _, k := range r.Keys {
-				if !keys[k] {
-					return false, nil
-				}
-				value, present := obj[k]
-				recorded, applied := e.KeyHashes[k]
-				if present != applied || (present && hash(value) != recorded) {
-					return false, nil
-				}
-			}
-		} else if e.Strategy != "file" || e.Hash != hash(f.Data) || e.Mode != privateMode(f.Mode) {
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
 func Sync(root, manifestPath, store string, desired map[string]artifact.File, merges []harness.Merge) error {
 	if err := Validate(desired, merges); err != nil {
 		return err

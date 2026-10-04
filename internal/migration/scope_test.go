@@ -2,6 +2,7 @@ package migration
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,18 +41,38 @@ func TestCutoverRefusesPendingTransfersBeforeMutation(t *testing.T) {
 	}
 	destination := environment.Identity{Binding: environment.Binding{Workspace: t.TempDir(), LocalName: "copy"}}
 	destination.Name = environment.ResourceName(destination.Workspace, destination.LocalName, id)
-	journal := store.Transfer{Version: 3, ID: id, Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: old.Settings.Binding, Name: old.Directory}, Destination: destination, SourceID: old.ID, DestinationID: id, SourceContainerID: old.Applied.SetupContainer, ContainerName: environment.ResourceName(destination.Workspace, destination.LocalName, "container"), Started: old.Created, Desired: old.Applied.Fingerprints}
+	journal := store.Transfer{Version: 4, ID: id, Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: old.Settings.Binding, Name: old.Directory}, Destination: destination, SourceID: old.ID, DestinationID: id, SourceContainerID: old.Applied.SetupContainer, ContainerName: environment.ResourceName(destination.Workspace, destination.LocalName, "container"), Started: old.Created}
 	if err := journal.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(e.Store.Home, "state/transfers"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := fsutil.JSON(filepath.Join(e.Store.Home, "state/transfers", old.Directory+".json"), journal); err != nil {
+	preceding := struct {
+		store.Transfer
+		Desired environment.Fingerprints `json:"desired"`
+	}{journal, old.Applied.Fingerprints}
+	preceding.Version = 3
+	path := filepath.Join(e.Store.Home, "state/transfers", old.Directory+".json")
+	if err := fsutil.JSON(path, preceding); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Run(context.Background(), e.Store.Home, e.Docker, true); err == nil {
+	required, err := Pending(context.Background(), e.Store.Home)
+	if err != nil || required == nil {
+		t.Fatal(required, err)
+	}
+	if err := required.Apply(context.Background(), e.Docker); err == nil {
 		t.Fatal("pending transfer accepted")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var header struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal(data, &header); err != nil || header.Version != 3 {
+		t.Fatal("blocked cutover changed the journal needed by the previous build", err)
 	}
 	if _, exists := d.Snapshot(old.Applied.Creation.Name); !exists {
 		t.Fatal("pending cutover mutated Docker")

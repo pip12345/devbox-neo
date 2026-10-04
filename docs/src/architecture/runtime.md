@@ -29,7 +29,7 @@ Commands translate requests; they do not implement lifecycle policy. Docker cons
 - Names locate resources; labels authorize mutations.
 - Container/image absence does not erase saved session identity, history or its comparison baseline; only explicit recreation rebuilds an existing session from current selected config.
 - Inspection never advances applied state.
-- Ordinary startup has one synchronization boundary.
+- Ordinary access uses applied state; only creation or explicit recreation applies desired configuration.
 - Long commands use leases rather than holding operation locks throughout execution.
 - Records and diagnostics do not contain env/auth values.
 - A committed transfer destination must not be overwritten by recopying its source.

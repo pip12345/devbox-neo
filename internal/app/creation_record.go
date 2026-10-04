@@ -30,7 +30,7 @@ func creationRecord(s environment.Spec, imageID string, mounts []docker.Mount, i
 				Args:     append(append([]string(nil), d.Launch.Args...), s.Settings.HarnessArgs...),
 				Continue: d.Launch.Continue, Shell: s.Settings.Shell,
 			},
-			Setup: s.Setup, Ownership: 1, ManifestVersion: 1,
+			Setup: s.Setup, BeforeOpen: s.BeforeOpen, Ownership: 1, ManifestVersion: 1,
 		},
 	}
 	if previous != nil {

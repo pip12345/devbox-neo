@@ -97,6 +97,7 @@ func TestBuiltinAndCustomHarnessesShareLifecycleAndStorage(t *testing.T) {
 			if count(d, "create") != 1 {
 				t.Fatal("reopen replaced runtime")
 			}
+			q.ForceContainer = true
 			if _, err = e.Recreate(ctx, q, false); err != nil {
 				t.Fatal(err)
 			}

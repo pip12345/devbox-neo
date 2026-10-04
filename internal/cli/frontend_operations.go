@@ -111,22 +111,23 @@ func (f *frontend) stop(target string) error {
 	})
 }
 func (f *frontend) recreate(target string) error {
-	noCache := false
+	noCache, container := false, false
 	return f.form("Recreate", func() []cliui.Action {
 		return []cliui.Action{
 			f.action("Inspect pending changes", "", func() error { return f.status(target) }),
 			f.toggle("Rebuild image without cache", &noCache),
-			{Label: "Recreate", Description: "Replaces container-local changes; preserves saved session state", Run: func() (bool, error) {
-				yes, err := f.m.Confirm("Recreate with current settings? Container-local changes will be lost. [y/N] ")
+			f.toggle("Force container replacement", &container),
+			{Label: "Recreate", Description: "Apply current config; replace runtime only as needed or explicitly requested", Run: func() (bool, error) {
+				yes, err := f.m.Confirm("Apply current config? Runtime may restart; if replaced, container-local changes will be lost. [y/N] ")
 				if err != nil || !yes {
 					return false, err
 				}
 				err = f.foreground("Recreate", func(ctx context.Context) error {
 					if target == "" {
-						_, err := f.e.RecreateAll(ctx, noCache, app.Request{})
+						_, err := f.e.RecreateAll(ctx, noCache, app.Request{ForceContainer: container})
 						return err
 					}
-					_, err := f.e.Recreate(ctx, app.Request{Workspace: target}, noCache)
+					_, err := f.e.Recreate(ctx, app.Request{Workspace: target, ForceContainer: container}, noCache)
 					return err
 				})
 				if err != nil {
@@ -293,7 +294,7 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 				fields[i].Blocked = "Pending transfer: recorded endpoints and mode are pinned."
 			}
 		}
-		return append(fields,
+		actions := append(fields,
 			f.action("Preview", "Rebased config references and destination identity", func() error {
 				preview := options
 				preview.DryRun = true
@@ -328,6 +329,25 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 				return true, nil
 			}},
 		)
+		if pending != nil && pending.Phase == "prepare" {
+			actions = append(actions, cliui.Action{Label: "Abort pending transfer", Description: "Discard the uncommitted destination attempt; retain the source", Danger: true, Run: func() (bool, error) {
+				yes, err := f.m.Confirm("Discard this uncommitted destination attempt and retain the source session? [y/N] ")
+				if err != nil || !yes {
+					return false, err
+				}
+				err = f.foreground("Abort transfer", func(ctx context.Context) error {
+					_, err := f.e.AbortTransfer(ctx, options.Source)
+					return err
+				})
+				if err != nil {
+					return false, f.m.report(err)
+				}
+				f.focusItem = options.Source
+				moved = target != options.Source
+				return true, nil
+			}})
+		}
+		return actions
 	})
 	return moved, err
 }

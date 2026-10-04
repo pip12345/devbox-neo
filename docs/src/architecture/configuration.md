@@ -23,7 +23,7 @@ flowchart TD
 
 `config.Reference` preserves relative/fixed intent. CLI capture resolves relative arguments against the invoking cwd, then records them relative to the canonical workspace. `ResolveReferences` expands the saved chain at the runtime boundary, requires its directories, and rejects duplicate canonical paths. Composition receives absolute `config.Source` inputs. Resolution never discovers sources; there is no global baseline or inheritance cutoff.
 
-`app.UpdateSources` requires a nonempty chain, validates references, and compares session ID plus the displayed chain under the operation lock. It preserves unrelated latest fields and saves only desired references; runnable settings are not required. Creation drafts and record reads can still be empty. Startup/recreation resolve from the reread locked record, not a pre-lock source snapshot.
+`app.UpdateSources` requires a nonempty chain, validates references, and compares session ID plus the displayed chain under the operation lock. It preserves unrelated latest fields and saves only desired references; runnable settings are not required. Creation drafts and record reads can still be empty. Explicit recreation resolves from the reread locked record, not a pre-lock source snapshot. Ordinary access never resolves desired config.
 
 ### Merging settings and artifacts
 
@@ -126,13 +126,13 @@ This avoids Docker creating root-owned parents for nested mounts. An incompatibl
 
 ## Managed configuration ownership
 
-`filesync` owns byte/key reconciliation, not lifecycle safety. The application must hold the operation lock and prove the container is stopped or absent before synchronizing. Creation/recreation and transfer destination creation synchronize before materialization; ordinary access uses `startAccess` and checks backing roots first.
+`filesync` owns byte/key reconciliation, not lifecycle safety. The application must hold the operation lock and prove the container is stopped or absent before synchronizing. Creation, explicit runtime application, and transfer destination creation synchronize under that contract. Ordinary access only checks backing roots and uses applied state; it does not synchronize.
 
 ### Ordinary files
 
 The desired source is authoritative. Synchronization restores desired bytes and private modes even when a live file was edited locally or its source hash did not change. Formerly managed paths that disappear from desired config are removed regardless of their current content. Unmanaged paths are untouched.
 
-The manifest describes applied ownership and supports running-container deferral. Its hashes are not a local-edit protection mechanism. This gives managed files one predictable owner while leaving unrelated harness history alone.
+The manifest describes applied ownership. Its hashes are not a local-edit protection mechanism and do not replace reconciliation during explicit application. This gives managed files one predictable owner while leaving unrelated harness history alone.
 
 ### Shared JSON
 

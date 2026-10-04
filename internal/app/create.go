@@ -364,6 +364,9 @@ func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker
 	if err = e.installRuntime(ctx, record); err != nil {
 		return c, err
 	}
+	if err = e.installOpenHooks(ctx, c, record, record.Applied.BeforeOpen); err != nil {
+		return c, err
+	}
 	for _, argv := range record.Applied.Prepare {
 		if err = e.Docker.Exec(ctx, c, e.owner(record), argv, nil, docker.Streams{Out: e.Streams.Out, Err: e.Streams.Err}); err != nil {
 			return c, err
@@ -407,27 +410,9 @@ func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, e
 	if err != nil {
 		return Result{}, err
 	}
-	if err = l.RequireIdle(); err != nil {
-		return Result{}, err
-	}
-	q.Workspace, q.LocalName, q.SessionID, q.Sources = old.Settings.Workspace, old.Settings.LocalName, old.ID, old.Settings.Sources
-	s, err := e.Resolve(q)
+	plan, err := e.planRecreate(ctx, l, old, q, force)
 	if err != nil {
 		return Result{}, err
 	}
-	container, exists, err := e.inspect(ctx, old)
-	if err != nil {
-		return Result{}, err
-	}
-	running := old.Settings.ManualStart || (exists && container.State.Running)
-	r, c, err := e.create(ctx, l, s, &old, force)
-	if err != nil {
-		return Result{}, err
-	}
-	if !running {
-		if err = e.Docker.Stop(ctx, c, e.owner(r)); err != nil {
-			return Result{}, err
-		}
-	}
-	return Result{SessionID: r.ID}, nil
+	return e.applyRecreate(ctx, plan)
 }

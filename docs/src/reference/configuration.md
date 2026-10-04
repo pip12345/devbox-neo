@@ -25,7 +25,7 @@ Built-in defaults apply first, then selected configs in order. An absent field c
 |---|---|---|
 | `version` | `1` | Schema version |
 | `base_image` | `"debian:bookworm-slim"` | Replace; Debian/Ubuntu-compatible image |
-| `harness` | `""` | Replace; required for a runnable session |
+| `harness` | `""` | Replace; required for Create/Recreate |
 | `shell` | `["bash"]` | Replace complete non-empty argv |
 | `network` | `"default"` | Replace; `default`, `host`, or an existing Docker network |
 | `harness_args` | `[]` | Append only from configs naming the final harness; requires `harness` in that file |
@@ -41,7 +41,7 @@ Empty additive lists do not erase earlier values. Conflicting mounts/ports fail.
 
 All selected configs participate. Later scalar values replace earlier ones; most lists append. Config selection does not rename the session.
 
-Creation, Open, and Recreate require valid configs and a final harness selection. Saving a config selection requires at least one reference, not runnable settings. Broken configs remain accessible for repair.
+Create and Recreate require valid configs and a harness selection. Broken configs do not prevent access to an existing session. Saving a config selection requires at least one reference, not runnable settings.
 
 ## Editing and inspection
 
@@ -112,11 +112,11 @@ Artifact paths are relative to the directory containing `config.json`.
 | Path | Order | Runs/applies |
 |---|---|---|
 | `docker/Dockerfile` | Each extends the preceding image | Image build; context is `docker/` |
-| `setup.sh` | Config order | Container creation/recreation |
-| `before-open.sh` | Config order | Before each harness launch |
+| `setup.sh` | Config order | Container creation/replacement |
+| `before-open.sh` | Config order | Before each Open/Continue |
 | `<harness>/` | Defaults, then configs; later paths win | Managed-file synchronization |
 
-Scripts run as the development user in `/workspace`, with sudo available. They are separate processes. Failure stops the chain without undoing completed effects.
+Run `recreate` after changing scripts or harness files. Scripts run as the development user in `/workspace`, with sudo available. They are separate processes. Failure stops the chain without undoing completed effects.
 
 Optional-file setup adds only missing files. Harness-file generation can target a different harness from the config's selection. The built-in Devbox skill remains inherited unless explicitly overridden.
 
@@ -151,5 +151,3 @@ Included tools: Bash, Git, curl, sudo, procps, OpenSSH clients, util-linux, Vim,
 | Unmanaged file/history | Leave untouched |
 
 Managed configs and defaults copy regular files, excluding `.git` files and directories at every depth. Skipped symlinks/special entries produce warnings. Invalid shared JSON blocks synchronization. See [harness-owned keys](harnesses.md#built-in-harnesses).
-
-Files synchronize on creation/recreation and before starting a stopped container. Attaching to an already-running container does not synchronize them. Changed harness layouts require recreation.

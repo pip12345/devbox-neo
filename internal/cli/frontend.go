@@ -327,7 +327,7 @@ func (f *frontend) session(v app.View) error {
 		addGroup("Container lifecycle",
 			f.action("Start", "Keep running until stopped", run("Start", func(ctx context.Context) error { _, err := f.e.Start(ctx, v.Target, ""); return err })),
 			f.action("Stop", "", func() error { return f.stop(v.Target) }),
-			f.action("Recreate", "Replace the container using current settings", func() error { return f.recreate(v.Target) }),
+			f.action("Recreate", "Apply current config; replace runtime only as needed", func() error { return f.recreate(v.Target) }),
 		)
 		addGroup("Manage session",
 			f.action("Edit selected configs", sourceSummary(v.Sources), func() error { return f.editSession(v.Target) }),

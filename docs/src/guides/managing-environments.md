@@ -4,19 +4,19 @@ The container is replaceable. Saved session data holds its identity and harness 
 
 ## Apply configuration changes
 
-Choose **Status** in the session menu after changing configuration.
+Choose **Status** in the session menu after changing configuration. Open/Continue keep using the existing settings until you choose **Recreate**.
 
 | Status | Next step |
 |---|---|
 | No changes | Keep working |
-| Runtime changes | Follow the listed reasons. Managed files need a container restart. Launch options apply at the next Open. |
+| Runtime changes | Choose Recreate to apply without replacing the container |
 | Recreate needed | Choose Recreate |
 | Rebuild + recreate needed | Choose Recreate to build the changed image and replace the container |
-| Cannot check | Fix the reported problem first |
+| Cannot check | Fix the reported error before applying changes |
 
-**Recreate loses container-local files and tools**, but preserves saved harness state and project files. Put repeatable tool installation in a [Dockerfile](customization.md#add-tools).
+Finish attached commands first. Recreate may briefly start or restart the container. **Container replacement loses local files and tools**, but preserves harness history and project files. Put repeatable tool installation in a [Dockerfile](customization.md#add-tools).
 
-Use **Rebuild image without cache** only when you want to rerun the build. It does not guarantee a newer upstream base image.
+Use **Force container replacement** to replace an otherwise unchanged container. **Rebuild image without cache** also replaces it and reruns the build; it does not guarantee a newer upstream base image.
 
 ## Restore a missing container
 
@@ -39,7 +39,7 @@ dbx copy . --name work --as experiment
 
 The destination name must be unused. Neither copy nor move selects a destination default.
 
-If interrupted, fix the reported problem and retry the same transfer. Leave pending state in place so Devbox can resume.
+If interrupted, fix the error and retry the same command. **Abort pending transfer**, when offered, discards the incomplete copy and keeps the source. Do not delete transfer files by hand.
 
 Choose **Rename session** to change its label without rebuilding or moving history. To point the same session at a moved project, choose **Change workspace**, then **Recreate**. The workspace edit clears a matching old-folder default. It does not move project files. See [CLI syntax](../reference/commands.md).
 

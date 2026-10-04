@@ -8,8 +8,8 @@ import (
 )
 
 func recreateCommand(factory engineFactory, localName *string) *cobra.Command {
-	var image, all bool
-	cmd := &cobra.Command{Use: "recreate [folder|session-id]", Short: "Recreate the container with current settings, keeping session data", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	var image, container, all bool
+	cmd := &cobra.Command{Use: "recreate [folder|session-id]", Short: "Apply current config, replacing the container or image only when needed", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if all && len(args) > 0 {
 			return fmt.Errorf("--all does not accept an exact target")
 		}
@@ -21,14 +21,15 @@ func recreateCommand(factory engineFactory, localName *string) *cobra.Command {
 			return err
 		}
 		if all {
-			_, err = e.RecreateAll(cmd.Context(), image, app.Request{LocalName: *localName})
+			_, err = e.RecreateAll(cmd.Context(), image, app.Request{LocalName: *localName, ForceContainer: container})
 			return err
 		}
-		q := app.Request{Workspace: args[0], LocalName: *localName}
+		q := app.Request{Workspace: args[0], LocalName: *localName, ForceContainer: container}
 		_, err = e.Recreate(cmd.Context(), q, image)
 		return err
 	}}
-	cmd.Flags().BoolVar(&image, "image", false, "Rebuild the image without using the build cache")
-	cmd.Flags().BoolVar(&all, "all", false, "Recreate all Devbox containers")
+	cmd.Flags().BoolVar(&image, "image", false, "Force an uncached image rebuild and container replacement")
+	cmd.Flags().BoolVar(&container, "container", false, "Force container replacement, reusing a compatible image when available")
+	cmd.Flags().BoolVar(&all, "all", false, "Apply current config to all managed containers")
 	return sessionNameFlag(cmd, localName)
 }

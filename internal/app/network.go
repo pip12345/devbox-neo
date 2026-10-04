@@ -109,7 +109,7 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 		return err
 	}
 	if c.State.Running {
-		return e.installRuntime(ctx, r)
+		return e.refreshNetwork(ctx, r)
 	}
 	return nil
 }

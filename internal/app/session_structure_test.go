@@ -2,9 +2,7 @@ package app
 
 import (
 	"context"
-	"devbox/internal/commanderror"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -44,9 +42,11 @@ func TestWorkspaceEditLeavesAppliedStateAndHistoryIntactUntilRecreation(t *testi
 	if r, err := e.Locate(ctx, next, q.LocalName); err != nil || r.ID != before.ID {
 		t.Fatal(r, err)
 	}
-	var changed *commanderror.Error
-	if _, err := e.Open(ctx, Request{Workspace: before.ID}); !errors.As(err, &changed) || changed.Code != "workspace_changed" {
-		t.Fatal("wrong workspace-change access result", err)
+	if _, err := e.Open(ctx, Request{Workspace: before.ID}); err != nil {
+		t.Fatal("pending workspace edit blocked applied runtime", err)
+	}
+	if current := sessionRecord(t, e, before.ID); !reflect.DeepEqual(current.Applied, before.Applied) {
+		t.Fatal("access applied a workspace edit")
 	}
 	if err := e.Stop(ctx, before.ID, "", false); err != nil {
 		t.Fatal("edited settings prevented stopping old container", err)

@@ -117,6 +117,9 @@ func TestPiDefaultsToFullscreenAndAllowsLaterOverrides(t *testing.T) {
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","harness_args":["--tui-mode","regular"]}`)
 	q.Args = nil
 	q.Continue = false
+	if _, err = e.Recreate(ctx, q, false); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
 	}

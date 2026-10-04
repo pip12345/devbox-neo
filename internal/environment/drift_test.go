@@ -140,7 +140,7 @@ func TestDetailedComparisonRoundTripProvenanceAndDeduplication(t *testing.T) {
 	next.Container.Network = "host"
 	next.Runtime.Launch.Continue = append(next.Runtime.Launch.Continue, "--new")
 	report := CompareInputs(s.Inputs, next)
-	if report.Change != RebuildAndRecreate || len(report.PendingInputChanges) != 3 || len(report.PendingCreationChanges()) != 2 {
+	if report.Change != RebuildAndRecreate || len(report.PendingInputChanges) != 3 {
 		t.Fatal("duplicated image propagation or file reason", report)
 	}
 	for range 10 {

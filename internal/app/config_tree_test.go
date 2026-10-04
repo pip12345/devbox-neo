@@ -13,7 +13,7 @@ import (
 	"devbox/internal/harness"
 )
 
-func TestOpenWarnsAndSkipsConfigSymlinks(t *testing.T) {
+func TestExplicitApplicationWarnsAndSkipsConfigSymlinks(t *testing.T) {
 	for _, source := range []string{"profile", "project", "defaults"} {
 		t.Run(source, func(t *testing.T) {
 			e, _, q := fixture(t)
@@ -49,7 +49,7 @@ func TestOpenWarnsAndSkipsConfigSymlinks(t *testing.T) {
 			}
 			e.Streams.Err = new(bytes.Buffer)
 			for i := 0; i < 2; i++ {
-				result, err := e.Open(context.Background(), q)
+				result, err := e.Recreate(context.Background(), q, false)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -63,7 +63,7 @@ func TestOpenWarnsAndSkipsConfigSymlinks(t *testing.T) {
 			}
 			warning := fmt.Sprintf("Warning: skipping non-regular config entry %q", link)
 			if output := fmt.Sprint(e.Streams.Err); strings.Count(output, warning) != 2 {
-				t.Fatal("each open must report the skipped source path", output)
+				t.Fatal("each explicit application must report the skipped source path", output)
 			}
 		})
 	}

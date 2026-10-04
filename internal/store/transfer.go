@@ -18,20 +18,19 @@ import (
 // both endpoints. External placement lets source deletion finish without
 // unlinking recovery. Publication/removal reserves/releases both names at once.
 type Transfer struct {
-	ContainerName     string                   `json:"container_name"`
-	SourceContainerID string                   `json:"source_container_id"`
-	Version           int                      `json:"version"`
-	ID                string                   `json:"id"`
-	Mode              string                   `json:"mode"`
-	Phase             string                   `json:"phase"`
-	Source            environment.Identity     `json:"source"`
-	Destination       environment.Identity     `json:"destination"`
-	SourceID          string                   `json:"source_id"`
-	DestinationID     string                   `json:"destination_id"`
-	Running           bool                     `json:"restore_running"`
-	ManualStart       bool                     `json:"manual_start"`
-	Started           time.Time                `json:"started_at"`
-	Desired           environment.Fingerprints `json:"desired"`
+	ContainerName     string               `json:"container_name"`
+	SourceContainerID string               `json:"source_container_id"`
+	Version           int                  `json:"version"`
+	ID                string               `json:"id"`
+	Mode              string               `json:"mode"`
+	Phase             string               `json:"phase"`
+	Source            environment.Identity `json:"source"`
+	Destination       environment.Identity `json:"destination"`
+	SourceID          string               `json:"source_id"`
+	DestinationID     string               `json:"destination_id"`
+	Running           bool                 `json:"restore_running"`
+	ManualStart       bool                 `json:"manual_start"`
+	Started           time.Time            `json:"started_at"`
 }
 
 // Reservation is a read-only view derived from the journal, not another file.
@@ -67,7 +66,7 @@ func (j Transfer) RetryStep() commanderror.Step {
 }
 
 func (j Transfer) Validate() error {
-	if j.Version != 3 || !idPattern.MatchString(j.ID) || !idPattern.MatchString(j.SourceID) || !idPattern.MatchString(j.DestinationID) || j.Started.IsZero() {
+	if j.Version != 4 || !idPattern.MatchString(j.ID) || !idPattern.MatchString(j.SourceID) || !idPattern.MatchString(j.DestinationID) || j.Started.IsZero() {
 		return fmt.Errorf("invalid transfer identity")
 	}
 	if !environment.ValidResourceName(j.ContainerName) || !hashPattern.MatchString(j.SourceContainerID) {
@@ -93,9 +92,6 @@ func (j Transfer) Validate() error {
 	if j.Source.Name == j.Destination.Name {
 		return fmt.Errorf("transfer endpoints must differ")
 	}
-	if !hashPattern.MatchString(j.Desired.Image) || !hashPattern.MatchString(j.Desired.Container) || !hashPattern.MatchString(j.Desired.Runtime) {
-		return fmt.Errorf("invalid transfer inputs")
-	}
 	return nil
 }
 func (s *Store) transferPath(name string) (string, error) {
@@ -113,18 +109,21 @@ func (s *Store) ReadTransfer(name string) (*Transfer, error) {
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
+	invalid := func(cause error) (*Transfer, error) {
+		return nil, commanderror.New("invalid_transfer_journal", "Cannot read the transfer journal; session access and mutations are blocked because its reserved endpoints cannot be trusted. Repair this file or restore a verified backup; do not simply delete it.", p, cause)
+	}
 	if err != nil {
-		return nil, err
+		return invalid(err)
 	}
 	var j Transfer
 	if err = config.Decode(b, &j); err != nil {
-		return nil, fmt.Errorf("corrupt transfer journal: %w", err)
+		return invalid(err)
 	}
 	if err = j.Validate(); err != nil {
-		return nil, err
+		return invalid(err)
 	}
 	if j.Source.Name != name {
-		return nil, fmt.Errorf("transfer journal source mismatch")
+		return invalid(fmt.Errorf("transfer journal source mismatch"))
 	}
 	return &j, nil
 }
@@ -261,6 +260,22 @@ func (l *Locked) FinishTransfer(destination *Locked, j Transfer) error {
 	if j.Phase != "committed" {
 		return fmt.Errorf("cannot finish an uncommitted transfer")
 	}
+	return l.removeTransfer(j)
+}
+
+// AbortTransfer releases a source-authoritative reservation only after the app
+// has verified destination cleanup and restored the source's running intent.
+func (l *Locked) AbortTransfer(destination *Locked, j Transfer) error {
+	if err := transferLocks(l, destination, j); err != nil {
+		return err
+	}
+	if j.Phase != "prepare" {
+		return fmt.Errorf("cannot abort a committed transfer")
+	}
+	return l.removeTransfer(j)
+}
+
+func (l *Locked) removeTransfer(j Transfer) error {
 	current, err := l.store.ReadTransfer(l.Name)
 	if err != nil {
 		return err

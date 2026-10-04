@@ -15,6 +15,16 @@ import (
 )
 
 func (e *Engine) installRuntime(ctx context.Context, r store.Record) error {
+	return e.writeRuntime(ctx, r, true)
+}
+
+// Network facts describe live attachments, not desired configuration. Refreshing
+// them on access must not also apply a new version of the documentation bundle.
+func (e *Engine) refreshNetwork(ctx context.Context, r store.Record) error {
+	return e.writeRuntime(ctx, r, false)
+}
+
+func (e *Engine) writeRuntime(ctx context.Context, r store.Record, includeDocs bool) error {
 	c, exists, err := e.inspect(ctx, r)
 	if err != nil {
 		return err
@@ -22,9 +32,12 @@ func (e *Engine) installRuntime(ctx context.Context, r store.Record) error {
 	if !exists || !c.State.Running {
 		return fmt.Errorf("runtime preparation requires the verified running container")
 	}
-	files, err := assets.Files()
-	if err != nil {
-		return err
+	files := map[string][]byte{}
+	if includeDocs {
+		files, err = assets.Files()
+		if err != nil {
+			return err
+		}
 	}
 	facts := networkFacts(r, c)
 	b, err := json.MarshalIndent(facts, "", "  ")

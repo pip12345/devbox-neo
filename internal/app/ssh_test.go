@@ -160,7 +160,7 @@ func TestSSHMissingMountNeedsExplicitRecreation(t *testing.T) {
 	}
 }
 
-func TestSSHInvalidConfigBlocksStoppedStartup(t *testing.T) {
+func TestSSHUsesAppliedRuntimeDespiteInvalidDesiredConfig(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	result, err := e.Create(ctx, q)
@@ -169,11 +169,18 @@ func TestSSHInvalidConfigBlocksStoppedStartup(t *testing.T) {
 	}
 	before := count(d, "start")
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
-	if err := e.SSH(ctx, result.SessionID, "", "staging", SSHOptions{}); err == nil {
-		t.Fatal("invalid config ignored")
+	authFailure := errors.New("simulated authentication failure")
+	d.Attached = func(_ context.Context, c docker.Command) error {
+		if c.Args[len(c.Args)-1] == "staging" {
+			return authFailure
+		}
+		return nil
 	}
-	if count(d, "start") != before {
-		t.Fatal("invalid config started container")
+	if err := e.SSH(ctx, result.SessionID, "", "staging", SSHOptions{}); !errors.Is(err, authFailure) {
+		t.Fatal("SSH did not reach authentication", err)
+	}
+	if count(d, "start") != before+1 {
+		t.Fatal("SSH did not start applied runtime")
 	}
 }
 

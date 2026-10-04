@@ -1,169 +1,93 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
-
-	"devbox/internal/docker"
 )
 
-func TestCreationWarningPrecedesStartupWithoutDelay(t *testing.T) {
-	for _, mode := range []string{"container", "image", "recovery"} {
-		t.Run(mode, func(t *testing.T) {
+func runtimeMutations(d interface{ History() [][]string }) int {
+	n := 0
+	for _, a := range d.History() {
+		switch a[0] {
+		case "build", "create", "start", "stop", "rm", "cp", "exec", "update":
+			n++
+		}
+	}
+	return n
+}
+
+func TestApplicationPlanPrecedesRuntimeMutations(t *testing.T) {
+	for _, change := range []string{"runtime", "container", "image"} {
+		t.Run(change, func(t *testing.T) {
 			e, d, q := fixture(t)
 			ctx := context.Background()
-			write(t, filepath.Join(e.Store.Home, "profiles/test/before-open.sh"), "echo entrypoint-marker")
-			result, err := createAndOpen(ctx, e, q)
+			made, err := e.Create(ctx, q)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if mode == "image" {
-				write(t, filepath.Join(e.Store.Home, "profiles/test/docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
-			} else {
-				write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host"}`)
+			source := q.Sources[0].Path
+			write(t, filepath.Join(source, "pi/new-file"), "new")
+			if change == "container" {
+				write(t, filepath.Join(source, "config.json"), `{"harness":"pi","network":"host"}`)
 			}
-			if mode == "recovery" {
-				forgetSession(t, e, result.SessionID)
+			if change == "image" {
+				write(t, filepath.Join(source, "docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 			}
-			write(t, filepath.Join(e.Store.Home, "profiles/test/pi/new-file"), "new config")
-			if err := os.Symlink("new-file", filepath.Join(e.Store.Home, "profiles/test/pi/skipped-link")); err != nil {
-				t.Fatal(err)
-			}
-			liveFile := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home/new-file")
-			var output bytes.Buffer
-			warned := false
-			before := len(d.History())
-			var emitted []Diagnostic
+			r := sessionRecord(t, e, made.SessionID)
+			live := filepath.Join(e.Store.Home, "sessions", r.Directory, "harnesses/pi/stores/home/new-file")
+			before, plans := runtimeMutations(d), 0
 			e.OnDiagnostic = func(diagnostic Diagnostic) {
-				emitted = append(emitted, diagnostic)
-				if diagnostic.Code == "creation_drift" {
-					if output.Len() != 0 || len(d.History()) != before {
-						t.Fatal("creation warning was not first", output.String())
-					}
-					if _, err := os.Stat(liveFile); !os.IsNotExist(err) {
-						t.Fatal("config synchronized before warning", err)
-					}
-					warned = true
+				if diagnostic.Code != "apply_plan" {
+					t.Fatal(diagnostic)
 				}
-			}
-			e.Streams.Out, e.Streams.Err = &output, &output
-			d.Fail = func([]string) error {
-				if !warned {
-					return errors.New("Docker reached before warning")
+				if runtimeMutations(d) != before {
+					t.Fatal("mutated before explanation")
 				}
-				return nil
-			}
-			d.Attached = func(_ context.Context, c docker.Command) error {
-				if c.Stdin != nil {
-					data, err := io.ReadAll(c.Stdin)
-					if err != nil {
-						return err
-					}
-					if strings.Contains(string(data), "entrypoint-marker") {
-						_, err = io.WriteString(c.Stdout, "entrypoint output\n")
-						return err
-					}
+				if _, err := os.Stat(live); !os.IsNotExist(err) {
+					t.Fatal("synced before explanation", err)
 				}
-				return nil
-			}
-			openCtx, cancel := context.WithTimeout(ctx, 750*time.Millisecond)
-			result, err = e.Open(openCtx, q)
-			cancel()
-			if mode == "recovery" {
-				if err == nil || count(d, "create") != 1 || count(d, "build") != 2 || strings.Contains(output.String(), "entrypoint output") {
-					t.Fatal("missing-container access rebuilt or ran hooks", err)
+				if change != "runtime" && !strings.Contains(diagnostic.Message, "Container-local changes will be lost") {
+					t.Fatal("missing replacement warning")
 				}
-				if _, err := os.Stat(liveFile); !os.IsNotExist(err) {
-					t.Fatal("missing-container access synchronized config", err)
-				}
-				if len(emitted) != 1 || emitted[0].Code != "creation_drift" {
-					t.Fatal("creation warning missing or duplicated", emitted)
-				}
-				return
+				plans++
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "creation_drift" {
-				t.Fatal("typed warning missing", result)
-			}
-			if len(emitted) != 1 || !reflect.DeepEqual(emitted, result.Diagnostics) || !strings.Contains(output.String(), "skipping non-regular") || !strings.Contains(output.String(), "entrypoint output") {
-				t.Fatal("warning duplicated or subsequent output lost", output.String())
-			}
-			if string(getFile(t, liveFile)) != "new config" {
-				t.Fatal("open did not continue with synchronization")
+			result, err := e.Recreate(ctx, q, false)
+			if err != nil || plans != 1 || len(result.Diagnostics) != 1 {
+				t.Fatal(result, err)
 			}
 		})
 	}
 }
 
-func TestOpenCancelledAfterCreationWarningDoesNotMutate(t *testing.T) {
+func TestCancelledApplicationPlanDoesNotMutate(t *testing.T) {
 	e, d, q := fixture(t)
-	result, err := createAndOpen(context.Background(), e, q)
+	made, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host"}`)
-	p, _ := e.Store.RecordPath(sessionRecord(t, e, result.SessionID).Directory)
-	beforeRecord := string(getFile(t, p))
-	beforeCalls := len(d.History())
+	write(t, filepath.Join(q.Sources[0].Path, "config.json"), `{"harness":"pi","network":"host"}`)
+	r := sessionRecord(t, e, made.SessionID)
+	path, _ := e.Store.RecordPath(r.Directory)
+	beforeRecord, before := string(getFile(t, path)), runtimeMutations(d)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	e.OnDiagnostic = func(diagnostic Diagnostic) {
-		if diagnostic.Code == "creation_drift" {
-			cancel()
-		}
+	e.OnDiagnostic = func(Diagnostic) { cancel() }
+	if _, err := e.Recreate(ctx, q, false); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
 	}
-	result, err = e.Open(ctx, q)
-	if !errors.Is(err, context.Canceled) || len(result.Diagnostics) != 1 {
-		t.Fatal("open ignored cancellation", result, err)
-	}
-	if len(d.History()) != beforeCalls || string(getFile(t, p)) != beforeRecord {
-		t.Fatal("cancelled open changed Docker or the session record")
+	if runtimeMutations(d) != before || string(getFile(t, path)) != beforeRecord {
+		t.Fatal("cancelled apply changed runtime or record")
 	}
 	lockCtx, stop := context.WithTimeout(context.Background(), time.Second)
 	defer stop()
-	lock, err := e.Store.Lock(lockCtx, sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).ID)
+	lock, err := e.Store.Lock(lockCtx, r.Directory, r.ID)
 	if err != nil {
-		t.Fatal("cancelled open leaked operation lock", err)
+		t.Fatal("apply leaked lock", err)
 	}
 	lock.Close()
-}
-
-func TestOpenWithoutCreationDriftDiagnostics(t *testing.T) {
-	e, _, q := fixture(t)
-	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi"}`)
-	if _, err := createAndOpen(context.Background(), e, q); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := e.Start(context.Background(), q.Workspace, q.LocalName); err != nil {
-		t.Fatal(err)
-	}
-	for _, change := range []string{"unchanged", "runtime-only", "runtime-deferred"} {
-		switch change {
-		case "runtime-only":
-			write(t, filepath.Join(e.Store.Home, "profiles/test/before-open.sh"), "echo runtime-only")
-		case "runtime-deferred":
-			write(t, filepath.Join(e.Store.Home, "profiles/test/pi/new-file"), "deferred config")
-		}
-		result, err := e.Open(context.Background(), q)
-		if err != nil {
-			t.Fatal(change, err)
-		}
-		if change == "runtime-deferred" {
-			if len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "runtime_deferred" {
-				t.Fatal("deferred config warning missing", result)
-			}
-		} else if len(result.Diagnostics) != 0 {
-			t.Fatal("unexpected drift warning", result)
-		}
-	}
 }

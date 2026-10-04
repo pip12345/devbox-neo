@@ -30,7 +30,7 @@ The same gate offers a separate folder-default conversion for the preceding per-
 
 Records contain public settings, paths, modes, and hashes, not file contents or env/auth values. Raw env diagnostics are redacted. Records are atomically replaced with restrictive permissions; invalid records remain errors rather than being treated as missing.
 
-Creation/recreation commits image and container baselines. `Record.ApplyRuntime` advances runtime inputs with their fingerprint at application commit points. Status and warning generation never alter either baseline.
+Container creation/replacement commits image and container baselines. `Record.ApplyRuntime` advances runtime inputs with their fingerprint at application commit points. Status and warning generation never alter either baseline.
 
 ## Locks and leases
 
@@ -108,9 +108,9 @@ Selection filters intersect. Age uses recorded activity, and unknown activity is
 
 Both endpoint operation locks are acquired in sorted order. Ordinary `Locked.Load` rejects pending work, while inventory and transfer operations can inspect it. Pending lookup scans unfinished journals; corrupt journals fail mutations closed because endpoint reservations cannot be trusted.
 
-The journal stores endpoint identities, session IDs, mode/phase, intended running state, and destination fingerprints. It contains no env/auth values. Destination creation uses the allocated ID, so retries cannot create a different session.
+The journal stores endpoint identities, session IDs, mode/phase, and intended running state. It contains no env/auth values. Destination creation uses the allocated ID, so retries cannot create a different session.
 
-Journal schema 3 pins endpoint directories, bindings, IDs, the source container ID, and the separately allocated destination container name. `--as` may select another name in the same or a different folder; otherwise preserve the source name. Retry guidance uses exact source ID, destination workspace, and `--as`, without resolving a changed default.
+Journal schema 4 pins endpoint directories, bindings, IDs, the source container ID, and the separately allocated destination container name. The consent gate converts schema-3 journals by removing obsolete config fingerprints while preserving all transaction intent and commitment. It preflights the journals and idle endpoint lock set before publishing; no runtime or session data changes. `--as` may select another name in the same or a different folder; otherwise preserve the source name. Retry guidance uses exact source ID, destination workspace, and `--as`, without resolving a changed default.
 
 Internal modes are `clone` for `copy` and `relocate` for `copy --move`. Harness capabilities and JSON output use these same values.
 
@@ -133,7 +133,9 @@ OpenCode's database contains cached credentials and is transferred unchanged. It
 
 Destination resolution preserves the source reference order and kind. Relative references expand against the destination workspace; fixed references stay absolute. Config directories are not copied. Resolution uses the normal configuration pipeline. Image building, synchronization, setup, and runtime installation follow ordinary creation. `copy` leaves the destination stopped; `copy --move` restores the source's original running intent at the destination.
 
-If preparation fails, bounded rollback cleans the destination, restores the source image tag after a relocation build, and restarts a previously running source. The journal remains pending. A preparation retry requires matching destination fingerprints and recopies the authoritative source because rollback may have restarted it and allowed its state to change.
+If preparation fails, bounded rollback cleans the destination, restores the source image tag after a relocation build, and restarts a previously running source. The journal remains pending. A preparation retry resolves current config and recopies the authoritative source because rollback may have restarted it and allowed its state to change. Config repair must not be rejected as a changed transfer contract; only endpoints, mode and source identity stay pinned.
+
+An explicit `copy <source-id> --abort` can abandon preparation without resolving config or loading current harness definitions. It requires idle endpoints and intact source stores, verifies/removes the destination attempt, restores source running intent and only then removes the journal. Failure retains the reservation for retry. It never aborts commitment. Corrupt journals identify their path and fail closed rather than guessing endpoints or deleting a reservation.
 
 ### Committed: destination is authoritative
 

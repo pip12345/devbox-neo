@@ -21,7 +21,7 @@ Docker daemon or try to manage this container from inside it.
 ## Tools and files
 
 - Install missing development tools here; sudo is available.
-- Container-local installations survive stop/start, but not recreation. Workspace
+- Container-local installations survive stop/start, but not container replacement. Workspace
   files and declared harness stores persist. Other writable paths may not.
 - Do not add Dockerfiles or change persistent environment config without approval.
   Image customization belongs in the selected host config's docker/Dockerfile;

@@ -15,7 +15,7 @@ import (
 	"devbox/internal/resource"
 )
 
-func TestExplicitWorkspaceSourceIsUsedByEveryAccessPath(t *testing.T) {
+func TestSelectedSourcesAreAppliedExplicitlyNotDuringAccess(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
 	dir := filepath.Join(q.Workspace, ".devbox")
@@ -56,8 +56,11 @@ func TestExplicitWorkspaceSourceIsUsedByEveryAccessPath(t *testing.T) {
 	if err = os.Remove(filepath.Join(dir, "config.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Open(ctx, Request{Workspace: made.SessionID}); err == nil {
-		t.Fatal("missing recorded project source was ignored")
+	if _, err = e.Open(ctx, Request{Workspace: made.SessionID}); err != nil {
+		t.Fatal("missing desired source blocked applied access", err)
+	}
+	if _, err = e.Recreate(ctx, Request{Workspace: made.SessionID}, false); err == nil {
+		t.Fatal("explicit apply ignored a missing selected source")
 	}
 }
 
@@ -109,8 +112,17 @@ func TestProfileAndProjectScriptsRunInOrderAndStopOnFailure(t *testing.T) {
 			}
 			var hooks []string
 			d.Attached = func(_ context.Context, c docker.Command) error {
+				var data []byte
 				if c.Stdin != nil {
-					data, _ := io.ReadAll(c.Stdin)
+					data, _ = io.ReadAll(c.Stdin)
+				} else if len(c.Args) >= 2 && c.Args[len(c.Args)-2] == "bash" {
+					for _, installed := range d.Hooks {
+						if b, ok := installed[c.Args[len(c.Args)-1]]; ok {
+							data = b
+						}
+					}
+				}
+				if data != nil {
 					hooks = append(hooks, string(data))
 					if fail && string(data) == "profile open" {
 						return os.ErrPermission

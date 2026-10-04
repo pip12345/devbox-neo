@@ -58,12 +58,11 @@ func (e *Engine) SSH(ctx context.Context, target, localName, destination string,
 			err = errors.Join(err, e.stopUnattached(l, r))
 		}
 	}()
-	result := Result{SessionID: r.ID}
-	c, started, err = e.startAccess(ctx, l, c, exists, &r, nil, &result)
+	c, started, err = e.startAccess(ctx, l, c, exists, r)
 	if err != nil {
 		return err
 	}
-	if err = e.installRuntime(ctx, r); err != nil {
+	if err = e.refreshNetwork(ctx, r); err != nil {
 		return err
 	}
 	connection, err := sshshare.Prepare(root, destination)

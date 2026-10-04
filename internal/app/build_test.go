@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"devbox/internal/docker"
+	"devbox/internal/environment"
 )
 
 func TestLayeredBuildUsesTypedPlans(t *testing.T) {
@@ -118,7 +119,7 @@ func TestLayeredBuildCleansBaseTagAfterRuntimeFailure(t *testing.T) {
 	}
 	t.Fatal("intermediate tag was not cleaned up after runtime failure")
 }
-func TestSeedingHigherPriorityDockerfileWarnsWithoutReplacement(t *testing.T) {
+func TestNewDockerfileRemainsPendingUntilExplicitApplication(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi"}`)
@@ -132,7 +133,10 @@ func TestSeedingHigherPriorityDockerfileWarnsWithoutReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.SessionID != result.SessionID || count(d, "create") != 1 || count(d, "build") != 2 || len(result.Diagnostics) == 0 {
+	if first.SessionID != result.SessionID || count(d, "create") != 1 || count(d, "build") != 2 || len(result.Diagnostics) != 0 {
 		t.Fatal("Dockerfile seeding did not remain non-destructive drift")
+	}
+	if status, err := e.Status(ctx, result.SessionID, ""); err != nil || status.Desired != environment.RebuildAndRecreate {
+		t.Fatal(status, err)
 	}
 }

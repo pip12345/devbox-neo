@@ -74,12 +74,26 @@ func printDefaultErrors(out io.Writer, issues map[string]string) error {
 
 func transferCommand(factory engineFactory, name *string) *cobra.Command {
 	var options app.TransferOptions
-	var asJSON, move bool
+	var asJSON, move, abort bool
 	description := "Copy session state to another folder or local name"
-	cmd := &cobra.Command{Use: "copy <folder|session-id> [destination-folder]", Short: description, Long: description + ".\nBy default, keep the source and leave the destination stopped.\nWith --move, remove the source after the destination is ready and preserve its running intent.\nUse --as NAME to choose another destination name, including within the same folder.\nRetry the same command to resume an interrupted transfer.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "copy <folder|session-id> [destination-folder]", Short: description, Long: description + ".\nBy default, keep the source and leave the destination stopped.\nWith --move, remove the source after the destination is ready and preserve its running intent.\nUse --as NAME to choose another destination name, including within the same folder.\nRetry with current config to prepare an uncommitted transfer, or use --abort with its exact source ID. Committed retries only finish cleanup.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
+		if abort && (len(args) != 1 || move || options.As != "" || options.DryRun || *name != "") {
+			return fmt.Errorf("--abort requires only the source session ID; do not combine it with a destination, --move, --as, --name, or --dry-run")
+		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
+		}
+		if abort {
+			result, err := e.AbortTransfer(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
+			}
+			cmd.Printf("Aborted uncommitted transfer. Source session retained: %s\n", result.Source)
+			return nil
 		}
 		options.Mode = "clone"
 		if move {
@@ -107,6 +121,7 @@ func transferCommand(factory engineFactory, name *string) *cobra.Command {
 		}
 		return nil
 	}}
+	cmd.Flags().BoolVar(&abort, "abort", false, "Abandon an uncommitted transfer; discard its destination attempt and retain the source")
 	cmd.Flags().BoolVar(&move, "move", false, "Remove the source after the destination is ready")
 	cmd.Flags().StringVar(&options.As, "as", "", "Destination local name (default: preserve the source name)")
 	cmd.Flags().BoolVar(&options.DryRun, "dry-run", false, "Preview without copying session data")

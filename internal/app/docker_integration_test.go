@@ -211,8 +211,8 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "creation_drift" {
-		t.Fatal("missing non-blocking drift warning")
+	if len(result.Diagnostics) != 0 || sessionRecord(t, e, result.SessionID).Applied.SetupContainer != first.Applied.SetupContainer {
+		t.Fatal("open resolved or applied pending configuration")
 	}
 	if _, err = e.Recreate(ctx, q, false); err != nil {
 		t.Fatal(err)

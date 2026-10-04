@@ -59,8 +59,10 @@ type AppliedState struct {
 	Merge        []harness.Merge          `json:"config_merge"`
 	Prepare      [][]string               `json:"prepare"`
 	Launch       Launch                   `json:"launch"`
-	// Setup is captured only for the current materialization, never restored.
+	// Script bytes exist only during materialization; before-open copies live
+	// in the container and their ordered hashes already belong to Inputs.
 	Setup           []environment.Hook `json:"-"`
+	BeforeOpen      []environment.Hook `json:"-"`
 	SetupContainer  string             `json:"setup_container"`
 	Ownership       int                `json:"ownership_version"`
 	ManifestVersion int                `json:"manifest_version"`
@@ -68,8 +70,8 @@ type AppliedState struct {
 
 const RecordVersion = 7
 
-// Runtime synchronization must advance its explanation baseline together with
-// its fingerprint. Image/container inputs remain committed until recreation.
+// Explicit runtime application advances its explanation baseline together with
+// its fingerprint. Ordinary access never advances applied configuration.
 func (r *Record) ApplyRuntime(inputs environment.RuntimeInputs) {
 	r.Applied.Inputs.Runtime = inputs
 	r.Applied.Fingerprints.Runtime = inputs.Fingerprint()

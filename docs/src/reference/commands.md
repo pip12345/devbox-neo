@@ -35,14 +35,14 @@ These browsers require terminal input/output. Otherwise, including `TERM=dumb`, 
 | `shell <target>` | Open a shell in `/workspace` |
 | `exec <target> -- <argv...>` | Run a command without implicit shell parsing |
 | `logs <target> [-f] [--tail N\|all]` | Docker logs; default tail `100` |
-| `recreate <target> [--image]` | Apply current config by replacing the container |
-| `recreate --all [--image]` | Recreate all managed containers |
+| `recreate <target> [--container] [--image]` | Apply current config; replace container/image only as needed |
+| `recreate --all [--container] [--image]` | Apply current config to all managed containers |
 
 Creation selects a folder default only when requested and never launches the harness. In a terminal, missing name/config inputs open the creation form; scripts must supply both. Container settings belong in configs, not `create` flags.
 
 Only `recreate` replaces a missing container; `open`, `start`, `shell`, `exec`, and `ssh` do not.
 
-Recreation preserves saved harness state and running intent, but **loses container-local files and tools**. `--image` disables build cache. Docker logs are not harness conversation transcripts.
+Recreate keeps saved history and the previous running/stopped state, but may briefly restart the container. **Container replacement loses local files and tools.** `--container` forces replacement; `--image` also forces an uncached image build. Open and stop/start do not apply config edits. Docker logs are not harness conversation transcripts.
 
 ### Creation and launch options
 
@@ -116,10 +116,7 @@ The browser offers Make/Clear folder default in the session menu. Selection does
 
 When **Migration required** appears, **Migrate** updates the selected home and continues your command only after success. **Exit** leaves it unchanged.
 
-Review the listed effects before agreeing:
-
-- **Folder-default update:** preserves selected defaults; containers and history are unchanged.
-- **Docker runtime update for older installations:** removes affected containers, so **container-local files and tools are lost**. Saved sessions, harness history, configs, auth, caches and defaults remain. Use `recreate` afterward.
+Review the screen's listed effects before agreeing. **Some migrations remove containers and their local files/tools.** The screen explains what is kept and any required next steps.
 
 Follow the screen's prerequisites and close other Devbox commands before migrating. Do not use older builds with the updated home. If migration fails, fix the reported problem and retry. Scripts and `--json` calls cannot approve migration; run `dbx` in a terminal with the same home. Help, version and completion remain available. Migration does not import old Devbox data.
 
@@ -150,7 +147,7 @@ Requires a foreground host terminal for authentication. Multiple destinations ma
 | `network connect <network> <target>` | Attach an existing secondary network |
 | `network disconnect <network> <target>` | Detach a secondary network |
 
-Attachments survive stop/start, not recreation. The primary network cannot be detached. Host networking rejects port publishing and secondary attachments. Devbox does not create user networks.
+Attachments survive stop/start, but not container replacement. The primary network cannot be detached. Host networking rejects port publishing and secondary attachments. Devbox does not create user networks.
 
 Exports include `DEVBOX_HOST`, `DEVBOX_NETWORK`, `DEVBOX_PRIMARY_NETWORK`, and `DEVBOX_DEFAULT_GATEWAY_IP`. Container copies live under `/devbox/network/` and refresh during Devbox access/preparation and network changes.
 
@@ -158,6 +155,7 @@ Exports include `DEVBOX_HOST`, `DEVBOX_NETWORK`, `DEVBOX_PRIMARY_NETWORK`, and `
 
 ```sh
 dbx copy <target> [destination-folder] [--as NAME] [--move]
+dbx copy <source-session-id> --abort [--json]
 dbx rename <target> --to NAME [--dry-run] [--json]
 ```
 
@@ -166,14 +164,17 @@ dbx rename <target> --to NAME [--dry-run] [--json]
 | `--name NAME` | Source session within a folder target |
 | `--as NAME` | Destination local name; otherwise retain the source name |
 | `--move` | Remove the source after the destination is ready |
+| `--abort` | Discard an incomplete copy and keep the source |
 | `--dry-run` | Preview without transferring |
 | `--json` | Structured result |
 
-Omitting the destination keeps the source workspace. The destination must be unused, both endpoints idle, and destination configs available. Copy requires a stopped/absent source and leaves the destination stopped; Move preserves running intent.
+Omitting the destination keeps the source workspace. Starting a transfer requires an unused destination, no active commands in either session, and valid destination configs. Copy requires a stopped/absent source and leaves the destination stopped; Move preserves its running/stopped state.
 
 Only declared harness state transfers. Project/config files, container-local tools, auth, caches, and live connections do not. Relative config references follow the destination; fixed ones keep their paths. Neither operation selects a destination default.
 
-For interrupted transfers, fix the reported problem and retry the same command. Keep pending state and destination config in place until recovery finishes. JSON uses `clone` for Copy and `relocate` for Move.
+`--abort` is available only before the destination is ready. It requires the exact source ID and cannot combine with a destination, `--as`, `--move`, `--name`, or `--dry-run`. Otherwise, fix the error and retry the original transfer command.
+
+JSON uses `clone` for Copy and `relocate` for Move; successful abort adds `aborted: true`.
 
 `rename --to NAME` changes only the session label; storage, container, history, and default are unchanged. It accepts `--name` for source selection, `--dry-run`, and `--json`, and runs without prompting.
 

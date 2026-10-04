@@ -32,6 +32,7 @@ type TransferResult struct {
 	Mode            string             `json:"mode"`
 	SessionID       string             `json:"session_id"`
 	DryRun          bool               `json:"dry_run"`
+	Aborted         bool               `json:"aborted,omitempty"`
 	Workspace       string             `json:"workspace"`
 	LocalName       string             `json:"local_name"`
 	Sources         []config.Reference `json:"sources"`
@@ -141,7 +142,11 @@ func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode 
 }
 
 func transferFailure(j store.Transfer, err error) error {
-	return commanderror.New("transfer_failed", fmt.Sprintf("Session %s failed: %v", store.TransferCommand(j.Mode), err), j.Source.Name, err, j.RetryStep())
+	steps := []commanderror.Step{j.RetryStep()}
+	if j.Phase == "prepare" {
+		steps = append(steps, commanderror.Next("Or abandon the uncommitted transfer", "copy", j.SourceID, "--abort"))
+	}
+	return commanderror.New("transfer_failed", fmt.Sprintf("Session %s failed: %v", store.TransferCommand(j.Mode), err), j.SourceID, err, steps...)
 }
 
 // Transfer has two durable phases: source-authoritative preparation, then
@@ -277,7 +282,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if err != nil {
 		return result, err
 	}
-	if source.Settings.Binding != sourceIdentity.Binding || source.ID != sourceID {
+	if source.Settings.Binding != sourceIdentity.Binding || source.ID != sourceID || (journal != nil && source.Applied.SetupContainer != journal.SourceContainerID) {
 		return result, fmt.Errorf("source identity changed during transfer selection")
 	}
 	c, exists, err := e.inspect(ctx, source)
@@ -311,8 +316,9 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	} else if source.ID != journal.SourceID {
 		return result, fmt.Errorf("source session identity differs from journal")
 	}
-	// Before the authority switch, retry always recopies the source. A bounded
-	// rollback may have restarted it, so an earlier snapshot can no longer win.
+	// Before commitment the source remains authoritative. Retry resolves current
+	// config and recopies the source after clearing the owned destination attempt;
+	// only endpoints and intent stay pinned, not the inputs being repaired.
 	if journal != nil {
 		if err = e.verifyReservation(destLock, *journal); err != nil {
 			return result, err
@@ -335,15 +341,12 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if err = e.Docker.Network(ctx, spec.Settings.Network); err != nil {
 		return result, err
 	}
-	if journal != nil && journal.Desired != spec.Fingerprints {
-		return result, fmt.Errorf("destination inputs changed during pending transfer.\nRestore them before retrying the same transfer command.")
-	}
 	if journal == nil {
 		nonce, idErr := fsutil.ID()
 		if idErr != nil {
 			return result, idErr
 		}
-		journal = &store.Transfer{Version: 3, ContainerName: environment.ResourceName(destinationIdentity.Workspace, destinationIdentity.LocalName, nonce), ID: nonce, Mode: q.Mode, Phase: "prepare", Source: sourceIdentity, SourceContainerID: source.Applied.SetupContainer, Destination: destinationIdentity, SourceID: source.ID, DestinationID: destinationID, Running: q.Mode == "relocate" && (source.Settings.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.Settings.ManualStart, Started: time.Now().UTC(), Desired: spec.Fingerprints}
+		journal = &store.Transfer{Version: 4, ContainerName: environment.ResourceName(destinationIdentity.Workspace, destinationIdentity.LocalName, nonce), ID: nonce, Mode: q.Mode, Phase: "prepare", Source: sourceIdentity, SourceContainerID: source.Applied.SetupContainer, Destination: destinationIdentity, SourceID: source.ID, DestinationID: destinationID, Running: q.Mode == "relocate" && (source.Settings.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.Settings.ManualStart, Started: time.Now().UTC()}
 	}
 	result = transferResult(*journal, q.DryRun)
 	result.Sources, result.ResolvedSources = spec.Sources, spec.ResolvedSources
@@ -425,20 +428,35 @@ func (e *Engine) clearTransferAttempt(ctx context.Context, destination *store.Lo
 	if err := e.verifyReservation(destination, j); err != nil {
 		return err
 	}
-	c, exists, err := e.Docker.Inspect(ctx, j.ContainerName)
-	if err != nil {
-		return err
-	}
 	record, readErr := destination.ReadRecord(ctx)
+	var c docker.Container
+	var exists bool
+	var err error
 	if readErr == nil {
 		if record.ID != j.DestinationID {
 			return fmt.Errorf("destination identity differs from transfer")
 		}
-		if exists && (c.Image != record.Applied.ImageID || c.ID != record.Applied.SetupContainer) {
-			return fmt.Errorf("destination instance differs from its record")
+		// A recorded instance remains authoritative after a Docker rename.
+		c, exists, err = e.inspect(ctx, record)
+	} else if os.IsNotExist(readErr) {
+		c, exists, err = e.Docker.Inspect(ctx, j.ContainerName)
+		if err != nil {
+			return err
 		}
-	} else if !os.IsNotExist(readErr) {
+		live, inventoryErr := e.Docker.Inventory(ctx, e.Store.Installation)
+		if inventoryErr != nil {
+			return inventoryErr
+		}
+		for _, other := range live {
+			if other.Config.Labels[docker.Namespace+".session"] == j.DestinationID && other.ID != j.SourceContainerID && other.ID != c.ID {
+				return fmt.Errorf("unrecorded destination container exists under another name; refusing to remove its backing state")
+			}
+		}
+	} else {
 		return readErr
+	}
+	if err != nil {
+		return err
 	}
 	if exists {
 		owner := docker.Owner{Installation: e.Store.Installation, Session: j.DestinationID, Workspace: j.Destination.Workspace, LocalName: j.Destination.LocalName}

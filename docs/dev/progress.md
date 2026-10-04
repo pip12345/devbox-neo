@@ -8,6 +8,13 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Explicit config application and transfer recovery — implemented, live acceptance pending
+
+- Access uses recorded runtime without resolving desired config or synchronizing managed files. Applied before-open scripts live in the container; missing copies require explicit application, while Shell/Exec remain available. Session schema 7 is unchanged.
+- Recreate applies runtime-only changes in place, replaces containers only when needed or requested with `--container`, and retains `--image` for forced uncached builds. Plans precede mutation; running intent, ownership and idle checks remain shared across CLI/menu/bulk paths.
+- Uncommitted transfers retry with current config or support explicit Abort; committed transfers remain cleanup-only. The consent gate converts preceding transfer journals without touching runtime/history. Corrupt-journal errors identify the blocking file; no automatic discard or generic repair was added.
+- Corrected validation tests that previously stopped at missing-session lookup and added access/application/abort/migration coverage. User docs retain actions, syntax and warnings; implementation and upgrade details stay in contributor docs. The full fast-suite equivalent, vet, integration compilation, CLI build/help and documentation links pass. No migration has run against user state. Live Docker and manual terminal acceptance remain unrun; race checks require a C compiler.
+
 ## Harness install files and OpenCode auth — implemented, live acceptance pending
 
 - `install.script` captures harness-owned installation files into the image and recorded definition digest. OpenCode's installer and auth wrapper are installed together, outside the runtime documentation bundle.

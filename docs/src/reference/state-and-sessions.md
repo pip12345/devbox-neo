@@ -9,7 +9,7 @@ A session saves an environment's identity and harness state. Its container can b
 | Project files | Retained on host | Retained on host | Not copied |
 | Declared session harness stores | Retained | Retained | Copied |
 | Managed auth and shared caches | Retained separately | Retained separately | Not copied; destination uses managed auth/caches |
-| Container-local files/tools | Retained | Lost | Not copied |
+| Container-local files/tools | Retained | Lost only if container is replaced | Not copied |
 | Live SSH connections | End when controller/container stops | Not retained | Not copied |
 
 `delete --container` keeps saved state and its folder default. `delete --session` also removes saved history and the session image tag, clearing a matching default. Neither deletes project files, configs, managed auth, or caches.
@@ -34,7 +34,7 @@ Paths below are relative to the selected home. Use Devbox commands to manage ses
 | `state/transfers/<source-directory>.json` | Pending transfer |
 | `state/locks/` | Installation, config, folder, and session locks |
 
-Pending transfers reserve both endpoints. Retry the reported command; do not delete their files to unblock another operation. [State architecture](../architecture/state.md) documents file schemas, keys, and locking.
+Finish or abort pending transfers with the [transfer commands](commands.md#transfers), rather than deleting their files.
 
 ## Built-in storage mappings
 

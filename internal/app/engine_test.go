@@ -109,11 +109,8 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "creation_drift" || count(d, "create") != 1 {
-		t.Fatal("drift must warn without recreate")
-	}
-	if !slices.Equal(result.Diagnostics[0].Command, []string{"dbx", "recreate", result.SessionID}) {
-		t.Fatal("drift hint uses the wrong executable")
+	if len(result.Diagnostics) != 0 || count(d, "create") != 1 {
+		t.Fatal("access must not resolve desired drift or recreate")
 	}
 	if sessionRecord(t, e, result.SessionID).Applied.Creation.Network != "default" {
 		t.Fatal("drift advanced recorded creation settings")
@@ -162,14 +159,14 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 func TestInvalidDesiredHarnessJSONDoesNotTouchDocker(t *testing.T) {
 	e, d, q := fixture(t)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/pi/settings.json"), "invalid")
-	if _, err := e.Open(context.Background(), q); err == nil {
-		t.Fatal("invalid desired JSON accepted")
+	if _, err := e.Create(context.Background(), q); err == nil || !strings.Contains(err.Error(), "desired settings.json") {
+		t.Fatal("invalid desired JSON did not reach validation", err)
 	}
 	if len(d.History()) != 0 {
 		t.Fatal("invalid harness config reached Docker before validation")
 	}
 }
-func TestInvalidConfigBlocksStartupButNotRunningAccess(t *testing.T) {
+func TestInvalidConfigDoesNotBlockStoppedOrRunningAccess(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	result, err := createAndOpen(ctx, e, q)
@@ -178,29 +175,13 @@ func TestInvalidConfigBlocksStartupButNotRunningAccess(t *testing.T) {
 	}
 	path := filepath.Join(e.Store.Home, "profiles/test/config.json")
 	write(t, path, "{broken")
-	before := len(d.History())
-	if _, err = e.Open(ctx, q); err == nil {
-		t.Fatal("invalid config accepted")
+	for _, action := range []string{"open", "exec", "shell", "start", "open", "exec"} {
+		if err := accessAction(ctx, e, q, result.SessionID, action); err != nil {
+			t.Fatal(action, err)
+		}
 	}
-	if len(d.History()) != before {
-		t.Fatal("invalid resolution touched Docker")
-	}
-	if _, err = e.Start(ctx, result.SessionID, ""); err == nil {
-		t.Fatal("stopped startup ignored invalid config")
-	}
-	if err = e.Exec(ctx, result.SessionID, "", []string{"true"}, false); err == nil {
-		t.Fatal("exec startup ignored invalid config")
-	}
-	write(t, path, `{"version":1,"harness":"pi"}`)
-	if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
-		t.Fatal(err)
-	}
-	write(t, path, "{broken")
-	if err = e.Exec(ctx, result.SessionID, "", []string{"true"}, false); err != nil {
-		t.Fatal(err)
-	}
-	if count(d, "build") != 2 {
-		t.Fatal("escape commands loaded desired config")
+	if count(d, "build") != 2 || count(d, "create") != 1 {
+		t.Fatal("access replaced runtime")
 	}
 }
 func TestRecreateUsesCurrentDefinitionAndSettings(t *testing.T) {
@@ -241,7 +222,7 @@ func TestRecreateUsesCurrentDefinitionAndSettings(t *testing.T) {
 		t.Fatal("default lost", err)
 	}
 }
-func TestRunningManagedConfigIsDeferred(t *testing.T) {
+func TestManagedConfigWaitsForExplicitApply(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	path := filepath.Join(e.Store.Home, "profiles/test/config.json")
@@ -265,11 +246,8 @@ func TestRunningManagedConfigIsDeferred(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "runtime_deferred" {
-		t.Fatal("missing deferral")
-	}
-	if !slices.Equal(result.Diagnostics[0].Command, []string{"dbx", "stop", result.SessionID}) {
-		t.Fatal("deferral hint uses the wrong executable")
+	if len(result.Diagnostics) != 0 {
+		t.Fatal("access inspected desired config")
 	}
 	after, _ := os.ReadFile(manifest)
 	if !bytes.Equal(before, after) || sessionRecord(t, e, result.SessionID).Applied.Fingerprints.Runtime != first.Applied.Fingerprints.Runtime {
@@ -281,6 +259,12 @@ func TestRunningManagedConfigIsDeferred(t *testing.T) {
 	if _, err = e.Open(ctx, q); err != nil {
 		t.Fatal(err)
 	}
+	if strings.Contains(string(getFile(t, live)), "new") {
+		t.Fatal("stopped access applied desired files")
+	}
+	if _, err := e.Recreate(ctx, q, false); err != nil {
+		t.Fatal(err)
+	}
 	b, _ := os.ReadFile(live)
 	if !strings.Contains(string(b), "new") || !strings.Contains(string(b), "user-owned") {
 		t.Fatalf("key merge failed: %s", b)
@@ -289,7 +273,7 @@ func TestRunningManagedConfigIsDeferred(t *testing.T) {
 		t.Fatal("runtime sync recreated container")
 	}
 }
-func TestRuntimeOnlyChangesDoNotClaimFileDeferral(t *testing.T) {
+func TestHookChangesRemainPendingUntilExplicitApply(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi"}`)
@@ -318,8 +302,8 @@ func TestRuntimeOnlyChangesDoNotClaimFileDeferral(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sessionRecord(t, e, result.SessionID).Applied.Fingerprints.Runtime != desired.Fingerprints.Runtime {
-		t.Fatal("successful runtime-only update not recorded")
+	if sessionRecord(t, e, result.SessionID).Applied.Fingerprints.Runtime == desired.Fingerprints.Runtime {
+		t.Fatal("open applied changed hooks")
 	}
 }
 func TestOwnershipAndDaemonErrorsFailClosed(t *testing.T) {
@@ -551,7 +535,7 @@ func TestRecordedValuesNeverPersistHarnessEnv(t *testing.T) {
 	}
 	write(t, filepath.Join(e.Store.Home, "harnesses/custom/harness.json"), strings.Replace(def, "sentinel-secret", `multi\nline`, 1))
 	before := len(d.History())
-	if _, err := e.Open(context.Background(), q); err == nil {
+	if _, err := e.Recreate(context.Background(), q, false); err == nil {
 		t.Fatal("unsupported multiline transport accepted")
 	}
 	if len(d.History()) != before {
@@ -580,7 +564,7 @@ func TestHookFailureStopsNewlyStartedContainer(t *testing.T) {
 	ctx := context.Background()
 	write(t, filepath.Join(e.Store.Home, "profiles/test/before-open.sh"), "exit 19")
 	d.Fail = func(a []string) error {
-		if a[0] == "exec" && a[len(a)-1] == "-s" {
+		if a[0] == "exec" && argvSuffix(a, []string{"bash", docker.OpenHookPath(environment.Digest([]byte("exit 19")))}) {
 			return &docker.ExitError{Code: 19, Operation: "exec"}
 		}
 		return nil

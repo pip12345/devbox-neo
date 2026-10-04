@@ -55,9 +55,7 @@ Config directories themselves are not copied. [Reference rules](../reference/con
 
 ## Apply your changes
 
-Saving settings or config selections does not replace a container. Choose **Status** in the session menu to see what needs applying.
-
-Managed harness files apply when the container next starts. Container settings and build changes need **Recreate**. Recreation preserves saved harness state but loses files and tools stored only inside the container.
+Saving edits does not apply them. Choose **Status**, then **Recreate** in the session menu. **Container replacement loses local files and tools**, but preserves harness history and project files. See [Recreate options](managing-environments.md#apply-configuration-changes).
 
 If you no longer need a named config, use **Delete config** in its editor. Devbox refuses while sessions still use it. Follow the listed sessions to remove the dependency first.
 

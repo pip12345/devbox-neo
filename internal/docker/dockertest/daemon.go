@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -19,14 +20,16 @@ import (
 // Daemon is a stateful command-boundary fake. It deliberately rejects operations
 // not covered by the lifecycle contract instead of returning generic success.
 type Daemon struct {
-	mu         sync.Mutex
-	Calls      [][]string
-	Containers map[string]docker.Container
-	Images     map[string]docker.Image
-	Volumes    map[string]bool
-	Sequence   int
-	Fail       func([]string) error
-	Attached   func(context.Context, docker.Command) error
+	mu          sync.Mutex
+	Calls       [][]string
+	Containers  map[string]docker.Container
+	Images      map[string]docker.Image
+	Volumes     map[string]bool
+	Hooks       map[string]map[string][]byte
+	stagedHooks map[string]map[string][]byte
+	Sequence    int
+	Fail        func([]string) error
+	Attached    func(context.Context, docker.Command) error
 }
 
 func (d *Daemon) Run(ctx context.Context, c docker.Command) error {
@@ -53,7 +56,11 @@ func (d *Daemon) Run(ctx context.Context, c docker.Command) error {
 	a := c.Args
 	if len(a) > 0 && a[0] == "exec" && d.Attached != nil {
 		handler := d.Attached
+		_, err := d.run(a)
 		d.mu.Unlock()
+		if err != nil {
+			return err
+		}
 		return handler(ctx, c)
 	}
 	output, err := d.run(a)
@@ -307,6 +314,8 @@ func (d *Daemon) run(a []string) (string, error) {
 						return "", fmt.Errorf("cannot remove running container")
 					}
 					delete(d.Containers, name)
+					delete(d.Hooks, id)
+					delete(d.stagedHooks, id)
 				} else {
 					c.State.Running = a[0] == "start"
 					c.State.Status = "exited"
@@ -320,8 +329,55 @@ func (d *Daemon) run(a []string) (string, error) {
 		}
 		return "", fmt.Errorf("container missing")
 	case "exec":
+		id := ""
+		for _, c := range d.Containers {
+			if slices.Contains(a, c.ID) {
+				id = c.ID
+				break
+			}
+		}
+		if a[len(a)-1] == "dbx-stage-hooks" {
+			if d.stagedHooks == nil {
+				d.stagedHooks = map[string]map[string][]byte{}
+			}
+			d.stagedHooks[id] = map[string][]byte{}
+		}
+		if a[len(a)-1] == "dbx-publish-hooks" {
+			if d.Hooks == nil {
+				d.Hooks = map[string]map[string][]byte{}
+			}
+			if d.Hooks[id] == nil {
+				d.Hooks[id] = map[string][]byte{}
+			}
+			for path, data := range d.stagedHooks[id] {
+				d.Hooks[id][path] = slices.Clone(data)
+			}
+			delete(d.stagedHooks, id)
+		}
+		if index := slices.Index(a, "dbx-hooks"); index >= 0 {
+			for _, path := range a[index+1:] {
+				if _, ok := d.Hooks[id][path]; !ok {
+					return "", fmt.Errorf("applied hook missing: %s", path)
+				}
+			}
+		}
 		return "", nil
 	case "cp":
+		id, destination, _ := strings.Cut(a[2], ":")
+		if destination == "/devbox/hooks/.incoming" {
+			source := strings.TrimSuffix(a[1], "/.")
+			entries, err := os.ReadDir(source)
+			if err != nil {
+				return "", err
+			}
+			for _, entry := range entries {
+				data, err := os.ReadFile(filepath.Join(source, entry.Name()))
+				if err != nil {
+					return "", err
+				}
+				d.stagedHooks[id]["/devbox/hooks/"+entry.Name()] = data
+			}
+		}
 		return "", nil
 	case "logs":
 		return "container logs\n", nil

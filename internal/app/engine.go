@@ -25,22 +25,21 @@ type Engine struct {
 	OnDiagnostic func(Diagnostic)
 }
 type Request struct {
-	Workspace   string
-	LocalName   string
-	HarnessArgs []string
-	Sources     []config.Reference
-	SessionID   string
-	Continue    bool
-	MakeDefault bool
-	Args        []string
-	Host        config.Host
+	Workspace      string
+	LocalName      string
+	HarnessArgs    []string
+	Sources        []config.Reference
+	SessionID      string
+	Continue       bool
+	MakeDefault    bool
+	ForceContainer bool
+	Args           []string
+	Host           config.Host
 }
 type Diagnostic struct {
-	Code                string
-	Message             string
-	Command             []string
-	Change              environment.Change
-	PendingInputChanges []environment.InputChange
+	Code    string
+	Message string
+	Target  string
 }
 type Result struct {
 	SessionID   string

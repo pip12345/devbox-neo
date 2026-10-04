@@ -417,51 +417,25 @@ func (e *Engine) RecreateAll(ctx context.Context, force bool, options Request) (
 		return nil, err
 	}
 	defer store.CloseAll(locks)
-	type replacement struct {
-		lock    *store.Locked
-		record  store.Record
-		spec    environment.Spec
-		running bool
-	}
-	planned := []replacement{}
+	planned := []recreatePlan{}
 	for _, lock := range locks {
 		r, err := lock.Load()
 		if err != nil {
 			return nil, err
 		}
-		if err = lock.RequireIdle(); err != nil {
-			return nil, err
-		}
-		c, exists, err := e.inspect(ctx, r)
+		plan, err := e.planRecreate(ctx, lock, r, options, force)
 		if err != nil {
 			return nil, err
 		}
-		if !exists {
-			return nil, os.ErrNotExist
-		}
-		request := options
-		request.Workspace = r.Settings.Workspace
-		request.LocalName = r.Settings.LocalName
-		request.SessionID = r.ID
-		request.Sources = r.Settings.Sources
-		spec, err := e.Resolve(request)
-		if err != nil {
-			return nil, err
-		}
-		planned = append(planned, replacement{lock, r, spec, r.Settings.ManualStart || c.State.Running})
+		planned = append(planned, plan)
 	}
 	applied := []string{}
 	for _, item := range planned {
-		r, c, err := e.create(ctx, item.lock, item.spec, &item.record, force)
+		result, err := e.applyRecreate(ctx, item)
 		if err != nil {
 			return applied, err
 		}
-		if !item.running {
-			if err = e.Docker.Stop(ctx, c, e.owner(r)); err != nil {
-				return applied, err
-			}
-		}
-		applied = append(applied, r.ID)
+		applied = append(applied, result.SessionID)
 	}
 	return applied, nil
 }

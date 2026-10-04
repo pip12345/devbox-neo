@@ -87,7 +87,7 @@ func printStatusDetails(out io.Writer, details app.StatusDetails, steps []comman
 		fmt.Fprintf(out, "Lifetime: %s\n", lifetime)
 	}
 	if view.ImageMissing {
-		fmt.Fprintln(out, "Recorded image missing; existing container access is unaffected. Explicit Recreate uses current config to replace runtime.")
+		fmt.Fprintln(out, "Recorded image missing; existing container access is unaffected. Recreate builds an image only if container replacement needs one.")
 	}
 	if !view.Exists && view.Error == "" && view.Pending == nil {
 		fmt.Fprintln(out, "Container missing; use explicit Recreate to rebuild from current config before accessing it.")
@@ -105,14 +105,7 @@ func printStatusDetails(out io.Writer, details app.StatusDetails, steps []comman
 	}
 	if view.Error == "" && view.ConfigError == "" && view.Pending == nil {
 		switch view.Desired {
-		case environment.RuntimeSync:
-			for _, change := range view.PendingInputChanges {
-				if change.Field == "managed_config" {
-					fmt.Fprintln(out, "Changes apply on container restart.")
-					break
-				}
-			}
-		case environment.Recreate, environment.RebuildAndRecreate:
+		case environment.RuntimeSync, environment.Recreate, environment.RebuildAndRecreate:
 			_, err := fmt.Fprint(out, stepsText(steps))
 			return err
 		}
@@ -157,7 +150,7 @@ func printStatusList(cmd *cobra.Command, out io.Writer, views []app.View, home s
 	}
 	for _, view := range views {
 		if view.ImageMissing {
-			fmt.Fprintf(out, "%s: recorded image missing; existing container access is unaffected. Explicit Recreate uses current config to replace runtime.\n", sessionLabel(view))
+			fmt.Fprintf(out, "%s: recorded image missing; existing container access is unaffected. Recreate builds an image only if container replacement needs one.\n", sessionLabel(view))
 		}
 		if !view.Exists && view.Error == "" && view.Pending == nil {
 			fmt.Fprintf(out, "%s: container missing; use explicit Recreate to rebuild from current config before accessing it.\n", sessionLabel(view))
@@ -177,7 +170,7 @@ func printStatusList(cmd *cobra.Command, out io.Writer, views []app.View, home s
 				return err
 			}
 		}
-		if view.Error == "" && view.Pending == nil && (!view.Exists || (view.ConfigError == "" && (view.Desired == environment.Recreate || view.Desired == environment.RebuildAndRecreate))) {
+		if view.Error == "" && view.Pending == nil && (!view.Exists || (view.ConfigError == "" && (view.Desired == environment.RuntimeSync || view.Desired == environment.Recreate || view.Desired == environment.RebuildAndRecreate))) {
 			if _, err := fmt.Fprint(out, stepsText(statusRecreateSteps(cmd, view, home))); err != nil {
 				return err
 			}
