@@ -53,7 +53,7 @@ sequenceDiagram
 
 `Finish` joins the UI goroutine and restores the terminal without cancelling later command work. Command-context cancellation requests graceful Quit rather than Bubble Tea's force-exit path, which skips the input-reader join. Join the cancellation callback too. The pinned Ultraviolet version includes its StreamEvents reader-join fix; `reader_test.go` protects that contract.
 
-`SignalContext` routes foreground SIGINT to the current operation; menu Ctrl-C and SIGTERM cancel the command. Confirmation defaults to No and leaves an audit line in the normal terminal. Redirected/dumb-terminal interaction keeps plain prompts.
+`SignalContext` routes foreground SIGINT to the current operation; menu Ctrl-C, SIGTERM, and terminal hangup (SIGHUP) cancel the command. Hangup uses normal attachment cleanup rather than terminating the process before leases are released. Confirmation defaults to No and leaves an audit line in the normal terminal. Redirected/dumb-terminal interaction keeps plain prompts.
 
 ## Presentation boundaries
 

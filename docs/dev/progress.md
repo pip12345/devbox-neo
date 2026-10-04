@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Terminal hangup cleanup — implemented, live acceptance pending
+
+- SIGHUP cancels the whole command so normal attachment cleanup releases leases and stops the last automatically started session. Explicit manual-start intent and foreground Ctrl-C routing remain unchanged.
+- Subprocess signal regressions cover direct and foreground-operation attachments with automatic and manual lifetimes. The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable); hangup and foreground Ctrl-C regressions also pass five repeated runs. Live Docker and manual terminal-close acceptance remain unrun.
+
 ## Explicit config application and transfer recovery — implemented, live acceptance pending
 
 - Access uses recorded runtime without resolving desired config or synchronizing managed files. Applied before-open scripts live in the container; missing copies require explicit application, while Shell/Exec remain available. Session schema 7 is unchanged.
