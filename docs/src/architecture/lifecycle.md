@@ -75,11 +75,11 @@ The record commits only after startup, declared preparation, setup, and binary-a
 
 Recreation selects saved identity and rereads it under the operation lock before resolving its current desired references. A later default change cannot retarget the invocation. Source edits do not rename the session; a replaced durable ID fails rather than being adopted.
 
-Explicit application preserves the session ID and stores. Runtime-only changes use the existing container. Changed container inputs or missing runtime require replacement; changed image inputs require a build too. `--container` forces replacement and `--image` forces an uncached build plus replacement. An unchanged available owned image can be reused. Running/stopped intent is retained. Container-local state is lost only when the container is replaced.
+Explicit application preserves the session ID and stores. Runtime-only changes use the existing container. Changed container inputs or missing runtime require replacement; changed image inputs require a build too. `--container` forces replacement and `--image` forces an uncached build plus replacement. `--force` permits interruption and always replaces the container. The creation owner retires captured attachment leases only after verified old-runtime removal (or confirmed absence); a failure before removal retains their protection. Interrupted automatic sessions finish stopped; manual-start intent is retained. An unchanged available owned image can be reused. Running/stopped intent is retained. Container-local state is lost only when the container is replaced.
 
 ## Ordinary access
 
-`app.startAccess` is the shared boundary for `open`, `start`, `shell`, `exec`, and `ssh`. It validates ownership and durable stores, requires idle leases before startup, and starts the recorded container if needed. It never resolves desired configs or synchronizes managed files. Pending workspace/config edits therefore do not block access to the applied runtime. Missing backing stores remain errors; missing containers require explicit recreation.
+`app.startAccess` is the shared boundary for `open`, `start`, `shell`, `exec`, and `ssh`. It validates ownership and durable stores, starts the recorded container if needed without requiring attachment idleness. It never resolves desired configs or synchronizes managed files. Pending workspace/config edits therefore do not block access to the applied runtime. Missing backing stores remain errors; missing containers require explicit recreation.
 
 Open and Continue launch the recorded harness and arguments. Before-open scripts are installed under `/devbox/hooks/` during creation/application, keyed by their content hashes. The recorded runtime inputs already retain their order and hashes, so session schema 7 needs no conversion or script contents. Staging and atomic file replacement prevent failed publication from truncating previously applied scripts. These copies are disposable container files, not a historical reconstruction archive.
 
@@ -95,7 +95,7 @@ Typed plan diagnostics are collected in `Result.Diagnostics` and delivered synch
 
 ## Missing runtime and explicit recreation
 
-Containers and images are disposable, but their absence does not authorize replacement. Open, Start, Shell, Exec and SSH return `container_missing` with an exact `dbx recreate <session-id>` step. They leave saved identity, applied state and history unchanged. Logs/status never build runtime. A healthy container remains usable when its image has been pruned.
+Containers and images are disposable, but their absence does not authorize replacement. Open, Start, Shell, Exec and SSH return `container_missing` with an exact `dbx recreate <session-directory>` step. They leave saved identity, applied state and history unchanged. Logs/status never build runtime. A healthy container remains usable when its image has been pruned.
 
 Only explicit recreation replaces an existing session's runtime. When replacement is needed, it resolves current selected sources under the operation lock and calls the creation pipeline with the previous record. It preserves session ID, directory, creation time, history, defaults and manual-start intent. It reuses a matching available installation-owned image or builds a new one; it does not reconstruct historical configuration or adopt unowned images.
 
@@ -124,7 +124,7 @@ sequenceDiagram
     E-->>C: Result plus cleanup errors
 ```
 
-Cleanup uses an independent bounded context so cancellation of the foreground operation does not skip state cleanup. It removes the lease, reaps stale processes, and reads current manual-start intent while holding the operation lock. The last attachment stops the container only when `manual_start` is false. A failed hook or lease setup stops a newly started automatic container when no other attachment exists.
+Cleanup uses an independent bounded context so cancellation of the foreground operation does not skip state cleanup. Under the operation lock, lease removal reports whether the attachment still owned it. A lease retired by forced replacement makes late cleanup a no-op, so it cannot update activity or stop the replacement. Otherwise cleanup reaps stale processes and reads current manual-start intent. The last attachment stops the container only when `manual_start` is false. A failed hook or lease setup stops a newly started automatic container when no other attachment exists.
 
 Leases contain Linux process start ticks and boot identity to distinguish PID reuse. Corrupt or unverifiable leases fail closed rather than being assumed idle. Foreground SSH controllers use the same lease owner as Docker attachments.
 

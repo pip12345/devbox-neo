@@ -56,7 +56,7 @@ func TestCreationRecordParity(t *testing.T) {
 			}
 			defer l.Close()
 			start := time.Now().UTC()
-			r, c, err := e.createAs(ctx, l, s, previous, false, seed)
+			r, c, err := e.createAs(ctx, l, s, previous, creationOptions{}, seed)
 			end := time.Now().UTC()
 			if err != nil {
 				t.Fatal(err)

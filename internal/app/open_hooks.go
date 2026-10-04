@@ -47,15 +47,15 @@ func (e *Engine) runAppliedOpenHooks(ctx context.Context, c docker.Container, r 
 	// Check the entire chain before executing any hook. Older containers have no
 	// installed copies; only an explicit apply may read current source scripts.
 	if err := e.Docker.CheckOpenHooks(ctx, c, e.owner(r), paths); err != nil {
-		return commanderror.New("applied_hooks_unavailable", "Applied before-open scripts are unavailable. Apply current config explicitly; Shell and Exec remain available for repair.", r.ID, err,
-			commanderror.Next("Install current before-open scripts", "recreate", r.ID),
-			commanderror.Next("Or open a repair shell", "shell", r.ID))
+		return commanderror.New("applied_hooks_unavailable", "Applied before-open scripts are unavailable. Apply current config explicitly; Shell and Exec remain available for repair.", r.Directory, err,
+			commanderror.Next("Install current before-open scripts", "recreate", r.Directory),
+			commanderror.Next("Or open a repair shell", "shell", r.Directory))
 	}
 	for i, path := range paths {
 		if err := e.Docker.Exec(ctx, c, e.owner(r), []string{"bash", path}, nil, docker.Streams{Out: e.Streams.Out, Err: e.Streams.Err}); err != nil {
-			return commanderror.New("before_open_failed", "Applied before-open script failed: "+r.Applied.Inputs.Runtime.BeforeOpen[i].Source, r.ID, err,
-				commanderror.Next("Open a repair shell", "shell", r.ID),
-				commanderror.Next("Apply corrected configuration", "recreate", r.ID))
+			return commanderror.New("before_open_failed", "Applied before-open script failed: "+r.Applied.Inputs.Runtime.BeforeOpen[i].Source, r.Directory, err,
+				commanderror.Next("Open a repair shell", "shell", r.Directory),
+				commanderror.Next("Apply corrected configuration", "recreate", r.Directory))
 		}
 	}
 	return nil

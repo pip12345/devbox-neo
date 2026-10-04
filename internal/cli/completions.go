@@ -68,8 +68,9 @@ func completeConfigs(cmd *cobra.Command) []string {
 }
 
 type completionSession struct {
-	ID       string              `json:"id"`
-	Settings environment.Binding `json:"settings"`
+	Directory string              `json:"-"`
+	ID        string              `json:"id"`
+	Settings  environment.Binding `json:"settings"`
 }
 
 func completionSessions(cmd *cobra.Command) []completionSession {
@@ -99,7 +100,11 @@ func completionSessions(cmd *cobra.Command) []completionSession {
 			continue
 		}
 		var record completionSession
-		if json.Unmarshal(data, &record) == nil && environment.IsSessionTarget(record.ID) && record.Settings.Validate() == nil {
+		if json.Unmarshal(data, &record) == nil && environment.IsSessionID(record.ID) && record.Settings.Validate() == nil {
+			record.Directory = entry.Name()
+			if !environment.IsSessionTarget(record.Directory) {
+				continue
+			}
 			records = append(records, record)
 		}
 	}
@@ -107,11 +112,11 @@ func completionSessions(cmd *cobra.Command) []completionSession {
 }
 
 func completeSessions(cmd *cobra.Command) []string {
-	var ids []string
+	var targets []string
 	for _, record := range completionSessions(cmd) {
-		ids = append(ids, record.ID+"\t"+displayCell(record.Settings.Workspace)+" / "+displayCell(record.Settings.LocalName))
+		targets = append(targets, record.Directory+"\t"+displayCell(record.Settings.Workspace)+" / "+displayCell(record.Settings.LocalName))
 	}
-	return ids
+	return targets
 }
 
 func completeLocalNames(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {

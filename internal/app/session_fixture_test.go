@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -13,8 +14,8 @@ import (
 
 func sessionSnapshot(t *testing.T, e *Engine, id string) (docker.Container, bool) {
 	t.Helper()
-	r, err := e.Store.Find(context.Background(), id, nil)
-	if os.IsNotExist(err) {
+	r, err := e.Locate(context.Background(), id, "")
+	if errors.Is(err, os.ErrNotExist) {
 		return docker.Container{}, false
 	}
 	if err != nil {

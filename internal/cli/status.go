@@ -16,7 +16,7 @@ import (
 
 func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 	var asJSON bool
-	cmd := &cobra.Command{Use: "status [folder|session-id]", Short: "Show all environments or details and pending changes for one", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "status [folder|session]", Short: "Show all environments or details and pending changes for one", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 && *localName != "" {
 			return fmt.Errorf("--name requires a folder target")
 		}
@@ -79,7 +79,10 @@ func printStatusDetails(out io.Writer, details app.StatusDetails, steps []comman
 		fmt.Fprintf(out, "Default selection unavailable: %s\n", displayCell(details.DefaultError))
 	}
 	if details.Record != nil {
-		fmt.Fprintf(out, "Session: %s\nHarness: %s\nContainer: %s (%s)\nImage: %s\nActive commands: %d\n", displayCell(details.SessionID), displayCell(details.Harness), displayCell(view.ContainerName), displayCell(view.ContainerID), displayCell(details.Record.Applied.ImageID), len(details.Active))
+		fmt.Fprintf(out, "Session: %s\nHarness: %s\nContainer: %s (%s)\nImage: %s\nActive commands: %d\n", displayCell(details.Record.Directory), displayCell(details.Harness), displayCell(view.ContainerName), displayCell(view.ContainerID), displayCell(details.Record.Applied.ImageID), len(details.Active))
+		for _, lease := range details.Active {
+			fmt.Fprintf(out, "  %s — host PID %d, since %s\n", displayCell(lease.Action), lease.Process.PID, exactTime(lease.Created))
+		}
 		lifetime := "automatic (stops after the last attached command)"
 		if details.Record.Settings.ManualStart {
 			lifetime = "until stop (restarts with Docker)"
@@ -134,13 +137,13 @@ func statusChange(view app.View) string {
 func printStatusList(cmd *cobra.Command, out io.Writer, views []app.View, home string) error {
 	var table bytes.Buffer
 	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "FOLDER\tNAME\tHARNESS\tCONTAINER\tCHANGE")
+	fmt.Fprintln(w, "SESSION\tFOLDER\tNAME\tHARNESS\tCONTAINER\tCHANGE")
 	for _, view := range views {
 		name := view.LocalName
 		if name == "" {
 			name = view.Target
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", displayCell(view.Workspace), displayCell(name), displayCell(view.Harness), containerState(view), statusChange(view))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", displayCell(view.Target), displayCell(view.Workspace), displayCell(name), displayCell(view.Harness), containerState(view), statusChange(view))
 	}
 	if err := w.Flush(); err != nil {
 		return err

@@ -18,6 +18,8 @@ Finish attached commands first. Recreate may briefly start or restart the contai
 
 Use **Force container replacement** to replace an otherwise unchanged container. **Rebuild image without cache** also replaces it and reruns the build; it does not guarantee a newer upstream base image.
 
+If you need to interrupt attached commands, choose **Force: replace even with attached commands**, or run `dbx recreate . --force` from the session's default folder. This always replaces the container and loses its local files and tools. Saved history remains. Automatic sessions stop after replacement; explicitly started sessions keep running.
+
 ## Restore a missing container
 
 For a session marked **missing**, choose **Recreate** to build a replacement container from its current configs. Saved harness history is kept. If recreation reports missing files or invalid configs, fix the problem and retry. Then choose **Open** or **Continue**.

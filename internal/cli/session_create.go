@@ -65,7 +65,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		cmd.Printf("\nCreated session %s\nSession ID: %s\nFolder: %s\nContainer: stopped\n", draft.name, result.SessionID, displayCell(workspace))
+		cmd.Printf("\nCreated session %s\nSession: %s\nFolder: %s\nContainer: stopped\n", draft.name, result.Session, displayCell(workspace))
 		if err := showSourceChain(m, e.Store.Home, workspace, draft.sources); err != nil {
 			return err
 		}
@@ -76,7 +76,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		steps := []commanderror.Step{selectDefault, commanderror.Next("Then open it", "open", args[0])}
 		if draft.makeDefault {
 			cmd.Printf("Folder default: %s\n", draft.name)
-			steps = []commanderror.Step{commanderror.Next("Open it", "open", result.SessionID)}
+			steps = []commanderror.Step{commanderror.Next("Open it", "open", result.Session)}
 		}
 		cmd.Printf("\n%s", stepsText(scopedSteps(cmd, steps, e.Store.Home)))
 		return nil

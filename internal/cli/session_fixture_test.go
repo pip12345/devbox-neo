@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 
 func sessionRecord(t *testing.T, e *app.Engine, id string) store.Record {
 	t.Helper()
-	r, err := e.Store.Find(context.Background(), id, nil)
+	r, err := e.Locate(context.Background(), id, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,8 +22,8 @@ func sessionRecord(t *testing.T, e *app.Engine, id string) store.Record {
 }
 func sessionSnapshot(t *testing.T, e *app.Engine, id string) (docker.Container, bool) {
 	t.Helper()
-	r, err := e.Store.Find(context.Background(), id, nil)
-	if os.IsNotExist(err) {
+	r, err := e.Locate(context.Background(), id, "")
+	if errors.Is(err, os.ErrNotExist) {
 		return docker.Container{}, false
 	}
 	if err != nil {

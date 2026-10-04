@@ -39,7 +39,7 @@ Without full terminal input/output, bare browsers show help. Other redirected/du
 | CONTAINER | Running, stopped, or missing; `!` indicates an error, `*` a pending transfer |
 | LIFETIME | `automatic` or `until stop`, independent of current state |
 | CONFIGS | Selected configs, in order |
-| SESSION ID (`--wide`) | Stable exact session target |
+| SESSION | Exact session directory name accepted by commands |
 | CONTAINER NAME (`--wide`) | Docker name; independent of session storage |
 
 Wide output also includes last action and exact UTC timestamps. `--sort folder` orders folders then names; `name` orders local names, then folders; `last-active` is newest first. Sorting applies to the whole command-line table.
@@ -56,7 +56,7 @@ Missing containers remain listed. Corrupt records show diagnostics; managed cont
 | Rebuild + recreate needed | Image inputs changed; Recreate also builds |
 | Cannot check | A config/state problem prevents comparison |
 
-Status identifies workspace and local name together and compares local inputs, not available upstream releases. Public-setting changes show values; managed-tree and build-context changes show category reasons, not exact filenames. Missing runtime and invalid configuration are separate conditions. Status reports missing images without treating them as corrupt state or replacing a healthy container. Single-session status shows reasons and relevant next commands.
+Status identifies workspace and local name together and compares local inputs, not available upstream releases. Public-setting changes show values; managed-tree and build-context changes show category reasons, not exact filenames. Missing runtime and invalid configuration are separate conditions. Status reports missing images without treating them as corrupt state or replacing a healthy container. Single-session status shows reasons and relevant next commands. Active commands include their action, host PID, and attachment start time.
 
 ## Inventory and status JSON
 
@@ -68,7 +68,8 @@ Status identifies workspace and local name together and compares local inputs, n
 
 | Common field | Meaning |
 |---|---|
-| `session_id`, `local_name` | Stable ID and editable session name |
+| `target` | Exact session directory name; unmatched-container rows use their Docker name |
+| `session_id`, `local_name` | Internal stable ID and editable session name |
 | `container_id`, `container_name` | Applied Docker instance and its name |
 | `image_missing` | Recorded image ID is absent; existing container access is unaffected |
 | `default` | Matches the saved folder default |
@@ -100,7 +101,7 @@ Public values may appear before/after. Env changes show variable names, never va
 | JSON command | Fields |
 |---|---|
 | `edit <target> --config REF --json` | `name`, `workspace`, ordered `sources`, `next_steps` |
-| `config users <name\|path> --json` | `path`, `users` (session IDs), `complete` |
+| `config users <name\|path> --json` | `path`, `users` (session directory names), `complete` |
 
 Incomplete usage scans exit nonzero with known users in `partial_result` and `complete: false`.
 

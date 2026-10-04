@@ -111,23 +111,28 @@ func (f *frontend) stop(target string) error {
 	})
 }
 func (f *frontend) recreate(target string) error {
-	noCache, container := false, false
+	noCache, container, force := false, false, false
 	return f.form("Recreate", func() []cliui.Action {
 		return []cliui.Action{
 			f.action("Inspect pending changes", "", func() error { return f.status(target) }),
 			f.toggle("Rebuild image without cache", &noCache),
 			f.toggle("Force container replacement", &container),
+			f.toggle("Force: replace even with attached commands", &force),
 			{Label: "Recreate", Shortcut: "r", Description: "Apply current config; replace runtime only as needed or explicitly requested", Run: func() (bool, error) {
-				yes, err := f.m.Confirm("Apply current config? Runtime may restart; if replaced, container-local changes will be lost. [y/N] ")
+				message := "Apply current config? Runtime may restart; if replaced, container-local changes will be lost."
+				if force {
+					message = "Replace the container and interrupt attached commands? Container-local changes will be lost."
+				}
+				yes, err := f.m.Confirm(message + " [y/N] ")
 				if err != nil || !yes {
 					return false, err
 				}
 				err = f.foreground("Recreate", func(ctx context.Context) error {
 					if target == "" {
-						_, err := f.e.RecreateAll(ctx, noCache, app.Request{ForceContainer: container})
+						_, err := f.e.RecreateAll(ctx, noCache, app.Request{ForceContainer: container, Force: force})
 						return err
 					}
-					_, err := f.e.Recreate(ctx, app.Request{Workspace: target, ForceContainer: container}, noCache)
+					_, err := f.e.Recreate(ctx, app.Request{Workspace: target, ForceContainer: container, Force: force}, noCache)
 					return err
 				})
 				if err != nil {
@@ -264,7 +269,7 @@ func (f *frontend) ssh(target string) error {
 func (f *frontend) transfer(target string) (moved bool, err error) {
 	options := app.TransferOptions{Source: target, Mode: "clone"}
 	move := false
-	pending, err := f.e.Store.PendingID(target)
+	pending, err := f.e.Store.Pending(target)
 	if err != nil {
 		return false, err
 	}
@@ -276,7 +281,7 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 		if journal == nil {
 			return false, fmt.Errorf("transfer changed; select it again")
 		}
-		options.Source, options.Destination, options.As = journal.SourceID, journal.Destination.Workspace, journal.Destination.LocalName
+		options.Source, options.Destination, options.As = journal.Source.Name, journal.Destination.Workspace, journal.Destination.LocalName
 		move = journal.Mode == "relocate"
 	}
 	err = f.form("Copy or move", func() []cliui.Action {
@@ -406,7 +411,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 	}
 	if len(targets) == 1 {
 		title = "Delete · " + displayCell(targets[0])
-		if record, err := f.e.Store.Find(f.m.Context, targets[0], nil); err == nil {
+		if record, err := f.e.Locate(f.m.Context, targets[0], ""); err == nil {
 			title = "Delete · " + displayCell(record.Settings.LocalName)
 			fields = []cliui.Field{{Label: "Folder", Value: record.Settings.Workspace}}
 		}

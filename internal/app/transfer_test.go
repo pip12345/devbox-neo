@@ -176,7 +176,7 @@ func TestTransferNamesAndDryRun(t *testing.T) {
 	if count(d, "create") != before {
 		t.Fatal("dry run created container")
 	}
-	if _, err = e.Store.Find(ctx, result.Destination, nil); !os.IsNotExist(err) {
+	if _, err = e.Store.Read(ctx, result.Destination); !os.IsNotExist(err) {
 		t.Fatal("dry run created state", err)
 	}
 	if j, err := pendingTransfer(e, opened.SessionID); err != nil || j != nil {
@@ -220,7 +220,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 		t.Fatal("source not restarted")
 	}
 	var pendingError *commanderror.Error
-	if _, err = e.Start(ctx, opened.SessionID, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "dbx copy --move "+opened.SessionID+" "+opts.Destination+" --as "+q.LocalName {
+	if _, err = e.Start(ctx, opened.SessionID, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "dbx copy --move "+opened.Session+" "+opts.Destination+" --as "+q.LocalName {
 		t.Fatal("pending source not guarded", err)
 	}
 	j, err := pendingTransfer(e, opened.SessionID)
@@ -332,7 +332,7 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 		t.Fatal("transferred active source")
 	}
 	lock, _ = e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
-	if err = lock.Release(lease.ID); err != nil {
+	if _, err = lock.Release(lease.ID); err != nil {
 		t.Fatal(err)
 	}
 	lock.Close()

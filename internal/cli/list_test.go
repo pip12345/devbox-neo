@@ -40,7 +40,7 @@ func TestListDetailsAndSorting(t *testing.T) {
 	if err := printSessionList(&out, views, true, now); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"HARNESS", "opencode", "LAST ACTION", "CREATED", "SESSION ID", "2026-09-01T10:00:00Z", "2026-08-31T12:00:00Z", "open"} {
+	for _, want := range []string{"HARNESS", "opencode", "LAST ACTION", "CREATED", "SESSION", "2026-09-01T10:00:00Z", "2026-08-31T12:00:00Z", "open"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing wide detail %q: %s", want, out.String())
 		}
@@ -104,7 +104,7 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(strings.Fields(out.String()), " "), "FOLDER NAME DEFAULT HARNESS LAST ACTIVE CONTAINER LIFETIME CONFIGS") {
+	if !strings.Contains(strings.Join(strings.Fields(out.String()), " "), "FOLDER SESSION NAME DEFAULT HARNESS LAST ACTIVE CONTAINER LIFETIME CONFIGS") {
 		t.Fatal("not a session-focused table", out.String())
 	}
 	for _, want := range []string{"pi", "/work/project", "just now", "missing", "opencode", "older", "2 hours ago", "stopped", "missing!*", "corrupt record", "pending copy --move", "automatic", "until stop"} {
@@ -134,22 +134,22 @@ func TestListUsesLocalNamesAndWideIncludesFullNames(t *testing.T) {
 	for _, local := range []bool{false, true} {
 		for _, wide := range []bool{false, true} {
 			rows := views
-			nameColumn := 1
+			nameColumn := 2
 			if local {
 				rows = views[:1]
-				nameColumn = 0
+				nameColumn = 1
 			}
 			var out bytes.Buffer
 			if err := printSessionTable(&out, rows, wide, time.Now(), local); err != nil {
 				t.Fatal(err)
 			}
 			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-			if strings.Contains(lines[0], "SESSION ID") != wide || strings.Contains(lines[0], "FOLDER") == local {
+			if !strings.Contains(lines[0], "SESSION") || strings.Contains(lines[0], "CONTAINER NAME") != wide || strings.Contains(lines[0], "FOLDER") == local {
 				t.Fatal("wrong columns", out.String())
 			}
 			for i, view := range rows {
 				fields := strings.Fields(lines[i+1])
-				if fields[nameColumn] != view.LocalName || strings.Contains(lines[i+1], view.SessionID) != wide {
+				if fields[nameColumn] != view.LocalName || !strings.Contains(lines[i+1], view.Target) || strings.Contains(lines[i+1], view.SessionID) {
 					t.Fatal("full name replaced the local name or leaked into the compact row", out.String())
 				}
 				if !local && fields[0] != view.Workspace {
@@ -180,7 +180,7 @@ func TestListNamePresentationDoesNotChangeJSONOrStatus(t *testing.T) {
 			if err := cmd.ExecuteContext(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(out.String(), fullName) != wide || !strings.Contains(out.String(), q.LocalName) {
+			if !strings.Contains(out.String(), fullName) || !strings.Contains(out.String(), q.LocalName) {
 				t.Fatal("list command did not apply name presentation", out.String())
 			}
 		}
@@ -197,7 +197,7 @@ func TestListNamePresentationDoesNotChangeJSONOrStatus(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if len(report.Sessions) != 1 || report.Sessions[0].SessionID != fullName || report.Sessions[0].LocalName != q.LocalName {
+	if len(report.Sessions) != 1 || report.Sessions[0].SessionID != sessionRecord(t, e, fullName).ID || report.Sessions[0].Target != fullName || report.Sessions[0].LocalName != q.LocalName {
 		t.Fatal("list JSON lost exact identity", out.String())
 	}
 	out.Reset()

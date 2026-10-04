@@ -33,6 +33,7 @@ type Request struct {
 	Continue       bool
 	MakeDefault    bool
 	ForceContainer bool
+	Force          bool
 	Args           []string
 	Host           config.Host
 }
@@ -42,6 +43,7 @@ type Diagnostic struct {
 	Target  string
 }
 type Result struct {
+	Session     string
 	SessionID   string
 	Diagnostics []Diagnostic
 }
@@ -82,7 +84,7 @@ func (e *Engine) inspect(ctx context.Context, r store.Record) (docker.Container,
 	if err == nil && exists {
 		err = c.Verify(e.owner(r))
 		if err == nil && (c.Image != r.Applied.ImageID || (r.Applied.SetupContainer != "" && c.ID != r.Applied.SetupContainer)) {
-			err = commanderror.New("container_mismatch", "Container identity does not match this session.", r.ID, nil)
+			err = commanderror.New("container_mismatch", "Container identity does not match this session.", r.Directory, nil)
 		}
 	}
 	return c, exists, err

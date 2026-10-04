@@ -14,8 +14,8 @@ import (
 func TestStatusUsesWorkspaceAndNameInsteadOfTargetAsName(t *testing.T) {
 	var out bytes.Buffer
 	views := []app.View{
-		{Target: strings.Repeat("a", 32), SessionID: strings.Repeat("a", 32), Workspace: "/work/api", LocalName: "main", Harness: "pi", Exists: true, Desired: environment.NoChange},
-		{Target: strings.Repeat("b", 32), SessionID: strings.Repeat("b", 32), Workspace: "/work/web", LocalName: "main", Harness: "pi", ImageMissing: true, Desired: environment.NoChange},
+		{Target: "dbx-api-111111111111.main", SessionID: strings.Repeat("a", 32), Workspace: "/work/api", LocalName: "main", Harness: "pi", Exists: true, Desired: environment.NoChange},
+		{Target: "dbx-web-222222222222.main", SessionID: strings.Repeat("b", 32), Workspace: "/work/web", LocalName: "main", Harness: "pi", ImageMissing: true, Desired: environment.NoChange},
 	}
 	if err := printStatusList(&cobra.Command{}, &out, views, ""); err != nil {
 		t.Fatal(err)
@@ -26,8 +26,8 @@ func TestStatusUsesWorkspaceAndNameInsteadOfTargetAsName(t *testing.T) {
 			t.Fatal("missing readable status context", want, text)
 		}
 	}
-	if strings.Contains(text, views[0].Target) || strings.Count(text, views[1].Target) != 1 || !strings.Contains(text, "dbx recreate "+views[1].Target) {
-		t.Fatal("clean rows display IDs as names", text)
+	if !strings.Contains(text, views[0].Target) || !strings.Contains(text, views[1].Target) || strings.Contains(text, views[0].SessionID) || strings.Contains(text, views[1].SessionID) || !strings.Contains(text, "dbx recreate "+views[1].Target) {
+		t.Fatal("status lost public directory targets or exposed internal IDs", text)
 	}
 }
 
@@ -47,7 +47,7 @@ func TestStatusMissingRuntimeGuidance(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			view := tc.view
-			view.Target, view.SessionID = strings.Repeat("a", 32), strings.Repeat("a", 32)
+			view.Target, view.SessionID = "dbx-api-111111111111.main", strings.Repeat("a", 32)
 			view.Workspace, view.LocalName = "/work/api", "main"
 			cmd := &cobra.Command{}
 			var home string

@@ -82,12 +82,16 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 	}
 	seen := false
 	for _, view := range views {
-		if view.Target == opened.SessionID && view.Pending != nil {
+		if view.SessionID == opened.SessionID && view.Pending != nil {
 			seen = true
 		}
 	}
 	if !seen {
 		t.Fatal("cleanup journal vanished from inventory")
+	}
+	sourceDetails, err := e.Status(ctx, source.Directory, "")
+	if err != nil || sourceDetails.Pending == nil || sourceDetails.Record != nil || sourceDetails.Target != source.Directory {
+		t.Fatal("deleted source directory lost its inspectable reservation", sourceDetails, err)
 	}
 	details, err := e.Status(ctx, opened.SessionID, "")
 	if err != nil || details.Pending == nil || details.Record == nil || details.Desired != "" {
@@ -220,7 +224,7 @@ func TestTransferRetryRetainsExplicitDestinationName(t *testing.T) {
 					options.Source, options.LocalName = source.Settings.Workspace, source.Settings.LocalName
 				}
 				result, err := e.Transfer(ctx, options)
-				if err != nil || result.Destination != journal.DestinationID || sessionRecord(t, e, result.Destination).ID != journal.DestinationID {
+				if err != nil || result.Destination != journal.Destination.Name || sessionRecord(t, e, result.Destination).ID != journal.DestinationID {
 					t.Fatal("retry changed or rejected its destination", result, err)
 				}
 				if pending, err := pendingTransfer(e, made.SessionID); err != nil || pending != nil {

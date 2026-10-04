@@ -164,7 +164,7 @@ func TestStatusAllLeavesPendingTransfersUnclassified(t *testing.T) {
 		if err != nil || details.Pending == nil || details.Desired != "" || details.ConfigError != "" {
 			t.Fatal("single status resolved a pending endpoint", details, err)
 		}
-		if (details.Record != nil) != (view.Target == source.ID) {
+		if (details.Record != nil) != (view.Target == source.Directory) {
 			t.Fatal("incorrect record for pending endpoint", details)
 		}
 	}
@@ -189,7 +189,7 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 		if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 			t.Fatal(err)
 		}
-		names[profile] = result.SessionID
+		names[profile] = result.Session
 		records[profile] = sessionRecord(t, e, result.SessionID)
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/runtime/before-open.sh"), "echo updated")

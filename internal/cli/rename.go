@@ -18,7 +18,7 @@ func renameCommand(factory engineFactory, name *string) *cobra.Command {
 	var to string
 	var dryRun, asJSON bool
 	cmd := &cobra.Command{
-		Use: "rename <folder|session-id> --to NAME", Short: "Change a session's folder-local name",
+		Use: "rename <folder|session> --to NAME", Short: "Change a session's folder-local name",
 		Long: "Change a session's folder-local name.\n" + renameEffects,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -51,7 +51,7 @@ func printRenameResult(out io.Writer, result app.RenameResult) error {
 	if result.DryRun {
 		action = "Would rename"
 	}
-	_, err := fmt.Fprintf(out, "%s: %s -> %s\nSession ID: %s\nFolder: %s\n", action, result.PreviousName, result.LocalName, result.SessionID, displayCell(result.Workspace))
+	_, err := fmt.Fprintf(out, "%s: %s -> %s\nSession: %s\nFolder: %s\n", action, result.PreviousName, result.LocalName, result.Session, displayCell(result.Workspace))
 	return err
 }
 
@@ -65,7 +65,7 @@ func (f *frontend) rename(target string) (renamed bool, err error) {
 					return err
 				}
 				renamed = true
-				f.focusItem = result.SessionID
+				f.focusItem = result.Session
 				return printRenameResult(f.cmd.OutOrStdout(), result)
 			})
 		})

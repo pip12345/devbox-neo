@@ -58,7 +58,7 @@ func TestRecreateUsesRecordedExplicitSources(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{made.SessionID})
+	cmd.SetArgs([]string{before.Directory})
 	if err = cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}

@@ -131,7 +131,7 @@ func (e *Engine) StatusAll(ctx context.Context, folder string) (InventoryReport,
 			return InventoryReport{}, err
 		}
 		view := &report.Sessions[i]
-		if r, ok := records[view.Target]; ok && view.Error == "" && view.Pending == nil {
+		if r, ok := records[view.SessionID]; ok && view.Error == "" && view.Pending == nil {
 			view.ImageMissing = !images[r.Applied.ImageID]
 			e.desiredStatus(view, r)
 		}

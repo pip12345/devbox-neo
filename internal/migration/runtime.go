@@ -53,7 +53,7 @@ func Run(ctx context.Context, home string, runtime docker.Runtime, apply bool) (
 		return result, fmt.Errorf("cutover requires an existing Devbox installation: %w", err)
 	}
 	installation := strings.TrimSpace(string(data))
-	if !environment.IsSessionTarget(installation) {
+	if !environment.IsSessionID(installation) {
 		return result, fmt.Errorf("invalid installation identity")
 	}
 	s := &store.Store{Home: home, Installation: installation}

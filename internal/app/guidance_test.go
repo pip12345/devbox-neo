@@ -21,7 +21,7 @@ func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
 	check := func(err error, code string, command ...string) {
 		t.Helper()
 		var actionable *commanderror.Error
-		if !errors.As(err, &actionable) || actionable.Code != code || actionable.Target != result.SessionID || len(actionable.Next) != 1 {
+		if !errors.As(err, &actionable) || actionable.Code != code || actionable.Target != result.Session || len(actionable.Next) != 1 {
 			t.Fatalf("unexpected guidance: %v", err)
 		}
 		if !reflect.DeepEqual(actionable.Next[0].Command, append([]string{"dbx"}, command...)) || strings.Contains(err.Error(), "\n") {
@@ -34,14 +34,14 @@ func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
 	}
 	_, err = e.planSessionDeletion(ctx, []*store.Locked{lock}, false)
 	lock.Close()
-	check(err, "container_present", "delete", result.SessionID, "--container")
+	check(err, "container_present", "delete", result.Session, "--container")
 	err = e.ChangeNetwork(ctx, result.SessionID, "", "bridge", false)
-	check(err, "primary_network_protected", "recreate", result.SessionID)
+	check(err, "primary_network_protected", "recreate", result.Session)
 	forgetSession(t, e, result.SessionID)
 	err = e.Stop(ctx, result.SessionID, "", false)
-	check(err, "container_missing", "status", result.SessionID)
+	check(err, "container_missing", "status", result.Session)
 	err = e.Exec(ctx, result.SessionID, "", []string{"true"}, false)
-	check(err, "container_missing", "recreate", result.SessionID)
+	check(err, "container_missing", "recreate", result.Session)
 	_, err = e.Start(ctx, result.SessionID, "")
-	check(err, "container_missing", "recreate", result.SessionID)
+	check(err, "container_missing", "recreate", result.Session)
 }

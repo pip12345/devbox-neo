@@ -28,7 +28,7 @@ func TestSessionDefaultActionSetsAndClearsWithoutPicker(t *testing.T) {
 		t.Fatal(done, err)
 	}
 	selected, err := f.e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected == nil || selected.ID != name {
+	if err != nil || selected == nil || selected.ID != sessionRecord(t, f.e, name).ID {
 		t.Fatal(selected, err)
 	}
 	report, err = f.e.List(context.Background(), "")
@@ -224,7 +224,7 @@ func TestFrontendCreationReturnsToStoppedSessionMenu(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := created.ID
+	name := created.Directory
 	details, err := f.e.Status(context.Background(), name, "")
 	if err != nil || details.Running || len(details.Active) != 0 {
 		t.Fatal("creation launched or attached", details, err)

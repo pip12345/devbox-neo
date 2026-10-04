@@ -12,19 +12,23 @@ import (
 )
 
 type recreatePlan struct {
-	lock                    *store.Locked
-	record                  store.Record
-	spec                    environment.Spec
-	container               docker.Container
-	change                  environment.Change
-	replace, image, running bool
+	lock                           *store.Locked
+	record                         store.Record
+	spec                           environment.Spec
+	container                      docker.Container
+	change                         environment.Change
+	replace, image, running, force bool
 }
 
 // Planning is read-only under the session lock. Bulk application resolves all
 // selected configs before starting; later Docker failures can still be partial.
 func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.Record, q Request, image bool) (recreatePlan, error) {
-	p := recreatePlan{lock: lock, record: r, image: image}
-	if err := lock.RequireIdle(); err != nil {
+	p := recreatePlan{lock: lock, record: r, image: image, force: q.Force}
+	if q.Force {
+		if _, err := lock.LiveLeases(); err != nil {
+			return p, err
+		}
+	} else if err := lock.RequireIdle(); err != nil {
 		return p, err
 	}
 	if err := checkDurableStores(lock, r); err != nil {
@@ -42,13 +46,16 @@ func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.R
 		return p, err
 	}
 	p.change = environment.CompareInputs(r.Applied.Inputs, p.spec.Inputs).Change
-	p.replace = !exists || image || q.ForceContainer || p.change == environment.Recreate || p.change == environment.RebuildAndRecreate
+	p.replace = !exists || image || q.ForceContainer || q.Force || p.change == environment.Recreate || p.change == environment.RebuildAndRecreate
 	p.running = r.Settings.ManualStart || (exists && p.container.State.Running)
+	if q.Force {
+		p.running = r.Settings.ManualStart
+	}
 	return p, nil
 }
 
 func (e *Engine) applyRecreate(ctx context.Context, p recreatePlan) (result Result, err error) {
-	result.SessionID = p.record.ID
+	result.Session, result.SessionID = p.record.Directory, p.record.ID
 	message := "Apply runtime configuration without replacing the container. It may be briefly started or restarted."
 	if p.replace {
 		message = "Replace the container with current configuration; reuse a compatible available image or build one. Container-local changes will be lost."
@@ -58,20 +65,23 @@ func (e *Engine) applyRecreate(ctx context.Context, p recreatePlan) (result Resu
 			message = "Build changed image inputs and replace the container. Container-local changes will be lost."
 		}
 	}
-	e.diagnose(&result, Diagnostic{Code: "apply_plan", Message: message, Target: p.record.ID})
+	if p.force {
+		message += " Attached commands will be interrupted."
+	}
+	e.diagnose(&result, Diagnostic{Code: "apply_plan", Message: message, Target: p.record.Directory})
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
 	if !p.replace {
 		return result, e.applyRuntime(ctx, p)
 	}
-	r, c, err := e.create(ctx, p.lock, p.spec, &p.record, p.image)
+	r, c, err := e.createAs(ctx, p.lock, p.spec, &p.record, creationOptions{image: p.image, force: p.force}, CreationIdentity{})
 	if err != nil {
 		return result, err
 	}
 	if !p.running {
 		if err := e.Docker.Stop(ctx, c, e.owner(r)); err != nil {
-			return result, commanderror.New("apply_stop_failed", "Configuration applied, but stopping the container failed.", r.ID, err, commanderror.Next("Stop", "stop", r.ID))
+			return result, commanderror.New("apply_stop_failed", "Configuration applied, but stopping the container failed.", r.Directory, err, commanderror.Next("Stop", "stop", r.Directory))
 		}
 	}
 	return result, nil
@@ -90,7 +100,7 @@ func (e *Engine) applyRuntime(ctx context.Context, p recreatePlan) (err error) {
 		defer cancel()
 		live, exists, restoreErr := e.inspect(cleanup, r)
 		if restoreErr == nil && !exists {
-			restoreErr = commanderror.New("container_missing", "Container disappeared during configuration application.", r.ID, nil)
+			restoreErr = commanderror.New("container_missing", "Container disappeared during configuration application.", r.Directory, nil)
 		}
 		if restoreErr == nil && exists {
 			if p.running && !live.State.Running {
@@ -103,18 +113,18 @@ func (e *Engine) applyRuntime(ctx context.Context, p recreatePlan) (err error) {
 		err = errors.Join(err, restoreErr)
 		if err != nil {
 			message := "Runtime configuration application failed; some managed files may have changed. Repair the cause and retry."
-			next := commanderror.Next("Apply current configuration", "recreate", r.ID)
+			next := commanderror.Next("Apply current configuration", "recreate", r.Directory)
 			if applied {
 				message = "Configuration applied, but restoring the container's running/stopped state failed."
 				if exists {
-					next = commanderror.Next("Restore stopped state", "stop", r.ID)
+					next = commanderror.Next("Restore stopped state", "stop", r.Directory)
 					if p.running {
-						next = commanderror.Next("Restore running state", "start", r.ID)
+						next = commanderror.Next("Restore running state", "start", r.Directory)
 					}
 				}
 			}
-			err = commanderror.New("runtime_apply_failed", message, r.ID, err,
-				commanderror.Next("Inspect session", "status", r.ID), next)
+			err = commanderror.New("runtime_apply_failed", message, r.Directory, err,
+				commanderror.Next("Inspect session", "status", r.Directory), next)
 		}
 	}()
 	if c.State.Running {

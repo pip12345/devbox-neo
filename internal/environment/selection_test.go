@@ -20,13 +20,16 @@ func TestLocalNamesAreExactAndBounded(t *testing.T) {
 	}
 }
 
-func TestSessionTargetsAreIDsNotStorageOrContainerNames(t *testing.T) {
-	if !IsSessionTarget(strings.Repeat("a", 32)) {
-		t.Fatal("rejected session ID")
+func TestSessionTargetsAreBareDirectoryNames(t *testing.T) {
+	if !IsSessionTarget("dbx-api-abc.work") {
+		t.Fatal("rejected session directory name")
 	}
-	for _, target := range []string{"dbx-api-abc.work", "work", "/work/api", strings.Repeat("a", 31)} {
+	for _, target := range []string{strings.Repeat("a", 32), "work", "/work/api", "./dbx-api-abc.work", "dbx-../work", "dbx-bad\nname"} {
 		if IsSessionTarget(target) {
-			t.Fatal("accepted non-ID target", target)
+			t.Fatal("accepted non-session target", target)
 		}
+	}
+	if !IsSessionID(strings.Repeat("a", 32)) || IsSessionID("dbx-api-abc.work") {
+		t.Fatal("internal ID validation changed")
 	}
 }

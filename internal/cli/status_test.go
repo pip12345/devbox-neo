@@ -99,7 +99,7 @@ func TestStatusDoesNotSuggestRestartForLaunchArguments(t *testing.T) {
 func TestSingleStatusJSONReportsDefaultAndDefaultErrors(t *testing.T) {
 	e, q, name := namedCLIFixture(t)
 	ctx := context.Background()
-	r, err := e.Store.Find(ctx, name, nil)
+	r, err := e.Locate(ctx, name, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestSingleStatusJSONReportsDefaultAndDefaultErrors(t *testing.T) {
 	if err := json.Unmarshal([]byte(run(name, "--json")), &result); err != nil || result.Default || result.DefaultError == "" {
 		t.Fatal("JSON lost the default-state diagnostic", result, err)
 	}
-	if text := run(name); !strings.Contains(text, "Default selection unavailable:") || !strings.Contains(text, "Session: "+r.ID) {
+	if text := run(name); !strings.Contains(text, "Default selection unavailable:") || !strings.Contains(text, "Session: "+r.Directory) {
 		t.Fatal("human status lost details or default-state diagnostic", text)
 	}
 }

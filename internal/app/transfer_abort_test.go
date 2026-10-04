@@ -56,7 +56,7 @@ func TestPreparationRetryUsesCorrectedCurrentConfig(t *testing.T) {
 	write(t, filepath.Join(q.Sources[0].Path, "setup.sh"), "echo corrected")
 	write(t, filepath.Join(e.Store.Home, "sessions", source.Directory, "harnesses/pi/stores/home/history"), "latest source history")
 	result, err := e.Transfer(ctx, opts)
-	if err != nil || result.Destination != journal.DestinationID {
+	if err != nil || result.Destination != journal.Destination.Name {
 		t.Fatal("config repair could not retry exact transfer", result, err)
 	}
 	dest := sessionRecord(t, e, result.Destination)
@@ -74,7 +74,7 @@ func TestAbortRetainsSourceWithoutResolvingBrokenConfig(t *testing.T) {
 			e, _, q, source, _, journal := interruptedTransfer(t, mode, false)
 			write(t, filepath.Join(q.Sources[0].Path, "config.json"), "broken config")
 			ctx := context.Background()
-			result, err := e.AbortTransfer(ctx, source.ID)
+			result, err := e.AbortTransfer(ctx, source.Directory)
 			if err != nil || !result.Aborted || result.SessionID != source.ID {
 				t.Fatal(result, err)
 			}

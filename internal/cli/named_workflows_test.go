@@ -103,7 +103,7 @@ func TestEditDefaultFlagsSetAndClearWithoutSessionEditor(t *testing.T) {
 	if _, err := run(q.Workspace, "--name", "Main", "--default"); err != nil {
 		t.Fatal(err)
 	}
-	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected == nil || selected.ID != fullName {
+	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected == nil || selected.ID != sessionRecord(t, e, fullName).ID {
 		t.Fatal("named session was not selected", selected, err)
 	}
 	if _, err := run(q.Workspace, "--clear-default"); err != nil {
@@ -190,7 +190,7 @@ func TestEditFolderExitKeepsSavedDefault(t *testing.T) {
 		t.Fatal("exiting the folder overview lost its saved-action receipt", out.String())
 	}
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected == nil || selected.ID != fullName {
+	if err != nil || selected == nil || selected.ID != sessionRecord(t, e, fullName).ID {
 		t.Fatal("exiting the folder overview lost its saved default", selected, err)
 	}
 }
@@ -198,7 +198,7 @@ func TestEditFolderExitKeepsSavedDefault(t *testing.T) {
 func TestEditCanClearStaleDefaultWithoutSessions(t *testing.T) {
 	e, q, fullName := namedCLIFixture(t)
 	ctx := context.Background()
-	r, err := e.Store.Find(ctx, fullName, nil)
+	r, err := e.Locate(ctx, fullName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +492,7 @@ func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T
 	if out, err := runSourcesCLI(t, e, fullName, "--config", "base", "--config", "incomplete"); err != nil {
 		t.Fatal(out, err)
 	}
-	r, err := e.Store.Find(context.Background(), fullName, nil)
+	r, err := e.Locate(context.Background(), fullName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +502,7 @@ func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T
 	if err != nil || !saved {
 		t.Fatal(out.String(), saved, err)
 	}
-	after, err := e.Store.Find(context.Background(), fullName, nil)
+	after, err := e.Locate(context.Background(), fullName, "")
 	if err != nil || after.ID != r.ID || len(after.Settings.Sources) != 1 || after.Settings.Sources[0].Label != "incomplete" || after.Applied.Fingerprints != r.Applied.Fingerprints {
 		t.Fatal("source edit was lost or applied container settings", after, err)
 	}

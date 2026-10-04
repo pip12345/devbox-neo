@@ -127,7 +127,7 @@ func migrateFolderDefaults(ctx context.Context, home string) error {
 			if err := config.Decode(old.Default, &selected); err != nil {
 				return fmt.Errorf("invalid old default selection %s: %w", path, err)
 			}
-			if !environment.IsSessionTarget(selected.ID) {
+			if !environment.IsSessionID(selected.ID) {
 				return fmt.Errorf("invalid old default session ID: %s", path)
 			}
 			if current := state.Defaults[old.Workspace]; current != "" && current != selected.ID {

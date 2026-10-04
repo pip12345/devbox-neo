@@ -219,7 +219,7 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result Dele
 		}
 		sessionLocks = append(sessionLocks, lock)
 		result.Targets = append(result.Targets, r.ID)
-		result.Retained = append(result.Retained, r.ID)
+		result.Retained = append(result.Retained, r.Directory)
 	}
 	include := options.Scope == DeleteSession
 	if include {

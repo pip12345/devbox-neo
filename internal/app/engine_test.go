@@ -58,7 +58,7 @@ func sessionRecord(t *testing.T, e *Engine, name string) store.Record {
 	t.Helper()
 	var r store.Record
 	var err error
-	if environment.IsSessionTarget(name) {
+	if environment.IsSessionID(name) {
 		r, err = e.Store.Find(context.Background(), name, nil)
 	} else {
 		r, err = e.Store.Read(context.Background(), name)

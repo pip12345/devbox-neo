@@ -8,8 +8,8 @@ import (
 )
 
 func recreateCommand(factory engineFactory, localName *string) *cobra.Command {
-	var image, container, all bool
-	cmd := &cobra.Command{Use: "recreate [folder|session-id]", Short: "Apply current config, replacing the container or image only when needed", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	var image, container, force, all bool
+	cmd := &cobra.Command{Use: "recreate [folder|session]", Short: "Apply current config, replacing the container or image only when needed", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if all && len(args) > 0 {
 			return fmt.Errorf("--all does not accept an exact target")
 		}
@@ -21,13 +21,14 @@ func recreateCommand(factory engineFactory, localName *string) *cobra.Command {
 			return err
 		}
 		if all {
-			_, err = e.RecreateAll(cmd.Context(), image, app.Request{LocalName: *localName, ForceContainer: container})
+			_, err = e.RecreateAll(cmd.Context(), image, app.Request{LocalName: *localName, ForceContainer: container, Force: force})
 			return err
 		}
-		q := app.Request{Workspace: args[0], LocalName: *localName, ForceContainer: container}
+		q := app.Request{Workspace: args[0], LocalName: *localName, ForceContainer: container, Force: force}
 		_, err = e.Recreate(cmd.Context(), q, image)
 		return err
 	}}
+	cmd.Flags().BoolVar(&force, "force", false, "Replace the container even with attached commands; interrupts commands and loses container-local changes")
 	cmd.Flags().BoolVar(&image, "image", false, "Force an uncached image rebuild and container replacement")
 	cmd.Flags().BoolVar(&container, "container", false, "Force container replacement, reusing a compatible image when available")
 	cmd.Flags().BoolVar(&all, "all", false, "Apply current config to all managed containers")

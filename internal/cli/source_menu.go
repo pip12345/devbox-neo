@@ -20,7 +20,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 	var show, asJSON, setDefault, clearDefault bool
 	var references []string
 	var workspace string
-	cmd := &cobra.Command{Use: "edit <folder|session-id>", Short: "Browse sessions or edit their settings", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
+	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Browse sessions or edit their settings", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		replace := cmd.Flags().Changed("config")
 		changeWorkspace := cmd.Flags().Changed("workspace")
 		if changeWorkspace && (replace || show || setDefault || clearDefault) {
@@ -43,16 +43,16 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 		}
 		direct := *name != "" || environment.IsSessionTarget(args[0])
 		if changeWorkspace && !direct {
-			return fmt.Errorf("--workspace requires --name or a session ID")
+			return fmt.Errorf("--workspace requires --name or a session directory name")
 		}
 		if show && !direct {
-			return fmt.Errorf("--show requires --name or an session ID")
+			return fmt.Errorf("--show requires --name or a session directory name")
 		}
 		if setDefault && !direct {
-			return fmt.Errorf("--default requires --name or an session ID")
+			return fmt.Errorf("--default requires --name or a session directory name")
 		}
 		if replace && !direct {
-			return fmt.Errorf("--config requires --name or an session ID")
+			return fmt.Errorf("--config requires --name or a session directory name")
 		}
 		if !show && !setDefault && !clearDefault && !replace && !changeWorkspace && !interactive(cmd) {
 			return fmt.Errorf("editing requires a terminal; use --name NAME with --config to replace selected configs, --show to inspect, or --default to select without prompting")
@@ -69,7 +69,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			if asJSON {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(r)
 			}
-			cmd.Printf("Workspace saved: %s\nRecreate to apply it. A matching old-folder default was cleared.\n%s", displayCell(r.Settings.Workspace), stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.ID)}, e.Store.Home)))
+			cmd.Printf("Workspace saved: %s\nRecreate to apply it. A matching old-folder default was cleared.\n%s", displayCell(r.Settings.Workspace), stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.Directory)}, e.Store.Home)))
 			return nil
 		}
 		if replace {
@@ -113,7 +113,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			target = r.ID
+			target = r.Directory
 		} else {
 			target, err = environment.CanonicalWorkspace(args[0])
 			if err != nil {

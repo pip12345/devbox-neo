@@ -68,7 +68,7 @@ func TestCopyCommandModes(t *testing.T) {
 				var out bytes.Buffer
 				cmd.SetOut(&out)
 				cmd.SetErr(&out)
-				args := []string{made.SessionID, destination.Workspace}
+				args := []string{made.Session, destination.Workspace}
 				if tt.move {
 					args = append(args, "--move")
 				}

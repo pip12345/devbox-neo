@@ -228,7 +228,7 @@ func (r *workflowInput) Read(p []byte) (int, error) {
 }
 func TestCombinedConfigurationHasOwnBackOnlyScreen(t *testing.T) {
 	e, _, name := namedCLIFixture(t)
-	record, err := e.Store.Find(context.Background(), name, nil)
+	record, err := e.Locate(context.Background(), name, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestCombinedConfigurationHasOwnBackOnlyScreen(t *testing.T) {
 	if err != nil || saved || strings.Count(out.String(), "Manage configs") != 2 {
 		t.Fatal(saved, err, out.String())
 	}
-	after, err := e.Store.Find(context.Background(), name, nil)
+	after, err := e.Locate(context.Background(), name, "")
 	if err != nil || !reflect.DeepEqual(record, after) {
 		t.Fatal("inspection changed saved state", err)
 	}

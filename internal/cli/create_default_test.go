@@ -35,7 +35,7 @@ func TestCreateDefaultFlagSelectsCreatedSession(t *testing.T) {
 	if err != nil || created.Settings.LocalName != "New" {
 		t.Fatal(created, err)
 	}
-	if !strings.Contains(out.String(), "Folder default: New") || !strings.Contains(out.String(), "dbx open "+created.ID) || strings.Contains(out.String(), "Select it as") {
+	if !strings.Contains(out.String(), "Folder default: New") || !strings.Contains(out.String(), "dbx open "+created.Directory) || strings.Contains(out.String(), "Select it as") {
 		t.Fatal("misleading creation receipt", out.String())
 	}
 }
@@ -56,7 +56,7 @@ func TestCreationDefaultToggleCanBeCancelledWithoutChangingChoice(t *testing.T) 
 	if !strings.Contains(out.String(), "Replaces Main") || !strings.Contains(out.String(), "✓ Make folder default") {
 		t.Fatal("toggle or replacement description missing", out.String())
 	}
-	if selected, err := f.e.Store.ReadDefault(context.Background(), q.Workspace); err != nil || selected == nil || selected.ID != original {
+	if selected, err := f.e.Store.ReadDefault(context.Background(), q.Workspace); err != nil || selected == nil || selected.ID != sessionRecord(t, f.e, original).ID {
 		t.Fatal("draft changed saved default", selected, err)
 	}
 }
@@ -77,7 +77,7 @@ func TestCreationDefaultFailureOpensSavedSessionInsteadOfRetryingCreate(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "Session · New") || !strings.Contains(out.String(), "dbx edit "+created.ID+" --default") {
+	if !strings.Contains(out.String(), "Session · New") || !strings.Contains(out.String(), "dbx edit "+created.Directory+" --default") {
 		t.Fatal("post-creation failure lost saved session or repair guidance", out.String())
 	}
 }
@@ -105,7 +105,7 @@ func TestNativeCreationDefaultCheckbox(t *testing.T) {
 	}
 	p.send("\x1b[F\x1b[A\r")
 	p.wait("✓ Make folder default")
-	if selected, err := e.Store.ReadDefault(context.Background(), q.Workspace); err != nil || selected == nil || selected.ID != original {
+	if selected, err := e.Store.ReadDefault(context.Background(), q.Workspace); err != nil || selected == nil || selected.ID != sessionRecord(t, e, original).ID {
 		t.Fatal("checkbox saved before creation", selected, err)
 	}
 	p.send("\x1b[F\r")

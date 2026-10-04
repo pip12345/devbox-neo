@@ -42,7 +42,7 @@ func TestSharedIdentitySerializesDifferentDirectoriesAndSharesLeases(t *testing.
 		t.Fatal(err)
 	}
 	defer l.Close()
-	if err := l.Release(lease.ID); err != nil {
+	if _, err := l.Release(lease.ID); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -29,7 +29,7 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 	if err != nil {
 		return result, err
 	}
-	result.SessionID = r.ID
+	result.Session, result.SessionID = r.Directory, r.ID
 	if _, err = store.ProcessIdentity(os.Getpid()); err != nil {
 		return result, err
 	}

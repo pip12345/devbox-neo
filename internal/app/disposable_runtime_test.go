@@ -43,7 +43,7 @@ func TestAccessRequiresExplicitRecreateForMissingRuntime(t *testing.T) {
 				err = e.SSH(ctx, old.ID, "", "user@example.com", SSHOptions{})
 			}
 			var missing *commanderror.Error
-			if !errors.As(err, &missing) || missing.Code != "container_missing" || missing.Target != old.ID || len(missing.Next) != 1 || !reflect.DeepEqual(missing.Next[0].Command, []string{"dbx", "recreate", old.ID}) {
+			if !errors.As(err, &missing) || missing.Code != "container_missing" || missing.Target != old.Directory || len(missing.Next) != 1 || !reflect.DeepEqual(missing.Next[0].Command, []string{"dbx", "recreate", old.Directory}) {
 				t.Fatal("missing recreate guidance", err)
 			}
 			for _, args := range d.History()[before:] {

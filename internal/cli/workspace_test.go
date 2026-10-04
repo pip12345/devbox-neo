@@ -33,7 +33,7 @@ func TestEditWorkspaceSavesDesiredSettingsWithoutApplying(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := sessionRecord(t, e, id)
-	if result.ID != id || after.Settings.Workspace != next || after.Directory != before.Directory || !reflect.DeepEqual(after.Applied, before.Applied) {
+	if result.ID != before.ID || after.Settings.Workspace != next || after.Directory != before.Directory || !reflect.DeepEqual(after.Applied, before.Applied) {
 		t.Fatal("workspace edit applied runtime changes", after)
 	}
 	if selected, err := e.Store.ReadDefault(context.Background(), before.Settings.Workspace); err != nil || selected != nil {

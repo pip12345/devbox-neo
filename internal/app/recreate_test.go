@@ -129,7 +129,7 @@ func TestAppliedRuntimeStopFailureSuggestsStopRatherThanReapplication(t *testing
 	if _, err := e.Recreate(ctx, q, false); !errors.As(err, &failure) || failure.Code != "runtime_apply_failed" {
 		t.Fatal(err)
 	}
-	if !slices.Equal(failure.Next[len(failure.Next)-1].Command, []string{"dbx", "stop", made.SessionID}) {
+	if !slices.Equal(failure.Next[len(failure.Next)-1].Command, []string{"dbx", "stop", made.Session}) {
 		t.Fatal("wrong lifetime repair", failure.Next)
 	}
 	if !slices.Contains(sessionRecord(t, e, made.SessionID).Applied.Launch.Args, "--applied") {

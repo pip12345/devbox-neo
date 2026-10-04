@@ -77,19 +77,23 @@ func (l *Locked) Lease(action string) (Lease, error) {
 	lease = Lease{Version: 2, ID: id, Process: p, Action: action, Created: time.Now().UTC()}
 	return lease, fsutil.JSON(filepath.Join(dir, id+".json"), lease)
 }
-func (l *Locked) Release(id string) error {
+
+// Release reports whether this attachment still owned its lease. Forced
+// replacement removes old leases, so their later cleanup must not touch the
+// replacement's activity or automatic lifetime.
+func (l *Locked) Release(id string) (bool, error) {
 	if !idPattern.MatchString(id) {
-		return fmt.Errorf("invalid lease ID")
+		return false, fmt.Errorf("invalid lease ID")
 	}
 	p, err := l.leasePath(id + ".json")
 	if err != nil {
-		return err
+		return false, err
 	}
 	err = os.Remove(p)
 	if os.IsNotExist(err) {
-		return nil
+		return false, nil
 	}
-	return err
+	return err == nil, err
 }
 func (l *Locked) Active() ([]Lease, error)     { return l.active(true) }
 func (l *Locked) LiveLeases() ([]Lease, error) { return l.active(false) }
@@ -129,7 +133,7 @@ func (l *Locked) active(reap bool) ([]Lease, error) {
 		current, err := ProcessIdentity(lease.Process.PID)
 		if os.IsNotExist(err) || (err == nil && current != lease.Process) {
 			if reap {
-				if err = l.Release(lease.ID); err != nil {
+				if _, err = l.Release(lease.ID); err != nil {
 					return nil, err
 				}
 			}
@@ -152,7 +156,11 @@ func (l *Locked) RequireIdle() error {
 		if len(active) == 1 {
 			noun = "command"
 		}
-		return commanderror.New("session_busy", fmt.Sprintf("Environment is in use by %d %s.", len(active), noun), l.Name, nil,
+		commands := make([]string, len(active))
+		for i, lease := range active {
+			commands[i] = fmt.Sprintf("%q: host PID %d, since %s", lease.Action, lease.Process.PID, lease.Created.Format(time.RFC3339))
+		}
+		return commanderror.New("session_busy", fmt.Sprintf("Environment is in use by %d %s (%s).", len(active), noun, strings.Join(commands, "; ")), l.Name, nil,
 			commanderror.Next("Inspect active commands", "status", l.Name))
 	}
 	return nil

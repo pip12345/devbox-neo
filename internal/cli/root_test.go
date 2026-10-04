@@ -180,7 +180,7 @@ func TestOpenCommandOwnsTargetAndFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	for _, text := range []string{"open <folder|session-id>", "--continue", "--harness-arg", "--name"} {
+	for _, text := range []string{"open <folder|session>", "--continue", "--harness-arg", "--name"} {
 		if !strings.Contains(help, text) {
 			t.Fatalf("open help is missing %q: %s", text, help)
 		}

@@ -43,7 +43,7 @@ func (s Service) ConfigUsers(ctx context.Context, owner Owner) ([]ConfigUse, err
 			issues = errors.Join(issues, fmt.Errorf("session %s has no readable record", entry.Name))
 			continue
 		}
-		user := ConfigUse{Session: entry.Record.ID}
+		user := ConfigUse{Session: entry.Name}
 		for _, reference := range entry.Record.Settings.Sources {
 			source, err := reference.Expand(entry.Record.Settings.Workspace)
 			if err != nil {

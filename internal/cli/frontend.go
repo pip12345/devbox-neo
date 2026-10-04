@@ -368,7 +368,7 @@ func (f *frontend) sessionActions(v app.View) []cliui.Action {
 			}
 			r, err := f.e.SetWorkspace(f.m.Context, v.Target, "", path)
 			if err == nil {
-				f.m.Receipt("Workspace saved. Recreate explicitly to apply it.\n" + stepsText(scopedSteps(f.cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.ID)}, f.s.Home)))
+				f.m.Receipt("Workspace saved. Recreate explicitly to apply it.\n" + stepsText(scopedSteps(f.cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.Directory)}, f.s.Home)))
 			}
 			return err
 		}),
@@ -386,7 +386,7 @@ func (f *frontend) sessionActions(v app.View) []cliui.Action {
 				directory, err := f.e.Store.InspectIncompleteDirectory(f.m.Context, v.Target)
 				return directory == nil && err == nil, err
 			}
-			_, err := f.e.Store.Find(f.m.Context, v.Target, nil)
+			_, err := f.e.Store.Read(f.m.Context, v.Target)
 			return os.IsNotExist(err), nil
 		}},
 	)
@@ -500,7 +500,7 @@ func (f *frontend) defaultAction(v app.View) cliui.Action {
 		if v.Default {
 			return f.clearDefault(v.Workspace)
 		}
-		record, err := f.e.Store.Find(f.m.Context, v.Target, nil)
+		record, err := f.e.Store.Read(f.m.Context, v.Target)
 		if err != nil {
 			return err
 		}
@@ -655,8 +655,8 @@ func (f *frontend) createSessionFromDraft(draft sessionCreationDraft) error {
 		return err
 	}
 	// Return to the saved session without launching its harness.
-	f.focusItem = result.SessionID
-	return f.session(app.View{Target: result.SessionID, LocalName: draft.name, Workspace: draft.workspace})
+	f.focusItem = result.Session
+	return f.session(app.View{Target: result.Session, LocalName: draft.name, Workspace: draft.workspace})
 }
 func (f *frontend) help() error {
 	actions := []cliui.Action{f.action("Command reference", Version, func() error {

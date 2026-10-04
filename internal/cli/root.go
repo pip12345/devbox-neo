@@ -7,6 +7,7 @@ import (
 	"devbox/internal/app"
 	"devbox/internal/config"
 	"devbox/internal/docker"
+	"devbox/internal/environment"
 	"devbox/internal/resource"
 	"devbox/internal/store"
 	"github.com/spf13/cobra"
@@ -16,6 +17,34 @@ var Version = "dev"
 
 func sessionNameFlag(cmd *cobra.Command, name *string) *cobra.Command {
 	cmd.Flags().StringVar(name, "name", *name, "Select the session's folder-local name")
+	if cmd.Name() != "create" {
+		if cmd.Long == "" {
+			cmd.Long = cmd.Short
+		}
+		cmd.Long += "\n\nTargets are workspace folders or exact session directory names shown by dbx list.\nSession directory names are independent of Docker container names."
+		validate := cmd.Args
+		cmd.Args = func(cmd *cobra.Command, args []string) error {
+			if validate != nil {
+				if err := validate(cmd, args); err != nil {
+					return err
+				}
+			}
+			index := 0
+			if cmd.Name() == "connect" || cmd.Name() == "disconnect" {
+				index = 1
+			}
+			end := index + 1
+			if cmd.Name() == "delete" {
+				end = len(args)
+			}
+			for i := index; i < end && i < len(args); i++ {
+				if environment.IsSessionID(args[i]) {
+					return fmt.Errorf("use a folder or session directory name, not an internal session ID")
+				}
+			}
+			return nil
+		}
+	}
 	return cmd
 }
 
@@ -65,7 +94,7 @@ func newRoot(runtime docker.Runtime) *cobra.Command {
 	root.AddCommand(createCommand(engine, &localName))
 	var resume bool
 	var harnessArgs []string
-	open := &cobra.Command{Use: "open <folder|session-id> [-- harness-args...]", Short: "Open an existing session and launch its harness", Args: cobra.MinimumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	open := &cobra.Command{Use: "open <folder|session> [-- harness-args...]", Short: "Open an existing session and launch its harness", Args: cobra.MinimumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) > 1 && cmd.ArgsLenAtDash() != 1 {
 			return fmt.Errorf("use -- before one-off harness arguments")
 		}
@@ -80,7 +109,7 @@ func newRoot(runtime docker.Runtime) *cobra.Command {
 	open.Flags().BoolVarP(&resume, "continue", "c", false, "Continue the previous harness session")
 	root.AddCommand(sessionNameFlag(open, &localName))
 	root.AddCommand(&cobra.Command{Use: "version", Short: "Print the Devbox version", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { cmd.Println(Version); return nil }})
-	root.AddCommand(sessionNameFlag(&cobra.Command{Use: "start <folder|session-id>", Short: "Start and keep running until stop, including across reboots", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	root.AddCommand(sessionNameFlag(&cobra.Command{Use: "start <folder|session>", Short: "Start and keep running until stop, including across reboots", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
 			return err
@@ -89,7 +118,7 @@ func newRoot(runtime docker.Runtime) *cobra.Command {
 		return err
 	}}, &localName))
 	var force bool
-	stop := &cobra.Command{Use: "stop <folder|session-id>", Short: "Stop a session and clear its keep-running intent", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	stop := &cobra.Command{Use: "stop <folder|session>", Short: "Stop a session and clear its keep-running intent", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
 			return err
@@ -98,14 +127,14 @@ func newRoot(runtime docker.Runtime) *cobra.Command {
 	}}
 	stop.Flags().BoolVar(&force, "force", false, "Stop even if commands are still running")
 	root.AddCommand(sessionNameFlag(stop, &localName))
-	root.AddCommand(sessionNameFlag(&cobra.Command{Use: "shell <folder|session-id>", Short: "Open a shell in a session", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	root.AddCommand(sessionNameFlag(&cobra.Command{Use: "shell <folder|session>", Short: "Open a shell in a session", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := engine(cmd)
 		if err != nil {
 			return err
 		}
 		return e.Exec(cmd.Context(), args[0], localName, nil, true)
 	}}, &localName))
-	root.AddCommand(sessionNameFlag(&cobra.Command{Use: "exec <folder|session-id> -- <argv...>", Short: "Run a command in a session", Args: cobra.MinimumNArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	root.AddCommand(sessionNameFlag(&cobra.Command{Use: "exec <folder|session> -- <argv...>", Short: "Run a command in a session", Args: cobra.MinimumNArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		if cmd.ArgsLenAtDash() != 1 {
 			return fmt.Errorf("exec requires -- after its target")
 		}

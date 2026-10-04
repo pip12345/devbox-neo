@@ -59,7 +59,7 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (name, i
 		return "", "", listErr
 	}
 	for _, j := range journals {
-		if j.SourceID == q.Source || (j.Source.Workspace == workspace && (q.LocalName == "" || j.Source.LocalName == q.LocalName)) {
+		if j.Source.Name == q.Source || j.SourceID == q.Source || (j.Source.Workspace == workspace && (q.LocalName == "" || j.Source.LocalName == q.LocalName)) {
 			if name != "" {
 				return "", "", fmt.Errorf("multiple pending transfers.\nUse the exact source name.")
 			}
@@ -114,8 +114,8 @@ func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode 
 			return nil, fmt.Errorf("harness %s does not support %s", d.Name, store.TransferCommand(mode))
 		}
 		if d.Name == source.Applied.Definition.Name && environment.Fingerprint(e.Store.Installation, effective.Hash) != source.Applied.Definition.Hash {
-			return nil, commanderror.New("harness_definition_changed", "Harness definition changed. Recreate before transferring.", source.ID, nil,
-				commanderror.Next("Recreate with current harness definition", "recreate", source.ID))
+			return nil, commanderror.New("harness_definition_changed", "Harness definition changed. Recreate before transferring.", source.Directory, nil,
+				commanderror.Next("Recreate with current harness definition", "recreate", source.Directory))
 		}
 		path, err := l.Path(filepath.Join("harnesses", d.Name, "stores"))
 		if err != nil {
@@ -144,9 +144,9 @@ func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode 
 func transferFailure(j store.Transfer, err error) error {
 	steps := []commanderror.Step{j.RetryStep()}
 	if j.Phase == "prepare" {
-		steps = append(steps, commanderror.Next("Or abandon the uncommitted transfer", "copy", j.SourceID, "--abort"))
+		steps = append(steps, commanderror.Next("Or abandon the uncommitted transfer", "copy", j.Source.Name, "--abort"))
 	}
-	return commanderror.New("transfer_failed", fmt.Sprintf("Session %s failed: %v", store.TransferCommand(j.Mode), err), j.SourceID, err, steps...)
+	return commanderror.New("transfer_failed", fmt.Sprintf("Session %s failed: %v", store.TransferCommand(j.Mode), err), j.Source.Name, err, steps...)
 }
 
 // Transfer has two durable phases: source-authoritative preparation, then
@@ -290,8 +290,8 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		return result, err
 	}
 	if q.Mode == "clone" && exists && c.State.Running {
-		return result, commanderror.New("container_running", "Stop the source container before copying.", source.ID, nil,
-			commanderror.Next("Stop, then retry copy", "stop", source.ID))
+		return result, commanderror.New("container_running", "Stop the source container before copying.", source.Directory, nil,
+			commanderror.Next("Stop, then retry copy", "stop", source.Directory))
 	}
 	definitions, err := e.transferDefinitions(sourceLock, source, q.Mode)
 	if err != nil {
@@ -409,7 +409,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	return result, e.finishTransfer(ctx, sourceLock, destLock, *journal)
 }
 func transferResult(j store.Transfer, dryRun bool) TransferResult {
-	return TransferResult{Source: j.SourceID, Destination: j.DestinationID, Mode: j.Mode, SessionID: j.DestinationID, DryRun: dryRun, Workspace: j.Destination.Workspace, LocalName: j.Destination.LocalName}
+	return TransferResult{Source: j.Source.Name, Destination: j.Destination.Name, Mode: j.Mode, SessionID: j.DestinationID, DryRun: dryRun, Workspace: j.Destination.Workspace, LocalName: j.Destination.LocalName}
 }
 func (e *Engine) verifyReservation(destination *store.Locked, j store.Transfer) error {
 	pending, err := e.Store.Pending(destination.Name)

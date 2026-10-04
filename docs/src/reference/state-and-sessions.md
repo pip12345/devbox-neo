@@ -73,7 +73,7 @@ These are Devbox-managed runtime paths. Shared SSH data is transient, not a cred
 
 Local names are 1–64 ASCII characters: letters, digits, `_`, and `-`, starting with a letter or digit. Case matters: `work` and `Work` differ.
 
-Exact session targets are immutable 32-hex IDs, shown by `list --wide`. Directory and Docker names are readable hints. Renaming a session or changing its workspace does not rename them.
+Exact session targets are directory names under `sessions/`, shown by `list` and `status`. Docker container names are separate and cannot be used as saved-session targets. Renaming a session or changing its workspace does not rename either directory or container. Internal IDs keep locks and ownership attached to the saved session; they are not CLI targets.
 
 Folder-only commands require a saved default. Devbox checks that Docker resources belong to the selected installation and session before changing them.
 

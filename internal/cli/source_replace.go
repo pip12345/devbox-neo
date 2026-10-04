@@ -39,7 +39,7 @@ func replaceSessionConfigs(cmd *cobra.Command, e *app.Engine, target, localName 
 		return err
 	}
 	result := selectionResult{Name: updated.ID, Workspace: updated.Settings.Workspace, Sources: updated.Settings.Sources,
-		Next: scopedSteps(cmd, []commanderror.Step{commanderror.Next("Review pending changes", "status", updated.ID)}, e.Store.Home)}
+		Next: scopedSteps(cmd, []commanderror.Step{commanderror.Next("Review pending changes", "status", updated.Directory)}, e.Store.Home)}
 	if asJSON {
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
 	}

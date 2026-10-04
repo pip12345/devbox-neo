@@ -46,7 +46,7 @@ func (e *Engine) SSH(ctx context.Context, target, localName, destination string,
 		}
 	}
 	if !mounted {
-		return commanderror.New("ssh_mount_missing", "This environment needs recreation before SSH sharing is available.", r.ID, nil, commanderror.Next("Recreate", "recreate", r.ID))
+		return commanderror.New("ssh_mount_missing", "This environment needs recreation before SSH sharing is available.", r.Directory, nil, commanderror.Next("Recreate", "recreate", r.Directory))
 	}
 	c, exists, err := e.inspect(ctx, r)
 	if err != nil {
@@ -123,7 +123,7 @@ func (e *Engine) runSSH(ctx context.Context, c docker.Container, r store.Record,
 				}
 				connected = true
 				if options.Connected != nil {
-					options.Connected(r.ID, connection.Alias)
+					options.Connected(r.Directory, connection.Alias)
 				}
 			}
 			if time.Now().Before(nextInspect) {

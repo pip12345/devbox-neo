@@ -41,16 +41,16 @@ func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	result := Result{SessionID: id}
+	result := Result{Session: directory, SessionID: id}
 	lock, err := e.Store.Lock(ctx, directory, id)
 	if err != nil {
 		return result, err
 	}
 	defer lock.Close()
 	if _, err = lock.Load(); err == nil {
-		return result, commanderror.New("session_exists", "Environment already exists.", result.SessionID, nil,
-			commanderror.Next("Open", "open", result.SessionID),
-			commanderror.Next("Or recreate with current configuration", "recreate", result.SessionID))
+		return result, commanderror.New("session_exists", "Environment already exists.", directory, nil,
+			commanderror.Next("Open", "open", directory),
+			commanderror.Next("Or recreate with current configuration", "recreate", directory))
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return result, err
 	}
@@ -66,7 +66,7 @@ func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
 			return result, err
 		}
 	}
-	record, c, err := e.createAs(ctx, lock, spec, nil, false, CreationIdentity{ID: id})
+	record, c, err := e.createAs(ctx, lock, spec, nil, creationOptions{}, CreationIdentity{ID: id})
 	if err != nil {
 		cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
@@ -74,15 +74,15 @@ func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
 	}
 	var stopErr, defaultErr error
 	if err = e.Docker.Stop(ctx, c, e.owner(record)); err != nil {
-		stopErr = commanderror.New("create_stop_failed", "Environment created, but stopping it failed.", result.SessionID, err,
-			commanderror.Next("Stop", "stop", result.SessionID))
+		stopErr = commanderror.New("create_stop_failed", "Environment created, but stopping it failed.", record.Directory, err,
+			commanderror.Next("Stop", "stop", record.Directory))
 	}
 	// The session is committed. A failed preference update must not discard it
 	// or encourage retrying Create; default selection has its own repair step.
 	if q.MakeDefault {
 		if err := lock.SelectDefault(record.ID); err != nil {
-			defaultErr = commanderror.New("create_default_failed", "Session created, but selecting it as the folder default failed.", record.ID, err,
-				commanderror.Next("Select the created session as default", "edit", record.ID, "--default"))
+			defaultErr = commanderror.New("create_default_failed", "Session created, but selecting it as the folder default failed.", record.Directory, err,
+				commanderror.Next("Select the created session as default", "edit", record.Directory, "--default"))
 		}
 	}
 	return result, errors.Join(stopErr, defaultErr)
@@ -133,8 +133,9 @@ func (e *Engine) requireNew(ctx context.Context, l *store.Locked) error {
 	return nil
 }
 
-func (e *Engine) create(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool) (store.Record, docker.Container, error) {
-	return e.createAs(ctx, l, s, previous, force, CreationIdentity{})
+type creationOptions struct {
+	image bool
+	force bool
 }
 
 // CreationIdentity supplies identity and creation time for a new destination.
@@ -161,17 +162,26 @@ func (e *Engine) CreatePrepared(ctx context.Context, l *store.Locked, s environm
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return store.Record{}, docker.Container{}, err
 	}
-	return e.createAs(ctx, l, s, nil, false, identity)
+	return e.createAs(ctx, l, s, nil, creationOptions{}, identity)
 }
 
 // Session identity is allocated before locking. Materialization may replace
 // runtime resources, but cannot change the identity protected by that lock.
-func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, force bool, seed CreationIdentity) (record store.Record, c docker.Container, err error) {
+func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, options creationOptions, seed CreationIdentity) (record store.Record, c docker.Container, err error) {
 	id, created := l.ID, seed.Created
 	if (previous == nil && seed.ID != "" && seed.ID != id) || (previous != nil && previous.ID != id) {
 		return record, c, fmt.Errorf("creation identity differs from its operation lock")
 	}
-	if err = l.RequireIdle(); err != nil {
+	var attachments []store.Lease
+	if options.force {
+		if previous == nil {
+			return record, c, fmt.Errorf("forced replacement requires an existing session")
+		}
+		attachments, err = l.LiveLeases()
+	} else {
+		err = l.RequireIdle()
+	}
+	if err != nil {
 		return record, c, err
 	}
 	if previous != nil {
@@ -218,7 +228,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 	}
 	var image docker.Image
 	reused := false
-	if previous != nil && !force && previous.Applied.Fingerprints.Image == s.Fingerprints.Image {
+	if previous != nil && !options.image && previous.Applied.Fingerprints.Image == s.Fingerprints.Image {
 		available, inspectErr := e.Docker.ImageAvailable(ctx, previous.Applied.ImageID)
 		if inspectErr != nil {
 			return record, c, inspectErr
@@ -236,7 +246,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 			image, err = e.build(ctx, s, id, false)
 		}
 	} else {
-		image, err = e.build(ctx, s, id, force)
+		image, err = e.build(ctx, s, id, options.image)
 	}
 	if err != nil {
 		return record, c, err
@@ -293,6 +303,13 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 			return record, c, err
 		}
 		removed = true
+	}
+	// Keep old attachments registered until the verified runtime is gone.
+	// Late cleanup sees a missing lease and cannot affect the replacement.
+	for _, lease := range attachments {
+		if _, err = l.Release(lease.ID); err != nil {
+			return record, c, err
+		}
 	}
 	record = creationRecord(s, image.ID, mounts, id, created, time.Now().UTC(), previous, seed)
 	if reused {
@@ -390,7 +407,7 @@ func (e *Engine) runHooks(ctx context.Context, c docker.Container, r store.Recor
 	return nil
 }
 
-func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, error) {
+func (e *Engine) Recreate(ctx context.Context, q Request, image bool) (Result, error) {
 	// Resolve from the locked record, never a source list captured by the CLI
 	// before another mutation or a default changed after this invocation chose it.
 	target := q.Workspace
@@ -410,7 +427,7 @@ func (e *Engine) Recreate(ctx context.Context, q Request, force bool) (Result, e
 	if err != nil {
 		return Result{}, err
 	}
-	plan, err := e.planRecreate(ctx, l, old, q, force)
+	plan, err := e.planRecreate(ctx, l, old, q, image)
 	if err != nil {
 		return Result{}, err
 	}

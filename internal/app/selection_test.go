@@ -18,7 +18,7 @@ func TestNamedSessionsRequireExplicitDefaultsAndPinSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := sessionRecord(t, e, first.SessionID)
-	if a.Settings.LocalName != "test" || !environment.IsSessionTarget(first.SessionID) {
+	if a.Settings.LocalName != "test" || !environment.IsSessionID(first.SessionID) {
 		t.Fatal(a.Settings.Binding)
 	}
 	// Neither a sole session nor an obsolete global config selects a default.
@@ -74,7 +74,7 @@ func TestNamedSessionsRequireExplicitDefaultsAndPinSources(t *testing.T) {
 		t.Fatal(list, err)
 	}
 	for _, view := range list.Sessions {
-		if view.Default != (view.Target == b.ID) {
+		if view.Default != (view.Target == b.Directory) {
 			t.Fatal("incorrect default marker", view)
 		}
 	}

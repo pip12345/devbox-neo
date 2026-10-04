@@ -6,7 +6,7 @@ The saved session is the top-level environment model. Docker inventory supplies 
 
 `environment.ContainerPrefix` defines the `dbx-` lookup convention independently of `docker.Namespace`, which defines `dbx.*` labels and `dbx/session:<folder>-<name>-<session-id>` image tags.
 
-The immutable session ID identifies the saved session. `settings` contains the editable workspace, local name, config references, and keep-running intent. Storage directories and Docker names are independently allocated as `dbx-<folder>-<allocation-hash>.<local-name>` hints; neither is parsed or required to match settings or the other name.
+The immutable session ID identifies the saved session. `settings` contains the editable workspace, local name, config references, and keep-running intent. Storage directories and Docker names are independently allocated as `dbx-<folder>-<allocation-hash>.<local-name>` hints; neither is parsed or required to match settings or the other name. Public exact targets use the session directory name, not the internal ID or Docker name. `app.Locate` reads that directory, then locks and validates its saved ID. Captured internal service operations may still address immutable IDs; the CLI rejects them as public targets.
 
 `store.Find` looks up an ID or workspace/name from saved records, without config resolution or a persistent index. Folder-only lookup reads its explicit default ID. `state/folder-defaults.json` uses schema 1 with a `defaults` map from canonical folder paths to session IDs. Only selected folders appear; clearing removes the entry. An absent file means no selections; malformed defaults are errors. Name reuse never inherits an old ID selection.
 
@@ -110,7 +110,7 @@ Both endpoint operation locks are acquired in sorted order. Ordinary `Locked.Loa
 
 The journal stores endpoint identities, session IDs, mode/phase, and intended running state. It contains no env/auth values. Destination creation uses the allocated ID, so retries cannot create a different session.
 
-Journal schema 4 pins endpoint directories, bindings, IDs, the source container ID, and the separately allocated destination container name. The consent gate converts schema-3 journals by removing obsolete config fingerprints while preserving all transaction intent and commitment. It preflights the journals and idle endpoint lock set before publishing; no runtime or session data changes. `--as` may select another name in the same or a different folder; otherwise preserve the source name. Retry guidance uses exact source ID, destination workspace, and `--as`, without resolving a changed default.
+Journal schema 4 pins endpoint directories, bindings, IDs, the source container ID, and the separately allocated destination container name. The consent gate converts schema-3 journals by removing obsolete config fingerprints while preserving all transaction intent and commitment. It preflights the journals and idle endpoint lock set before publishing; no runtime or session data changes. `--as` may select another name in the same or a different folder; otherwise preserve the source name. Retry guidance uses exact source directory name, destination workspace, and `--as`, without resolving a changed default.
 
 Internal modes are `clone` for `copy` and `relocate` for `copy --move`. Harness capabilities and JSON output use these same values.
 
@@ -135,7 +135,7 @@ Destination resolution preserves the source reference order and kind. Relative r
 
 If preparation fails, bounded rollback cleans the destination, restores the source image tag after a relocation build, and restarts a previously running source. The journal remains pending. A preparation retry resolves current config and recopies the authoritative source because rollback may have restarted it and allowed its state to change. Config repair must not be rejected as a changed transfer contract; only endpoints, mode and source identity stay pinned.
 
-An explicit `copy <source-id> --abort` can abandon preparation without resolving config or loading current harness definitions. It requires idle endpoints and intact source stores, verifies/removes the destination attempt, restores source running intent and only then removes the journal. Failure retains the reservation for retry. It never aborts commitment. Corrupt journals identify their path and fail closed rather than guessing endpoints or deleting a reservation.
+An explicit `copy <source-session> --abort` can abandon preparation without resolving config or loading current harness definitions. It requires idle endpoints and intact source stores, verifies/removes the destination attempt, restores source running intent and only then removes the journal. Failure retains the reservation for retry. It never aborts commitment. Corrupt journals identify their path and fail closed rather than guessing endpoints or deleting a reservation.
 
 ### Committed: destination is authoritative
 

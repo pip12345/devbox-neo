@@ -8,6 +8,13 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Readable targets and attachment recovery — implemented, live acceptance pending
+
+- Public session targets use exact storage directory names or folders with their existing default/name selection. Help, completion, listings, receipts, config usage and transfer recovery use directory names; internal IDs still own locks and Docker associations. Saved formats are unchanged, with no migration or public hash aliases.
+- Ordinary access validates attachment state without demanding idleness. Last-attachment automatic shutdown and explicit keep-running intent are retained. Busy errors and detailed status show command action, host PID and start time.
+- Explicit `recreate --force` always replaces the verified runtime and permits interruption. The creation owner retires old leases only after runtime removal/confirmed absence. Late cleanup cannot affect the replacement; interrupted automatic sessions finish stopped. CLI and menu share the same service.
+- Full fast-suite equivalent, vet and CLI build/help checks pass using `.tools/go` (`make` is unavailable). Regression coverage includes stopped access with live attachments, automatic/manual shutdown, forced replacement and delayed cleanup, pre-removal failures, directory targeting, public ID rejection and transfer recovery. Live Docker, host-terminal acceptance and race checks remain unrun; this container has no C compiler.
+
 ## Contextual menus, compact layout, and local hotkeys — implemented, host acceptance pending
 
 - The browser previews the highlighted object's shared menu actions without running handlers. Enter/Right opens its workflow; browser-wide commands remain separate under `b` Browser actions, with existing `n`/`a`/`r` shortcuts retained.

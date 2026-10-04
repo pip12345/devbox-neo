@@ -19,7 +19,7 @@ flowchart TD
 
 ### Selecting sources
 
-`app.Locate` selects saved session identity using an exact session ID, a folder-local name, or a folder's saved default. It never resolves config to find a session. This keeps broken sources from blocking lookup and repair.
+`app.Locate` selects saved session identity using an exact session directory name, a folder-local name, or a folder's saved default. Captured internal operations can address the immutable ID. It never resolves config to find a session. This keeps broken sources from blocking lookup and repair.
 
 `config.Reference` preserves relative/fixed intent. CLI capture resolves relative arguments against the invoking cwd, then records them relative to the canonical workspace. `ResolveReferences` expands the saved chain at the runtime boundary, requires its directories, and rejects duplicate canonical paths. Composition receives absolute `config.Source` inputs. Resolution never discovers sources; there is no global baseline or inheritance cutoff.
 

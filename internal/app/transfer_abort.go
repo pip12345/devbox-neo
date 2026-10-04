@@ -15,8 +15,8 @@ import (
 // prerequisite for doing so. The journal stays until every cleanup step succeeds.
 func (e *Engine) AbortTransfer(ctx context.Context, sourceID string) (TransferResult, error) {
 	var result TransferResult
-	if !environment.IsSessionTarget(sourceID) {
-		return result, fmt.Errorf("--abort requires the exact source session ID")
+	if !environment.IsSessionTarget(sourceID) && !environment.IsSessionID(sourceID) {
+		return result, fmt.Errorf("--abort requires the exact source session directory name")
 	}
 	names, err := e.Store.LockNames(ctx)
 	if err != nil {
@@ -29,7 +29,7 @@ func (e *Engine) AbortTransfer(ctx context.Context, sourceID string) (TransferRe
 	}
 	var selected *store.Transfer
 	for _, j := range journals {
-		if j.SourceID != sourceID {
+		if j.Source.Name != sourceID && j.SourceID != sourceID {
 			continue
 		}
 		if selected != nil {
@@ -42,7 +42,7 @@ func (e *Engine) AbortTransfer(ctx context.Context, sourceID string) (TransferRe
 	}
 	j := *selected
 	if j.Phase != "prepare" {
-		return result, commanderror.New("transfer_committed", "The destination is already committed; finish cleanup instead of aborting.", sourceID, nil, j.RetryStep())
+		return result, commanderror.New("transfer_committed", "The destination is already committed; finish cleanup instead of aborting.", j.Source.Name, nil, j.RetryStep())
 	}
 	locks, err := e.Store.LockAll(ctx, []string{j.Source.Name, j.Destination.Name}, map[string]string{j.Source.Name: j.SourceID, j.Destination.Name: j.DestinationID})
 	if err != nil {

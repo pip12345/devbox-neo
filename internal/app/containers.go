@@ -18,7 +18,7 @@ import (
 )
 
 type View struct {
-	Target              string                    `json:"-"`
+	Target              string                    `json:"target"`
 	Workspace           string                    `json:"workspace,omitempty"`
 	LocalName           string                    `json:"local_name,omitempty"`
 	Default             bool                      `json:"default"`
@@ -44,7 +44,7 @@ type View struct {
 }
 
 func recordView(r store.Record) View {
-	return View{Target: r.ID, ContainerName: r.Applied.Creation.Name, Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, Sources: r.Settings.Sources, ManualStart: r.Settings.ManualStart, Harness: r.Applied.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action, CreatedAt: r.Created}
+	return View{Target: r.Directory, ContainerName: r.Applied.Creation.Name, Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, Sources: r.Settings.Sources, ManualStart: r.Settings.ManualStart, Harness: r.Applied.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action, CreatedAt: r.Created}
 }
 func (e *Engine) inventory(ctx context.Context) ([]store.Entry, []docker.Container, error) {
 	entries, err := e.Store.Inventory(ctx)
@@ -75,6 +75,7 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 		view := View{Target: name}
 		if found && entry.Record.ID != "" {
 			view = recordView(entry.Record)
+			view.Target = entry.Name
 		}
 		view.ContainerID, view.ContainerName = container.ID, name
 		view.Exists, view.Running = true, container.State.Running
@@ -131,8 +132,8 @@ func (e *Engine) Logs(ctx context.Context, target, localName string, follow bool
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "Container not found; its logs are unavailable.", r.ID, nil,
-			commanderror.Next("Inspect session", "status", r.ID))
+		return commanderror.New("container_missing", "Container not found; its logs are unavailable.", r.Directory, nil,
+			commanderror.Next("Inspect session", "status", r.Directory))
 	}
 	return e.Docker.Logs(ctx, c, e.owner(r), follow, tail, e.Streams.Out, e.Streams.Err)
 }
@@ -205,7 +206,7 @@ func (e *Engine) selectContainers(ctx context.Context, selection *Selection) ([]
 		for _, target := range selection.Targets {
 			r, err := e.Locate(ctx, target, selection.LocalName)
 			if err != nil {
-				byID := environment.IsSessionTarget(target) && (sessionAbsent(err) || incompleteInventory(err))
+				byID := environment.IsSessionID(target) && (sessionAbsent(err) || incompleteInventory(err))
 				if byID {
 					live, inventoryErr := e.Docker.Inventory(ctx, e.Store.Installation)
 					if inventoryErr != nil {
@@ -403,7 +404,7 @@ func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 	return owner, c.Verify(owner)
 }
 
-func (e *Engine) RecreateAll(ctx context.Context, force bool, options Request) ([]string, error) {
+func (e *Engine) RecreateAll(ctx context.Context, image bool, options Request) ([]string, error) {
 	if options.Host == nil {
 		options.Host = config.Snapshot()
 	}
@@ -423,7 +424,7 @@ func (e *Engine) RecreateAll(ctx context.Context, force bool, options Request) (
 		if err != nil {
 			return nil, err
 		}
-		plan, err := e.planRecreate(ctx, lock, r, options, force)
+		plan, err := e.planRecreate(ctx, lock, r, options, image)
 		if err != nil {
 			return nil, err
 		}

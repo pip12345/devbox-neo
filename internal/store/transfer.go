@@ -61,7 +61,7 @@ func (j Transfer) RetryStep() commanderror.Step {
 	if j.Mode == "relocate" {
 		args = append(args, "--move")
 	}
-	args = append(args, j.SourceID, j.Destination.Workspace, "--as", j.Destination.LocalName)
+	args = append(args, j.Source.Name, j.Destination.Workspace, "--as", j.Destination.LocalName)
 	return commanderror.Next("Resume transfer", args...)
 }
 

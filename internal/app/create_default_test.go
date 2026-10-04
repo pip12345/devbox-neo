@@ -100,7 +100,7 @@ func TestCreationDefaultFailureKeepsSessionAndGivesExactRepair(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || !errors.As(err, &failure) || failure.Code != "create_default_failed" {
 		t.Fatal(err)
 	}
-	if len(failure.Next) != 1 || !reflect.DeepEqual(failure.Next[0].Command, []string{"dbx", "edit", result.SessionID, "--default"}) {
+	if len(failure.Next) != 1 || !reflect.DeepEqual(failure.Next[0].Command, []string{"dbx", "edit", result.Session, "--default"}) {
 		t.Fatal("incorrect retry", failure.Next)
 	}
 	if r := sessionRecord(t, e, result.SessionID); r.Settings.LocalName != q.LocalName {
