@@ -12,11 +12,11 @@ import (
 
 func browserFixture() Collection {
 	return Collection{Title: "Sessions", Empty: "No sessions yet.", Items: []Item{
-		{Key: "/project", Label: "/project", Folder: true, Fields: []Field{{Label: "Default", Value: "claude"}}},
-		{Key: "session-a", Label: "pi", Depth: 1, Status: "missing", Description: "/project pi"},
+		{Key: "/project", Label: "/project", Folder: true, Fields: []Field{{Label: "Default", Value: "claude"}}, Actions: []Action{{Label: "Create session here"}}},
+		{Key: "session-a", Label: "pi", Depth: 1, Status: "missing", Description: "/project pi", Actions: []Action{{Label: "Continue", Shortcut: "c"}, {Label: "Recreate", Shortcut: "r"}}},
 		{Key: "session-b", Label: "claude", Depth: 1, Status: "stopped", Selected: true, Description: "/project claude", Fields: []Field{
 			{Label: "Folder", Value: "/project"}, {Label: "Container", Value: "stopped", Status: true}, {Label: "Configs", Value: "1. base\n2. project"},
-		}},
+		}, Actions: []Action{{Label: "Continue", Shortcut: "c"}, {Label: "Recreate", Shortcut: "r"}}},
 	}}
 }
 func browserRequest() *screenRequest {
@@ -114,10 +114,11 @@ func TestBrowserActionFocusAndShortcuts(t *testing.T) {
 	key(m, tea.KeyDown, "")
 	key(m, tea.KeyDown, "")
 	key(m, tea.KeyRight, "")
-	if m.objects || m.currentObject().Key != "session-b" {
-		t.Fatal("switching focus lost selected object")
+	if reply := <-req.reply; !reply.item || reply.index != 2 {
+		t.Fatal("Right opened application commands instead of this object's menu", reply)
 	}
-	key(m, tea.KeyLeft, "")
+	req.itemKey = "session-b"
+	m.load(req)
 	if !m.objects || m.cursor != 2 {
 		t.Fatal("returning to object list lost cursor")
 	}
@@ -181,9 +182,23 @@ func TestObjectMenuKeepsNavigationAndDoesNotSwitchTabs(t *testing.T) {
 func TestBrowserSnapshotsHaveNoWorkflowHandlers(t *testing.T) {
 	c := browserFixture()
 	c.Items[0].Open = func() error { return nil }
+	checked := true
+	c.Items[0].Summary = []Field{{Value: "automatic"}}
+	c.Items[0].Actions[0].Run = func() (bool, error) { return true, nil }
+	c.Items[0].Actions[0].Checked = &checked
+	c.Items[0].Actions[0].Fields = []Field{{Values: []string{"original"}}}
 	copy := snapshotCollection(&c)
 	if copy.Items[0].Open != nil || c.Items[0].Open == nil {
 		t.Fatal("snapshot retained handler or mutated original")
+	}
+	if copy.Items[0].Actions[0].Run != nil || c.Items[0].Actions[0].Run == nil {
+		t.Fatal("preview snapshot retained an action handler or changed its owner")
+	}
+	*copy.Items[0].Actions[0].Checked = false
+	copy.Items[0].Actions[0].Fields[0].Values[0] = "changed"
+	copy.Items[0].Summary[0].Value = "changed"
+	if !checked || c.Items[0].Actions[0].Fields[0].Values[0] != "original" || c.Items[0].Summary[0].Value != "automatic" {
+		t.Fatal("preview actions or compact summary alias mutable workflow state")
 	}
 	copy.Items[0].Label = "changed"
 	copy.Items[0].Fields[0].Value = "changed"

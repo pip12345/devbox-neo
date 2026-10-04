@@ -117,7 +117,7 @@ func (f *frontend) recreate(target string) error {
 			f.action("Inspect pending changes", "", func() error { return f.status(target) }),
 			f.toggle("Rebuild image without cache", &noCache),
 			f.toggle("Force container replacement", &container),
-			{Label: "Recreate", Description: "Apply current config; replace runtime only as needed or explicitly requested", Run: func() (bool, error) {
+			{Label: "Recreate", Shortcut: "r", Description: "Apply current config; replace runtime only as needed or explicitly requested", Run: func() (bool, error) {
 				yes, err := f.m.Confirm("Apply current config? Runtime may restart; if replaced, container-local changes will be lost. [y/N] ")
 				if err != nil || !yes {
 					return false, err
@@ -447,7 +447,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 		if options.Scope == app.DeleteSession {
 			selected = 1
 		}
-		choice := f.value("Delete", scopes[selected], func() error {
+		choice := f.value("Delete scope", scopes[selected], func() error {
 			i, err := f.m.SelectCurrent("What to delete", scopes, selected, scopes[selected], "Back")
 			if err == nil && i >= 0 {
 				options.Scope = app.DeleteContainer
@@ -478,7 +478,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 			return f.m.View("Deletion preview", func(out io.Writer) error { return printDeleteResult(out, result) })
 		})
 		preview.Blocked = blocked
-		execute := cliui.Action{Label: "Delete…", Run: func() (bool, error) {
+		execute := cliui.Action{Label: "Delete", Run: func() (bool, error) {
 			var result app.DeleteResult
 			err := f.foreground(title, func(ctx context.Context) error {
 				q := options

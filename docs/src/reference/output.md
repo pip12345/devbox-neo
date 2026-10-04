@@ -7,12 +7,17 @@
 | Up/Down or `j`/`k` | Move through the list, wrapping at either end |
 | Enter | Open the selected menu, edit a field, or run an action |
 | Esc or `q` | Go back; first clears an active filter |
-| Left/Right | Switch between browser objects and application actions |
+| Right / Left | Open the highlighted object's menu / return to the browser |
 | Tab | Switch Sessions/Configs while browsing |
 | `/` | Filter the current list |
-| Page Up/Down | Scroll details |
-| `n`, `r`, `a` | Create, Refresh, All-session operations in the browser |
+| Page Up/Down | Move a visible page in a list; scroll a page in read-only views |
+| Home/End | First/last list item; top/bottom of a read-only view |
+| Ctrl+Page Up/Down | Scroll long context/details without moving the menu selection |
+| `n`, `r`, `a`, `b` | Create, Refresh, All-session operations, Browser actions while browsing |
+| `c`, `o`, `s`, `r`, `i`, `l`, `e` | Continue, Open, Shell, Recreate, Status, Logs, Exec in a session menu |
 | Ctrl-C | Exit menus; interrupt a foreground operation without closing the browser |
+
+The browser's right pane previews the highlighted object's actions. Enter or Right opens that menu; highlighting never runs an action. Browser-wide commands stay separate under **Browser actions** (`b`). Action labels share one style regardless of whether they open another screen. Destructive actions retain red warning text. Categories have a blank line between them. Shortcuts are shown beside actions and do not fire while typing or filtering. In the Recreate form, `r` opens the existing confirmation; it never approves it.
 
 Text fields use Esc to cancel; `q` and `:back` are literal text there. Confirmations start on **No** and require Enter. SIGTERM cancels the whole command.
 

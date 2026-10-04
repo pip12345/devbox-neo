@@ -8,6 +8,18 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Contextual menus, compact layout, and local hotkeys — implemented, host acceptance pending
+
+- The browser previews the highlighted object's shared menu actions without running handlers. Enter/Right opens its workflow; browser-wide commands remain separate under `b` Browser actions, with existing `n`/`a`/`r` shortcuts retained.
+- Session menus use compact harness/state/lifetime context and Use/Inspect/Container/Manage gutter groups separated by blank rows. Labels share one style regardless of navigation depth; only destructive actions retain red warning text. Shortcuts use a compact adjacent column, and Start keeps its lifetime explanation in help rather than its label. No menu-depth colors, font changes, or text markers remain; unused classification metadata and styling helpers were removed. Frequent session keys are `c`/`o`/`s`/`r`/`i`/`l`/`e`; Recreate's local `r` retains the existing confirmation.
+- Page keys move a visible page through lists or scroll read-only views; Home/End jump to endpoints. Ctrl+Page keys preserve independent long-detail scrolling. Snapshot, rendering, keyboard, and fake-Docker PTY regressions pass, including five repeated hotkey/current-folder/creation workflows and color/no-color layouts from 48×20 to 160×44. Updated the inventory and affected navigation docs.
+- Uniform-action styling passes the exact `make test-fast` Go command, affected-package vet, CLI build, and diff checks using `.tools/go` (`make` is unavailable). Category spacing shares its row plan with paging; regressions cover separator dispatch, filtered cursors, identical non-destructive action styles/no depth hints, nearby aligned shortcuts, and color/no-color layouts through 200×48. Race checks, live Docker, and manual host-terminal acceptance remain unrun.
+
+## Graphical UI scouting inventory — documented
+
+- Added [tui-inventory.md](tui-inventory.md): current graphical screens, schematic ASCII layouts, complete option/control lists, conditional states, entry points, and per-workflow keystroke/return routes. This is source/test-derived scouting, not an approved redesign or a UI change.
+- Screen call sites, conditional controls, document anchors, and source/test references checked. The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable), including embedded-documentation checks. No live Docker or manual terminal walkthrough was run.
+
 ## Terminal hangup cleanup — implemented, live acceptance pending
 
 - SIGHUP cancels the whole command so normal attachment cleanup releases leases and stops the last automatically started session. Explicit manual-start intent and foreground Ctrl-C routing remain unchanged.

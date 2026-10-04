@@ -76,7 +76,7 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 		if whole {
 			label = "Container and saved data/history"
 		}
-		for _, want := range []string{"Delete · Main", "Folder: " + q.Workspace, "Delete: " + label, "Force: Off", "Would delete container " + containerName} {
+		for _, want := range []string{"Delete · Main", "Folder: " + q.Workspace, "Delete scope: " + label, "Force: Off", "Would delete container " + containerName} {
 			if !strings.Contains(text, want) {
 				t.Fatal("missing visible deletion choice", want, text)
 			}

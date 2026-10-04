@@ -68,7 +68,7 @@ func TestDeleteIncompleteCreationCLIJSON(t *testing.T) {
 func TestIncompleteSessionMenuDeletesAndReturnsToBrowser(t *testing.T) {
 	f, out, _, _ := frontendFixture(t, strings.NewReader(""))
 	name, root := incompleteCLIState(t, f.e)
-	input := &choiceScript{t: t, out: out, steps: []string{"@Delete", "@Preview deletion", "@Back", "@Delete…", "y"}}
+	input := &choiceScript{t: t, out: out, steps: []string{"@Delete", "@Preview deletion", "@Back", "@Delete", "y"}}
 	f.cmd.SetIn(input)
 	f.m = testMenuCommand(f.cmd.Context(), input, out, f.cmd)
 	if err := f.session(app.View{Target: name}); err != nil {
@@ -76,7 +76,7 @@ func TestIncompleteSessionMenuDeletesAndReturnsToBrowser(t *testing.T) {
 	}
 	text := out.String()
 	for _, want := range []string{
-		"Delete: Container and saved data/history",
+		"Delete scope: Container and saved data/history",
 		"Would delete incomplete creation directory " + name,
 		"Incomplete creation directory: " + name,
 		"images retained",

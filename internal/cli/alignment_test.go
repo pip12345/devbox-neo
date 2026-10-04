@@ -230,7 +230,7 @@ func TestDeletionPartialResultsSurviveCLIAndTUIErrors(t *testing.T) {
 			}
 			var out, stderr bytes.Buffer
 			if mode == "tui" {
-				input := &choiceScript{t: t, out: &out, steps: []string{"@Delete…", "y", "@Back"}}
+				input := &choiceScript{t: t, out: &out, steps: []string{"@Delete", "y", "@Back"}}
 				cmd := &cobra.Command{Use: "dbx"}
 				cmd.SetIn(input)
 				cmd.SetOut(&out)

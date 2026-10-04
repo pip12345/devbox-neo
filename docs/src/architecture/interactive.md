@@ -6,7 +6,7 @@
 
 A command owns one `Runner`. Workflows are ordinary nested functions with local drafts. The runner sends immutable screen snapshots to one Bubble Tea goroutine and receives selections; only the workflow goroutine invokes handlers.
 
-Collections contain objects with stable keys. Actions are separate commands, and fields carry values/status rather than preformatted descriptions. Filtering maps selections back to the displayed snapshot; labels never dispatch behavior.
+Collections contain objects with stable keys. Each object carries an action preview; highlighting only renders that immutable preview, and Enter/Right invokes the object's shared workflow. Browser-wide commands are separate under Browser actions and browser-local shortcuts. Fields carry values/status rather than preformatted descriptions. Filtering maps selections back to the displayed snapshot; labels never dispatch behavior. Preview snapshots strip both object and action handlers and copy fields, summaries, and toggle values.
 
 Nested workflows share a navigation frame. Foreground operations refresh it after success or failure because partial changes may have occurred. Parent menus retain the updated frame instead of restoring stale inventory. UI snapshots are deep copies and cannot observe that mutation. Restore selection by key, not row index.
 
@@ -57,11 +57,13 @@ sequenceDiagram
 
 ## Presentation boundaries
 
-Keep objects separate from application actions. Session operations are direct entries; forms collect actual inputs, not another category choice. The preview is detailed, while the action menu uses compact target context. Relative activity uses existing recorded timestamps, not new session state.
+Keep object-scoped menus separate from browser-wide commands. Session previews and menus share one action builder, with compact target/lifetime context and Use, Inspect, Container, and Manage groups in a gutter, separated by one blank row. Forms collect actual inputs, not another category choice. Relative activity uses existing recorded timestamps, not new session state.
+
+All action labels use the same style regardless of navigation depth; destructive actions retain red warning text. Selection uses a background, and status/warning colors retain their separate meanings. There are no menu-depth colors, font changes, or text markers. Shortcut columns sit beside the action text rather than at the pane edge. Shortcuts are screen-local and go through the same dispatcher, blocked checks, and handlers as Enter. Text/filter input and foreground work cannot dispatch them. Recreate's `r` opens its existing confirmation, not automatic approval. Page keys navigate displayed lists without wrapping or scroll read-only views; Ctrl+Page keys retain independent context/detail scrolling.
 
 Folder rows use the shortest unique path suffix across the complete session inventory, including explicitly opened empty folders. Filtering does not recompute labels. The frontend supplies a separate list label; full paths remain in preview labels and stable keys, preserving search, selection, ordering, and dispatch.
 
-The direct folder editor and default picker share `folderSessionScreen` so changing the instruction does not shift rows. Default changes update markers and receipts. Source-specific settings dashboards and combined inspection remain distinct views.
+The direct folder editor enters the main browser; folder defaults are selected or cleared through object actions, not a separate picker. Default changes update markers and receipts. Source-specific settings dashboards and combined inspection remain distinct views.
 
 Keep error/partial-result output visible before returning. Color-independent markers, scrolling, and narrow-layout tests are part of the interaction contract.
 

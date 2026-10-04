@@ -37,7 +37,7 @@ func pulse() tea.Cmd {
 type terminalModel struct {
 	req                                  *screenRequest
 	width, height, cursor, clock, scroll int
-	query, objectKey                     string
+	query                                string
 	objects, searching, waiting, color   bool
 	input                                textinput.Model
 	err                                  error
@@ -62,15 +62,11 @@ func (m *terminalModel) load(req *screenRequest) tea.Cmd {
 	m.input.SetValue(req.initial)
 	m.input.CursorEnd()
 	m.input.SetWidth(max(10, m.width-16))
-	m.objects = req.page.Collection != nil && len(req.page.Collection.Items) > 0 && (req.cursor < 0 || req.page.FocusItem != "")
+	m.objects = req.page.Collection != nil && len(req.page.Collection.Items) > 0
 	target := req.itemKey
 	if req.page.FocusItem != "" {
 		target = req.page.FocusItem
 		m.query = ""
-	}
-	m.objectKey = target
-	if m.objectKey == "" && req.page.Collection != nil && len(req.page.Collection.Items) > 0 {
-		m.objectKey = req.page.Collection.Items[0].Key
 	}
 	// An executed action may change its own label (for example Set to Clear).
 	// Do not strand the user in an empty action filter after that change.
@@ -140,38 +136,14 @@ func (m *terminalModel) respond(r screenReply) {
 }
 func (m *terminalModel) currentObject() *Item {
 	c := m.req.page.Collection
-	if c == nil {
+	if c == nil || !m.objects {
 		return nil
 	}
-	if m.objects {
-		indices := m.matches()
-		if len(indices) > 0 {
-			return &c.Items[indices[min(m.cursor, len(indices)-1)]]
-		}
+	indices := m.matches()
+	if len(indices) == 0 {
 		return nil
 	}
-	for i := range c.Items {
-		if c.Items[i].Key == m.objectKey {
-			return &c.Items[i]
-		}
-	}
-	return nil
-}
-func (m *terminalModel) focusObjects(objects bool) {
-	if item := m.currentObject(); item != nil {
-		m.objectKey = item.Key
-	}
-	m.objects = objects
-	m.cursor, m.scroll = 0, 0
-	m.query = ""
-	if objects {
-		for pos, index := range m.matches() {
-			if m.req.page.Collection.Items[index].Key == m.objectKey {
-				m.cursor = pos
-				break
-			}
-		}
-	}
+	return &c.Items[indices[min(m.cursor, len(indices)-1)]]
 }
 func (m *terminalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -250,24 +222,20 @@ func (m *terminalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.query != "" {
 				m.query = ""
 				m.cursor = 0
-			} else if m.req.page.Collection != nil && !m.objects && len(m.req.page.Collection.Items) > 0 {
-				m.focusObjects(true)
 			} else {
 				m.respond(screenReply{index: -1, back: true})
 			}
 		case "left":
 			if m.req.confirm {
 				m.cursor = 0
-			} else if m.req.page.Collection != nil && len(m.req.page.Collection.Items) > 0 {
-				m.focusObjects(true)
 			} else if m.req.page.Navigation != nil {
 				m.respond(screenReply{index: -1, back: true})
 			}
 		case "right":
 			if m.req.confirm {
 				m.cursor = 1
-			} else if m.req.page.Collection != nil {
-				m.focusObjects(false)
+			} else if m.objects {
+				m.openObject()
 			}
 		case "up", "k":
 			if len(indices) == 0 {
@@ -283,16 +251,38 @@ func (m *terminalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor = (m.cursor + 1) % len(indices)
 				m.scroll = 0
 			}
-		case "pgdown":
-			m.scroll += 5
-		case "pgup":
-			m.scroll = max(0, m.scroll-5)
+		case "pgdown", "pgup":
+			step := m.pageSize()
+			if key == "pgup" {
+				step = -step
+			}
+			if len(indices) > 0 && !m.req.confirm {
+				if m.objects {
+					m.cursor = min(max(0, m.cursor+step), len(indices)-1)
+				} else {
+					m.cursor = m.pagedActionCursor(indices, step)
+				}
+				m.scroll = 0
+			} else {
+				m.scroll = max(0, m.scroll+step)
+			}
+		case "ctrl+pgup", "ctrl+pgdown":
+			w, h := m.contentSize()
+			_, _, _, step := m.workflowLayout(w, h)
+			if key == "ctrl+pgup" {
+				step = -step
+			}
+			m.scroll = max(0, m.scroll+step)
 		case "home":
-			m.cursor = 0
-			m.scroll = 0
+			m.cursor, m.scroll = 0, 0
 		case "end":
-			m.cursor = max(0, len(indices)-1)
-			m.scroll = 0
+			if len(indices) > 0 {
+				m.cursor, m.scroll = len(indices)-1, 0
+			} else {
+				w, _ := m.contentSize()
+				context, _, _, _ := m.workflowLayout(w, m.height)
+				m.scroll = lg.Height(context) + lg.Height(block(m.req.prompt, w))
+			}
 		case "tab":
 			if m.req.canTab {
 				m.respond(screenReply{tab: true})
@@ -304,8 +294,10 @@ func (m *terminalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.input.Focus()
 			}
 		case "enter":
-			if len(indices) > 0 {
-				m.respond(screenReply{index: indices[min(m.cursor, len(indices)-1)], item: m.objects})
+			if m.objects {
+				m.openObject()
+			} else if len(indices) > 0 {
+				m.respond(screenReply{index: indices[min(m.cursor, len(indices)-1)]})
 			} else if !m.objects && len(m.req.page.Actions) == 0 {
 				m.respond(screenReply{index: -1, back: true})
 			}
@@ -330,6 +322,56 @@ func (m *terminalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m *terminalModel) openObject() {
+	indices := m.matches()
+	if len(indices) > 0 {
+		m.respond(screenReply{index: indices[min(m.cursor, len(indices)-1)], item: true})
+	}
+}
+
+func (m *terminalModel) contentSize() (w, h int) {
+	w = max(1, m.width-4)
+	h = m.height - lg.Height(m.header(w)) - 5
+	if !m.objects && m.req.page.Navigation != nil && w >= 84 {
+		w -= navigationWidth(m.req.page.Navigation.Collection.Title, w) + 3
+	}
+	return
+}
+
+// Page navigation uses the same layout budget as rendering. It never wraps
+// across an endpoint or approves a confirmation while moving through a list.
+func (m *terminalModel) pageSize() int {
+	w, h := m.contentSize()
+	if m.objects {
+		c := m.req.page.Collection
+		left := w
+		if w >= 84 {
+			left = navigationWidth(c.Title, w)
+		}
+		capacity := max(1, h-3)
+		stateWidth, activityWidth := objectColumnWidths(*c)
+		if activityWidth > 0 && left-2-stateWidth-activityWidth-4 < 8 {
+			capacity = max(1, capacity/2)
+		}
+		return capacity
+	}
+	if len(m.req.page.Actions) > 0 {
+		_, _, actionH, _ := m.workflowLayout(w, h)
+		if len(actionRows(m.req.page.Actions, m.matches())) > actionH && actionH > 1 {
+			actionH-- // The list reserves one row for its more-above/below indicator.
+		}
+		return max(1, actionH)
+	}
+	return max(1, h-lg.Height(summaryHeading(m.req.page.Title, m.req.page.Summary, w)))
+}
+
+func navigationWidth(title string, w int) int {
+	if title == "Sessions" {
+		return min(56, max(38, w*40/100))
+	}
+	return min(48, max(28, w*36/100))
 }
 
 const tuiLine = "#42536A"
@@ -470,13 +512,68 @@ func (m *terminalModel) header(w int) string {
 			hint = tint("   Tab ↔", tuiMuted)
 		}
 		tabsLine := strings.Join(tabs, "  ") + hint
+		header := brand + "\n" + tabsLine
 		if ansi.StringWidth(brand+"    "+tabsLine) <= w {
-			return brand + "    " + tabsLine + "\n"
+			header = brand + "    " + tabsLine
 		}
-		return brand + "\n" + tabsLine
+		if m.req.page.Collection != nil && len(m.req.page.Collection.Items) > 0 {
+			header += "\n" + m.browserBar(w)
+		}
+		return header + "\n"
 	}
 	return brand + "\n"
 }
+func (m *terminalModel) browserBar(w int) string {
+	var controls []string
+	// The full command menu remains visible even when other shortcuts do not fit.
+	for _, key := range []string{"b", "n", "a", "r"} {
+		for _, action := range m.req.page.Actions {
+			if action.Shortcut == key {
+				controls = append(controls, "["+key+"] "+Safe(action.Label))
+			}
+		}
+	}
+	return clip(tint(strings.Join(controls, "  "), tuiMuted), w)
+}
+
+func summaryHeading(title string, summary []Field, w int) string {
+	text := strong(clip(Safe(title), w), tuiWhite)
+	var facts []string
+	for _, field := range summary {
+		value := Safe(field.Value)
+		if value == "" {
+			continue
+		}
+		color := tuiMuted
+		if field.Status {
+			color = statusColor(field.Value)
+		}
+		facts = append(facts, tint(value, color))
+	}
+	if len(facts) > 0 {
+		values := strings.Join(facts, tint(" · ", tuiMuted))
+		if ansi.StringWidth(text+" · "+values) <= w {
+			text += tint(" · ", tuiMuted) + values
+		} else {
+			text = clip(text, w) + "\n" + clip(values, w)
+		}
+	}
+	return text + "\n" + tint(strings.Repeat("─", w), tuiLine)
+}
+
+func objectColumnWidths(c Collection) (stateWidth, activityWidth int) {
+	for _, item := range c.Items {
+		stateWidth = max(stateWidth, ansi.StringWidth(Safe(item.Status)))
+		if item.Activity != "" {
+			activityWidth = max(activityWidth, len("Last active"), ansi.StringWidth(Safe(item.Activity)))
+		}
+	}
+	if activityWidth > 0 {
+		stateWidth = max(stateWidth, len("State"))
+	}
+	return
+}
+
 func (m *terminalModel) objectList(c Collection, key, query string, w, h int, active bool) string {
 	indices := matchingItems(c, query)
 	cursor := -1
@@ -492,16 +589,7 @@ func (m *terminalModel) objectList(c Collection, key, query string, w, h int, ac
 		}
 	}
 	capacity := max(1, h-3)
-	stateWidth, activityWidth := 0, 0
-	for _, item := range c.Items {
-		stateWidth = max(stateWidth, ansi.StringWidth(Safe(item.Status)))
-		if item.Activity != "" {
-			activityWidth = max(activityWidth, len("Last active"), ansi.StringWidth(Safe(item.Activity)))
-		}
-	}
-	if activityWidth > 0 {
-		stateWidth = max(stateWidth, len("State"))
-	}
+	stateWidth, activityWidth := objectColumnWidths(c)
 	stackActivity := activityWidth > 0 && w-2-stateWidth-activityWidth-4 < 8
 	var rows []string
 	selectedEnd := 0
@@ -593,6 +681,48 @@ func actionLabel(a Action) string {
 	return label
 }
 
+// Spacing belongs to the displayed row plan, not the selectable action indices.
+// Paging and rendering share it so category gaps cannot change dispatch targets.
+func actionRows(actions []Action, indices []int) []int {
+	var rows []int
+	for pos, index := range indices {
+		a := actions[index]
+		newGroup := pos > 0 && a.Group != actions[indices[pos-1]].Group
+		if len(rows) > 0 && (a.BreakBefore || newGroup) {
+			rows = append(rows, -1)
+		}
+		rows = append(rows, index)
+	}
+	return rows
+}
+
+func (m *terminalModel) pagedActionCursor(indices []int, step int) int {
+	rows := actionRows(m.req.page.Actions, indices)
+	current := 0
+	selected := indices[min(max(0, m.cursor), len(indices)-1)]
+	for pos, index := range rows {
+		if index == selected {
+			current = pos
+			break
+		}
+	}
+	target := min(max(0, current+step), len(rows)-1)
+	if rows[target] < 0 {
+		if step > 0 {
+			target++
+		} else {
+			target--
+		}
+	}
+	position := 0
+	for _, index := range rows[:target] {
+		if index >= 0 {
+			position++
+		}
+	}
+	return position
+}
+
 func (m *terminalModel) actionList(w, h int, active bool) string {
 	if h <= 0 {
 		return ""
@@ -606,62 +736,133 @@ func (m *terminalModel) actionList(w, h int, active bool) string {
 		indices = m.matches()
 		cursor = min(m.cursor, max(0, len(indices)-1))
 	}
-	// Build visual rows separately from action indices so group separators never
-	// affect dispatch or leave the keyboard cursor below the visible viewport.
-	var rows []string
-	selectedRow, labelWidth := 0, 0
-	for _, index := range indices {
+	rows := actionRows(m.req.page.Actions, indices)
+	selectedRow, labelWidth, groupWidth := 0, 0, 0
+	for pos, index := range rows {
+		if index < 0 {
+			continue
+		}
 		a := m.req.page.Actions[index]
+		if active && len(indices) > 0 && index == indices[cursor] {
+			selectedRow = pos
+		}
+		groupWidth = max(groupWidth, ansi.StringWidth(Safe(a.Group)))
 		if a.Value != "" {
 			labelWidth = max(labelWidth, ansi.StringWidth(actionLabel(a)))
 		}
 	}
-	labelWidth = min(labelWidth, max(8, w/2))
-	for pos, index := range indices {
+	groupWidth = min(groupWidth, max(0, w/5))
+	labelWidth = min(labelWidth, max(8, (w-groupWidth)/2))
+	contentWidth, hintWidth := 0, 0
+	for _, index := range indices {
 		a := m.req.page.Actions[index]
-		newGroup := a.Group != "" && (pos == 0 || a.Group != m.req.page.Actions[indices[pos-1]].Group)
-		if (a.BreakBefore || newGroup) && len(rows) > 0 {
-			rows = append(rows, "")
-		}
-		if newGroup {
-			rows = append(rows, tint(Safe(a.Group), tuiMuted))
-		}
-		if pos == cursor {
-			selectedRow = len(rows)
-		}
-		prefix := "  "
-		if pos == cursor {
-			prefix = "▸ "
-		}
-		label := actionLabel(a)
-		color := tuiWhite
-		if a.Danger {
-			color = tuiRed
-		} else if pos == cursor {
-			color = tuiMint
-		}
-		focused := active && pos == cursor
+		width := ansi.StringWidth(actionLabel(a))
 		if a.Value != "" {
-			label = clip(label, labelWidth)
-			label += strings.Repeat(" ", max(0, labelWidth-ansi.StringWidth(label)))
-		}
-		text := rowText(prefix, tuiMint, focused, false) + rowText(label, color, focused, true)
-		if a.Value != "" {
-			text += rowText("  "+Safe(a.Value), tuiMuted, focused, false)
-		}
-		if a.Shortcut != "" {
-			text += rowText(" ["+a.Shortcut+"]", tuiMuted, focused, false)
+			width = labelWidth + 2 + ansi.StringWidth(Safe(a.Value))
 		}
 		if a.Status != "" {
-			text += rowText("  "+Safe(a.Status), statusColor(a.Status), focused, false)
+			width += 2 + ansi.StringWidth(Safe(a.Status))
 		}
-		rows = append(rows, row(text, w, focused))
+		contentWidth = max(contentWidth, width)
+		hintWidth = max(hintWidth, ansi.StringWidth(m.actionHint(a)))
 	}
-	start := max(0, selectedRow-h+1)
+	prefixWidth := 2
+	if groupWidth > 0 {
+		prefixWidth += groupWidth + 2
+	}
+	hintEdge := min(w, prefixWidth+contentWidth+2+hintWidth)
+	capacity := h
+	if len(rows) > h && h > 1 {
+		capacity--
+	}
+	start := min(max(0, selectedRow-capacity+1), max(0, len(rows)-capacity))
+	var rendered []string
+	previousGroup := ""
+	for _, index := range rows[start:min(len(rows), start+capacity)] {
+		if index < 0 {
+			rendered = append(rendered, "")
+			continue
+		}
+		a := m.req.page.Actions[index]
+		group := ""
+		if a.Group != previousGroup {
+			group = a.Group
+		}
+		previousGroup = a.Group
+		focused := active && len(indices) > 0 && index == indices[cursor]
+		rendered = append(rendered, m.actionRow(a, group, groupWidth, labelWidth, w, hintEdge, focused))
+	}
 	if len(rows) == 0 && m.query != "" {
-		rows = append(rows, tint("No matches", tuiMuted))
+		rendered = append(rendered, tint("No matches", tuiMuted))
 	}
-	return fit(strings.Join(rows, "\n"), w, h, start)
+	if capacity < h {
+		position := ""
+		if start > 0 {
+			position = "↑ more"
+		}
+		if start+capacity < len(rows) {
+			if position != "" {
+				position += " · "
+			}
+			position += "↓ more"
+		}
+		rendered = append(rendered, tint(position, tuiMuted))
+	}
+	return fit(strings.Join(rendered, "\n"), w, h, 0)
+}
+
+func (m *terminalModel) actionHint(a Action) string {
+	var hints []string
+	if a.Blocked != "" {
+		hints = append(hints, "blocked")
+	}
+	if a.Shortcut != "" {
+		hints = append(hints, "["+Safe(a.Shortcut)+"]")
+	}
+	return strings.Join(hints, " ")
+}
+
+func (m *terminalModel) actionRow(a Action, group string, groupWidth, labelWidth, w, hintEdge int, focused bool) string {
+	prefix := "  "
+	if focused {
+		prefix = "▸ "
+	}
+	text := ""
+	if groupWidth > 0 {
+		gutter := clip(Safe(group), groupWidth)
+		text = rowText(gutter+strings.Repeat(" ", groupWidth-ansi.StringWidth(gutter))+"  ", tuiMuted, focused, false)
+	}
+	text += rowText(prefix, tuiMint, focused, false)
+	label := actionLabel(a)
+	if a.Value != "" {
+		label = clip(label, labelWidth)
+		label += strings.Repeat(" ", max(0, labelWidth-ansi.StringWidth(label)))
+	}
+	hint := m.actionHint(a)
+	available := max(1, w-ansi.StringWidth(text))
+	if hint != "" {
+		available = max(1, hintEdge-ansi.StringWidth(text)-ansi.StringWidth(hint)-2)
+	}
+	color := tuiWhite
+	if a.Danger {
+		color = tuiRed
+	}
+	style := lg.NewStyle().Foreground(lg.Color(color)).Bold(true)
+	if focused {
+		style = style.Background(lg.Color("#213744"))
+	}
+	content := style.Render(label)
+	if a.Value != "" {
+		content += rowText("  "+Safe(a.Value), tuiMuted, focused, false)
+	}
+	if a.Status != "" {
+		content += rowText("  "+Safe(a.Status), statusColor(a.Status), focused, false)
+	}
+	text += clip(content, available)
+	if hint != "" {
+		text += rowText(strings.Repeat(" ", max(1, hintEdge-ansi.StringWidth(text)-ansi.StringWidth(hint)))+hint, tuiMuted, focused, false)
+	}
+	return row(text, w, focused)
 }
 func (m *terminalModel) actionDetail(w, h int) string {
 	indices := m.matches()
@@ -686,24 +887,24 @@ func (m *terminalModel) actionDetail(w, h int) string {
 	return fit(block(detail, w), w, h, m.scroll)
 }
 func (m *terminalModel) browserContent(w, h int) string {
-	c := m.req.page.Collection
-	var preview string
+	preview := *m
+	req := *m.req
+	preview.req = &req
 	if item := m.currentObject(); item != nil {
-		preview = strong(Safe(item.Label), tuiWhite) + "\n\n" + fieldLines(item.Fields, w)
-	} else if len(c.Items) == 0 {
-		preview = strong(c.Empty, tuiWhite)
+		req.page = Screen{Title: item.Label, Fields: item.Fields, Summary: item.Summary, Actions: item.Actions}
+		preview.objects, preview.cursor, preview.query, preview.searching = false, 0, "", false
+		return preview.workflowContentActive(w, h, false)
 	}
-	if strings.Contains(m.req.notice, "\n") {
-		preview = tint(m.req.notice, tuiAmber) + "\n\n" + preview
+	if len(req.page.Collection.Items) > 0 {
+		return heading("No matches", w, false) + "\n" + fit("Clear the filter to browse objects.", w, h-2, 0)
 	}
-	actionH := min(len(m.req.page.Actions), max(3, h/2))
-	detailH := 2
-	previewH := min(lg.Height(preview)+1, max(1, h-actionH-detailH-4))
-	return fit(preview, w, previewH, m.scroll) + "\n" + heading("Application actions", w, !m.objects) + "\n" + m.actionList(w, actionH, !m.objects) + "\n" + m.actionDetail(w, detailH)
+	req.page.Title = req.page.Collection.Empty
+	req.page.Collection = nil
+	return preview.workflowContent(w, h)
 }
-func (m *terminalModel) workflowContent(w, h int) string {
-	title := m.req.page.Title
-	context := fieldLines(m.req.page.Fields, w)
+
+func (m *terminalModel) workflowLayout(w, h int) (context string, contextH, actionH, detailH int) {
+	context = fieldLines(m.req.page.Fields, w)
 	if m.req.page.Prompt != "" {
 		context += "\n" + tint(Safe(m.req.page.Prompt), tuiMuted)
 	}
@@ -714,29 +915,43 @@ func (m *terminalModel) workflowContent(w, h int) string {
 		context = tint(m.req.notice, tuiAmber) + "\n\n" + context
 	}
 	context = strings.TrimSpace(context)
-	if m.req.input {
-		return heading(title, w, true) + "\n" + fit(block(m.req.prompt, w)+"\n\n"+m.input.View()+"\n\n"+context, w, h-2, m.scroll)
-	}
-	if len(m.req.page.Actions) == 0 {
-		return heading(title, w, true) + "\n" + fit(context, w, h-2, m.scroll)
-	}
-	contextH := 0
+	contextH = 0
 	if context != "" {
 		contextH = min(lg.Height(context), max(2, (h-5)/3)) + 1
 	}
-	detailH := 2
+	detailH = 2
 	for _, a := range m.req.page.Actions {
 		if len(a.Fields) > 0 || a.Detail != "" {
 			detailH = min(5, max(2, h/5))
 			break
 		}
 	}
-	actionH := max(1, h-2-contextH-detailH-1)
-	content := heading(title, w, true) + "\n"
+	actionH = max(1, h-lg.Height(summaryHeading(m.req.page.Title, m.req.page.Summary, w))-contextH-detailH-1)
+	return
+}
+
+func (m *terminalModel) workflowContent(w, h int) string {
+	return m.workflowContentActive(w, h, true)
+}
+
+func (m *terminalModel) workflowContentActive(w, h int, active bool) string {
+	context, contextH, actionH, detailH := m.workflowLayout(w, h)
+	title := summaryHeading(m.req.page.Title, m.req.page.Summary, w)
+	if m.req.input {
+		return title + "\n" + fit(block(m.req.prompt, w)+"\n\n"+m.input.View()+"\n\n"+context, w, h-lg.Height(title), m.scroll)
+	}
+	if len(m.req.page.Actions) == 0 {
+		return title + "\n" + fit(context, w, h-lg.Height(title), m.scroll)
+	}
+	content := title + "\n"
 	if contextH > 0 {
 		content += fit(context, w, contextH-1, m.scroll) + "\n\n"
 	}
-	return content + m.actionList(w, actionH, true) + "\n\n" + m.actionDetail(w, detailH)
+	detail := ""
+	if active {
+		detail = m.actionDetail(w, detailH)
+	}
+	return content + m.actionList(w, actionH, active) + "\n\n" + fit(detail, w, detailH, 0)
 }
 func (m *terminalModel) confirmation(w, h int) string {
 	text := strings.TrimSpace(m.req.body + "\n\n" + m.req.prompt)
@@ -777,7 +992,9 @@ func (m *terminalModel) View() tea.View {
 		key, query := "", ""
 		if m.req.page.Collection != nil {
 			c = m.req.page.Collection
-			key = m.objectKey
+			if item := m.currentObject(); item != nil {
+				key = item.Key
+			}
 		} else if m.req.page.Navigation != nil {
 			c = &m.req.page.Navigation.Collection
 			key, query = m.req.page.Navigation.Key, m.req.page.Navigation.Query
@@ -787,10 +1004,7 @@ func (m *terminalModel) View() tea.View {
 			content = m.browserContent
 		}
 		if c != nil && len(c.Items) > 0 && w >= 84 {
-			left := min(48, max(28, w*36/100))
-			if c.Title == "Sessions" {
-				left = min(56, max(38, w*40/100))
-			}
+			left := navigationWidth(c.Title, w)
 			nav := m.objectList(*c, key, query, left, bodyH, m.objects)
 			right := fit(content(w-left-3, bodyH), w-left-3, bodyH, 0)
 			separator := strings.TrimSuffix(strings.Repeat(" │ \n", bodyH), "\n")
@@ -802,15 +1016,17 @@ func (m *terminalModel) View() tea.View {
 		}
 	}
 	keys := "↑↓ move  Enter select  Esc " + strings.ToLower(m.req.page.Back) + "  Ctrl-C exit"
-	if m.req.page.Collection != nil && len(m.req.page.Collection.Items) > 0 {
-		if m.objects {
-			keys = "↑↓ move  Enter open menu  → actions  Esc exit  Ctrl-C exit"
-		} else {
-			keys = "↑↓ move  Enter select  ← browse  Esc back  Ctrl-C exit"
-		}
+	if m.objects {
+		keys = "↑↓ browse  Enter/→ actions  Esc exit  Ctrl-C exit"
 	}
 	if w < 70 {
-		keys = "↑↓ Enter  ←→ panes  Esc back  Ctrl-C exit"
+		keys = "↑↓ Enter  Esc back  Ctrl-C exit"
+		if m.objects {
+			keys = "↑↓ Enter/→ menu  Esc exit  Ctrl-C exit"
+		}
+	}
+	if !m.objects && len(m.req.page.Actions) == 0 {
+		keys = "↑↓ scroll  Enter/Esc back  Ctrl-C exit"
 	}
 	if m.req.input {
 		keys = "Enter accept  Esc cancel  Ctrl-C exit"
@@ -821,8 +1037,12 @@ func (m *terminalModel) View() tea.View {
 	if m.waiting {
 		keys = "Ctrl-C cancels"
 	}
-	if !m.req.input && !m.waiting && !m.searching && ansi.StringWidth(keys)+29 <= w {
-		keys += "  / filter  PgUp/PgDn details"
+	if !m.req.input && !m.waiting && !m.searching {
+		for _, hint := range []string{"  / filter", "  PgUp/PgDn page", "  Ctrl+PgUp/PgDn details"} {
+			if ansi.StringWidth(keys+hint) <= w {
+				keys += hint
+			}
+		}
 	}
 	notice := ""
 	if m.req.notice != "" {

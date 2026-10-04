@@ -83,7 +83,7 @@ func TestNativeFirstCreationAndSessionDefaultMenu(t *testing.T) {
 		t.Fatal("same menu did not clear default", selected, err)
 	}
 	p.send("q")
-	p.wait("Application actions")
+	p.wait("Browser actions")
 	p.send("q")
 	p.finish(done)
 }
