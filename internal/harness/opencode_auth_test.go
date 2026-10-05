@@ -23,6 +23,10 @@ set -eu
 case ${1-}:${2-} in
     auth:export)
         if [[ -e $FAKE_DATA/fail-export ]]; then echo 'dont-print-synthetic-secret' >&2; exit 1; fi
+        if [[ -e $FAKE_DATA/wait-export ]]; then
+            touch "$FAKE_DATA/exporting"
+            while [[ -e $FAKE_DATA/wait-export ]]; do sleep 0.05; done
+        fi
         jq . "$FAKE_DATA/dbstate" ;;
     auth:import) cp -- "$3" "$FAKE_DATA/dbstate" ;;
     api:DELETE)
@@ -233,7 +237,7 @@ func TestOpenCodeAuthWritebackFailureAndOriginalStoreRecovery(t *testing.T) {
 }
 
 func TestOpenCodeAuthSameStoreLockAndTerminalSignals(t *testing.T) {
-	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM} {
+	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP} {
 		t.Run(sig.String(), func(t *testing.T) {
 			f := authTestFixture(t)
 			authWrite(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
@@ -276,8 +280,81 @@ func TestOpenCodeAuthSameStoreLockAndTerminalSignals(t *testing.T) {
 				t.Fatalf("signal status: %v: %s", err, output.String())
 			}
 			assertAuth(t, filepath.Join(f.shared, "credentials.json"), refreshedAuth)
+			if _, err := os.Stat(filepath.Join(f.store(t), "pending")); !os.IsNotExist(err) {
+				t.Fatal("signal interrupted credential publication", err)
+			}
+			if err := os.Remove(filepath.Join(f.data, "wait")); err != nil {
+				t.Fatal(err)
+			}
+			if output, err := f.command().CombinedOutput(); err != nil {
+				t.Fatalf("signal left store locked: %v: %s", err, output)
+			}
 		})
 	}
+}
+
+func TestOpenCodeAuthHangupDuringInitialSync(t *testing.T) {
+	f := authTestFixture(t)
+	authWrite(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+	authWrite(t, filepath.Join(f.data, "wait-export"), "")
+	cmd := f.command()
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	var output bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, &output
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waited := false
+	defer func() {
+		if !waited {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			_ = cmd.Wait()
+		}
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(filepath.Join(f.data, "exporting")); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("initial export did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGHUP); err != nil {
+		t.Fatal(err)
+	}
+	watchdog := time.AfterFunc(5*time.Second, func() {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	})
+	defer watchdog.Stop()
+	err := cmd.Wait()
+	watchdog.Stop()
+	waited = true
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 129 {
+		t.Fatalf("hangup status: %v: %s", err, output.String())
+	}
+	assertAuth(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+	if _, err := os.Stat(filepath.Join(f.data, "started")); !os.IsNotExist(err) {
+		t.Fatal("client launched after interrupted sync", err)
+	}
+	entries, err := os.ReadDir(f.store(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.Name() != "lock" {
+			t.Fatal("interrupted sync left temporary auth state", entry.Name())
+		}
+	}
+	if err := os.Remove(filepath.Join(f.data, "wait-export")); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := f.command().CombinedOutput(); err != nil {
+		t.Fatalf("hangup left auth locked: %v: %s", err, output)
+	}
+	assertAuth(t, filepath.Join(f.data, "pulled"), sharedAuth)
 }
 
 type authProcess struct {

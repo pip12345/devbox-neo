@@ -41,6 +41,11 @@ Local config discovery and CLI/menu rename implemented. Local discovery filters 
 - Added [tui-inventory.md](tui-inventory.md): current graphical screens, schematic ASCII layouts, complete option/control lists, conditional states, entry points, and per-workflow keystroke/return routes. This is source/test-derived scouting, not an approved redesign or a UI change.
 - Screen call sites, conditional controls, document anchors, and source/test references checked. The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable), including embedded-documentation checks. No live Docker or manual terminal walkthrough was run.
 
+## OpenCode auth-wrapper hangup — implemented, live acceptance pending
+
+- The image-owned auth wrapper now handles SIGHUP alongside SIGINT/SIGTERM and shields credential publication from repeated hangup. Auth timeouts keep subprocesses in the terminal's process group so they receive hangup rather than delaying cleanup until timeout. Process-group regressions cover prompt exit during initial auth export and foreground use, preserving shared credentials and releasing the store lock for reopening.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable). Live Docker, real OpenCode backend shutdown, and manual terminal-close acceptance remain unrun. Existing images need explicit image recreation to adopt the wrapper; the reported first-start `sessionID` error remains undiagnosed.
+
 ## Terminal hangup cleanup — implemented, live acceptance pending
 
 - SIGHUP cancels the whole command so normal attachment cleanup releases leases and stops the last automatically started session. Explicit manual-start intent and foreground Ctrl-C routing remain unchanged.
