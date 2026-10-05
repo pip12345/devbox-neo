@@ -20,7 +20,6 @@ type VSCode struct {
 type Layer struct {
 	Raw         []byte              `json:"-"`
 	References  map[string][]string `json:"-"`
-	EnvInputs   []EnvInput          `json:"-"`
 	Version     int                 `json:"version"`
 	Shell       *[]string           `json:"shell,omitempty"`
 	Harness     *string             `json:"harness,omitempty"`
@@ -34,17 +33,16 @@ type Layer struct {
 	BaseImage   *string             `json:"base_image,omitempty"`
 }
 type Settings struct {
-	EnvInputs   []EnvInput `json:"-"`
-	Shell       []string   `json:"shell"`
-	Harness     string     `json:"harness"`
-	BaseImage   string     `json:"base_image"`
-	Network     string     `json:"network"`
-	HarnessArgs []string   `json:"harness_args"`
-	DockerArgs  []string   `json:"docker_args"`
-	Mounts      []string   `json:"mounts"`
-	Env         []string   `json:"-"`
-	Ports       []string   `json:"ports"`
-	VSCode      VSCode     `json:"vscode"`
+	Shell       []string `json:"shell"`
+	Harness     string   `json:"harness"`
+	BaseImage   string   `json:"base_image"`
+	Network     string   `json:"network"`
+	HarnessArgs []string `json:"harness_args"`
+	DockerArgs  []string `json:"docker_args"`
+	Mounts      []string `json:"mounts"`
+	Env         []string `json:"-"`
+	Ports       []string `json:"ports"`
+	VSCode      VSCode   `json:"vscode"`
 }
 
 func Defaults() Settings {
@@ -128,8 +126,7 @@ func ReadLayer(path string, host Host) (Layer, error) {
 func ResolveLayer(b []byte, path string, host Host) (l Layer, err error) {
 	defer func() { err = configurationError(path, err) }()
 	l = Layer{Version: 1}
-	raw, err := ParseLayer(b)
-	if err != nil {
+	if _, err = ParseLayer(b); err != nil {
 		return l, fmt.Errorf("%s: invalid layer: %w", path, err)
 	}
 	expanded, refs, err := Expand(b, path, host)
@@ -142,8 +139,12 @@ func ResolveLayer(b []byte, path string, host Host) (l Layer, err error) {
 	}
 	l.Raw = b
 	l.References = refs
-	l.EnvInputs, err = envInputs(raw.Env, l.Env, path)
-	return l, err
+	for i, value := range l.Env {
+		if err := ValidateEnvAssignment(value); err != nil {
+			return l, fmt.Errorf("%s env/%d: %w", path, i, err)
+		}
+	}
+	return l, nil
 }
 
 // ReadLayer deliberately returns missing-file errors unchanged: participation
@@ -199,7 +200,6 @@ func (s *Settings) Apply(l Layer) {
 	s.DockerArgs = append(s.DockerArgs, l.DockerArgs...)
 	s.Mounts = append(s.Mounts, l.Mounts...)
 	s.Env = append(s.Env, l.Env...)
-	s.EnvInputs = append(s.EnvInputs, l.EnvInputs...)
 	s.Ports = append(s.Ports, l.Ports...)
 	s.VSCode.Extensions = append(s.VSCode.Extensions, l.VSCode.Extensions...)
 }

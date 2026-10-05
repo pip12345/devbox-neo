@@ -28,7 +28,7 @@ func TestSessionDefaultActionSetsAndClearsWithoutPicker(t *testing.T) {
 		t.Fatal(done, err)
 	}
 	selected, err := f.e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected == nil || selected.ID != name {
+	if err != nil || selected == nil || selected.ID != sessionRecord(t, f.e, name).ID {
 		t.Fatal(selected, err)
 	}
 	report, err = f.e.List(context.Background(), "")
@@ -170,12 +170,12 @@ func TestFirstSessionInFolderUsesDisplayedOrder(t *testing.T) {
 }
 
 func TestCreationCallbackRetriesSameDraft(t *testing.T) {
-	f, out, q, _ := frontendFixture(t, strings.NewReader("7\n7\n"))
+	f, out, q, _ := frontendFixture(t, strings.NewReader("8\n8\n"))
 	p, err := newSourcePicker(f.m, f.s.Home, q.Workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := sessionCreationDraft{workspace: q.Workspace, name: "Second", sources: append([]config.Reference(nil), q.Sources...)}
+	original := sessionCreationDraft{workspace: q.Workspace, name: "Second", sources: append([]config.Reference(nil), q.Sources...), makeDefault: true}
 	attempts := 0
 	after, created, err := sessionCreationMenu(p, f.e, original, func(draft sessionCreationDraft) (bool, error) {
 		attempts++
@@ -193,7 +193,7 @@ func TestCreationCallbackRetriesSameDraft(t *testing.T) {
 	}
 }
 func TestFrontendBuildFailurePreservesDraftAndDoesNotCreateDefault(t *testing.T) {
-	f, out, q, _ := frontendFixture(t, strings.NewReader("1\nSecond\n2\n1\n7\n0\n"))
+	f, out, q, _ := frontendFixture(t, strings.NewReader("1\nSecond\n2\n1\n7\n8\n0\n"))
 	daemon := f.e.Docker.Runner.(*dockertest.Daemon)
 	daemon.Fail = func(args []string) error {
 		if len(args) > 0 && args[0] == "build" {
@@ -216,7 +216,7 @@ func TestFrontendBuildFailurePreservesDraftAndDoesNotCreateDefault(t *testing.T)
 	}
 }
 func TestFrontendCreationReturnsToStoppedSessionMenu(t *testing.T) {
-	f, out, q, _ := frontendFixture(t, strings.NewReader("1\nSecond\n2\n1\n7\n0\n"))
+	f, out, q, _ := frontendFixture(t, strings.NewReader("1\nSecond\n2\n1\n8\n0\n"))
 	if err := f.createSessionIn(q.Workspace); err != nil {
 		t.Fatal(err, out.String())
 	}
@@ -224,7 +224,7 @@ func TestFrontendCreationReturnsToStoppedSessionMenu(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := created.ID
+	name := created.Directory
 	details, err := f.e.Status(context.Background(), name, "")
 	if err != nil || details.Running || len(details.Active) != 0 {
 		t.Fatal("creation launched or attached", details, err)

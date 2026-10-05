@@ -61,7 +61,7 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	var output bytes.Buffer
 	e := &Engine{Store: s, Docker: docker.Runtime{Runner: runner}, Streams: docker.Streams{Out: &output, Err: &output}, UID: os.Getuid(), GID: os.Getgid()}
 	e.OnDiagnostic = func(d Diagnostic) { t.Logf("diagnostic: %+v", d) }
-	q := Request{Workspace: workspace, LocalName: "test", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: profile.Root}}, Args: []string{"--version"}}
+	q := CreateRequest{Workspace: workspace, LocalName: "test", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: profile.Root}}}
 	var createdID string
 	// The isolated installation is the cleanup boundary, never a name prefix.
 	t.Cleanup(func() {
@@ -112,7 +112,9 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	if err != nil {
 		t.Fatalf("create: %v\n%s", err, output.String())
 	}
-	result, err := e.Open(ctx, q)
+	launch := openRequest(q)
+	launch.Args = []string{"--version"}
+	result, err := e.Open(ctx, launch)
 	if err != nil {
 		t.Fatalf("open: %v\n%s", err, output.String())
 	}
@@ -183,7 +185,7 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 		}
 		authPaths = append(authPaths, source)
 	}
-	if _, err = e.Open(ctx, q); err != nil {
+	if _, err = e.Open(ctx, launch); err != nil {
 		t.Fatal(err)
 	}
 	reopened := sessionRecord(t, e, result.SessionID)
@@ -207,14 +209,14 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	go server.Serve(listener)
 	// Configured mounts are creation inputs but do not require another image.
 	write(t, filepath.Join(profile.Root, "config.json"), fmt.Sprintf(`{"version":1,"harness":%q,"mounts":[%q,%q]}`, harnessName, workspace+":/extra-workspace", socketPath+":/run/dbx-test.sock"))
-	result, err = e.Open(ctx, q)
+	result, err = e.Open(ctx, openRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "creation_drift" {
-		t.Fatal("missing non-blocking drift warning")
+	if len(result.Diagnostics) != 0 || sessionRecord(t, e, result.SessionID).Applied.SetupContainer != first.Applied.SetupContainer {
+		t.Fatal("open resolved or applied pending configuration")
 	}
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	recreated := sessionRecord(t, e, result.SessionID)
@@ -234,10 +236,10 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 			t.Fatal("recreation lost managed auth", err)
 		}
 	}
-	if _, err = e.Open(ctx, q); err != nil {
+	if _, err = e.Open(ctx, openRequest(q)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	if err = e.Exec(ctx, result.SessionID, "", argv, false); err != nil {

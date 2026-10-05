@@ -15,7 +15,7 @@ import (
 	"devbox/internal/resource"
 )
 
-func TestExplicitWorkspaceSourceIsUsedByEveryAccessPath(t *testing.T) {
+func TestSelectedSourcesAreAppliedExplicitlyNotDuringAccess(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
 	dir := filepath.Join(q.Workspace, ".devbox")
@@ -28,10 +28,10 @@ func TestExplicitWorkspaceSourceIsUsedByEveryAccessPath(t *testing.T) {
 	if r.Settings.LocalName != "test" || len(r.Settings.Sources) != 2 || r.Settings.Sources[1].Path != dir {
 		t.Fatal(r.Settings.Binding, r.Settings.Sources)
 	}
-	if got, err := e.Open(ctx, q); err != nil || got.SessionID != made.SessionID {
+	if got, err := e.Open(ctx, openRequest(q)); err != nil || got.SessionID != made.SessionID {
 		t.Fatal(got, err)
 	}
-	if status, err := e.Status(ctx, q.Workspace, q.LocalName); err != nil || status.ConfigError != "" || status.Target != made.SessionID {
+	if status, err := e.Status(ctx, q.Workspace, q.LocalName); err != nil || status.ConfigError != "" || status.Target != r.Directory {
 		t.Fatal(status, err)
 	}
 	s := resource.Service{Home: e.Store.Home}
@@ -43,10 +43,10 @@ func TestExplicitWorkspaceSourceIsUsedByEveryAccessPath(t *testing.T) {
 	if err != nil || view.Path != filepath.Join(dir, "config.json") {
 		t.Fatal(view, err)
 	}
-	forgetSession( // Missing-container recovery restores env from the workspace's project config.
-		t, e,
-
-		made.SessionID)
+	forgetSession(t, e, made.SessionID)
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = e.Start(ctx, q.Workspace, q.LocalName); err != nil {
 		t.Fatal(err)
 	}
@@ -56,8 +56,11 @@ func TestExplicitWorkspaceSourceIsUsedByEveryAccessPath(t *testing.T) {
 	if err = os.Remove(filepath.Join(dir, "config.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Open(ctx, Request{Workspace: made.SessionID}); err == nil {
-		t.Fatal("missing recorded project source was ignored")
+	if _, err = e.Open(ctx, OpenRequest{Target: made.SessionID}); err != nil {
+		t.Fatal("missing desired source blocked applied access", err)
+	}
+	if _, err = e.Recreate(ctx, RecreateRequest{Target: made.SessionID}, false); err == nil {
+		t.Fatal("explicit apply ignored a missing selected source")
 	}
 }
 
@@ -109,8 +112,17 @@ func TestProfileAndProjectScriptsRunInOrderAndStopOnFailure(t *testing.T) {
 			}
 			var hooks []string
 			d.Attached = func(_ context.Context, c docker.Command) error {
+				var data []byte
 				if c.Stdin != nil {
-					data, _ := io.ReadAll(c.Stdin)
+					data, _ = io.ReadAll(c.Stdin)
+				} else if len(c.Args) >= 2 && c.Args[len(c.Args)-2] == "bash" {
+					for _, installed := range d.Hooks {
+						if b, ok := installed[c.Args[len(c.Args)-1]]; ok {
+							data = b
+						}
+					}
+				}
+				if data != nil {
 					hooks = append(hooks, string(data))
 					if fail && string(data) == "profile open" {
 						return os.ErrPermission
@@ -125,7 +137,7 @@ func TestProfileAndProjectScriptsRunInOrderAndStopOnFailure(t *testing.T) {
 			if !slices.Equal(hooks, []string{"profile setup", "project setup"}) {
 				t.Fatal(hooks)
 			}
-			_, err = e.Open(context.Background(), Request{Workspace: made.SessionID})
+			_, err = e.Open(context.Background(), OpenRequest{Target: made.SessionID})
 			if (err != nil) != fail {
 				t.Fatal(err)
 			}

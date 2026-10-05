@@ -17,7 +17,7 @@ import (
 	"devbox/internal/commanderror"
 )
 
-const Namespace = "devbox-rewrite"
+const Namespace = "dbx"
 const HostAlias = "host.docker.internal"
 
 type Owner struct {
@@ -129,7 +129,7 @@ type Mount struct {
 	Kind    string   `json:"kind,omitempty"`
 	Options []string `json:"options,omitempty"`
 	// File and Socket are mutually exclusive. With both false, a bind source
-	// is a directory. Recovery checks the source type, not the socket inode.
+	// is a directory. Validation checks the source type, not the socket inode.
 	File     bool   `json:"file,omitempty"`
 	Socket   bool   `json:"socket,omitempty"`
 	Source   string `json:"source"`
@@ -216,16 +216,20 @@ func (r Runtime) inspect(ctx context.Context, target string, byID bool) (Contain
 	return list[0], true, nil
 }
 func (r Runtime) ImageAvailable(ctx context.Context, id string) (bool, error) {
+	images, err := r.ImageIDs(ctx)
+	return images[id], err
+}
+
+func (r Runtime) ImageIDs(ctx context.Context) (map[string]bool, error) {
 	b, err := r.capture(ctx, "image", "ls", "--all", "--no-trunc", "--quiet")
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	for _, present := range strings.Fields(string(b)) {
-		if present == id {
-			return true, nil
-		}
+	images := map[string]bool{}
+	for _, id := range strings.Fields(string(b)) {
+		images[id] = true
 	}
-	return false, nil
+	return images, nil
 }
 func (r Runtime) InspectImage(ctx context.Context, ref string) (Image, error) {
 	var image Image

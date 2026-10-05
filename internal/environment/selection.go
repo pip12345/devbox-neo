@@ -75,4 +75,8 @@ func ValidResourceName(name string) bool {
 
 var sessionIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
-func IsSessionTarget(target string) bool { return sessionIDPattern.MatchString(target) }
+func IsSessionID(id string) bool { return sessionIDPattern.MatchString(id) }
+
+// A bare resource name addresses saved session storage. Prefix a workspace
+// with ./ or use an absolute path when its basename has the same convention.
+func IsSessionTarget(target string) bool { return ValidResourceName(target) }

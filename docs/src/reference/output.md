@@ -7,12 +7,17 @@
 | Up/Down or `j`/`k` | Move through the list, wrapping at either end |
 | Enter | Open the selected menu, edit a field, or run an action |
 | Esc or `q` | Go back; first clears an active filter |
-| Left/Right | Switch between browser objects and application actions |
+| Right / Left | Open the highlighted object's menu / return to the browser |
 | Tab | Switch Sessions/Configs while browsing |
 | `/` | Filter the current list |
-| Page Up/Down | Scroll details |
-| `n`, `r`, `a` | Create, Refresh, All-session operations in the browser |
+| Page Up/Down | Move a visible page in a list; scroll a page in read-only views |
+| Home/End | First/last list item; top/bottom of a read-only view |
+| Ctrl+Page Up/Down | Scroll long context/details without moving the menu selection |
+| `n`, `r`, `a`, `b` | Create, Refresh, All-session operations, Browser actions while browsing |
+| `c`, `o`, `s`, `r`, `i`, `l`, `e` | Continue, Open, Shell, Recreate, Status, Logs, Exec in a session menu |
 | Ctrl-C | Exit menus; interrupt a foreground operation without closing the browser |
+
+The browser's right pane previews the highlighted object's actions. Enter or Right opens that menu; highlighting never runs an action. Browser-wide commands stay separate under **Browser actions** (`b`). Action labels share one style regardless of whether they open another screen. Destructive actions retain red warning text. Categories have a blank line between them. Shortcuts are shown beside actions and do not fire while typing or filtering. In the Recreate form, `r` opens the existing confirmation; it never approves it.
 
 Text fields use Esc to cancel; `q` and `:back` are literal text there. Confirmations start on **No** and require Enter. SIGTERM cancels the whole command.
 
@@ -34,7 +39,7 @@ Without full terminal input/output, bare browsers show help. Other redirected/du
 | CONTAINER | Running, stopped, or missing; `!` indicates an error, `*` a pending transfer |
 | LIFETIME | `automatic` or `until stop`, independent of current state |
 | CONFIGS | Selected configs, in order |
-| SESSION ID (`--wide`) | Stable exact session target |
+| SESSION | Exact session directory name accepted by commands |
 | CONTAINER NAME (`--wide`) | Docker name; independent of session storage |
 
 Wide output also includes last action and exact UTC timestamps. `--sort folder` orders folders then names; `name` orders local names, then folders; `last-active` is newest first. Sorting applies to the whole command-line table.
@@ -51,7 +56,7 @@ Missing containers remain listed. Corrupt records show diagnostics; managed cont
 | Rebuild + recreate needed | Image inputs changed; Recreate also builds |
 | Cannot check | A config/state problem prevents comparison |
 
-Status compares local inputs, not available upstream releases. A missing container and invalid configuration are separate conditions. Single-session status shows detailed reasons and relevant next commands.
+Status identifies workspace and local name together and compares local inputs, not available upstream releases. Public-setting changes show values; managed-tree and build-context changes show category reasons, not exact filenames. Missing runtime and invalid configuration are separate conditions. Status reports missing images without treating them as corrupt state or replacing a healthy container. Single-session status shows reasons and relevant next commands. Active commands include their action, host PID, and attachment start time.
 
 ## Inventory and status JSON
 
@@ -63,8 +68,10 @@ Status compares local inputs, not available upstream releases. A missing contain
 
 | Common field | Meaning |
 |---|---|
-| `session_id`, `local_name` | Stable ID and editable session name |
+| `target` | Exact session directory name; unmatched-container rows use their Docker name |
+| `session_id`, `local_name` | Internal stable ID and editable session name |
 | `container_id`, `container_name` | Applied Docker instance and its name |
+| `image_missing` | Recorded image ID is absent; existing container access is unaffected |
 | `default` | Matches the saved folder default |
 | `manual_start` | Keep-running intent |
 | `sources` | Desired config references |
@@ -83,7 +90,7 @@ Entries contain `scope`, `code`, and `field`; optional fields are `key`, `path`,
 - Scope: `image`, `container`, `runtime`.
 - Code: `value_changed`, `input_changed`, `entry_added`, `entry_removed`, `order_changed`, `file_added`, `file_removed`, `file_content_changed`, `file_kind_changed`, `file_mode_changed`.
 
-Public values may appear before/after. Env changes show variable names, never values or hashes. File contents are not printed.
+Public values may appear before/after. Env changes show variable names, never values or hashes. Managed content and build contexts use `input_changed` category entries. Dockerfiles and ordered hooks retain specific content/order reasons. File contents are not printed.
 
 ## Configuration output
 
@@ -94,7 +101,7 @@ Public values may appear before/after. Env changes show variable names, never va
 | JSON command | Fields |
 |---|---|
 | `edit <target> --config REF --json` | `name`, `workspace`, ordered `sources`, `next_steps` |
-| `config users <name\|path> --json` | `path`, `users` (session IDs), `complete` |
+| `config users <name\|path> --json` | `path`, `users` (session directory names), `complete` |
 
 Incomplete usage scans exit nonzero with known users in `partial_result` and `complete: false`.
 

@@ -11,6 +11,8 @@ import (
 	"maps"
 	"os"
 	"path"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -39,11 +41,27 @@ type Identity struct {
 	Name string `json:"name"`
 }
 
-func ResourceName(_ string, localName, allocation string) string {
-	// The allocation suffix prevents reused names from colliding with resources
-	// whose readable local-name hint is now stale.
+var unsafeFolderCharacters = regexp.MustCompile(`[^a-z0-9_.-]+`)
+
+func workspaceHint(workspace string) string {
+	folder := unsafeFolderCharacters.ReplaceAllString(strings.ToLower(filepath.Base(workspace)), "-")
+	folder = strings.Trim(folder, "-_.")
+	folder = strings.TrimRight(folder[:min(len(folder), 24)], "-_.")
+	if folder == "" {
+		return "workspace"
+	}
+	return folder
+}
+
+func ResourceName(workspace, localName, allocation string) string {
+	// Hints can become stale after metadata edits. Only the allocation suffix
+	// distinguishes resource instances; ownership never depends on these names.
 	sum := sha256.Sum256([]byte(allocation))
-	return ContainerPrefix + hex.EncodeToString(sum[:6]) + "." + localName
+	return ContainerPrefix + workspaceHint(workspace) + "-" + hex.EncodeToString(sum[:6]) + "." + localName
+}
+
+func ImageTag(workspace, localName, sessionID string) string {
+	return docker.Namespace + "/session:" + workspaceHint(workspace) + "-" + localName + "-" + sessionID
 }
 
 type Fingerprints struct {
@@ -70,21 +88,20 @@ type Spec struct {
 	ResolvedSources []config.Source
 	Fingerprints    Fingerprints
 	Inputs          Inputs
-	EnvSources      []config.EnvSource
 	ExtraMounts     []docker.Mount
 	Metadata        string
 	Host            config.Host `json:"-"`
 }
 type Request struct {
-	Salt      string
-	Home      string
-	Workspace string
-	LocalName string
-	Sources   []config.Reference
-	SessionID string
-	UID       int
-	GID       int
-	Host      config.Host `json:"-"`
+	Salt         string
+	Home         string
+	Workspace    string
+	LocalName    string
+	Sources      []config.Reference
+	RepairTarget string
+	UID          int
+	GID          int
+	Host         config.Host `json:"-"`
 }
 
 func Resolve(q Request) (Spec, error) {
@@ -102,16 +119,16 @@ func Resolve(q Request) (Spec, error) {
 	sources, err := config.ResolveReferences(q.Workspace, q.Sources)
 	if err != nil {
 		var next []commanderror.Step
-		if q.SessionID != "" {
-			next = append(next, commanderror.Next("Repair the session's selected configs", "edit", q.SessionID))
+		if q.RepairTarget != "" {
+			next = append(next, commanderror.Next("Repair the session's selected configs", "edit", q.RepairTarget))
 		}
-		return spec, commanderror.New("configuration_unavailable", "Cannot resolve selected configs: "+err.Error(), q.SessionID, err, next...)
+		return spec, commanderror.New("configuration_unavailable", "Cannot resolve selected configs: "+err.Error(), q.RepairTarget, err, next...)
 	}
 	r, err := artifact.Resolve(sources, q.Host)
 	if err != nil {
-		if q.SessionID != "" {
-			return spec, commanderror.New("invalid_configuration", err.Error(), q.SessionID, err,
-				commanderror.Next("Inspect and repair selected configs", "edit", q.SessionID))
+		if q.RepairTarget != "" {
+			return spec, commanderror.New("invalid_configuration", err.Error(), q.RepairTarget, err,
+				commanderror.Next("Inspect and repair selected configs", "edit", q.RepairTarget))
 		}
 		return spec, err
 	}
@@ -119,7 +136,7 @@ func Resolve(q Request) (Spec, error) {
 		var actionable *commanderror.Error
 		if errors.As(err, &actionable) && actionable.Code == "harness_required" {
 			step := commanderror.Next("Select a harness in a config", "config", "edit", sources[0].Path, "--harness", "<name>")
-			return spec, commanderror.New(actionable.Code, actionable.Message, q.SessionID, err, step)
+			return spec, commanderror.New(actionable.Code, actionable.Message, q.RepairTarget, err, step)
 		}
 		return spec, commanderror.New("invalid_configuration", "Invalid configuration: "+err.Error(), q.Workspace, err)
 	}
@@ -196,25 +213,6 @@ func Resolve(q Request) (Spec, error) {
 		return spec, err
 	}
 	spec.Metadata = string(metadata)
-	winning := map[string]config.EnvInput{}
-	for _, input := range r.Settings.EnvInputs {
-		name, _, _ := strings.Cut(input.Value, "=")
-		winning[name] = input
-	}
-	for _, arg := range r.Settings.DockerArgs {
-		if value, ok := strings.CutPrefix(arg, "--env="); ok {
-			key, _, _ := strings.Cut(value, "=")
-			delete(winning, key)
-		}
-	}
-	keys := make([]string, 0, len(winning))
-	for name := range winning {
-		keys = append(keys, name)
-	}
-	sort.Strings(keys)
-	for _, name := range keys {
-		spec.EnvSources = append(spec.EnvSources, winning[name].Seal(q.Salt))
-	}
 	if err = docker.ValidateEnv(spec.Env()); err != nil {
 		return Spec{}, err
 	}
@@ -297,8 +295,8 @@ func (s Spec) Env() []string {
 	for key, value := range s.Harness.Definition.Env {
 		values[key] = value
 	}
-	for _, input := range s.Settings.EnvInputs {
-		key, value, _ := strings.Cut(input.Value, "=")
+	for _, assignment := range s.Settings.Env {
+		key, value, _ := strings.Cut(assignment, "=")
 		values[key] = value
 	}
 	for _, arg := range s.Settings.DockerArgs {

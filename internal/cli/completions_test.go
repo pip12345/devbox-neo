@@ -100,8 +100,9 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := strings.Repeat("a", 32)
+	target := "dbx-api-111111111111.Main"
 	metadata, _ := json.Marshal(map[string]any{"id": id, "settings": identity.Binding})
-	completionFile(t, explicit, filepath.Join("sessions", "arbitrary-storage-directory", "session.json"), string(metadata))
+	completionFile(t, explicit, filepath.Join("sessions", target, "session.json"), string(metadata))
 	completionFile(t, explicit, "harnesses/pi/harness.json", `invalid override`)
 	custom, err := harness.Load(explicit, "opencode")
 	if err != nil {
@@ -129,7 +130,7 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 		{[]string{"--home", explicit, "edit", workspace, "--name", "M"}, []string{"Main"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "create", ".", "--config", "b"}, []string{"basic", "broken"}, cobra.ShellCompDirectiveDefault},
 		{[]string{"--home", explicit, "copy", ".", "--as", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "rename", "aaaa"}, []string{id}, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "rename", "dbx-"}, []string{target}, cobra.ShellCompDirectiveDefault},
 		{[]string{"--home", explicit, "rename", workspace, "--name", "M"}, []string{"Main"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "rename", workspace, "--to", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "copy", workspace, "--move", "--name", "M"}, []string{"Main"}, cobra.ShellCompDirectiveNoFileComp},
@@ -137,10 +138,10 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 		{[]string{"--home", explicit, "config", "create", "overlay", "--artifact-harness", ""}, []string{"claude", "custom", "opencode"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "list", "--sort", ""}, []string{"folder", "last-active", "name"}, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "list", "--sort", "f"}, []string{"folder"}, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "status", "aaaa"}, []string{id}, cobra.ShellCompDirectiveDefault},
-		{[]string{"--home", explicit, "copy", id, ""}, nil, cobra.ShellCompDirectiveFilterDirs},
-		{[]string{"--home", explicit, "copy", "--move", id, ""}, nil, cobra.ShellCompDirectiveFilterDirs},
-		{[]string{"--home", explicit, "copy", "--move", "aaaa"}, []string{id}, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "status", "dbx-"}, []string{target}, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "copy", target, ""}, nil, cobra.ShellCompDirectiveFilterDirs},
+		{[]string{"--home", explicit, "copy", "--move", target, ""}, nil, cobra.ShellCompDirectiveFilterDirs},
+		{[]string{"--home", explicit, "copy", "--move", "dbx-"}, []string{target}, cobra.ShellCompDirectiveDefault},
 		{[]string{"--home", explicit, "list", ""}, nil, cobra.ShellCompDirectiveFilterDirs},
 		{[]string{"--home", explicit, "create", ""}, nil, cobra.ShellCompDirectiveFilterDirs},
 		{[]string{"--home", explicit, "create", ".", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
@@ -148,13 +149,24 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 		{[]string{"--home", explicit, "open", ".", "--", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "exec", ".", "--", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
 		{[]string{"--home", explicit, "delete", "--all", ""}, nil, cobra.ShellCompDirectiveNoFileComp},
-		{[]string{"--home", explicit, "delete", id, ""}, nil, cobra.ShellCompDirectiveDefault},
+		{[]string{"--home", explicit, "delete", target, ""}, nil, cobra.ShellCompDirectiveDefault},
 	}
 	for _, tt := range cases {
 		got, dir := runCompletion(t, tt.args...)
+		for i, candidate := range got {
+			target, description, described := strings.Cut(candidate, "\t")
+			if described && (!strings.Contains(description, workspace) || !strings.Contains(description, "Main")) {
+				t.Fatal("session candidate lost its readable identity", candidate)
+			}
+			got[i] = target
+		}
 		if !slices.Equal(got, tt.want) || dir != tt.dir {
 			t.Fatalf("%v: got %v/%d, want %v/%d", tt.args, got, dir, tt.want, tt.dir)
 		}
+	}
+	described, _ := runCompletion(t, "--home", explicit, "status", "dbx-")
+	if !slices.Equal(described, []string{target + "\t" + workspace + " / Main"}) {
+		t.Fatal("session completion lacks readable description", described)
 	}
 	if after := completionSnapshot(t, userHome); !reflect.DeepEqual(before, after) {
 		t.Fatal("completion mutated the home", before, after)

@@ -15,6 +15,7 @@ func TestTransferRetryCommandsKeepExactEndpoints(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		id.Name = "dbx-project-111111111111." + name
 		return id
 	}
 	source := identity(workspace, "Main")

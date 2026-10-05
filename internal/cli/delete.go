@@ -147,8 +147,7 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 				if len(targets) == 0 {
 					return printDeleteResult(cmd.OutOrStdout(), result)
 				}
-				slices.Sort(targets)
-				options.Selection = app.Selection{Targets: slices.Compact(targets)}
+				options.Selection = app.Selection{Captured: targets}
 			}
 			m := newMenu(cmd)
 			defer func() { runErr = errors.Join(runErr, m.Finish()) }()

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -46,29 +47,31 @@ type Record struct {
 }
 
 type AppliedState struct {
-	Fingerprints    environment.Fingerprints `json:"fingerprints"`
-	Inputs          environment.Inputs       `json:"inputs"`
-	ImageTag        string                   `json:"image_tag"`
-	ImageID         string                   `json:"image_id"`
-	Creation        docker.CreatePlan        `json:"creation"`
-	EnvSources      []config.EnvSource       `json:"env_sources,omitempty"`
-	Definition      DefinitionInput          `json:"definition_input"`
-	Stores          []harness.Store          `json:"stores"`
-	Auth            []harness.Auth           `json:"auth"`
-	Config          harness.Config           `json:"config"`
-	Merge           []harness.Merge          `json:"config_merge"`
-	Prepare         [][]string               `json:"prepare"`
-	Launch          Launch                   `json:"launch"`
-	Setup           []environment.Hook       `json:"setup"`
-	SetupContainer  string                   `json:"setup_container"`
-	Ownership       int                      `json:"ownership_version"`
-	ManifestVersion int                      `json:"manifest_version"`
+	Fingerprints environment.Fingerprints `json:"fingerprints"`
+	Inputs       environment.Inputs       `json:"inputs"`
+	ImageTag     string                   `json:"image_tag"`
+	ImageID      string                   `json:"image_id"`
+	Creation     docker.CreatePlan        `json:"creation"`
+	Definition   DefinitionInput          `json:"definition_input"`
+	Stores       []harness.Store          `json:"stores"`
+	Auth         []harness.Auth           `json:"auth"`
+	Config       harness.Config           `json:"config"`
+	Merge        []harness.Merge          `json:"config_merge"`
+	Prepare      [][]string               `json:"prepare"`
+	Launch       Launch                   `json:"launch"`
+	// Script bytes exist only during materialization; before-open copies live
+	// in the container and their ordered hashes already belong to Inputs.
+	Setup           []environment.Hook `json:"-"`
+	BeforeOpen      []environment.Hook `json:"-"`
+	SetupContainer  string             `json:"setup_container"`
+	Ownership       int                `json:"ownership_version"`
+	ManifestVersion int                `json:"manifest_version"`
 }
 
-const RecordVersion = 6
+const RecordVersion = 7
 
-// Runtime synchronization must advance its explanation baseline together with
-// its fingerprint. Image/container inputs remain committed until recreation.
+// Explicit runtime application advances its explanation baseline together with
+// its fingerprint. Ordinary access never advances applied configuration.
 func (r *Record) ApplyRuntime(inputs environment.RuntimeInputs) {
 	r.Applied.Inputs.Runtime = inputs
 	r.Applied.Fingerprints.Runtime = inputs.Fingerprint()
@@ -91,7 +94,7 @@ func (s Settings) Validate() error {
 
 func (r Record) Validate(directory string) error {
 	if r.Version != RecordVersion {
-		return fmt.Errorf("unsupported session record version; reset development state explicitly")
+		return fmt.Errorf("unsupported session record version; start dbx in a terminal to review available migrations, or reset unsupported development state explicitly")
 	}
 	if !idPattern.MatchString(r.ID) || !validName(directory) {
 		return fmt.Errorf("invalid session identity or directory")
@@ -109,7 +112,7 @@ func (a AppliedState) Validate(sessionID string) error {
 	if a.Ownership != 1 || a.ManifestVersion != 1 {
 		return fmt.Errorf("unsupported applied runtime contract")
 	}
-	if !strings.HasPrefix(a.ImageID, "sha256:") || !hashPattern.MatchString(strings.TrimPrefix(a.ImageID, "sha256:")) || a.ImageTag != docker.Namespace+"/session:"+sessionID || !environment.ValidResourceName(a.Creation.Name) || a.Creation.Image != a.ImageID {
+	if !strings.HasPrefix(a.ImageID, "sha256:") || !hashPattern.MatchString(strings.TrimPrefix(a.ImageID, "sha256:")) || (!strings.HasPrefix(a.ImageTag, docker.Namespace+"/session:") || !strings.HasSuffix(a.ImageTag, "-"+sessionID) || !config.ImageReference.MatchString(a.ImageTag)) || !environment.ValidResourceName(a.Creation.Name) || a.Creation.Image != a.ImageID {
 		return fmt.Errorf("incomplete recorded creation contract")
 	}
 	if !hashPattern.MatchString(a.Fingerprints.Image) || !hashPattern.MatchString(a.Fingerprints.Container) || !hashPattern.MatchString(a.Fingerprints.Runtime) || !hashPattern.MatchString(a.Definition.Hash) {
@@ -124,6 +127,9 @@ func (a AppliedState) Validate(sessionID string) error {
 	if a.Inputs.Image.Harness != a.Definition.Name || a.Inputs.Image.Definition.Hash != a.Definition.Hash || a.Inputs.FingerprintsFor(a.ImageID) != a.Fingerprints {
 		return fmt.Errorf("recorded inputs do not match the committed fingerprints or identity")
 	}
+	if !slices.Equal(a.Creation.RawArgs, a.Inputs.Container.RawArgs) {
+		return fmt.Errorf("recorded Docker arguments do not match the redacted comparison baseline")
+	}
 	if a.Launch.Binary == "" || len(a.Launch.Shell) == 0 || !config.Name.MatchString(a.Definition.Name) {
 		return fmt.Errorf("invalid recorded launch contract")
 	}
@@ -132,28 +138,6 @@ func (a AppliedState) Validate(sessionID string) error {
 	}
 	if a.Definition.Origin != "builtin" && !filepath.IsAbs(a.Definition.Origin) {
 		return fmt.Errorf("invalid recorded definition source")
-	}
-	if len(a.Setup) != len(a.Inputs.Container.Setup) {
-		return fmt.Errorf("recorded setup chain differs from applied inputs")
-	}
-	for i, hook := range a.Setup {
-		input := a.Inputs.Container.Setup[i]
-		if !filepath.IsAbs(hook.Path) || !hashPattern.MatchString(hook.Hash) || hook.Path != input.Source || hook.Hash != input.Hash || input.Directory || input.Mode != 0 {
-			return fmt.Errorf("invalid recorded setup input")
-		}
-	}
-	for _, source := range a.EnvSources {
-		if !hashPattern.MatchString(source.RawHash) || !hashPattern.MatchString(source.ValueHash) {
-			return fmt.Errorf("invalid recorded environment fingerprint")
-		}
-		switch source.Kind {
-		case "file":
-			if !filepath.IsAbs(source.Path) || source.Index < 0 || source.Field != "env" {
-				return fmt.Errorf("invalid recorded environment source")
-			}
-		default:
-			return fmt.Errorf("unknown recorded environment source kind")
-		}
 	}
 	d := harness.Definition{Version: 1, Name: a.Definition.Name, Binary: a.Launch.Binary, Stores: a.Stores, Config: a.Config, Merge: a.Merge, Auth: a.Auth, Prepare: a.Prepare}
 	if err := d.Validate(); err != nil {

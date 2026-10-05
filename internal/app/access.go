@@ -41,11 +41,18 @@ func sessionAbsent(err error) bool {
 	return errors.Is(err, os.ErrNotExist)
 }
 
-// Locate chooses saved identity before resolving configuration. A folder needs
-// its explicit local name or saved default; inventory never supplies a fallback.
+// Locate chooses saved identity before resolving configuration. Public targets
+// are storage directory names or folders; captured internal operations can use
+// immutable IDs. A folder needs its explicit local name or saved default.
 func (e *Engine) Locate(ctx context.Context, target, localName string) (store.Record, error) {
-	if environment.IsSessionTarget(target) {
-		r, err := e.Store.Find(ctx, target, nil)
+	if environment.IsSessionTarget(target) || environment.IsSessionID(target) {
+		var r store.Record
+		var err error
+		if environment.IsSessionTarget(target) {
+			r, err = e.readSession(ctx, target)
+		} else {
+			r, err = e.Store.Find(ctx, target, nil)
+		}
 		if sessionAbsent(err) {
 			return r, commanderror.New("session_missing", "Session not found.", target, err, commanderror.Next("List sessions", "list"))
 		}
@@ -116,7 +123,7 @@ func loadSelected(lock *store.Locked, selected store.Record) (store.Record, erro
 		return current, err
 	}
 	if current.ID != selected.ID {
-		return store.Record{}, commanderror.New("session_changed", "Selected session was replaced; select it again.", selected.ID, nil)
+		return store.Record{}, commanderror.New("session_changed", "Selected session was replaced; select it again.", selected.Directory, nil)
 	}
 	return current, nil
 }
@@ -139,18 +146,18 @@ func (e *Engine) Start(ctx context.Context, target, localName string) (result Re
 	if err != nil {
 		return Result{}, err
 	}
-	result = Result{SessionID: r.ID}
+	result = Result{Session: r.Directory, SessionID: r.ID}
 	started := false
 	defer func() {
 		if err != nil && started {
 			err = errors.Join(err, e.stopUnattached(l, r))
 		}
 	}()
-	c, started, err = e.startAccess(ctx, l, c, exists, &r, nil, &result)
+	c, started, err = e.startAccess(ctx, l, c, exists, r)
 	if err != nil {
 		return result, err
 	}
-	if err = e.installRuntime(ctx, r); err != nil {
+	if err = e.refreshNetwork(ctx, r); err != nil {
 		return Result{}, err
 	}
 	r.Action = "start"
@@ -181,8 +188,8 @@ func (e *Engine) Stop(ctx context.Context, target, localName string, force bool)
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "Container not found.", r.ID, nil,
-			commanderror.Next("Inspect session", "status", r.ID))
+		return commanderror.New("container_missing", "Container not found.", r.Directory, nil,
+			commanderror.Next("Inspect session", "status", r.Directory))
 	}
 	if c.State.Running {
 		if err = e.Docker.Stop(ctx, c, e.owner(r)); err != nil {
@@ -214,22 +221,17 @@ func (e *Engine) Exec(ctx context.Context, target, localName string, argv []stri
 	if err != nil {
 		return err
 	}
-	if !exists {
-		return commanderror.New("container_missing", "Container not found.", r.ID, nil,
-			commanderror.Next("Start or restore, then retry", "start", r.ID))
-	}
 	started := false
 	defer func() {
 		if err != nil && started && l.Held() {
 			err = errors.Join(err, e.stopUnattached(l, r))
 		}
 	}()
-	result := Result{SessionID: r.ID}
-	c, started, err = e.startAccess(ctx, l, c, exists, &r, nil, &result)
+	c, started, err = e.startAccess(ctx, l, c, exists, r)
 	if err != nil {
 		return err
 	}
-	if err = e.installRuntime(ctx, r); err != nil {
+	if err = e.refreshNetwork(ctx, r); err != nil {
 		return err
 	}
 	action := "exec"

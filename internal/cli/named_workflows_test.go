@@ -103,7 +103,7 @@ func TestEditDefaultFlagsSetAndClearWithoutSessionEditor(t *testing.T) {
 	if _, err := run(q.Workspace, "--name", "Main", "--default"); err != nil {
 		t.Fatal(err)
 	}
-	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected == nil || selected.ID != fullName {
+	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected == nil || selected.ID != sessionRecord(t, e, fullName).ID {
 		t.Fatal("named session was not selected", selected, err)
 	}
 	if _, err := run(q.Workspace, "--clear-default"); err != nil {
@@ -190,7 +190,7 @@ func TestEditFolderExitKeepsSavedDefault(t *testing.T) {
 		t.Fatal("exiting the folder overview lost its saved-action receipt", out.String())
 	}
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected == nil || selected.ID != fullName {
+	if err != nil || selected == nil || selected.ID != sessionRecord(t, e, fullName).ID {
 		t.Fatal("exiting the folder overview lost its saved default", selected, err)
 	}
 }
@@ -198,7 +198,7 @@ func TestEditFolderExitKeepsSavedDefault(t *testing.T) {
 func TestEditCanClearStaleDefaultWithoutSessions(t *testing.T) {
 	e, q, fullName := namedCLIFixture(t)
 	ctx := context.Background()
-	r, err := e.Store.Find(ctx, fullName, nil)
+	r, err := e.Locate(ctx, fullName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestEditFolderCanRecoverFromBrokenSessionSelection(t *testing.T) {
 func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("1\nFresh\n2\n1\n7\n0\n"); err != nil {
+	if _, err := master.WriteString("1\nFresh\n2\n1\n8\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -305,7 +305,7 @@ func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 	if nameIndex < 0 || pickerIndex < nameIndex || !strings.Contains(text, "[1]  Change session name") {
 		t.Fatal("creation overview did not keep pending inputs editable", text)
 	}
-	for _, label := range []string{"Configs, in order:", "[2]  Add existing config", "[3]  Create config", "[4]  Replace config", "[5]  Remove config", "[6]  Change folder", "[7]  Create session"} {
+	for _, label := range []string{"Configs, in order:", "[2]  Add existing config", "[3]  Create config", "[4]  Replace config", "[5]  Remove config", "[6]  Change folder", "[8]  Create session"} {
 		if !strings.Contains(text, label) {
 			t.Fatal("creation menu mixed config and source labels", label, text)
 		}
@@ -382,7 +382,7 @@ func TestInteractiveCreationCanBackOutOfInputsAndCancelOverview(t *testing.T) {
 func TestInteractiveCreationCanChooseSourcesBeforeNameAndChangeName(t *testing.T) {
 	e, q, _ := namedCLIFixture(t)
 	master, slave := testTerminal(t)
-	if _, err := master.WriteString("2\n1\n1\nbad name\nFirst\n1\n:back\n1\nRenamed\n7\n0\n"); err != nil {
+	if _, err := master.WriteString("2\n1\n1\nbad name\nFirst\n1\n:back\n1\nRenamed\n8\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	name := ""
@@ -420,8 +420,8 @@ func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
 		input      string
 		wantPicker bool
 	}{
-		{"name", []string{"--name", "OnlyName"}, "2\n1\n7\n0\n", true},
-		{"config", []string{"--config", "base"}, "1\nOnlyConfig\n7\n0\n", false},
+		{"name", []string{"--name", "OnlyName"}, "2\n1\n8\n0\n", true},
+		{"config", []string{"--config", "base"}, "1\nOnlyConfig\n8\n0\n", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, q, _ := namedCLIFixture(t)
@@ -492,7 +492,7 @@ func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T
 	if out, err := runSourcesCLI(t, e, fullName, "--config", "base", "--config", "incomplete"); err != nil {
 		t.Fatal(out, err)
 	}
-	r, err := e.Store.Find(context.Background(), fullName, nil)
+	r, err := e.Locate(context.Background(), fullName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +502,7 @@ func TestSavedSourceMenuPersistsIncompleteEditsWithoutNestedEditors(t *testing.T
 	if err != nil || !saved {
 		t.Fatal(out.String(), saved, err)
 	}
-	after, err := e.Store.Find(context.Background(), fullName, nil)
+	after, err := e.Locate(context.Background(), fullName, "")
 	if err != nil || after.ID != r.ID || len(after.Settings.Sources) != 1 || after.Settings.Sources[0].Label != "incomplete" || after.Applied.Fingerprints != r.Applied.Fingerprints {
 		t.Fatal("source edit was lost or applied container settings", after, err)
 	}

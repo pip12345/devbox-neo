@@ -16,7 +16,7 @@ func TestInteractiveCapabilitiesHaveDirectCommandInputs(t *testing.T) {
 		command string
 		flags   []string
 	}{
-		{"create", []string{"name", "config"}},
+		{"create", []string{"name", "config", "default"}},
 		{"open", []string{"name", "continue", "harness-arg"}},
 		{"start", []string{"name"}}, {"stop", []string{"name", "force"}},
 		{"shell", []string{"name"}}, {"exec", []string{"name"}},

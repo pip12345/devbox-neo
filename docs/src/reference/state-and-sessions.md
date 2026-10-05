@@ -9,7 +9,7 @@ A session saves an environment's identity and harness state. Its container can b
 | Project files | Retained on host | Retained on host | Not copied |
 | Declared session harness stores | Retained | Retained | Copied |
 | Managed auth and shared caches | Retained separately | Retained separately | Not copied; destination uses managed auth/caches |
-| Container-local files/tools | Retained | Lost | Not copied |
+| Container-local files/tools | Retained | Lost only if container is replaced | Not copied |
 | Live SSH connections | End when controller/container stops | Not retained | Not copied |
 
 `delete --container` keeps saved state and its folder default. `delete --session` also removes saved history and the session image tag, clearing a matching default. Neither deletes project files, configs, managed auth, or caches.
@@ -30,11 +30,11 @@ Paths below are relative to the selected home. Use Devbox commands to manage ses
 | `sessions/<directory>/harnesses/<harness>/managed-config.json` | Managed file/key tracking |
 | `sessions/<directory>/runtime/ssh/` | Temporary shared SSH connections |
 | `state/installation-id` | Installation identity |
-| `state/workspaces/<workspace-key>.json` | Folder default |
+| `state/folder-defaults.json` | Folder-to-default-session selections |
 | `state/transfers/<source-directory>.json` | Pending transfer |
 | `state/locks/` | Installation, config, folder, and session locks |
 
-Pending transfers reserve both endpoints. Retry the reported command; do not delete their files to unblock another operation. [State architecture](../architecture/state.md) documents file schemas, keys, and locking.
+Finish or abort pending transfers with the [transfer commands](commands.md#transfers), rather than deleting their files.
 
 ## Built-in storage mappings
 
@@ -73,14 +73,14 @@ These are Devbox-managed runtime paths. Shared SSH data is transient, not a cred
 
 Local names are 1–64 ASCII characters: letters, digits, `_`, and `-`, starting with a letter or digit. Case matters: `work` and `Work` differ.
 
-Exact session targets are immutable 32-hex IDs, shown by `list --wide`. Readable directory and Docker names are independently allocated hints, not identity; their hashes do not track the current workspace. Editing settings does not rename either resource.
+Exact session targets are directory names under `sessions/`, shown by `list` and `status`. Docker container names are separate and cannot be used as saved-session targets. Renaming a session or changing its workspace does not rename either directory or container. Internal IDs keep locks and ownership attached to the saved session; they are not CLI targets.
 
-Folder-only commands require an explicit default ID. Docker operations verify installation/session ownership and the recorded container association, not name equality.
+Folder-only commands require a saved default. Devbox checks that Docker resources belong to the selected installation and session before changing them.
 
 ## Recovery
 
-Open and Start can restore a missing container from its recorded image and inputs. If required inputs are unavailable, follow the error or recreate from current configs.
+Recreate uses current configs, not a saved copy of an earlier environment. It cannot restore deleted harness history. Missing saved-data directories cause an error rather than being replaced with empty history. A missing image does not prevent access to an existing container.
 
 Recreation preserves identity, harness state, and keep-running intent. Copy creates a separate session identity; Move preserves the original. [Manage environments](../guides/managing-environments.md) covers those workflows.
 
-Recorded activity describes Devbox operations, not filesystem changes. For record validation, applied snapshots, and recovery verification, see [lifecycle architecture](../architecture/lifecycle.md).
+Recorded activity describes Devbox operations, not filesystem changes.

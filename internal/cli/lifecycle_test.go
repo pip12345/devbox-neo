@@ -30,7 +30,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	resources.EditConfig(ctx, owner, resource.SetupOptions{Harness: harnessSetting("pi")})
 	daemon := &dockertest.Daemon{}
 	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: daemon}, UID: 1000, GID: 1000}
-	result, err := engine.Create(ctx, app.Request{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
+	result, err := engine.Create(ctx, app.CreateRequest{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		err := root.Execute()
 		return out.String(), err
 	}
-	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.SessionID, "--json"}, {"status"}, {"status", "--json"}, {"status", result.SessionID}, {"network", "env", result.SessionID, "--get", "DEVBOX_HOST"}, {"logs", result.SessionID}} {
+	for _, args := range [][]string{{"list", "--json"}, {"list", "--sort", "last-active", "--wide"}, {"status", result.Session, "--json"}, {"status"}, {"status", "--json"}, {"status", result.Session}, {"network", "env", result.Session, "--get", "DEVBOX_HOST"}, {"logs", result.Session}} {
 		if out, err := run(args...); err != nil || out == "" {
 			t.Fatal(args, out, err)
 		}
@@ -76,13 +76,13 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte(`{"version":1,"harness":"pi","network":"host","env":["TOKEN=private-status-value"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"status", result.SessionID}, {"status"}} {
+	for _, args := range [][]string{{"status", result.Session}, {"status"}} {
 		out, err := run(args...)
 		if err != nil || !strings.Contains(out, "[container] network: default -> host") || !strings.Contains(out, "environment variable TOKEN added") || strings.Contains(out, "private-status-value") {
 			t.Fatal("status text lost reasons or leaked env", out, err)
 		}
 	}
-	out, err = run("status", result.SessionID, "--json")
+	out, err = run("status", result.Session, "--json")
 	var single app.StatusDetails
 	if err != nil || json.Unmarshal([]byte(out), &single) != nil || len(single.PendingInputChanges) != 2 || strings.Contains(out, "private-status-value") || !strings.Contains(out, `"pending_input_changes":`) || strings.Contains(out, `"reasons":`) {
 		t.Fatal("single status JSON lost reasons or leaked env", out, err)
@@ -100,13 +100,13 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(owner.Root, "config.json"), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	out, err = run("status", result.SessionID)
-	for _, want := range []string{"Session: " + single.SessionID, "Harness: pi", "Image: " + single.Record.Applied.ImageID, "Active commands: 0", "Changes: Cannot check", "Desired configuration error:"} {
+	out, err = run("status", result.Session)
+	for _, want := range []string{"Session: " + single.Target, "Harness: pi", "Image: " + single.Record.Applied.ImageID, "Active commands: 0", "Changes: Cannot check", "Desired configuration error:"} {
 		if err != nil || !strings.Contains(out, want) {
 			t.Fatalf("status lost %q with invalid config: %s (%v)", want, out, err)
 		}
 	}
-	out, err = run("status", result.SessionID, "--json")
+	out, err = run("status", result.Session, "--json")
 	if err != nil || json.Unmarshal([]byte(out), &single) != nil || single.Record == nil || single.ConfigError == "" {
 		t.Fatal("JSON config error hid saved details", out, err)
 	}
@@ -114,10 +114,10 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	destination := t.TempDir()
-	if out, err := run("copy", result.SessionID, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {
+	if out, err := run("copy", result.Session, destination, "--dry-run", "--json"); err != nil || !strings.Contains(out, `"dry_run":true`) {
 		t.Fatal(out, err)
 	}
-	if out, err := run("copy", result.SessionID, destination, "--json"); err != nil || !strings.Contains(out, `"mode":"clone"`) {
+	if out, err := run("copy", result.Session, destination, "--json"); err != nil || !strings.Contains(out, `"mode":"clone"`) {
 		t.Fatal(out, err)
 	}
 	for _, order := range []string{"name", "last-active"} {
@@ -143,7 +143,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		}
 		for i, view := range views {
 			fields := strings.Fields(rows[i])
-			if len(fields) < 2 || fields[0] != view.Workspace || fields[1] != view.LocalName || strings.Contains(table, view.SessionID) {
+			if len(fields) < 3 || fields[0] != view.Workspace || fields[1] != view.Target || fields[2] != view.LocalName || strings.Contains(table, view.SessionID) {
 				t.Fatal("session text and JSON identities/order disagree", table, views)
 			}
 		}
@@ -154,16 +154,16 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if _, err = run("delete", result.SessionID); err == nil {
 		t.Fatal("non-interactive deletion bypassed confirmation")
 	}
-	if out, err := run("delete", result.SessionID, "--container"); err != nil || !strings.Contains(out, "retained") {
+	if out, err := run("delete", result.Session, "--container"); err != nil || !strings.Contains(out, "retained") {
 		t.Fatal(out, err)
 	}
-	if out, err := run("list", "--wide"); err != nil || !strings.Contains(out, result.SessionID) || !strings.Contains(out, "missing") {
+	if out, err := run("list", "--wide"); err != nil || !strings.Contains(out, result.Session) || strings.Contains(out, result.SessionID) || !strings.Contains(out, "missing") {
 		t.Fatal("session list hid a missing container", out, err)
 	}
 	if out, err := run("delete", "--session", "--orphaned", "--dry-run"); err != nil || !strings.Contains(out, "Would delete") {
 		t.Fatal(out, err)
 	}
-	if _, err = run("delete", result.SessionID, "--session"); err != nil {
+	if _, err = run("delete", result.Session, "--session"); err != nil {
 		t.Fatal(err)
 	}
 }

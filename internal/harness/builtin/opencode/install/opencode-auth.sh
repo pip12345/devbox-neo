@@ -37,8 +37,10 @@ write_back=false
 keep=false
 
 canonical() { jq -S 'sort_by(.id)' "$1" >"$2" 2>"$work/log"; }
+# Keep auth subprocesses in the terminal's process group so hangup reaches them;
+# the wrapper cannot run its signal trap until its foreground child exits.
 export_local() {
-    timeout 30s "$binary" auth export >"$work/local.json" 2>"$work/log" &&
+    timeout --foreground 30s "$binary" auth export >"$work/local.json" 2>"$work/log" &&
         jq -e 'type == "array"' "$work/local.json" >/dev/null 2>"$work/log"
 }
 read_shared() {
@@ -83,7 +85,8 @@ commit() {
 finish() {
     status=$?
     trap - EXIT
-    trap '' INT TERM
+    # A terminal hangup must not interrupt credential publication halfway through.
+    trap '' INT TERM HUP
     if $write_back; then
         result=0
         commit || result=$?
@@ -102,6 +105,7 @@ finish() {
 trap finish EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 # An interrupted run keeps its baseline with this backing store. Recovery uses
 # the same compare-and-swap rule, never the old unconditional write-back.
@@ -127,10 +131,10 @@ canonical "$work/local.json" "$work/local.sorted" || fail 'Invalid local credent
 if ! cmp -s "$work/baseline.sorted" "$work/local.sorted"; then
     jq -r '.[].id | @uri' "$work/local.json" >"$work/ids"
     while IFS= read -r id; do
-        timeout 30s "$binary" api DELETE "/api/credential/$id" >"$work/log" 2>&1 || fail 'Could not replace local credentials.'
+        timeout --foreground 30s "$binary" api DELETE "/api/credential/$id" >"$work/log" 2>&1 || fail 'Could not replace local credentials.'
     done <"$work/ids"
     # Native import skips existing IDs, so cached credentials must be removed.
-    timeout 30s "$binary" auth import "$work/desired.json" >"$work/log" 2>&1 || fail 'Could not import shared credentials.'
+    timeout --foreground 30s "$binary" auth import "$work/desired.json" >"$work/log" 2>&1 || fail 'Could not import shared credentials.'
     export_local && canonical "$work/local.json" "$work/local.sorted" || fail 'Could not verify imported credentials.'
     cmp -s "$work/baseline.sorted" "$work/local.sorted" || fail 'Imported credentials do not match shared auth.'
 fi

@@ -8,27 +8,32 @@ import (
 )
 
 func recreateCommand(factory engineFactory, localName *string) *cobra.Command {
-	var image, all bool
-	cmd := &cobra.Command{Use: "recreate [folder|session-id]", Short: "Recreate the container with current settings, keeping session data", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	var image, container, force, all bool
+	cmd := &cobra.Command{Use: "recreate [folder|session]", Short: "Apply current config, replacing the container or image only when needed", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if all && len(args) > 0 {
 			return fmt.Errorf("--all does not accept an exact target")
 		}
 		if !all && len(args) != 1 {
 			return fmt.Errorf("provide a target or --all")
 		}
+		if all && *localName != "" {
+			return fmt.Errorf("--name requires an explicit folder target")
+		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
 		}
 		if all {
-			_, err = e.RecreateAll(cmd.Context(), image, app.Request{LocalName: *localName})
+			_, err = e.RecreateAll(cmd.Context(), image, app.RecreateOptions{ForceContainer: container, Force: force})
 			return err
 		}
-		q := app.Request{Workspace: args[0], LocalName: *localName}
+		q := app.RecreateRequest{Target: args[0], LocalName: *localName, Options: app.RecreateOptions{ForceContainer: container, Force: force}}
 		_, err = e.Recreate(cmd.Context(), q, image)
 		return err
 	}}
-	cmd.Flags().BoolVar(&image, "image", false, "Rebuild the image without using the build cache")
-	cmd.Flags().BoolVar(&all, "all", false, "Recreate all Devbox containers")
+	cmd.Flags().BoolVar(&force, "force", false, "Replace the container even with attached commands; interrupts commands and loses container-local changes")
+	cmd.Flags().BoolVar(&image, "image", false, "Force an uncached image rebuild and container replacement")
+	cmd.Flags().BoolVar(&container, "container", false, "Force container replacement, reusing a compatible image when available")
+	cmd.Flags().BoolVar(&all, "all", false, "Apply current config to all managed containers")
 	return sessionNameFlag(cmd, localName)
 }

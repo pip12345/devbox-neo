@@ -50,8 +50,8 @@ func (e *Engine) NetworkFacts(ctx context.Context, target, localName string) (Ne
 		return NetworkFacts{}, err
 	}
 	if !exists {
-		return NetworkFacts{}, commanderror.New("container_missing", "Container not found; network details are unavailable.", r.ID, nil,
-			commanderror.Next("Start or restore", "start", r.ID))
+		return NetworkFacts{}, commanderror.New("container_missing", "Container not found; network details are unavailable.", r.Directory, nil,
+			commanderror.Next("Start or restore", "start", r.Directory))
 	}
 	return networkFacts(r, c), nil
 }
@@ -77,8 +77,8 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "Container not found.", r.ID, nil,
-			commanderror.Next("Start or restore", "start", r.ID))
+		return commanderror.New("container_missing", "Container not found.", r.Directory, nil,
+			commanderror.Next("Start or restore", "start", r.Directory))
 	}
 	if r.Applied.Creation.Network == "host" || c.HostConfig.NetworkMode == "host" {
 		return fmt.Errorf("host-network containers cannot attach secondary networks")
@@ -92,8 +92,8 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 		}
 	}
 	if !connect && actual == facts.Primary {
-		return commanderror.New("primary_network_protected", "Cannot disconnect the primary network. Change its configuration first.", r.ID, nil,
-			commanderror.Next("Then recreate to apply the network change", "recreate", r.ID))
+		return commanderror.New("primary_network_protected", "Cannot disconnect the primary network. Change its configuration first.", r.Directory, nil,
+			commanderror.Next("Then recreate to apply the network change", "recreate", r.Directory))
 	}
 	_, attached := facts.Networks[actual]
 	if connect && attached {
@@ -109,7 +109,7 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 		return err
 	}
 	if c.State.Running {
-		return e.installRuntime(ctx, r)
+		return e.refreshNetwork(ctx, r)
 	}
 	return nil
 }

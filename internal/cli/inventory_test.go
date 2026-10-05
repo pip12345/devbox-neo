@@ -36,7 +36,7 @@ func inventoryCLI(t *testing.T) (*app.Engine, *dockertest.Daemon, string, func()
 	}
 	daemon := &dockertest.Daemon{}
 	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: daemon}, UID: 1000, GID: 1000}
-	created, err := engine.Create(ctx, app.Request{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
+	created, err := engine.Create(ctx, app.CreateRequest{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,12 +47,12 @@ func inventoryCLI(t *testing.T) (*app.Engine, *dockertest.Daemon, string, func()
 		cmd.AddCommand(sessionCommands(func(*cobra.Command) (*app.Engine, error) { return engine, nil }, &profile)...)
 		return cmd
 	}
-	return engine, daemon, created.SessionID, root
+	return engine, daemon, created.Session, root
 }
 
 func TestFolderListStartsWithItsHeading(t *testing.T) {
 	engine, _, name, root := inventoryCLI(t)
-	record, err := engine.Store.Find(context.Background(), name, nil)
+	record, err := engine.Locate(context.Background(), name, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,19 +63,19 @@ func TestFolderListStartsWithItsHeading(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if strings.HasPrefix(out.String(), "\n") || strings.Contains(out.String(), "\n\n") || !strings.Contains(strings.ReplaceAll(out.String(), "\n", ""), record.Settings.Workspace) || !strings.Contains(out.String(), "\nNAME") || strings.Contains(out.String(), "FOLDER") {
+	if strings.HasPrefix(out.String(), "\n") || strings.Contains(out.String(), "\n\n") || !strings.Contains(strings.ReplaceAll(out.String(), "\n", ""), record.Settings.Workspace) || !strings.Contains(out.String(), "\nSESSION") || strings.Contains(out.String(), "FOLDER") {
 		t.Fatal("folder list changed its compact layout", out.String())
 	}
 }
 
 func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 	engine, _, firstName, root := inventoryCLI(t)
-	first, err := engine.Store.Find(context.Background(), firstName, nil)
+	first, err := engine.Locate(context.Background(), firstName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	other := t.TempDir()
-	second, err := engine.Create(context.Background(), app.Request{Workspace: other, LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
+	second, err := engine.Create(context.Background(), app.CreateRequest{Workspace: other, LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 	text := out.String()
 	folders := []string{first.Settings.Workspace, other}
 	sort.Strings(folders)
-	if !strings.HasPrefix(text, "FOLDER") || strings.Index(text, folders[0]) < 0 || strings.Index(text, folders[1]) < 0 || strings.Index(text, folders[0]) >= strings.Index(text, folders[1]) || strings.Contains(text, firstName) || strings.Contains(text, second.SessionID) || strings.Contains(text, "\n\n") {
+	if !strings.HasPrefix(text, "FOLDER") || strings.Index(text, folders[0]) < 0 || strings.Index(text, folders[1]) < 0 || strings.Index(text, folders[0]) >= strings.Index(text, folders[1]) || !strings.Contains(text, firstName) || !strings.Contains(text, second.Session) || strings.Contains(text, second.SessionID) || strings.Contains(text, "\n\n") {
 		t.Fatal("global list did not render and sort folder rows", text)
 	}
 	rows := strings.Split(strings.TrimSpace(text), "\n")[1:]
@@ -98,7 +98,7 @@ func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 	}
 	for _, row := range rows {
 		fields := strings.Fields(row)
-		if len(fields) < 2 || fields[1] != "test" {
+		if len(fields) < 3 || fields[2] != "test" {
 			t.Fatal("global list lost local names", text)
 		}
 	}
@@ -231,11 +231,11 @@ func TestDeleteConfirmationNamesBulkScopeWithoutClaimingDefault(t *testing.T) {
 func TestDeleteFolderExplainsItsSelectedDefaultAndPhases(t *testing.T) {
 	engine, _, name, root := inventoryCLI(t)
 	ctx := context.Background()
-	selected, err := engine.Store.Find(ctx, name, nil)
+	selected, err := engine.Locate(ctx, name, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := engine.Create(ctx, app.Request{Workspace: selected.Settings.Workspace, LocalName: "other", Sources: testConfigSources(engine.Store.Home, "test")})
+	other, err := engine.Create(ctx, app.CreateRequest{Workspace: selected.Settings.Workspace, LocalName: "other", Sources: testConfigSources(engine.Store.Home, "test")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestDeleteFolderExplainsItsSelectedDefaultAndPhases(t *testing.T) {
 	if _, exists := sessionSnapshot(t, engine, other.SessionID); !exists {
 		t.Fatal("deleting the folder default removed another session")
 	}
-	if _, err := engine.Store.Find(ctx, name, nil); err != nil {
+	if _, err := engine.Locate(ctx, name, ""); err != nil {
 		t.Fatal("declining saved-data deletion removed the session", err)
 	}
 	missing := run("1\n2\n4\nn\n0\n")

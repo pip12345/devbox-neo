@@ -111,22 +111,28 @@ func (f *frontend) stop(target string) error {
 	})
 }
 func (f *frontend) recreate(target string) error {
-	noCache := false
+	noCache, container, force := false, false, false
 	return f.form("Recreate", func() []cliui.Action {
 		return []cliui.Action{
 			f.action("Inspect pending changes", "", func() error { return f.status(target) }),
 			f.toggle("Rebuild image without cache", &noCache),
-			{Label: "Recreate", Description: "Replaces container-local changes; preserves saved session state", Run: func() (bool, error) {
-				yes, err := f.m.Confirm("Recreate with current settings? Container-local changes will be lost. [y/N] ")
+			f.toggle("Force container replacement", &container),
+			f.toggle("Force: replace even with attached commands", &force),
+			{Label: "Recreate", Shortcut: "r", Description: "Apply current config; replace runtime only as needed or explicitly requested", Run: func() (bool, error) {
+				message := "Apply current config? Runtime may restart; if replaced, container-local changes will be lost."
+				if force {
+					message = "Replace the container and interrupt attached commands? Container-local changes will be lost."
+				}
+				yes, err := f.m.Confirm(message + " [y/N] ")
 				if err != nil || !yes {
 					return false, err
 				}
 				err = f.foreground("Recreate", func(ctx context.Context) error {
 					if target == "" {
-						_, err := f.e.RecreateAll(ctx, noCache, app.Request{})
+						_, err := f.e.RecreateAll(ctx, noCache, app.RecreateOptions{ForceContainer: container, Force: force})
 						return err
 					}
-					_, err := f.e.Recreate(ctx, app.Request{Workspace: target}, noCache)
+					_, err := f.e.Recreate(ctx, app.RecreateRequest{Target: target, Options: app.RecreateOptions{ForceContainer: container, Force: force}}, noCache)
 					return err
 				})
 				if err != nil {
@@ -211,7 +217,7 @@ func (f *frontend) openWithOptions(target string) error {
 			f.value("Trailing arguments", fmt.Sprint(args), func() error { return f.arguments("Arguments appended last", &args) }),
 			f.submit("Open", "Invocation-only options; nothing saved", func() error {
 				return f.foreground("Open", func(ctx context.Context) error {
-					_, err := f.e.Open(ctx, app.Request{Workspace: target, Continue: resume, HarnessArgs: harnessArgs, Args: args})
+					_, err := f.e.Open(ctx, app.OpenRequest{Target: target, Continue: resume, HarnessArgs: harnessArgs, Args: args})
 					return err
 				})
 			}),
@@ -263,7 +269,7 @@ func (f *frontend) ssh(target string) error {
 func (f *frontend) transfer(target string) (moved bool, err error) {
 	options := app.TransferOptions{Source: target, Mode: "clone"}
 	move := false
-	pending, err := f.e.Store.PendingID(target)
+	pending, err := f.e.Store.Pending(target)
 	if err != nil {
 		return false, err
 	}
@@ -275,7 +281,7 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 		if journal == nil {
 			return false, fmt.Errorf("transfer changed; select it again")
 		}
-		options.Source, options.Destination, options.As = journal.SourceID, journal.Destination.Workspace, journal.Destination.LocalName
+		options.Source, options.Destination, options.As = journal.Source.Name, journal.Destination.Workspace, journal.Destination.LocalName
 		move = journal.Mode == "relocate"
 	}
 	err = f.form("Copy or move", func() []cliui.Action {
@@ -293,11 +299,12 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 				fields[i].Blocked = "Pending transfer: recorded endpoints and mode are pinned."
 			}
 		}
-		return append(fields,
+		actions := append(fields,
 			f.action("Preview", "Rebased config references and destination identity", func() error {
 				preview := options
 				preview.DryRun = true
 				result, err := f.e.Transfer(f.m.Context, preview)
+				f.m.warnings(result.Warnings)
 				if err != nil {
 					return err
 				}
@@ -307,6 +314,7 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 				q := options
 				q.DryRun = true
 				preview, err := f.e.Transfer(f.m.Context, q)
+				f.m.warnings(preview.Warnings)
 				if err != nil {
 					return false, f.m.report(err)
 				}
@@ -328,6 +336,25 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 				return true, nil
 			}},
 		)
+		if pending != nil && pending.Phase == "prepare" {
+			actions = append(actions, cliui.Action{Label: "Abort pending transfer", Description: "Discard the uncommitted destination attempt; retain the source", Danger: true, Run: func() (bool, error) {
+				yes, err := f.m.Confirm("Discard this uncommitted destination attempt and retain the source session? [y/N] ")
+				if err != nil || !yes {
+					return false, err
+				}
+				err = f.foreground("Abort transfer", func(ctx context.Context) error {
+					_, err := f.e.AbortTransfer(ctx, options.Source)
+					return err
+				})
+				if err != nil {
+					return false, f.m.report(err)
+				}
+				f.focusItem = options.Source
+				moved = target != options.Source
+				return true, nil
+			}})
+		}
+		return actions
 	})
 	return moved, err
 }
@@ -373,7 +400,11 @@ func (f *frontend) delete(targets []string) error {
 
 func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 	options.Selection.Targets = slices.Clone(options.Selection.Targets)
-	targets := options.Selection.Targets
+	options.Selection.Captured = slices.Clone(options.Selection.Captured)
+	targets := slices.Clone(options.Selection.Targets)
+	for _, target := range options.Selection.Captured {
+		targets = append(targets, target.Name())
+	}
 	age := ""
 	if options.OlderThan > 0 {
 		age = options.OlderThan.String()
@@ -386,7 +417,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 	}
 	if len(targets) == 1 {
 		title = "Delete · " + displayCell(targets[0])
-		if record, err := f.e.Store.Find(f.m.Context, targets[0], nil); err == nil {
+		if record, err := f.e.Locate(f.m.Context, targets[0], ""); err == nil {
 			title = "Delete · " + displayCell(record.Settings.LocalName)
 			fields = []cliui.Field{{Label: "Folder", Value: record.Settings.Workspace}}
 		}
@@ -427,7 +458,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 		if options.Scope == app.DeleteSession {
 			selected = 1
 		}
-		choice := f.value("Delete", scopes[selected], func() error {
+		choice := f.value("Delete scope", scopes[selected], func() error {
 			i, err := f.m.SelectCurrent("What to delete", scopes, selected, scopes[selected], "Back")
 			if err == nil && i >= 0 {
 				options.Scope = app.DeleteContainer
@@ -445,7 +476,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 		force.Description = "Allow interrupting attached commands; saved data still requires idle sessions"
 		actions = append(actions, choice, force)
 		blocked := ""
-		if len(options.Selection.Targets) == 0 && !options.Selection.All && !options.Selection.Stopped && !options.Orphaned && options.OlderThan == 0 {
+		if len(options.Selection.Targets)+len(options.Selection.Captured) == 0 && !options.Selection.All && !options.Selection.Stopped && !options.Orphaned && options.OlderThan == 0 {
 			blocked = "Select exact targets or at least one filter."
 		}
 		preview := f.action("Preview deletion", "Review what will be removed", func() error {
@@ -458,11 +489,11 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 			return f.m.View("Deletion preview", func(out io.Writer) error { return printDeleteResult(out, result) })
 		})
 		preview.Blocked = blocked
-		execute := cliui.Action{Label: "Delete…", Run: func() (bool, error) {
+		execute := cliui.Action{Label: "Delete", Run: func() (bool, error) {
 			var result app.DeleteResult
 			err := f.foreground(title, func(ctx context.Context) error {
 				q := options
-				confirmation := deletionConfirmation{ui: f.m.Runner, singleTarget: len(q.Selection.Targets) == 1}
+				confirmation := deletionConfirmation{ui: f.m.Runner, singleTarget: len(q.Selection.Targets)+len(q.Selection.Captured) == 1}
 				q.Confirm = confirmation.confirm
 				var err error
 				result, err = f.e.Delete(ctx, q)

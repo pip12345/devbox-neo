@@ -3,16 +3,12 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net"
 	"os"
 	"path/filepath"
-	"reflect"
-	"strings"
 	"syscall"
 	"testing"
 
-	"devbox/internal/commanderror"
 	"devbox/internal/config"
 )
 
@@ -50,101 +46,75 @@ func mountSource(t *testing.T, source, kind string) func() {
 	}
 }
 
-func TestSocketMountCreationAndRecordedRecovery(t *testing.T) {
-	for _, tc := range []struct {
-		before, after string
-		wantError     string
-	}{
-		{"socket", "unchanged", ""},
-		{"socket", "socket", ""},
-		{"socket", "file", "wrong kind"},
-		{"socket", "directory", "wrong kind"},
-		{"socket", "fifo", "wrong kind"},
-		{"socket", "missing", "missing"},
-		{"socket", "symlink", "unsafe"},
-		{"file", "socket", "wrong kind"},
-		{"directory", "socket", "wrong kind"},
-	} {
-		t.Run(tc.before+"-to-"+tc.after, func(t *testing.T) {
+func TestRecreateResolvesCurrentMountSourceType(t *testing.T) {
+	for _, after := range []string{"socket", "file", "directory", "fifo", "missing"} {
+		t.Run(after, func(t *testing.T) {
 			e, d, q := fixture(t)
 			ctx := context.Background()
-			// Keep the Unix socket pathname below the kernel's length limit.
 			dir, err := os.MkdirTemp("", "dbx-socket-")
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { os.RemoveAll(dir) })
 			source := filepath.Join(dir, "service.sock")
-			remove := mountSource(t, source, tc.before)
+			remove := mountSource(t, source, "socket")
 			body, err := json.Marshal(config.Layer{Version: 1, Mounts: []string{source + ":/run/service.sock"}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			configPath := filepath.Join(q.Workspace, ".devbox/config.json")
-			write(t, configPath, string(body))
+			write(t, filepath.Join(q.Workspace, ".devbox/config.json"), string(body))
 			created, err := e.Create(ctx, q)
 			if err != nil {
 				t.Fatal(err)
 			}
-			record := sessionRecord(t, e, created.SessionID)
-			found := false
-			for _, mount := range record.Applied.Creation.Mounts {
-				if mount.Target == "/run/service.sock" {
-					found = true
-					if mount.Socket != (tc.before == "socket") || mount.File != (tc.before == "file") || mount.Source != source {
-						t.Fatalf("source type not recorded: %+v", mount)
-					}
-				}
+			before := sessionRecord(t, e, created.SessionID)
+			if !before.Applied.Inputs.Container.Mounts[0].Socket {
+				t.Fatal("socket source type not recorded")
 			}
-			if !found {
-				t.Fatal("extra mount missing from creation record")
-			}
-			inputs := record.Applied.Inputs.Container.Mounts
-			if len(inputs) != 1 || inputs[0].Socket != (tc.before == "socket") {
-				t.Fatalf("source type missing from fingerprint inputs: %+v", inputs)
-			}
-			if tc.after != "unchanged" {
-				remove()
-				if tc.after == "symlink" {
-					target := filepath.Join(dir, "other.sock")
-					mountSource(t, target, "socket")
-					if err := os.Symlink(target, source); err != nil {
-						t.Fatal(err)
-					}
-				} else {
-					mountSource(t, source, tc.after)
-				}
-			}
-			// Recovery must check the committed source even if desired config no
-			// longer mentions it; otherwise resolution could mask a recovery bug.
-			write(t, configPath, `{"version":1}`)
+			remove()
+			mountSource(t, source, after)
 			forgetSession(t, e, created.SessionID)
 			creates := count(d, "create")
-			_, err = e.Start(ctx, created.SessionID, "")
-			if tc.wantError != "" {
-				var recoveryError *commanderror.Error
-				if !errors.As(err, &recoveryError) || recoveryError.Code != "recovery_unavailable" || !strings.Contains(err.Error(), tc.wantError) {
-					t.Fatalf("expected recovery failure %q, got %v", tc.wantError, err)
+			_, err = e.Recreate(ctx, recreateRequest(q), false)
+			if after == "missing" || after == "fifo" {
+				if err == nil || count(d, "create") != creates {
+					t.Fatal("invalid current bind source was materialized", err)
 				}
-				if count(d, "create") != creates {
-					t.Fatal("failed source verification created a container")
-				}
-			} else {
-				if err != nil {
-					t.Fatal(err)
-				}
-				if count(d, "create") != creates+1 {
-					t.Fatal("container was not recovered")
-				}
-				recovered := sessionRecord(t, e, created.SessionID)
-				if !reflect.DeepEqual(recovered.Applied.Creation.Mounts, record.Applied.Creation.Mounts) {
-					t.Fatal("recovery changed the recorded mounts")
-				}
+				return
 			}
-			if sessionRecord(t, e, created.SessionID).Applied.Fingerprints.Container != record.Applied.Fingerprints.Container {
-				t.Fatal("recovery changed committed container inputs")
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := sessionRecord(t, e, created.SessionID)
+			m := r.Applied.Inputs.Container.Mounts[0]
+			if r.ID != before.ID || m.Socket != (after == "socket") || m.File != (after == "file") || count(d, "create") != creates+1 {
+				t.Fatal("rebuild did not use current source type", m)
 			}
 		})
+	}
+}
+
+func TestRemovedMountDoesNotBlockRecreate(t *testing.T) {
+	e, _, q := fixture(t)
+	source := filepath.Join(t.TempDir(), "removed")
+	mountSource(t, source, "file")
+	body, _ := json.Marshal(config.Layer{Version: 1, Mounts: []string{source + ":/run/source"}})
+	configPath := filepath.Join(q.Workspace, ".devbox/config.json")
+	write(t, configPath, string(body))
+	made, err := e.Create(context.Background(), q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(source); err != nil {
+		t.Fatal(err)
+	}
+	write(t, configPath, `{"version":1}`)
+	forgetSession(t, e, made.SessionID)
+	if _, err := e.Recreate(context.Background(), recreateRequest(q), false); err != nil {
+		t.Fatal(err)
+	}
+	if len(sessionRecord(t, e, made.SessionID).Applied.Inputs.Container.Mounts) != 0 {
+		t.Fatal("old mount was reconstructed")
 	}
 }
 

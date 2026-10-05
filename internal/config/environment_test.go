@@ -28,33 +28,19 @@ func TestExpansionUsesDecodedStringsAndDoesNotRecurse(t *testing.T) {
 		}
 	}
 }
-func TestSourceReferencesVerifyExpressionAndValue(t *testing.T) {
+func TestLayerResolutionUsesCurrentEnvironmentValues(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
-	original := `{"version":1,"env":["TOKEN=${env:TOKEN}"],"harness":"pi"}`
-	os.WriteFile(p, []byte(original), 0600)
-	l, err := ReadLayer(p, Host{"TOKEN": "sentinel-secret"})
-	if err != nil {
+	if err := os.WriteFile(p, []byte(`{"version":1,"env":["TOKEN=${env:TOKEN}"],"harness":"pi"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	source := l.EnvInputs[0].Seal("installation")
-	encoded, _ := json.Marshal(source)
-	if strings.Contains(string(encoded), "sentinel-secret") || strings.Contains(string(encoded), "${env:") {
-		t.Fatal("reference stored secret data")
-	}
-	value, err := source.Restore("installation", Host{"TOKEN": "sentinel-secret"}, map[string][]byte{})
-	if err != nil || value != "TOKEN=sentinel-secret" {
-		t.Fatal(value, err)
-	}
-	if _, err = source.Restore("installation", Host{"TOKEN": "changed"}, map[string][]byte{}); err == nil {
-		t.Fatal("changed secret accepted for recovery")
-	}
-	os.WriteFile(p, []byte(strings.Replace(original, `"harness":"pi"`, `"harness":"opencode"`, 1)), 0600)
-	if _, err = source.Restore("installation", Host{"TOKEN": "sentinel-secret"}, map[string][]byte{}); err != nil {
-		t.Fatal("unrelated source field blocked exact env recovery", err)
-	}
-	os.WriteFile(p, []byte(strings.Replace(original, "${env:TOKEN}", "sentinel-secret", 1)), 0600)
-	if _, err = source.Restore("installation", Host{}, map[string][]byte{}); err == nil {
-		t.Fatal("changed expression silently adopted")
+	for _, value := range []string{"sentinel-secret", "changed"} {
+		l, err := ReadLayer(p, Host{"TOKEN": value})
+		if err != nil || l.Env[0] != "TOKEN="+value {
+			t.Fatal("current environment was not resolved", err)
+		}
+		if strings.Contains(string(l.Raw), value) {
+			t.Fatal("resolution replaced source expressions with expanded values")
+		}
 	}
 }
 func TestExplicitEnvironmentReferencesAndSensitiveValidation(t *testing.T) {
@@ -64,7 +50,7 @@ func TestExplicitEnvironmentReferencesAndSensitiveValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(g.EnvInputs) != 3 || g.Env[0] != "PRESENT=value" || g.Env[1] != "EMPTY=" {
+	if len(g.Env) != 3 || g.Env[0] != "PRESENT=value" || g.Env[1] != "EMPTY=" {
 		t.Fatal(g.Env)
 	}
 	for _, entry := range []string{"DEVBOX_HOST=value", "BAD-NAME=secret", "KEY=multi\nline", "KEY"} {

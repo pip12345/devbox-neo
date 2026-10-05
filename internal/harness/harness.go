@@ -240,13 +240,21 @@ func (d Definition) Validate() error {
 	return nil
 }
 func ReadTree(root string) (Tree, error) {
+	return readTreeRoot(root, true)
+}
+
+func readTreeRoot(root string, skipGit bool) (Tree, error) {
 	if _, err := fsutil.Path(root, "."); err != nil {
 		return Tree{}, err
 	}
-	return readTree(os.DirFS(root), root)
+	return readTreeFiltered(os.DirFS(root), root, skipGit)
 }
 
 func readTree(source fs.FS, root string) (Tree, error) {
+	return readTreeFiltered(source, root, true)
+}
+
+func readTreeFiltered(source fs.FS, root string, skipGit bool) (Tree, error) {
 	tree := Tree{Files: map[string]File{}}
 	const warningLimit = 10
 	skipped := 0
@@ -256,6 +264,14 @@ func readTree(source fs.FS, root string) (Tree, error) {
 		}
 		if err != nil {
 			return err
+		}
+		// Repository history is not managed harness content. Prune it before
+		// reading metadata or bytes, including worktree .git files.
+		if skipGit && e.Name() == ".git" {
+			if e.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		}
 		if e.IsDir() {
 			return nil

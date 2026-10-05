@@ -29,8 +29,8 @@ type Action struct {
 	Selected    bool
 	Checked     *bool // Non-nil gives a toggle its explicit checked/unchecked marker.
 	BreakBefore bool
-	// Group labels contiguous actions with a non-selectable heading. Each action
-	// carries it so filtering or hiding the first one preserves the heading.
+	// Group labels contiguous actions. Each action carries it so filtering or
+	// scrolling into the middle of a group preserves its context.
 	Group string
 	Run   func() (done bool, err error)
 }
@@ -43,6 +43,8 @@ type Item struct {
 	Depth                           int
 	Selected, Folder                bool
 	Fields                          []Field
+	Summary                         []Field
+	Actions                         []Action // Preview only; Open owns the interactive workflow.
 	Open                            func() error
 	// ListLabel optionally shortens the navigation row without changing details.
 	ListLabel string
@@ -78,6 +80,7 @@ type Screen struct {
 	Back       string
 	OnTab      func() (done bool, err error)
 	Fields     []Field
+	Summary    []Field // Compact facts beside the screen title.
 	Collection *Collection
 	Navigation *Navigation
 	FocusItem  string
@@ -313,7 +316,7 @@ func (r *Runner) renderPlainPage(page Screen, actions []Action) error {
 			return err
 		}
 	}
-	for _, field := range page.Fields {
+	for _, field := range append(slices.Clone(page.Summary), page.Fields...) {
 		if field.Values != nil {
 			if _, err := fmt.Fprintf(r.Out, "%s:\n", Safe(field.Label)); err != nil {
 				return err
@@ -532,6 +535,12 @@ func (r *Runner) Confirm(prompt string) (bool, error) {
 	if err := r.Context.Err(); err != nil {
 		return false, err
 	}
+	for _, notice := range r.notices {
+		if _, err := fmt.Fprintln(r.Out, notice); err != nil {
+			return false, err
+		}
+	}
+	r.notices = nil
 	if _, err := fmt.Fprint(r.Out, prompt); err != nil {
 		return false, err
 	}

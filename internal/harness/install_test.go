@@ -30,7 +30,7 @@ func scriptHarness(t *testing.T, home string) string {
 	return root
 }
 
-func TestInstallationFilesCaptureAndRecordedDigest(t *testing.T) {
+func TestInstallationFilesCaptureAndDigest(t *testing.T) {
 	home := t.TempDir()
 	root := scriptHarness(t, home)
 	first, err := Load(home, "pi")
@@ -40,10 +40,6 @@ func TestInstallationFilesCaptureAndRecordedDigest(t *testing.T) {
 	if len(first.InstallFiles) != 2 || len(first.Defaults) != 0 {
 		t.Fatal("install inputs inherited or leaked into configuration defaults")
 	}
-	_, recorded, err := Recorded("pi", first.Origin)
-	if err != nil || recorded != first.Hash {
-		t.Fatal("recorded and desired installation contracts disagree", err)
-	}
 	helper := filepath.Join(root, "install", "nested", "helper.sh")
 	authWrite(t, helper, "two\n")
 	changed, err := Load(home, "pi")
@@ -52,10 +48,6 @@ func TestInstallationFilesCaptureAndRecordedDigest(t *testing.T) {
 	}
 	if string(first.InstallFiles["nested/helper.sh"].Data) != "one\n" {
 		t.Fatal("captured installation reread source")
-	}
-	_, recorded, err = Recorded("pi", first.Origin)
-	if err != nil || recorded != changed.Hash {
-		t.Fatal("recorded source ignored changed installation files", err)
 	}
 	if err := os.Chmod(helper, 0700); err != nil {
 		t.Fatal(err)
@@ -98,9 +90,6 @@ func TestInstallScriptConstraintsAndMissingInputs(t *testing.T) {
 	if _, err := Load(home, "pi"); err == nil {
 		t.Fatal("missing selected installer fell back to the built-in")
 	}
-	if _, _, err := Recorded("pi", filepath.Join(root, "harness.json")); err == nil {
-		t.Fatal("recorded source accepted a missing installer")
-	}
 	outside := filepath.Join(t.TempDir(), "installer.sh")
 	authWrite(t, outside, "true")
 	if err := os.Symlink(outside, filepath.Join(root, "install", "install.sh")); err != nil {
@@ -125,8 +114,8 @@ func TestInstallAssetsUseRegularFileReader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, recorded, err := Recorded("opencode", "builtin")
-	if err != nil || recorded != builtin.Hash {
+	again, err := Load(t.TempDir(), "opencode")
+	if err != nil || again.Hash != builtin.Hash {
 		t.Fatal("builtin installation digest was not reproducible", err)
 	}
 }

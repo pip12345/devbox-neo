@@ -32,10 +32,12 @@ type TransferResult struct {
 	Mode            string             `json:"mode"`
 	SessionID       string             `json:"session_id"`
 	DryRun          bool               `json:"dry_run"`
+	Aborted         bool               `json:"aborted,omitempty"`
 	Workspace       string             `json:"workspace"`
 	LocalName       string             `json:"local_name"`
 	Sources         []config.Reference `json:"sources"`
 	ResolvedSources []config.Source    `json:"resolved_sources"`
+	Warnings        []string           `json:"-"`
 }
 
 func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (name, id string, err error) {
@@ -58,7 +60,7 @@ func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (name, i
 		return "", "", listErr
 	}
 	for _, j := range journals {
-		if j.SourceID == q.Source || (j.Source.Workspace == workspace && (q.LocalName == "" || j.Source.LocalName == q.LocalName)) {
+		if j.Source.Name == q.Source || j.SourceID == q.Source || (j.Source.Workspace == workspace && (q.LocalName == "" || j.Source.LocalName == q.LocalName)) {
 			if name != "" {
 				return "", "", fmt.Errorf("multiple pending transfers.\nUse the exact source name.")
 			}
@@ -88,6 +90,9 @@ func (e *Engine) transferDestination(q TransferOptions, source environment.Ident
 	return identity, err
 }
 func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode string) ([]harness.Definition, error) {
+	if err := checkDurableStores(l, source); err != nil {
+		return nil, err
+	}
 	root, err := l.Path("harnesses")
 	if err != nil {
 		return nil, err
@@ -110,8 +115,8 @@ func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode 
 			return nil, fmt.Errorf("harness %s does not support %s", d.Name, store.TransferCommand(mode))
 		}
 		if d.Name == source.Applied.Definition.Name && environment.Fingerprint(e.Store.Installation, effective.Hash) != source.Applied.Definition.Hash {
-			return nil, commanderror.New("harness_definition_changed", "Harness definition changed. Recreate before transferring.", source.ID, nil,
-				commanderror.Next("Recreate with current harness definition", "recreate", source.ID))
+			return nil, commanderror.New("harness_definition_changed", "Harness definition changed. Recreate before transferring.", source.Directory, nil,
+				commanderror.Next("Recreate with current harness definition", "recreate", source.Directory))
 		}
 		path, err := l.Path(filepath.Join("harnesses", d.Name, "stores"))
 		if err != nil {
@@ -138,7 +143,11 @@ func (e *Engine) transferDefinitions(l *store.Locked, source store.Record, mode 
 }
 
 func transferFailure(j store.Transfer, err error) error {
-	return commanderror.New("transfer_failed", fmt.Sprintf("Session %s failed: %v", store.TransferCommand(j.Mode), err), j.Source.Name, err, j.RetryStep())
+	steps := []commanderror.Step{j.RetryStep()}
+	if j.Phase == "prepare" {
+		steps = append(steps, commanderror.Next("Or abandon the uncommitted transfer", "copy", j.Source.Name, "--abort"))
+	}
+	return commanderror.New("transfer_failed", fmt.Sprintf("Session %s failed: %v", store.TransferCommand(j.Mode), err), j.Source.Name, err, steps...)
 }
 
 // Transfer has two durable phases: source-authoritative preparation, then
@@ -274,7 +283,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if err != nil {
 		return result, err
 	}
-	if source.Settings.Binding != sourceIdentity.Binding || source.ID != sourceID {
+	if source.Settings.Binding != sourceIdentity.Binding || source.ID != sourceID || (journal != nil && source.Applied.SetupContainer != journal.SourceContainerID) {
 		return result, fmt.Errorf("source identity changed during transfer selection")
 	}
 	c, exists, err := e.inspect(ctx, source)
@@ -282,8 +291,8 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		return result, err
 	}
 	if q.Mode == "clone" && exists && c.State.Running {
-		return result, commanderror.New("container_running", "Stop the source container before copying.", source.ID, nil,
-			commanderror.Next("Stop, then retry copy", "stop", source.ID))
+		return result, commanderror.New("container_running", "Stop the source container before copying.", source.Directory, nil,
+			commanderror.Next("Stop, then retry copy", "stop", source.Directory))
 	}
 	definitions, err := e.transferDefinitions(sourceLock, source, q.Mode)
 	if err != nil {
@@ -308,8 +317,9 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	} else if source.ID != journal.SourceID {
 		return result, fmt.Errorf("source session identity differs from journal")
 	}
-	// Before the authority switch, retry always recopies the source. A bounded
-	// rollback may have restarted it, so an earlier snapshot can no longer win.
+	// Before commitment the source remains authoritative. Retry resolves current
+	// config and recopies the source after clearing the owned destination attempt;
+	// only endpoints and intent stay pinned, not the inputs being repaired.
 	if journal != nil {
 		if err = e.verifyReservation(destLock, *journal); err != nil {
 			return result, err
@@ -322,7 +332,11 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, readErr
 		}
 	}
-	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, LocalName: destinationIdentity.LocalName, Sources: source.Settings.Sources})
+	spec, err := e.Resolve(ResolveRequest{Workspace: destinationIdentity.Workspace, LocalName: destinationIdentity.LocalName, Sources: source.Settings.Sources})
+	result.Warnings = spec.Warnings
+	if !q.DryRun {
+		e.reportWarnings(spec.Warnings)
+	}
 	if err != nil {
 		return result, err
 	}
@@ -332,17 +346,15 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	if err = e.Docker.Network(ctx, spec.Settings.Network); err != nil {
 		return result, err
 	}
-	if journal != nil && journal.Desired != spec.Fingerprints {
-		return result, fmt.Errorf("destination inputs changed during pending transfer.\nRestore them before retrying the same transfer command.")
-	}
 	if journal == nil {
 		nonce, idErr := fsutil.ID()
 		if idErr != nil {
 			return result, idErr
 		}
-		journal = &store.Transfer{Version: 3, ContainerName: environment.ResourceName(destinationIdentity.Workspace, destinationIdentity.LocalName, nonce), ID: nonce, Mode: q.Mode, Phase: "prepare", Source: sourceIdentity, SourceContainerID: source.Applied.SetupContainer, Destination: destinationIdentity, SourceID: source.ID, DestinationID: destinationID, Running: q.Mode == "relocate" && (source.Settings.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.Settings.ManualStart, Started: time.Now().UTC(), Desired: spec.Fingerprints}
+		journal = &store.Transfer{Version: 4, ContainerName: environment.ResourceName(destinationIdentity.Workspace, destinationIdentity.LocalName, nonce), ID: nonce, Mode: q.Mode, Phase: "prepare", Source: sourceIdentity, SourceContainerID: source.Applied.SetupContainer, Destination: destinationIdentity, SourceID: source.ID, DestinationID: destinationID, Running: q.Mode == "relocate" && (source.Settings.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.Settings.ManualStart, Started: time.Now().UTC()}
 	}
 	result = transferResult(*journal, q.DryRun)
+	result.Warnings = spec.Warnings
 	result.Sources, result.ResolvedSources = spec.Sources, spec.ResolvedSources
 	if q.DryRun {
 		return result, nil
@@ -358,7 +370,13 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			defer cancel()
 			err = errors.Join(err, e.clearTransferAttempt(cleanup, destLock, *journal))
 			if journal.Mode == "relocate" {
-				err = errors.Join(err, e.Docker.Tag(cleanup, source.Applied.ImageID, source.Applied.ImageTag, e.Store.Installation))
+				available, imageErr := e.Docker.ImageAvailable(cleanup, source.Applied.ImageID)
+				err = errors.Join(err, imageErr)
+				// Restore a moved tag only while its image still exists. Pruning
+				// runtime does not invalidate source-authoritative saved stores.
+				if imageErr == nil && available {
+					err = errors.Join(err, e.Docker.Tag(cleanup, source.Applied.ImageID, source.Applied.ImageTag, e.Store.Installation))
+				}
 			}
 			if journal.Running && exists {
 				live, found, inspectErr := e.inspect(cleanup, source)
@@ -397,7 +415,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 	return result, e.finishTransfer(ctx, sourceLock, destLock, *journal)
 }
 func transferResult(j store.Transfer, dryRun bool) TransferResult {
-	return TransferResult{Source: j.SourceID, Destination: j.DestinationID, Mode: j.Mode, SessionID: j.DestinationID, DryRun: dryRun, Workspace: j.Destination.Workspace, LocalName: j.Destination.LocalName}
+	return TransferResult{Source: j.Source.Name, Destination: j.Destination.Name, Mode: j.Mode, SessionID: j.DestinationID, DryRun: dryRun, Workspace: j.Destination.Workspace, LocalName: j.Destination.LocalName}
 }
 func (e *Engine) verifyReservation(destination *store.Locked, j store.Transfer) error {
 	pending, err := e.Store.Pending(destination.Name)
@@ -416,20 +434,35 @@ func (e *Engine) clearTransferAttempt(ctx context.Context, destination *store.Lo
 	if err := e.verifyReservation(destination, j); err != nil {
 		return err
 	}
-	c, exists, err := e.Docker.Inspect(ctx, j.ContainerName)
-	if err != nil {
-		return err
-	}
 	record, readErr := destination.ReadRecord(ctx)
+	var c docker.Container
+	var exists bool
+	var err error
 	if readErr == nil {
 		if record.ID != j.DestinationID {
 			return fmt.Errorf("destination identity differs from transfer")
 		}
-		if exists && (c.Image != record.Applied.ImageID || c.ID != record.Applied.SetupContainer) {
-			return fmt.Errorf("destination instance differs from its record")
+		// A recorded instance remains authoritative after a Docker rename.
+		c, exists, err = e.inspect(ctx, record)
+	} else if os.IsNotExist(readErr) {
+		c, exists, err = e.Docker.Inspect(ctx, j.ContainerName)
+		if err != nil {
+			return err
 		}
-	} else if !os.IsNotExist(readErr) {
+		live, inventoryErr := e.Docker.Inventory(ctx, e.Store.Installation)
+		if inventoryErr != nil {
+			return inventoryErr
+		}
+		for _, other := range live {
+			if other.Config.Labels[docker.Namespace+".session"] == j.DestinationID && other.ID != j.SourceContainerID && other.ID != c.ID {
+				return fmt.Errorf("unrecorded destination container exists under another name; refusing to remove its backing state")
+			}
+		}
+	} else {
 		return readErr
+	}
+	if err != nil {
+		return err
 	}
 	if exists {
 		owner := docker.Owner{Installation: e.Store.Installation, Session: j.DestinationID, Workspace: j.Destination.Workspace, LocalName: j.Destination.LocalName}
@@ -486,20 +519,14 @@ func (e *Engine) finishTransfer(ctx context.Context, source, destination *store.
 	if r.ID != j.DestinationID || r.Settings.Binding != j.Destination.Binding {
 		return fmt.Errorf("committed destination identity differs from journal")
 	}
-	live, exists, err := e.inspect(ctx, r)
-	if err != nil {
+	if err := checkDurableStores(destination, r); err != nil {
 		return err
 	}
-	if !exists {
-		live, err = e.recover(ctx, destination, &r, nil)
-		if err != nil {
-			return err
-		}
-		if !j.Running {
-			if err = e.Docker.Stop(ctx, live, e.owner(r)); err != nil {
-				return err
-			}
-		}
+	// Commitment makes destination stores authoritative, not its disposable
+	// container. Finish cleanup even if runtime was removed; only an explicit
+	// recreate may replace it after the journal releases the endpoints.
+	if _, _, err := e.inspect(ctx, r); err != nil {
+		return err
 	}
 	if j.Mode == "relocate" {
 		original, readErr := source.ReadRecord(ctx)

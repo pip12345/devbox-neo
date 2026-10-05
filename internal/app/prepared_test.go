@@ -12,7 +12,7 @@ import (
 func TestPreparedCreationCommitsIdentityWithoutOverwriting(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	spec, err := e.Resolve(q)
+	spec, err := e.Resolve(resolveRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestPreparedCreationCommitsIdentityWithoutOverwriting(t *testing.T) {
 func TestPreparedCreationRequiresValidIdentityAndHeldLock(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
-	spec, err := e.Resolve(q)
+	spec, err := e.Resolve(resolveRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}

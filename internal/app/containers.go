@@ -18,7 +18,7 @@ import (
 )
 
 type View struct {
-	Target              string                    `json:"-"`
+	Target              string                    `json:"target"`
 	Workspace           string                    `json:"workspace,omitempty"`
 	LocalName           string                    `json:"local_name,omitempty"`
 	Default             bool                      `json:"default"`
@@ -35,15 +35,17 @@ type View struct {
 	Uncommitted         bool                      `json:"-"`
 	Exists              bool                      `json:"exists"`
 	Running             bool                      `json:"running"`
+	ImageMissing        bool                      `json:"image_missing"`
 	Error               string                    `json:"error,omitempty"`
 	Desired             environment.Change        `json:"desired_change,omitempty"`
 	PendingInputChanges []environment.InputChange `json:"pending_input_changes,omitempty"`
 	ConfigError         string                    `json:"config_error,omitempty"`
 	Pending             *store.Reservation        `json:"pending_transfer,omitempty"`
+	Warnings            []string                  `json:"-"`
 }
 
 func recordView(r store.Record) View {
-	return View{Target: r.ID, ContainerName: r.Applied.Creation.Name, Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, Sources: r.Settings.Sources, ManualStart: r.Settings.ManualStart, Harness: r.Applied.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action, CreatedAt: r.Created}
+	return View{Target: r.Directory, ContainerName: r.Applied.Creation.Name, Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, Sources: r.Settings.Sources, ManualStart: r.Settings.ManualStart, Harness: r.Applied.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action, CreatedAt: r.Created}
 }
 func (e *Engine) inventory(ctx context.Context) ([]store.Entry, []docker.Container, error) {
 	entries, err := e.Store.Inventory(ctx)
@@ -53,7 +55,6 @@ func (e *Engine) inventory(ctx context.Context) ([]store.Entry, []docker.Contain
 	live, err := e.Docker.Inventory(ctx, e.Store.Installation)
 	return entries, live, err
 }
-
 func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, sessions bool) []View {
 	records := map[string]store.Entry{}
 	byContainer := map[string]string{}
@@ -74,6 +75,7 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 		view := View{Target: name}
 		if found && entry.Record.ID != "" {
 			view = recordView(entry.Record)
+			view.Target = entry.Name
 		}
 		view.ContainerID, view.ContainerName = container.ID, name
 		view.Exists, view.Running = true, container.State.Running
@@ -110,9 +112,9 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 	sort.Slice(result, func(i, j int) bool { return result[i].Target < result[j].Target })
 	return result
 }
-
 func (e *Engine) desiredStatus(view *View, r store.Record) {
-	desired, err := e.Resolve(Request{Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, SessionID: r.ID, Sources: r.Settings.Sources})
+	desired, err := e.Resolve(ResolveRequest{Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, RepairTarget: r.Directory, Sources: r.Settings.Sources})
+	view.Warnings = desired.Warnings
 	if err != nil {
 		view.ConfigError = err.Error()
 	} else {
@@ -130,171 +132,23 @@ func (e *Engine) Logs(ctx context.Context, target, localName string, follow bool
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "Container not found; its logs are unavailable.", r.ID, nil,
-			commanderror.Next("Inspect session", "status", r.ID))
+		return commanderror.New("container_missing", "Container not found; its logs are unavailable.", r.Directory, nil, commanderror.Next("Inspect session", "status", r.Directory))
 	}
 	return e.Docker.Logs(ctx, c, e.owner(r), follow, tail, e.Streams.Out, e.Streams.Err)
 }
-
-type Selection struct {
-	Targets      []string
-	LocalName    string
-	All          bool
-	Stopped      bool
-	selectedIDs  map[string]string
-	containerIDs map[string]string
-	operationIDs map[string]string
-}
-
-func (e *Engine) selectContainers(ctx context.Context, selection *Selection) ([]string, error) {
-	if (selection.All && selection.Stopped) || ((selection.All || selection.Stopped) && len(selection.Targets) > 0) {
-		return nil, fmt.Errorf("use exact targets, --all, or --stopped, not a combination")
-	}
-	if selection.LocalName != "" && (selection.All || selection.Stopped) {
-		return nil, fmt.Errorf("--name requires an explicit folder target")
-	}
-	if selection.selectedIDs == nil {
-		selection.selectedIDs = map[string]string{}
-	}
-	if selection.operationIDs == nil {
-		selection.operationIDs = map[string]string{}
-	}
-	if selection.containerIDs == nil {
-		selection.containerIDs = map[string]string{}
-	}
-	names := map[string]bool{}
-	if selection.All || selection.Stopped {
-		containers, err := e.Docker.Inventory(ctx, e.Store.Installation)
-		if err != nil {
-			return nil, err
-		}
-		entries, err := e.Store.Inventory(ctx)
-		if err != nil {
-			return nil, err
-		}
-		byContainer := map[string]store.Record{}
-		for _, entry := range entries {
-			if entry.Record.Applied.SetupContainer != "" {
-				byContainer[entry.Record.Applied.SetupContainer] = entry.Record
-			}
-		}
-		for _, c := range containers {
-			if selection.Stopped && c.State.Running {
-				continue
-			}
-			key := strings.TrimPrefix(c.Name, "/")
-			if r, ok := byContainer[c.ID]; ok {
-				key = r.Directory
-				selection.selectedIDs[key] = r.ID
-				selection.operationIDs[key] = r.ID
-			}
-			if selection.operationIDs[key] == "" {
-				owner, err := e.orphanOwner(c)
-				if err != nil {
-					return nil, err
-				}
-				selection.operationIDs[key] = owner.Session
-			}
-			names[key] = true
-		}
-	} else {
-		if len(selection.Targets) == 0 {
-			return nil, fmt.Errorf("provide a target or an explicit selection flag")
-		}
-		for _, target := range selection.Targets {
-			r, err := e.Locate(ctx, target, selection.LocalName)
-			if err != nil {
-				byID := environment.IsSessionTarget(target) && (sessionAbsent(err) || incompleteInventory(err))
-				if byID {
-					live, inventoryErr := e.Docker.Inventory(ctx, e.Store.Installation)
-					if inventoryErr != nil {
-						return nil, inventoryErr
-					}
-					match := ""
-					for _, c := range live {
-						if c.Config.Labels[docker.Namespace+".session"] == target {
-							if match != "" {
-								return nil, fmt.Errorf("multiple containers use this session ID; select an exact Docker name for cleanup")
-							}
-							match = strings.TrimPrefix(c.Name, "/")
-						}
-					}
-					if match == "" {
-						return nil, err
-					}
-					target = match
-				}
-				if byID || (errors.Is(err, os.ErrNotExist) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\")) {
-					c, exists, inspectErr := e.Docker.Inspect(ctx, target)
-					if inspectErr != nil {
-						return nil, inspectErr
-					}
-					if exists {
-						owner, ownerErr := e.orphanOwner(c)
-						if ownerErr != nil {
-							return nil, ownerErr
-						}
-						pending, pendingErr := e.Store.PendingID(owner.Session)
-						if pendingErr != nil {
-							return nil, pendingErr
-						}
-						if pending != nil {
-							return nil, commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", owner.Session, nil, pending.RetryStep())
-						}
-						linked, findErr := e.Store.Find(ctx, owner.Session, nil)
-						if findErr == nil {
-							if linked.Applied.SetupContainer != c.ID {
-								return nil, fmt.Errorf("container is not the recorded session instance")
-							}
-							names[linked.Directory] = true
-							selection.selectedIDs[linked.Directory] = linked.ID
-							selection.operationIDs[linked.Directory] = linked.ID
-							selection.containerIDs[linked.Directory] = c.ID
-							continue
-						}
-						if !sessionAbsent(findErr) && !incompleteInventory(findErr) {
-							return nil, findErr
-						}
-						selection.operationIDs[target] = owner.Session
-					}
-					if !exists {
-						continue
-					}
-					names[target] = true
-					selection.selectedIDs[target] = ""
-					if exists {
-						selection.containerIDs[target] = c.ID
-					}
-					continue
-				}
-				return nil, err
-			}
-			names[r.Directory] = true
-			selection.selectedIDs[r.Directory] = r.ID
-			selection.operationIDs[r.Directory] = r.ID
-		}
-	}
-	result := make([]string, 0, len(names))
-	for name := range names {
-		result = append(result, name)
-	}
-	sort.Strings(result)
-	return result, nil
-}
 func (e *Engine) DeleteContainers(ctx context.Context, selection Selection, force bool) ([]string, error) {
-	names, err := e.selectContainers(ctx, &selection)
+	targets, err := e.selectContainers(ctx, selection)
 	if err != nil {
 		return nil, err
 	}
-	locks, err := e.Store.LockAll(ctx, names, selection.operationIDs)
+	locks, err := targets.lock(ctx, e.Store)
 	if err != nil {
 		return nil, err
 	}
 	defer store.CloseAll(locks)
-	return e.deleteContainersLocked(ctx, selection, locks, force, false)
+	return e.deleteContainersLocked(ctx, targets, selection, locks, force, false)
 }
-
-func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection, locks []*store.Locked, force, dryRun bool) ([]string, error) {
+func (e *Engine) deleteContainersLocked(ctx context.Context, targets selectedTargets, selection Selection, locks []*store.Locked, force, dryRun bool) ([]string, error) {
 	var err error
 	type removal struct {
 		record    store.Record
@@ -303,12 +157,13 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection
 		owner     docker.Owner
 	}
 	removals := []removal{}
-	for _, lock := range locks {
+	for i, lock := range locks {
+		target := targets[i]
 		r, loadErr := lock.Load()
 		if loadErr != nil && !os.IsNotExist(loadErr) {
 			return nil, loadErr
 		}
-		if expected, tracked := selection.selectedIDs[lock.Name]; tracked && r.ID != expected {
+		if target.record == recordPresent && r.ID != target.sessionID || target.record == recordAbsent && r.ID != "" {
 			return nil, fmt.Errorf("selected session changed; retry deletion")
 		}
 		if !force {
@@ -334,11 +189,10 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection
 					if pending != nil {
 						return nil, commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", owner.Session, nil, pending.RetryStep())
 					}
-					// A retained session requires its own operation lock and leases,
-					// even when the user selected the Docker name rather than its ID.
+					// Missing records never authorize bypassing a retained session's lock.
 					_, findErr := e.Store.Find(ctx, owner.Session, nil)
 					if findErr == nil {
-						return nil, fmt.Errorf("container has a saved session; refresh selection and delete by session ID")
+						return nil, fmt.Errorf("container has a saved session; refresh selection and delete by session directory name")
 					}
 					if !sessionAbsent(findErr) && !incompleteInventory(findErr) {
 						return nil, findErr
@@ -352,7 +206,7 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, selection Selection
 		if !exists {
 			continue
 		}
-		if expected := selection.containerIDs[lock.Name]; expected != "" && c.ID != expected {
+		if target.containerID != "" && c.ID != target.containerID {
 			return nil, fmt.Errorf("selected container instance changed; retry deletion")
 		}
 		if selection.LocalName != "" && owner.LocalName != selection.LocalName {
@@ -401,66 +255,40 @@ func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 	}
 	return owner, c.Verify(owner)
 }
-
-func (e *Engine) RecreateAll(ctx context.Context, force bool, options Request) ([]string, error) {
+func (e *Engine) RecreateAll(ctx context.Context, image bool, options RecreateOptions) ([]string, error) {
 	if options.Host == nil {
 		options.Host = config.Snapshot()
 	}
-	selection := Selection{All: true, LocalName: options.LocalName}
-	names, err := e.selectContainers(ctx, &selection)
+	selection := Selection{All: true}
+	targets, err := e.selectContainers(ctx, selection)
 	if err != nil {
 		return nil, err
 	}
-	locks, err := e.Store.LockAll(ctx, names, selection.operationIDs)
+	locks, err := targets.lock(ctx, e.Store)
 	if err != nil {
 		return nil, err
 	}
 	defer store.CloseAll(locks)
-	type replacement struct {
-		lock    *store.Locked
-		record  store.Record
-		spec    environment.Spec
-		running bool
-	}
-	planned := []replacement{}
+	planned := []recreatePlan{}
 	for _, lock := range locks {
 		r, err := lock.Load()
 		if err != nil {
 			return nil, err
 		}
-		if err = lock.RequireIdle(); err != nil {
-			return nil, err
-		}
-		c, exists, err := e.inspect(ctx, r)
+		plan, err := e.planRecreate(ctx, lock, r, options, image)
+		e.reportWarnings(plan.spec.Warnings)
 		if err != nil {
 			return nil, err
 		}
-		if !exists {
-			return nil, os.ErrNotExist
-		}
-		request := options
-		request.Workspace = r.Settings.Workspace
-		request.LocalName = r.Settings.LocalName
-		request.SessionID = r.ID
-		request.Sources = r.Settings.Sources
-		spec, err := e.Resolve(request)
-		if err != nil {
-			return nil, err
-		}
-		planned = append(planned, replacement{lock, r, spec, r.Settings.ManualStart || c.State.Running})
+		planned = append(planned, plan)
 	}
 	applied := []string{}
 	for _, item := range planned {
-		r, c, err := e.create(ctx, item.lock, item.spec, &item.record, force)
+		result, err := e.applyRecreate(ctx, item)
 		if err != nil {
 			return applied, err
 		}
-		if !item.running {
-			if err = e.Docker.Stop(ctx, c, e.owner(r)); err != nil {
-				return applied, err
-			}
-		}
-		applied = append(applied, r.ID)
+		applied = append(applied, result.SessionID)
 	}
 	return applied, nil
 }

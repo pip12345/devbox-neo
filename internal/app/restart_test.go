@@ -13,8 +13,12 @@ import (
 
 // The fake models Docker's policy boundary, not a host reboot. Live-daemon
 // restart acceptance remains a separate opt-in check.
-func rebootDaemon(d *dockertest.Daemon, name string) {
-	c, _ := d.Snapshot(name)
+func rebootDaemon(t *testing.T, d *dockertest.Daemon, name string) {
+	t.Helper()
+	c, exists := d.Snapshot(name)
+	if !exists {
+		t.Fatal("reboot fixture container is missing", name)
+	}
 	c.State.Running = c.HostConfig.RestartPolicy.Name == "unless-stopped"
 	d.SetContainer(c)
 }
@@ -35,7 +39,7 @@ func TestManualStartStopAndRebootPolicy(t *testing.T) {
 		}
 	}
 	check(false, false, "no")
-	if _, err = e.Open(ctx, q); err != nil {
+	if _, err = e.Open(ctx, openRequest(q)); err != nil {
 		t.Fatal(err)
 	}
 	check(false, false, "no")
@@ -43,21 +47,27 @@ func TestManualStartStopAndRebootPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(true, true, "unless-stopped")
-	if _, err = e.Open(ctx, q); err != nil {
+	if _, err = e.Open(ctx, openRequest(q)); err != nil {
 		t.Fatal(err)
 	}
 	if err = e.Exec(ctx, made.SessionID, "", []string{"true"}, false); err != nil {
 		t.Fatal(err)
 	}
 	check(true, true, "unless-stopped")
-	rebootDaemon(d, made.SessionID)
+	rebootDaemon(t, d, sessionRecord(t, e, made.SessionID).Applied.Creation.Name)
 	check(true, true, "unless-stopped")
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	check(true, true, "unless-stopped")
 	forgetSession(t, e, made.SessionID)
-	if _, err = e.Open(ctx, q); err != nil {
+	if _, err = e.Open(ctx, openRequest(q)); err == nil {
+		t.Fatal("open rebuilt missing runtime")
+	}
+	if !sessionRecord(t, e, made.SessionID).Settings.ManualStart {
+		t.Fatal("failed access cleared keep-running intent")
+	}
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	check(true, true, "unless-stopped")
@@ -76,9 +86,9 @@ func TestManualStartStopAndRebootPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(false, false, "no")
-	rebootDaemon(d, made.SessionID)
+	rebootDaemon(t, d, sessionRecord(t, e, made.SessionID).Applied.Creation.Name)
 	check(false, false, "no")
-	if _, err = e.Open(ctx, q); err != nil {
+	if _, err = e.Open(ctx, openRequest(q)); err != nil {
 		t.Fatal(err)
 	}
 	check(false, false, "no")
@@ -115,7 +125,7 @@ func TestManualStartDuringConcurrentAttachmentsWinsRegardlessOfExitOrder(t *test
 			errs := make(chan error, 2)
 			for range 2 {
 				wg.Add(1)
-				go func() { defer wg.Done(); _, err := e.Open(ctx, q); errs <- err }()
+				go func() { defer wg.Done(); _, err := e.Open(ctx, openRequest(q)); errs <- err }()
 			}
 			for range 2 {
 				select {
@@ -153,7 +163,7 @@ func TestManualStartDuringConcurrentAttachmentsWinsRegardlessOfExitOrder(t *test
 			if c.State.Running != manual {
 				t.Fatal("last attachment applied the wrong lifetime", c.State)
 			}
-			rebootDaemon(d, made.SessionID)
+			rebootDaemon(t, d, sessionRecord(t, e, made.SessionID).Applied.Creation.Name)
 			c, _ = sessionSnapshot(t, e, made.SessionID)
 			if c.State.Running != manual {
 				t.Fatal("wrong reboot policy")

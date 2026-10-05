@@ -47,7 +47,7 @@ func TestMissingRecordCannotBypassSessionIDLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := lock.Release(lease.ID); err != nil {
+	if _, err := lock.Release(lease.ID); err != nil {
 		t.Fatal(err)
 	}
 	lock.Close()

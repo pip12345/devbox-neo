@@ -59,8 +59,9 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 	for _, tt := range []struct{ command, flag, description string }{
 		{"open", "harness-arg", "Pass an argument to the harness (repeatable)"},
 		{"list", "sort", "Sort sessions by folder, name, or last-active (newest first)"},
-		{"recreate", "image", "Rebuild the image without using the build cache"},
-		{"recreate", "all", "Recreate all Devbox containers"},
+		{"recreate", "image", "Force an uncached image rebuild and container replacement"},
+		{"recreate", "container", "Force container replacement, reusing a compatible image when available"},
+		{"recreate", "all", "Apply current config to all managed containers"},
 		{"open", "name", "Select the session's folder-local name"},
 		{"stop", "force", "Stop even if commands are still running"},
 		{"delete", "force", "Allow container deletion despite attached commands; never implies deleting saved data"},
@@ -95,7 +96,7 @@ func TestCommandHelpDescribesActionsWithoutInitializingHome(t *testing.T) {
 		{"edit", "Browse sessions or edit their settings"},
 		{"shell", "Open a shell in a session"},
 		{"exec", "Run a command in a session"},
-		{"recreate", "Recreate the container with current settings, keeping session data"},
+		{"recreate", "Apply current config, replacing the container or image only when needed"},
 		{"start", "Start and keep running until stop, including across reboots"},
 		{"status", "Show all environments or details and pending changes for one"},
 
@@ -179,7 +180,7 @@ func TestOpenCommandOwnsTargetAndFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	for _, text := range []string{"open <folder|session-id>", "--continue", "--harness-arg", "--name"} {
+	for _, text := range []string{"open <folder|session>", "--continue", "--harness-arg", "--name"} {
 		if !strings.Contains(help, text) {
 			t.Fatalf("open help is missing %q: %s", text, help)
 		}

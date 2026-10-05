@@ -22,14 +22,14 @@ All paths below are under `internal/`.
 | `assets` | Installed agent guide, documentation, network-data bundle |
 | `commanderror` | Typed failures and suggested next steps |
 
-Commands translate requests; they do not implement lifecycle policy. Docker consumes captured plans rather than reloading config. Harness-specific behavior belongs in declarations, not engine branches.
+Commands translate operation-specific requests; they do not implement lifecycle policy. Creation and resolution accept workspace/config inputs; access and recreation accept session targets. A compiler repair target is readable guidance, not an immutable ownership ID. Docker consumes captured plans rather than reloading config. Harness-specific behavior belongs in declarations, not engine branches.
 
 ## Core invariants
 
 - Names locate resources; labels authorize mutations.
-- Container absence does not erase saved session identity or recovery data.
+- Container/image absence does not erase saved session identity, history or its comparison baseline; only explicit recreation rebuilds an existing session from current selected config.
 - Inspection never advances applied state.
-- Ordinary startup has one synchronization boundary.
+- Ordinary access uses applied state; only creation or explicit recreation applies desired configuration.
 - Long commands use leases rather than holding operation locks throughout execution.
 - Records and diagnostics do not contain env/auth values.
 - A committed transfer destination must not be overwritten by recopying its source.

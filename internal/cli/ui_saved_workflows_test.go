@@ -10,7 +10,7 @@ import (
 
 func TestSavedSessionCanCreateAndAddConfigWithoutApplyingRuntime(t *testing.T) {
 	e, _, name := namedCLIFixture(t)
-	before, err := e.Store.Find(context.Background(), name, nil)
+	before, err := e.Locate(context.Background(), name, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +20,7 @@ func TestSavedSessionCanCreateAndAddConfigWithoutApplyingRuntime(t *testing.T) {
 	if err != nil || !saved {
 		t.Fatal(saved, err, out.String())
 	}
-	after, err := e.Store.Find(context.Background(), name, nil)
+	after, err := e.Locate(context.Background(), name, "")
 	if err != nil || after.ID != before.ID || !reflect.DeepEqual(after.Applied.Fingerprints, before.Applied.Fingerprints) || len(after.Settings.Sources) != 2 || after.Settings.Sources[1].Label != "fresh" {
 		t.Fatal(after, err)
 	}

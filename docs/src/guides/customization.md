@@ -31,15 +31,15 @@ Add **Harness config files**, choose the harness, and continue. Edit the generat
 
 For example, Pi's provider definitions go in `pi/models.json` and its skills under `pi/skills/`. Use the harness's documentation for file formats.
 
-These files synchronize when the container next starts. Finish attached commands before stopping a kept-running container to apply them. **Edit the host config directory for lasting changes**—Devbox overwrites its managed copies inside the container.
+Finish attached commands, then choose **Recreate** to apply your changes. **Edit the host config directory for lasting changes**—Devbox overwrites its managed copies inside the container.
 
 ## Prepare the workspace
 
-Add **setup.sh** for tasks needing the mounted project, such as installing dependencies. It runs during container creation and recreation. Changes to this script require recreation. Keep reusable tool installation in the Dockerfile instead.
+Add **setup.sh** for tasks needing the mounted project, such as installing dependencies. It runs during container creation or replacement. Changes to this script require recreation. Keep reusable tool installation in the Dockerfile instead.
 
 ## Run something before each launch
 
-Add **before-open.sh** for work needed before every harness launch. It runs inside `/workspace`. Keep it quick.
+Add **before-open.sh** for work before each Open/Continue. It runs inside `/workspace`, not for Shell/Exec. Keep it quick, and choose **Recreate** after editing it.
 
 Both script types run in config order. A failure stops the chain, but does not undo completed work. See [artifacts](../reference/configuration.md#artifacts) for the complete rules.
 

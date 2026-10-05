@@ -11,7 +11,6 @@ import (
 
 	"devbox/internal/commanderror"
 	"devbox/internal/config"
-	"devbox/internal/store"
 )
 
 func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
@@ -49,8 +48,11 @@ func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
 	if _, err := e.Locate(ctx, q.Workspace, ""); err != nil {
 		t.Fatal("incomplete config blocked saved lookup", err)
 	}
-	if _, err := e.Open(ctx, Request{Workspace: made.SessionID}); err == nil {
-		t.Fatal("missing config became runnable")
+	if _, err := e.Open(ctx, OpenRequest{Target: made.SessionID}); err != nil {
+		t.Fatal("missing desired config blocked applied access", err)
+	}
+	if _, err := e.Recreate(ctx, RecreateRequest{Target: made.SessionID}, false); err == nil {
+		t.Fatal("missing config became applicable")
 	}
 	if err := e.Stop(ctx, made.SessionID, "", false); err != nil {
 		t.Fatal("missing config blocked stop", err)
@@ -90,8 +92,7 @@ func TestStaleDefaultDoesNotSelectAReusedLocalName(t *testing.T) {
 			t.Fatal("transfer source selection lost its durable-ID snapshot", name, id, err)
 		}
 	}
-	key, _ := store.WorkspaceKey(original.Settings.Workspace)
-	path := filepath.Join(e.Store.Home, "state/workspaces", key+".json")
+	path := filepath.Join(e.Store.Home, "state/folder-defaults.json")
 	stale, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

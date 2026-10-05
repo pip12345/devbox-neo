@@ -21,7 +21,7 @@ func (s *Store) Find(ctx context.Context, id string, binding *environment.Bindin
 	if (id == "") == (binding == nil) {
 		return Record{}, fmt.Errorf("select a session ID or workspace/name")
 	}
-	if id != "" && !environment.IsSessionTarget(id) {
+	if id != "" && !environment.IsSessionID(id) {
 		return Record{}, fmt.Errorf("invalid session ID")
 	}
 	if binding != nil {
@@ -38,7 +38,9 @@ func (s *Store) Find(ctx context.Context, id string, binding *environment.Bindin
 		for i := range journals {
 			j := &journals[i]
 			matches := id != "" && (j.SourceID == id || j.DestinationID == id)
-			if binding != nil { matches = j.Source.Binding == *binding || j.Destination.Binding == *binding }
+			if binding != nil {
+				matches = j.Source.Binding == *binding || j.Destination.Binding == *binding
+			}
 			if !matches {
 				continue
 			}
@@ -129,7 +131,7 @@ func (s *Store) RequireUnusedBinding(ctx context.Context, binding environment.Bi
 			return fmt.Errorf("cannot check session names: %w", err)
 		}
 		if r.Settings.Binding == binding {
-			return commanderror.New("session_exists", "Session already exists for this workspace and name.", r.ID, nil, commanderror.Next("Inspect the existing session", "status", r.ID))
+			return commanderror.New("session_exists", "Session already exists for this workspace and name.", r.Directory, nil, commanderror.Next("Inspect the existing session", "status", r.Directory))
 		}
 	}
 	return nil

@@ -19,11 +19,11 @@ flowchart TD
 
 ### Selecting sources
 
-`app.Locate` selects saved session identity using an exact session ID, a folder-local name, or a folder's saved default. It never resolves config to find a session. This keeps broken sources from blocking lookup and repair.
+`app.Locate` selects saved session identity using an exact session directory name, a folder-local name, or a folder's saved default. Captured internal operations can address the immutable ID. It never resolves config to find a session. This keeps broken sources from blocking lookup and repair.
 
 `config.Reference` preserves relative/fixed intent. CLI capture resolves relative arguments against the invoking cwd, then records them relative to the canonical workspace. `ResolveReferences` expands the saved chain at the runtime boundary, requires its directories, and rejects duplicate canonical paths. Composition receives absolute `config.Source` inputs. Resolution never discovers sources; there is no global baseline or inheritance cutoff.
 
-`app.UpdateSources` requires a nonempty chain, validates references, and compares session ID plus the displayed chain under the operation lock. It preserves unrelated latest fields and saves only desired references; runnable settings are not required. Creation drafts and record reads can still be empty. Startup/recreation resolve from the reread locked record, not a pre-lock source snapshot.
+`app.UpdateSources` requires a nonempty chain, validates references, and compares session ID plus the displayed chain under the operation lock. It preserves unrelated latest fields and saves only desired references; runnable settings are not required. Creation drafts and record reads can still be empty. Explicit recreation resolves from the reread locked record, not a pre-lock source snapshot. Ordinary access never resolves desired config.
 
 ### Merging settings and artifacts
 
@@ -45,7 +45,7 @@ Resolution captures one host environment snapshot, then expands `${env:NAME}` in
 
 Sensitivity follows the destination field, not the variable name or substitution mechanism. Env/auth values are sensitive; paths, networks, argv, and other settings remain public. This lets diagnostics explain ordinary changes without accidentally treating every host-dependent path as a secret.
 
-Sensitive config env is recorded as file/field/index references plus installation-keyed hashes of both the expression and resolved assignment. Recovery rereads exactly those entries. An unrelated file edit does not invalidate recovery, while changing the expression or assignment does. Definition env is reconstructed from its verified recorded definition source. Public creation commands accept no configuration overrides; lasting env settings belong in source files.
+Sensitive env is resolved only for the current operation. Records keep installation-keyed assignment hashes for status comparison, not values or historical expression/source restoration references. Explicit recreation resolves current definition/config env through the normal resolver. Public creation commands accept no configuration overrides; lasting env settings belong in source files.
 
 The Docker adapter renders creation env through a private `0600` temporary file. Neither values nor its temporary path enter the session record. Display redacts env values and never serializes the host snapshot. Terminal display passthrough is a separate invocation-local channel described in [lifecycle](lifecycle.md#invocation-local-terminal-metadata).
 
@@ -77,9 +77,9 @@ List editors reload before operations. Validation/write failures retain unsaved 
 
 Definitions declare installation commands/PATH, launch and continuation argv, env, environment/cache stores, config ownership, auth overlays, preparation argv, and transfer capabilities. Pi's fullscreen default is an ordinary launch argument; configured and one-off arguments follow it without a Pi-specific engine branch.
 
-`install.shell` and `install.script` are mutually exclusive. A script selects captured files beneath the harness's `install/` directory. Their bytes and modes enter the definition digest used by resolution and recorded recovery. The final image stage consumes that capture as `devuser`; runtime synchronization cannot replace installed code independently of its image.
+`install.shell` and `install.script` are mutually exclusive. A script selects captured files beneath the harness's `install/` directory. Their bytes and modes enter the definition digest used by image reuse, status and runtime compatibility. The final image stage consumes that capture as `devuser`; runtime synchronization cannot replace installed code independently of its image.
 
-Built-in defaults, installation files, and user defaults use the same recursive regular-file reader. It skips symlinks and other special entries, never follows them, and treats root-path/read failures as fatal. Each source tree reports at most ten source-qualified example warnings plus a count of additional skipped entries. Warnings flow through resolution into application stderr and through source-seeding/copy results into text or JSON. A skipped higher-layer entry does not erase a lower-layer regular file.
+Built-in defaults, installation files, and user defaults share a recursive regular-file reader. Managed defaults/config trees exclude `.git` directories and worktree `.git` files at every depth; installation inputs do not inherit this exclusion. Other dependency/runtime trees remain included. The reader skips symlinks and other special entries, never follows them, and treats root-path/read failures as fatal. Each source tree reports at most ten source-qualified example warnings plus a count of additional skipped entries. Warnings flow through resolution into application stderr and through source-seeding/copy results into text or JSON. A skipped higher-layer entry does not erase a lower-layer regular file.
 
 Claude's built-in definition uses the same declarations: `sessions/<directory>/harnesses/claude/stores/home/` mounts at `/home/devuser/.claude`, where defaults and ordered `<config>/claude/` files supply managed configuration. `auth/claude/.credentials.json` overlays the store's `.credentials.json`; `auth/claude/.claude.json` mounts at `/home/devuser/.claude.json`. Both auth files are shared rather than transferred with session state. Its native executable under `/home/devuser/.local/bin` remains image-local; no Claude cache store is declared. `settings.json` owns only `tui` and `pluginConfigs`.
 
@@ -113,7 +113,7 @@ Each build stage uses a separate temporary directory. Cleanup verifies image ide
 
 `docker.ParseMount` accepts directories, regular files, and Unix sockets for user bind mounts. It resolves source symlinks and records the canonical path plus mutually exclusive `File`/`Socket` markers; with neither marker, a bind source is a directory. Named volumes have neither marker. Other special files remain unsupported. Raw `--volume` uses the same parser.
 
-These markers travel with creation plans and container input fingerprints. Missing-container recovery verifies the recorded source type before materialization, including when desired config no longer mentions the mount. A replacement socket at the same canonical path is allowed; recovery records the type, not the socket inode or service lifetime. Managed workspace, store, auth, and SSH-directory mounts cannot be socket mounts. Socket service startup and access permissions remain the user's responsibility.
+These markers travel with current creation plans and applied comparison fingerprints. Explicit recreation resolves current mounts and source types; removed mounts no longer block it. A replacement socket at the same canonical path is allowed; the type, not its inode or service lifetime, participates in configuration identity. Managed workspace, store, auth, and SSH-directory mounts cannot be socket mounts. Socket service startup and access permissions remain the user's responsibility.
 
 ### Mount-parent ownership
 
@@ -126,13 +126,13 @@ This avoids Docker creating root-owned parents for nested mounts. An incompatibl
 
 ## Managed configuration ownership
 
-`filesync` owns byte/key reconciliation, not lifecycle safety. The application must hold the operation lock and prove the container is stopped or absent before synchronizing. Creation/recreation and transfer destination creation synchronize before materialization; ordinary access uses `startAccess` and checks backing roots first.
+`filesync` owns byte/key reconciliation, not lifecycle safety. The application must hold the operation lock and prove the container is stopped or absent before synchronizing. Creation, explicit runtime application, and transfer destination creation synchronize under that contract. Ordinary access only checks backing roots and uses applied state; it does not synchronize.
 
 ### Ordinary files
 
 The desired source is authoritative. Synchronization restores desired bytes and private modes even when a live file was edited locally or its source hash did not change. Formerly managed paths that disappear from desired config are removed regardless of their current content. Unmanaged paths are untouched.
 
-The manifest describes applied ownership and supports running-container deferral. Its hashes are not a local-edit protection mechanism. This gives managed files one predictable owner while leaving unrelated harness history alone.
+The manifest describes applied ownership. Its hashes are not a local-edit protection mechanism and do not replace reconciliation during explicit application. This gives managed files one predictable owner while leaving unrelated harness history alone.
 
 ### Shared JSON
 
@@ -140,4 +140,4 @@ A `json-keys` declaration owns only listed top-level keys. Desired values replac
 
 Malformed live JSON is a conflict because the synchronizer cannot safely preserve undeclared settings. Writes use same-directory temporary files, and the new manifest commits after non-conflicting writes succeed. The engine advances runtime inputs and launch state only after the preparation stage succeeds.
 
-An incompatible definition cannot synchronize into a recorded layout. Recreation is the boundary that adopts changed ownership and mounts; rollback and committed-transfer recovery instead restore recorded transaction behavior.
+An incompatible definition cannot synchronize into a recorded layout. Only explicit recreation adopts current ownership and mounts. Transfer rollback/commit rules still protect endpoint identity and prevent recopying committed destination state.

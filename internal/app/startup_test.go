@@ -9,23 +9,23 @@ import (
 	"testing"
 )
 
-func accessAction(ctx context.Context, e *Engine, q Request, name, action string) error {
+func accessAction(ctx context.Context, e *Engine, q CreateRequest, name, action string) error {
 	switch action {
 	case "open":
-		_, err := e.Open(ctx, q)
+		_, err := e.Open(ctx, openRequest(q))
 		return err
 	case "start":
 		_, err := e.Start(ctx, name, "")
 		return err
 	case "recreate":
-		_, err := e.Recreate(ctx, q, false)
+		_, err := e.Recreate(ctx, recreateRequest(q), false)
 		return err
 	default:
 		return e.Exec(ctx, name, "", []string{"true"}, action == "shell")
 	}
 }
 
-func TestAccessSynchronizesOnlyAtStartup(t *testing.T) {
+func TestOnlyExplicitRecreateSynchronizesConfiguration(t *testing.T) {
 	for _, action := range []string{"open", "start", "shell", "exec", "recreate"} {
 		for _, running := range []bool{false, true} {
 			t.Run(action+map[bool]string{false: "/stopped", true: "/running"}[running], func(t *testing.T) {
@@ -57,10 +57,10 @@ func TestAccessSynchronizesOnlyAtStartup(t *testing.T) {
 				if err := os.Remove(filepath.Join(profile, "pi/obsolete.txt")); err != nil {
 					t.Fatal(err)
 				}
-				wantSync := !running || action == "recreate"
+				wantSync := action == "recreate"
 				starts := count(d, "start")
 				d.Fail = func(args []string) error {
-					if args[0] == "start" && string(getFile(t, filepath.Join(root, "managed.txt"))) != "new" {
+					if wantSync && args[0] == "start" && string(getFile(t, filepath.Join(root, "managed.txt"))) != "new" {
 						t.Fatal("container started before sync")
 					}
 					return nil
@@ -82,7 +82,7 @@ func TestAccessSynchronizesOnlyAtStartup(t *testing.T) {
 					if !strings.Contains(string(getFile(t, filepath.Join(root, "settings.json"))), `"new"`) {
 						t.Fatal("owned JSON keys not updated")
 					}
-				} else if count(d, "start") != starts {
+				} else if running && count(d, "start") != starts {
 					t.Fatal("running container was restarted")
 				}
 				if !strings.Contains(string(getFile(t, filepath.Join(root, "settings.json"))), "personal") {
@@ -105,7 +105,7 @@ func TestAccessSynchronizesOnlyAtStartup(t *testing.T) {
 	}
 }
 
-func TestStartupSyncFailurePreventsStartAndBaselineCommit(t *testing.T) {
+func TestInvalidConfigAndLiveJSONDoNotBlockAccess(t *testing.T) {
 	for _, action := range []string{"open", "start", "shell", "exec"} {
 		for _, invalidLive := range []bool{false, true} {
 			t.Run(action+map[bool]string{false: "/invalid-profile", true: "/invalid-shared-JSON"}[invalidLive], func(t *testing.T) {
@@ -122,18 +122,18 @@ func TestStartupSyncFailurePreventsStartAndBaselineCommit(t *testing.T) {
 					write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
 				}
 				starts := count(d, "start")
-				if err := accessAction(ctx, e, q, created.SessionID, action); err == nil {
-					t.Fatal("invalid input ignored")
+				if err := accessAction(ctx, e, q, created.SessionID, action); err != nil {
+					t.Fatal("repair access depended on config", err)
 				}
-				if count(d, "start") != starts || !reflect.DeepEqual(before.Applied.Inputs, sessionRecord(t, e, created.SessionID).Applied.Inputs) {
-					t.Fatal("failed startup changed applied state")
+				if count(d, "start") != starts+1 || !reflect.DeepEqual(before.Applied.Inputs, sessionRecord(t, e, created.SessionID).Applied.Inputs) {
+					t.Fatal("access did not retain applied configuration")
 				}
 			})
 		}
 	}
 }
 
-func TestStartupDoesNotNeedProfileContentChangeToRestoreManagedFiles(t *testing.T) {
+func TestExplicitApplyRestoresManagedFilesEvenWithoutSourceChanges(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
 	write(t, filepath.Join(e.Store.Home, "profiles/test/pi/managed.txt"), "authoritative")
@@ -143,7 +143,7 @@ func TestStartupDoesNotNeedProfileContentChangeToRestoreManagedFiles(t *testing.
 	}
 	live := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, "harnesses/pi/stores/home/managed.txt")
 	write(t, live, "temporary edit")
-	if _, err := e.Start(ctx, created.SessionID, ""); err != nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	if string(getFile(t, live)) != "authoritative" {

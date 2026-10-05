@@ -68,8 +68,8 @@ func TestImageBuildStagesCapturedHarnessInstallation(t *testing.T) {
 	}
 }
 
-func TestRecordedRecoveryRejectsChangedHarnessInstallFiles(t *testing.T) {
-	e, _, q := fixture(t)
+func TestRecreateAdoptsChangedHarnessInstallFiles(t *testing.T) {
+	e, d, q := fixture(t)
 	root := seedScriptedThird(t, e)
 	made, err := e.Create(context.Background(), q)
 	if err != nil {
@@ -77,7 +77,10 @@ func TestRecordedRecoveryRejectsChangedHarnessInstallFiles(t *testing.T) {
 	}
 	forgetSession(t, e, made.SessionID)
 	write(t, filepath.Join(root, "install", "helper.sh"), "changed\n")
-	if _, err := e.Start(context.Background(), made.SessionID, ""); err == nil || !strings.Contains(err.Error(), "recorded environment source is missing or changed") {
-		t.Fatal("recovery adopted changed install code", err)
+	if _, err := e.Recreate(context.Background(), recreateRequest(q), false); err != nil {
+		t.Fatal("rebuild rejected current install code", err)
+	}
+	if count(d, "build") != 4 {
+		t.Fatal("changed install inputs did not rebuild image")
 	}
 }

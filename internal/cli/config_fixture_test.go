@@ -15,7 +15,7 @@ import (
 
 func harnessSetting(name string) *string { return &name }
 
-func namedCLIFixture(t *testing.T) (*app.Engine, app.Request, string) {
+func namedCLIFixture(t *testing.T) (*app.Engine, app.CreateRequest, string) {
 	t.Helper()
 	state, err := store.Open(context.Background(), t.TempDir())
 	if err != nil {
@@ -27,12 +27,12 @@ func namedCLIFixture(t *testing.T) (*app.Engine, app.Request, string) {
 		t.Fatal(err)
 	}
 	e := &app.Engine{Store: state, Docker: docker.Runtime{Runner: &dockertest.Daemon{}}, UID: 1000, GID: 1000}
-	q := app.Request{Workspace: t.TempDir(), LocalName: "Main", Sources: testConfigSources(state.Home, "base")}
+	q := app.CreateRequest{Workspace: t.TempDir(), LocalName: "Main", Sources: testConfigSources(state.Home, "base")}
 	made, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return e, q, made.SessionID
+	return e, q, sessionRecord(t, e, made.SessionID).Directory
 }
 
 func testConfigOwner(t *testing.T, home, reference string) resource.Owner {

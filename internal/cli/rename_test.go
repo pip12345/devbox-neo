@@ -35,7 +35,7 @@ func TestRenameCommandPreviewAndJSON(t *testing.T) {
 	}
 	out, err = run(id, "--to", "Second", "--json")
 	var result app.RenameResult
-	if err != nil || json.Unmarshal([]byte(out), &result) != nil || result.SessionID != id || result.LocalName != "Second" {
+	if err != nil || json.Unmarshal([]byte(out), &result) != nil || result.SessionID != before.ID || result.Session != id || result.LocalName != "Second" {
 		t.Fatal(out, err)
 	}
 	if after := sessionRecord(t, e, id); !reflect.DeepEqual(before.Applied, after.Applied) || before.Directory != after.Directory {

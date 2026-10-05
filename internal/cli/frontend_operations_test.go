@@ -76,7 +76,7 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 		if whole {
 			label = "Container and saved data/history"
 		}
-		for _, want := range []string{"Delete · Main", "Folder: " + q.Workspace, "Delete: " + label, "Force: Off", "Would delete container " + containerName} {
+		for _, want := range []string{"Delete · Main", "Folder: " + q.Workspace, "Delete scope: " + label, "Force: Off", "Would delete container " + containerName} {
 			if !strings.Contains(text, want) {
 				t.Fatal("missing visible deletion choice", want, text)
 			}
@@ -84,7 +84,7 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 		if strings.Contains(text, "Preview scope") || strings.Contains(text, "Delete saved data and history?") != whole || strings.Contains(text, "Would delete session "+name) != whole {
 			t.Fatal("preview and execution disagree", text)
 		}
-		_, err := f.e.Store.Find(context.Background(), name, nil)
+		_, err := f.e.Store.Read(context.Background(), name)
 		if os.IsNotExist(err) != whole {
 			t.Fatal("wrong saved-state outcome", whole, err, text)
 		}

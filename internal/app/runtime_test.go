@@ -21,7 +21,11 @@ func TestRuntimeDocsAndNetworkFactsAreStagedAndCleaned(t *testing.T) {
 		}
 		source := strings.TrimSuffix(args[1], "/.")
 		staged = append(staged, source)
-		for _, name := range []string{"AGENTS.md", "docs/index.md", "network/env", "network/inspect.json"} {
+		names := []string{"network/env", "network/inspect.json"}
+		if len(staged) == 1 {
+			names = append(names, "AGENTS.md", "docs/index.md")
+		}
+		for _, name := range names {
 			if _, err := os.Stat(filepath.Join(source, name)); err != nil {
 				return err
 			}
@@ -60,7 +64,7 @@ func TestRuntimeDocsAndNetworkFactsAreStagedAndCleaned(t *testing.T) {
 }
 func TestFailedRuntimeCopyDoesNotLaunchOrLeaveStaging(t *testing.T) {
 	e, d, q := fixture(t)
-	spec, err := e.Resolve(q)
+	spec, err := e.Resolve(resolveRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}

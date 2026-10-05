@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"devbox/internal/docker"
+	"devbox/internal/environment"
 )
 
 func TestLayeredBuildUsesTypedPlans(t *testing.T) {
@@ -73,10 +74,10 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 		t.Fatal("intermediate tag was not cleaned up")
 	}
 	before := count(d, "build")
-	if _, err = e.Open(context.Background(), q); err != nil || count(d, "build") != before {
+	if _, err = e.Open(context.Background(), openRequest(q)); err != nil || count(d, "build") != before {
 		t.Fatal("reopen rebuilt", err)
 	}
-	if _, err = e.Recreate(context.Background(), q, true); err != nil {
+	if _, err = e.Recreate(context.Background(), recreateRequest(q), true); err != nil {
 		t.Fatal(err)
 	}
 	history := d.History()
@@ -118,7 +119,7 @@ func TestLayeredBuildCleansBaseTagAfterRuntimeFailure(t *testing.T) {
 	}
 	t.Fatal("intermediate tag was not cleaned up after runtime failure")
 }
-func TestSeedingHigherPriorityDockerfileWarnsWithoutReplacement(t *testing.T) {
+func TestNewDockerfileRemainsPendingUntilExplicitApplication(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi"}`)
@@ -128,11 +129,14 @@ func TestSeedingHigherPriorityDockerfileWarnsWithoutReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(q.Workspace, ".devbox/docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
-	result, err := e.Open(ctx, q)
+	result, err := e.Open(ctx, openRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.SessionID != result.SessionID || count(d, "create") != 1 || count(d, "build") != 2 || len(result.Diagnostics) == 0 {
+	if first.SessionID != result.SessionID || count(d, "create") != 1 || count(d, "build") != 2 || len(result.Diagnostics) != 0 {
 		t.Fatal("Dockerfile seeding did not remain non-destructive drift")
+	}
+	if status, err := e.Status(ctx, result.SessionID, ""); err != nil || status.Desired != environment.RebuildAndRecreate {
+		t.Fatal(status, err)
 	}
 }

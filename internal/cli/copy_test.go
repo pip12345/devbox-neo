@@ -45,7 +45,7 @@ func TestCopyCommandModes(t *testing.T) {
 			}
 			daemon := &dockertest.Daemon{}
 			engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: daemon}, UID: 1000, GID: 1000}
-			made, err := engine.Create(ctx, app.Request{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
+			made, err := engine.Create(ctx, app.CreateRequest{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -68,7 +68,7 @@ func TestCopyCommandModes(t *testing.T) {
 				var out bytes.Buffer
 				cmd.SetOut(&out)
 				cmd.SetErr(&out)
-				args := []string{made.SessionID, destination.Workspace}
+				args := []string{made.Session, destination.Workspace}
 				if tt.move {
 					args = append(args, "--move")
 				}

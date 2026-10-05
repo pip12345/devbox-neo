@@ -15,14 +15,15 @@ type interrupts struct {
 }
 
 // SignalContext routes SIGINT to the current foreground operation when a menu
-// owns the command. SIGTERM always cancels the whole command. Direct CLI calls
+// owns the command. SIGTERM and terminal hangup (SIGHUP) cancel the whole command
+// so attachment cleanup runs even when the terminal disappears. Direct CLI calls
 // have no operation scope and retain their existing process-cancellation rule.
 func SignalContext(parent context.Context) (context.Context, func()) {
 	ctx, cancel := context.WithCancel(parent)
 	state := &interrupts{}
 	ctx = context.WithValue(ctx, interruptKey{}, state)
 	signals := make(chan os.Signal, 2)
-	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

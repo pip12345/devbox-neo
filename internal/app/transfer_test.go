@@ -26,14 +26,14 @@ func TestTransferResumesJournalBeforeDestinationCreation(t *testing.T) {
 	}
 	source := sessionRecord(t, e, opened.SessionID)
 	dest := t.TempDir()
-	spec, err := e.Resolve(Request{Workspace: dest, LocalName: q.LocalName, Sources: q.Sources})
+	spec, err := e.Resolve(ResolveRequest{Workspace: dest, LocalName: q.LocalName, Sources: q.Sources})
 	if err != nil {
 		t.Fatal(err)
 	}
 	nonce, _ := fsutil.ID()
 	newID, _ := fsutil.ID()
 	spec.Identity.Name = environment.ResourceName(dest, q.LocalName, "directory")
-	j := store.Transfer{Version: 3, ContainerName: environment.ResourceName(dest, q.LocalName, nonce), SourceContainerID: source.Applied.SetupContainer, ID: nonce, Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: spec.Identity, SourceID: source.ID, DestinationID: newID, Started: time.Now().UTC(), Desired: spec.Fingerprints}
+	j := store.Transfer{Version: 4, ContainerName: environment.ResourceName(dest, q.LocalName, nonce), SourceContainerID: source.Applied.SetupContainer, ID: nonce, Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: spec.Identity, SourceID: source.ID, DestinationID: newID, Started: time.Now().UTC()}
 	names := []string{source.Directory, spec.Identity.Name}
 	sort.Strings(names)
 	locks, err := e.Store.LockAll(ctx, names, map[string]string{source.Directory: source.ID, spec.Identity.Name: newID})
@@ -176,7 +176,7 @@ func TestTransferNamesAndDryRun(t *testing.T) {
 	if count(d, "create") != before {
 		t.Fatal("dry run created container")
 	}
-	if _, err = e.Store.Find(ctx, result.Destination, nil); !os.IsNotExist(err) {
+	if _, err = e.Store.Read(ctx, result.Destination); !os.IsNotExist(err) {
 		t.Fatal("dry run created state", err)
 	}
 	if j, err := pendingTransfer(e, opened.SessionID); err != nil || j != nil {
@@ -220,7 +220,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 		t.Fatal("source not restarted")
 	}
 	var pendingError *commanderror.Error
-	if _, err = e.Start(ctx, opened.SessionID, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "dbx copy --move "+opened.SessionID+" "+opts.Destination+" --as "+q.LocalName {
+	if _, err = e.Start(ctx, opened.SessionID, ""); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" || len(pendingError.Next) != 1 || strings.Join(pendingError.Next[0].Command, " ") != "dbx copy --move "+opened.Session+" "+opts.Destination+" --as "+q.LocalName {
 		t.Fatal("pending source not guarded", err)
 	}
 	j, err := pendingTransfer(e, opened.SessionID)
@@ -242,10 +242,13 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	}
 	configPath := filepath.Join(e.Store.Home, "profiles/test/config.json")
 	write(t, configPath, `{"version":1,"harness":"pi","env":["TOKEN=not-for-journals"]}`)
-	if _, err = e.Transfer(ctx, opts); err == nil || !strings.Contains(err.Error(), "inputs changed") || strings.Contains(err.Error(), "not-for-journals") {
-		t.Fatal("changed destination was accepted or leaked", err)
+	if _, err = e.Transfer(ctx, opts); err == nil || !strings.Contains(err.Error(), "prepare interrupted") || strings.Contains(err.Error(), "not-for-journals") {
+		t.Fatal("changed config did not reach preparation or leaked", err)
 	}
-	write(t, configPath, `{"version":1,"harness":"pi"}`)
+	journalData := getFile(t, filepath.Join(e.Store.Home, "state/transfers", source.Directory+".json"))
+	if strings.Contains(string(journalData), "not-for-journals") {
+		t.Fatal("retry persisted env values")
+	}
 	write(t, sourcePath, "new source write after rollback")
 	d.Fail = nil
 	result, err := e.Transfer(ctx, opts)
@@ -303,7 +306,7 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	dest := t.TempDir()
-	destOpen, err := e.Create(ctx, Request{Workspace: dest, LocalName: q.LocalName, Sources: q.Sources})
+	destOpen, err := e.Create(ctx, CreateRequest{Workspace: dest, LocalName: q.LocalName, Sources: q.Sources})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +332,7 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 		t.Fatal("transferred active source")
 	}
 	lock, _ = e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
-	if err = lock.Release(lease.ID); err != nil {
+	if _, err = lock.Release(lease.ID); err != nil {
 		t.Fatal(err)
 	}
 	lock.Close()

@@ -64,7 +64,7 @@ func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 	}
 }
 
-func TestRecoveryErrorRetainsDockerFailureIdentity(t *testing.T) {
+func TestRecreateErrorRetainsDockerFailureIdentity(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	opened, err := e.Create(ctx, q)
@@ -79,9 +79,8 @@ func TestRecoveryErrorRetainsDockerFailureIdentity(t *testing.T) {
 		}
 		return nil
 	}
-	_, err = e.Start(ctx, opened.SessionID, "")
-	var recovery *commanderror.Error
-	if !errors.As(err, &recovery) || recovery.Code != "recovery_unavailable" || !errors.Is(err, failure) {
+	_, err = e.Recreate(ctx, recreateRequest(q), false)
+	if !errors.Is(err, failure) {
 		t.Fatal(err)
 	}
 }
@@ -97,9 +96,10 @@ func TestPiDefaultsToFullscreenAndAllowsLaterOverrides(t *testing.T) {
 	if !reflect.DeepEqual(r.Applied.Launch.Args, []string{"--tui-mode", "fullscreen"}) || !reflect.DeepEqual(r.Applied.Launch.Continue, []string{"-c"}) {
 		t.Fatal(r.Applied.Launch)
 	}
-	q.Continue = true
-	q.Args = []string{"--tui-mode", "regular"}
-	if _, err = e.Open(ctx, q); err != nil {
+	launch := openRequest(q)
+	launch.Continue = true
+	launch.Args = []string{"--tui-mode", "regular"}
+	if _, err = e.Open(ctx, launch); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"pi", "--tui-mode", "fullscreen", "-c", "--tui-mode", "regular"}
@@ -116,9 +116,10 @@ func TestPiDefaultsToFullscreenAndAllowsLaterOverrides(t *testing.T) {
 		t.Fatal("one-off TUI override was persisted")
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","harness_args":["--tui-mode","regular"]}`)
-	q.Args = nil
-	q.Continue = false
-	if _, err = e.Open(ctx, q); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.Open(ctx, openRequest(q)); err != nil {
 		t.Fatal(err)
 	}
 	if got := sessionRecord(t, e, opened.SessionID).Applied.Launch.Args; !reflect.DeepEqual(got, []string{"--tui-mode", "fullscreen", "--tui-mode", "regular"}) {

@@ -69,7 +69,7 @@ func TestDeleteIncompleteCreationScopeAndConfirmation(t *testing.T) {
 			if err != nil {
 				t.Fatal(result, err)
 			}
-			if !reflect.DeepEqual(result.Targets, []string{name}) || len(result.Sessions)+len(result.Containers) != 0 {
+			if len(result.Targets) != 1 || result.Targets[0].Name() != name || result.Targets[0].sessionID != "" || len(result.Sessions)+len(result.Containers) != 0 {
 				t.Fatal("incomplete directory received a fabricated identity", result)
 			}
 			planned := tc.deleted || tc.dryRun
@@ -255,7 +255,7 @@ func TestDeleteIncompleteCreationRejectsPendingTransfer(t *testing.T) {
 	name, root := incompleteFixture(t, e)
 	id, _ := fsutil.ID()
 	nonce, _ := fsutil.ID()
-	j := store.Transfer{Version: 3, ContainerName: environment.ResourceName(q.Workspace, "copy", nonce), SourceContainerID: source.Applied.SetupContainer, ID: nonce, Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: environment.Identity{Binding: environment.Binding{Workspace: q.Workspace, LocalName: "copy"}, Name: name}, SourceID: source.ID, DestinationID: id, Started: time.Now().UTC(), Desired: source.Applied.Fingerprints}
+	j := store.Transfer{Version: 4, ContainerName: environment.ResourceName(q.Workspace, "copy", nonce), SourceContainerID: source.Applied.SetupContainer, ID: nonce, Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: environment.Identity{Binding: environment.Binding{Workspace: q.Workspace, LocalName: "copy"}, Name: name}, SourceID: source.ID, DestinationID: id, Started: time.Now().UTC()}
 	names := []string{source.Directory, name}
 	sort.Strings(names)
 	locks, err := e.Store.LockAll(ctx, names, map[string]string{source.Directory: source.ID, name: id})

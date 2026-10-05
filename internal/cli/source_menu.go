@@ -20,48 +20,21 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 	var show, asJSON, setDefault, clearDefault bool
 	var references []string
 	var workspace string
-	cmd := &cobra.Command{Use: "edit <folder|session-id>", Short: "Browse sessions or edit their settings", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
-		replace := cmd.Flags().Changed("config")
-		changeWorkspace := cmd.Flags().Changed("workspace")
-		if changeWorkspace && (replace || show || setDefault || clearDefault) {
-			return fmt.Errorf("use --workspace separately from config and default operations")
-		}
-		if replace && (show || setDefault || clearDefault) {
-			return fmt.Errorf("use --config alone, not with --show, --default, or --clear-default")
-		}
-		if asJSON && !show && !replace && !changeWorkspace {
-			return fmt.Errorf("--json requires --show, --config, or --workspace")
-		}
-		if setDefault && clearDefault {
-			return fmt.Errorf("use --default or --clear-default, not both")
-		}
-		if clearDefault && *name != "" {
-			return fmt.Errorf("use --name or --clear-default, not both")
-		}
-		if show && (setDefault || clearDefault) {
-			return fmt.Errorf("use --show or change the folder default, not both")
+	cmd := &cobra.Command{Use: "edit <folder|session>", Short: "Browse sessions or edit their settings", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (runErr error) {
+		operation, err := parseEditOperation(show, setDefault, clearDefault, cmd.Flags().Changed("config"), cmd.Flags().Changed("workspace"))
+		if err != nil {
+			return err
 		}
 		direct := *name != "" || environment.IsSessionTarget(args[0])
-		if changeWorkspace && !direct {
-			return fmt.Errorf("--workspace requires --name or a session ID")
-		}
-		if show && !direct {
-			return fmt.Errorf("--show requires --name or an session ID")
-		}
-		if setDefault && !direct {
-			return fmt.Errorf("--default requires --name or an session ID")
-		}
-		if replace && !direct {
-			return fmt.Errorf("--config requires --name or an session ID")
-		}
-		if !show && !setDefault && !clearDefault && !replace && !changeWorkspace && !interactive(cmd) {
-			return fmt.Errorf("editing requires a terminal; use --name NAME with --config to replace selected configs, --show to inspect, or --default to select without prompting")
+		if err := operation.validate(asJSON, *name != "", direct, interactive(cmd)); err != nil {
+			return err
 		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
 		}
-		if changeWorkspace {
+		switch operation {
+		case editWorkspace:
 			r, err := e.SetWorkspace(cmd.Context(), args[0], *name, workspace)
 			if err != nil {
 				return err
@@ -69,20 +42,17 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			if asJSON {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(r)
 			}
-			cmd.Printf("Workspace saved: %s\nRecreate to apply it. A matching old-folder default was cleared.\n%s", displayCell(r.Settings.Workspace), stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.ID)}, e.Store.Home)))
+			cmd.Printf("Workspace saved: %s\nRecreate to apply it. A matching old-folder default was cleared.\n%s", displayCell(r.Settings.Workspace), stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.Directory)}, e.Store.Home)))
 			return nil
-		}
-		if replace {
+		case editConfigs:
 			return replaceSessionConfigs(cmd, e, args[0], *name, references, asJSON)
-		}
-		if clearDefault {
+		case editClearDefault:
 			workspace, err := e.ClearDefault(cmd.Context(), args[0])
 			if err == nil {
 				cmd.Printf("Cleared default session for %s.\n", displayCell(workspace))
 			}
 			return err
-		}
-		if setDefault {
+		case editDefault:
 			r, err := e.Locate(cmd.Context(), args[0], *name)
 			if err != nil {
 				return err
@@ -92,8 +62,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			}
 			cmd.Printf("Default session for %s: %s\n", displayCell(r.Settings.Workspace), r.Settings.LocalName)
 			return nil
-		}
-		if show {
+		case editShow:
 			r, err := e.Locate(cmd.Context(), args[0], *name)
 			if err != nil {
 				return err
@@ -113,7 +82,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			target = r.ID
+			target = r.Directory
 		} else {
 			target, err = environment.CanonicalWorkspace(args[0])
 			if err != nil {

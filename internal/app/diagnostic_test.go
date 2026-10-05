@@ -14,7 +14,7 @@ func TestDiagnoseCollectsBeforeSynchronousDelivery(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			e := Engine{Streams: docker.Streams{Out: &stdout, Err: &stderr}}
 			first := Diagnostic{Code: "existing"}
-			next := Diagnostic{Code: "runtime_deferred", Message: "deferred", Command: []string{"dbx", "stop", "session"}}
+			next := Diagnostic{Code: "apply_plan", Message: "Apply runtime configuration", Target: "session"}
 			result := Result{Diagnostics: []Diagnostic{first}}
 			want := []Diagnostic{first, next}
 			calls := 0

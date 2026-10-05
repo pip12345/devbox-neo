@@ -9,6 +9,7 @@ import (
 )
 
 type RenameResult struct {
+	Session      string `json:"session"`
 	SessionID    string `json:"session_id"`
 	PreviousName string `json:"previous_name"`
 	LocalName    string `json:"local_name"`
@@ -45,7 +46,7 @@ func (e *Engine) Rename(ctx context.Context, target, localName, to string, dryRu
 	if err := e.Store.RequireUnusedBinding(ctx, next, r.Directory); err != nil {
 		return result, err
 	}
-	result = RenameResult{SessionID: r.ID, PreviousName: r.Settings.LocalName, LocalName: to, Workspace: r.Settings.Workspace, DryRun: dryRun}
+	result = RenameResult{Session: r.Directory, SessionID: r.ID, PreviousName: r.Settings.LocalName, LocalName: to, Workspace: r.Settings.Workspace, DryRun: dryRun}
 	if dryRun || r.Settings.LocalName == to {
 		return result, nil
 	}

@@ -16,7 +16,7 @@ import (
 
 func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 	var asJSON bool
-	cmd := &cobra.Command{Use: "status [folder|session-id]", Short: "Show all environments or details and pending changes for one", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "status [folder|session]", Short: "Show all environments or details and pending changes for one", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 && *localName != "" {
 			return fmt.Errorf("--name requires a folder target")
 		}
@@ -26,6 +26,9 @@ func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 		}
 		if len(args) == 0 {
 			report, err := e.StatusAll(cmd.Context(), "")
+			for _, view := range report.Sessions {
+				writeWarnings(cmd.ErrOrStderr(), view.Warnings)
+			}
 			if err != nil {
 				return err
 			}
@@ -34,7 +37,7 @@ func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 			}
 			if len(report.Sessions) == 0 {
 				cmd.Println("No matching saved environments.")
-			} else if err := printStatusList(cmd.OutOrStdout(), report.Sessions); err != nil {
+			} else if err := printStatusList(cmd, cmd.OutOrStdout(), report.Sessions, e.Store.Home); err != nil {
 				return err
 			}
 			if err := printDefaultErrors(cmd.OutOrStdout(), report.DefaultErrors); err != nil {
@@ -43,21 +46,30 @@ func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 			return printUnmatchedContainers(cmd.OutOrStdout(), report.UnmatchedContainers)
 		}
 		details, err := e.Status(cmd.Context(), args[0], *localName)
+		writeWarnings(cmd.ErrOrStderr(), details.Warnings)
 		if err != nil {
 			return err
 		}
 		if asJSON {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(details)
 		}
-		return printStatusDetails(cmd.OutOrStdout(), details, scopedSteps(cmd, []commanderror.Step{commanderror.Next("To apply changes", "recreate", details.Target)}, e.Store.Home))
+		return printStatusDetails(cmd.OutOrStdout(), details, statusRecreateSteps(cmd, details.View, e.Store.Home))
 	}}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Print session details and status, or bulk inventory diagnostics, as JSON")
 	return sessionNameFlag(cmd, localName)
 }
 
+func statusRecreateSteps(cmd *cobra.Command, view app.View, home string) []commanderror.Step {
+	reason := "To apply changes"
+	if !view.Exists {
+		reason = "To rebuild missing runtime"
+	}
+	return scopedSteps(cmd, []commanderror.Step{commanderror.Next(reason, "recreate", view.Target)}, home)
+}
+
 func printStatusDetails(out io.Writer, details app.StatusDetails, steps []commanderror.Step) error {
 	view := details.View
-	if _, err := fmt.Fprintf(out, "%s  %s  %s\n", displayCell(view.Target), containerState(view), displayCell(view.Workspace)); err != nil {
+	if _, err := fmt.Fprintf(out, "%s  %s\n", sessionLabel(view), containerState(view)); err != nil {
 		return err
 	}
 	if view.Pending != nil {
@@ -71,12 +83,21 @@ func printStatusDetails(out io.Writer, details app.StatusDetails, steps []comman
 		fmt.Fprintf(out, "Default selection unavailable: %s\n", displayCell(details.DefaultError))
 	}
 	if details.Record != nil {
-		fmt.Fprintf(out, "Session: %s\nHarness: %s\nImage: %s\nActive commands: %d\n", displayCell(details.SessionID), displayCell(details.Harness), displayCell(details.Record.Applied.ImageID), len(details.Active))
+		fmt.Fprintf(out, "Session: %s\nHarness: %s\nContainer: %s (%s)\nImage: %s\nActive commands: %d\n", displayCell(details.Record.Directory), displayCell(details.Harness), displayCell(view.ContainerName), displayCell(view.ContainerID), displayCell(details.Record.Applied.ImageID), len(details.Active))
+		for _, lease := range details.Active {
+			fmt.Fprintf(out, "  %s — host PID %d, since %s\n", displayCell(lease.Action), lease.Process.PID, exactTime(lease.Created))
+		}
 		lifetime := "automatic (stops after the last attached command)"
 		if details.Record.Settings.ManualStart {
 			lifetime = "until stop (restarts with Docker)"
 		}
 		fmt.Fprintf(out, "Lifetime: %s\n", lifetime)
+	}
+	if view.ImageMissing {
+		fmt.Fprintln(out, "Recorded image missing; existing container access is unaffected. Recreate builds an image only if container replacement needs one.")
+	}
+	if !view.Exists && view.Error == "" && view.Pending == nil {
+		fmt.Fprintln(out, "Container missing; use explicit Recreate to rebuild from current config before accessing it.")
 	}
 	fmt.Fprintf(out, "Changes: %s\n", statusChange(view))
 	if view.ConfigError != "" {
@@ -85,16 +106,13 @@ func printStatusDetails(out io.Writer, details app.StatusDetails, steps []comman
 	for _, change := range view.PendingInputChanges {
 		fmt.Fprintf(out, "  - [%s] %s\n", change.Scope, change)
 	}
+	if view.Error == "" && view.Pending == nil && !view.Exists {
+		_, err := fmt.Fprint(out, stepsText(steps))
+		return err
+	}
 	if view.Error == "" && view.ConfigError == "" && view.Pending == nil {
 		switch view.Desired {
-		case environment.RuntimeSync:
-			for _, change := range view.PendingInputChanges {
-				if change.Field == "managed_config" {
-					fmt.Fprintln(out, "Changes apply on container restart.")
-					break
-				}
-			}
-		case environment.Recreate, environment.RebuildAndRecreate:
+		case environment.RuntimeSync, environment.Recreate, environment.RebuildAndRecreate:
 			_, err := fmt.Fprint(out, stepsText(steps))
 			return err
 		}
@@ -120,12 +138,16 @@ func statusChange(view app.View) string {
 	}
 }
 
-func printStatusList(out io.Writer, views []app.View) error {
+func printStatusList(cmd *cobra.Command, out io.Writer, views []app.View, home string) error {
 	var table bytes.Buffer
 	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tCONTAINER\tCHANGE")
+	fmt.Fprintln(w, "SESSION\tFOLDER\tNAME\tHARNESS\tCONTAINER\tCHANGE")
 	for _, view := range views {
-		fmt.Fprintf(w, "%s\t%s\t%s\n", displayCell(view.Target), containerState(view), statusChange(view))
+		name := view.LocalName
+		if name == "" {
+			name = view.Target
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", displayCell(view.Target), displayCell(view.Workspace), displayCell(name), displayCell(view.Harness), containerState(view), statusChange(view))
 	}
 	if err := w.Flush(); err != nil {
 		return err
@@ -134,8 +156,14 @@ func printStatusList(out io.Writer, views []app.View) error {
 		return err
 	}
 	for _, view := range views {
+		if view.ImageMissing {
+			fmt.Fprintf(out, "%s: recorded image missing; existing container access is unaffected. Recreate builds an image only if container replacement needs one.\n", sessionLabel(view))
+		}
+		if !view.Exists && view.Error == "" && view.Pending == nil {
+			fmt.Fprintf(out, "%s: container missing; use explicit Recreate to rebuild from current config before accessing it.\n", sessionLabel(view))
+		}
 		if len(view.PendingInputChanges) > 0 {
-			if _, err := fmt.Fprintf(out, "%s:\n", displayCell(view.Target)); err != nil {
+			if _, err := fmt.Fprintf(out, "%s:\n", sessionLabel(view)); err != nil {
 				return err
 			}
 			for _, inputChange := range view.PendingInputChanges {
@@ -145,12 +173,12 @@ func printStatusList(out io.Writer, views []app.View) error {
 			}
 		}
 		if view.ConfigError != "" {
-			if _, err := fmt.Fprintf(out, "! %s: desired configuration: %s\n", displayCell(view.Target), displayCell(view.ConfigError)); err != nil {
+			if _, err := fmt.Fprintf(out, "! %s: desired configuration: %s\n", sessionLabel(view), displayCell(view.ConfigError)); err != nil {
 				return err
 			}
 		}
-		if view.Error == "" && view.ConfigError == "" && view.Pending == nil && (view.Desired == environment.Recreate || view.Desired == environment.RebuildAndRecreate) {
-			if _, err := fmt.Fprintf(out, "  dbx recreate %s\n", displayCell(view.Target)); err != nil {
+		if view.Error == "" && view.Pending == nil && (!view.Exists || (view.ConfigError == "" && (view.Desired == environment.RuntimeSync || view.Desired == environment.Recreate || view.Desired == environment.RebuildAndRecreate))) {
+			if _, err := fmt.Fprint(out, stepsText(statusRecreateSteps(cmd, view, home))); err != nil {
 				return err
 			}
 		}

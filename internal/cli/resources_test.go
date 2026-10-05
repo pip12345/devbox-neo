@@ -103,7 +103,7 @@ func TestConfigDeleteRefusesDesiredAndCommittedSessionSources(t *testing.T) {
 			t.Fatal("deleted a config used by a session", phase, err)
 		}
 		if phase == "selected" {
-			shown, err := e.Store.Find(ctx, name, nil)
+			shown, err := e.Locate(ctx, name, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -135,7 +135,7 @@ func TestConfigDeleteProtectsNestedSources(t *testing.T) {
 			if _, err := service.CreateConfig(ctx, owner, resource.SetupOptions{Harness: harnessSetting("pi")}); err != nil {
 				t.Fatal(err)
 			}
-			shown, err := e.Store.Find(ctx, name, nil)
+			shown, err := e.Locate(ctx, name, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -144,12 +144,12 @@ func TestConfigDeleteProtectsNestedSources(t *testing.T) {
 				t.Fatal(err)
 			}
 			if phase != "desired" {
-				if _, err := e.Recreate(ctx, q, false); err != nil {
+				if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if phase == "committed" {
-				shown, err = e.Store.Find(ctx, name, nil)
+				shown, err = e.Locate(ctx, name, "")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -224,7 +224,7 @@ func TestConfigUsageReportsEveryDesiredAndCommittedSession(t *testing.T) {
 		}
 		uses[user.Session] = user
 	}
-	if !uses[first].Desired || !uses[first].Committed || uses[second.SessionID].Desired || !uses[second.SessionID].Committed || !uses[third.SessionID].Desired || uses[third.SessionID].Committed {
+	if !uses[first].Desired || !uses[first].Committed || uses[second.Session].Desired || !uses[second.Session].Committed || !uses[third.Session].Desired || uses[third.Session].Committed {
 		t.Fatal("incomplete usage report", uses)
 	}
 	output, err := resourceCLI(t, e.Store.Home, "config", "delete", "base", "--force")

@@ -45,8 +45,9 @@ func (e *Engine) attachRun(l *store.Locked, r store.Record, action string, run f
 		lock, cleanupErr := e.Store.Lock(cleanup, r.Directory, r.ID)
 		if cleanupErr == nil {
 			defer lock.Close()
-			cleanupErr = lock.Release(lease.ID)
-			if cleanupErr == nil {
+			var released bool
+			released, cleanupErr = lock.Release(lease.ID)
+			if cleanupErr == nil && released {
 				current, touchErr := lock.Touch(r.ID, action)
 				active, aerr := lock.Active()
 				cleanupErr = errors.Join(touchErr, aerr)

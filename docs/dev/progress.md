@@ -1,12 +1,62 @@
 # Implementation progress
 
-The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). Legacy chats remain in old Devbox; the standalone migration tool has been removed. Earlier milestone entries below are historical delivery records, not current build instructions.
+The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). Legacy chats remain in old Devbox; the legacy Devbox import tool has been removed. Earlier milestone entries below are historical delivery records, not current build instructions.
 
-Executable and readable resource rename implemented: the built command is `dbx`, generated completion targets only `dbx`, and newly allocated session/container names use the `dbx-` prefix. The existing `~/.devbox-neo` home and `devbox-rewrite.*` Docker ownership namespace remain unchanged; no compatibility executable, alias, state migration, or automatic adoption was added. `make test-fast`, `make build`, and a direct `dbx version`/help smoke check pass; live Docker and manual terminal acceptance remain unrun.
+The executable and completion target are `dbx`; the home remains `~/.devbox-neo`. New session/container allocations include workspace hints, and image tags/ownership labels use the `dbx` namespace. Schema-6 development state requires agreement through the blocking migration gate described below; there is no automatic adoption or legacy Devbox importer.
 
-Session structure refactor implemented: schema 6 separates settings/applied runtime, with ID-based lookup/locks/leases, independent resource names, metadata-only rename, and explicit workspace edits. `make test-fast`, affected-package race tests, both builds, vet, and integration compilation pass; live Docker/manual acceptance remain unrun. No migration or automatic reset.
+The initial session-structure refactor delivered schema 6 with ID-based lookup/locks/leases, independent resource names, metadata-only rename and explicit workspace edits. Its validation passed without a migration/reset path at that stage. The current schema-7 cutover and validation are recorded below.
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
+
+## Explicit operation contracts — implemented, live acceptance pending
+
+- Selection now returns ordered resource snapshots instead of mutating parallel maps through copied options. Interactive deletion retains captured identities and incomplete-directory snapshots; locks, leases, ownership and phase rechecks remain shared.
+- Creation, access, resolution and recreation have separate request types. Compiler repair guidance uses readable session targets rather than ownership IDs; records and journal formats are unchanged, with no compatibility aliases or migration.
+- Creation reports confirmed saving independently of later errors. Shared resolution returns warnings; execution and CLI/menu presentation explicitly deliver them without changing JSON data. `edit` parses one operation before validating its requirements and dispatching it.
+- Full fast-suite equivalent, vet, CLI build/help checks and integration compilation pass using `.tools/go` (`make` is unavailable). Captured-selection, creation-outcome, warning-channel, edit-operation and lifecycle/terminal regressions pass five repeated runs. Confirmation screens retain queued warnings before approval. Live Docker and manual host-terminal acceptance remain unrun; race checks are unavailable without a C compiler/CGO.
+
+## Stable OpenCode and high-UID image builds — implemented, live acceptance pending
+
+- OpenCode installs the latest stable v2 through the official `https://opencode.ai/v2/install` endpoint instead of compiling a pinned development commit. The released v2.0.23 binary passes isolated synthetic-auth import/export checks with the unchanged shared-auth wrapper; Node.js remains installed. Existing sessions adopt the image changes only through explicit recreation.
+- Image preparation uses `useradd --no-log-init` to avoid UID-indexed sparse login logs that Docker layers can expand into huge files. Regression coverage checks ordinary/high UIDs, both image build modes, and fingerprint invalidation. Installer regressions check native/wrapper publication and download/installer failure propagation.
+- Fixed the separately approved transfer-migration failure by sorting the complete endpoint directory set before `Store.LockAll`. A deterministic interleaved-endpoint regression fails before the fix and passes afterward; transfer identity, commitment, and idle checks remain unchanged.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable), including native released-binary auth checks. Transfer-migration regressions pass five repeated runs; affected-package vet, CLI build, formatting, and diff checks pass. The upstream installer download was verified in a temporary home. Live Docker image builds/high-UID layer handling, real OAuth refresh, and manual host acceptance remain unrun.
+
+## Readable targets and attachment recovery — implemented, live acceptance pending
+
+- Public session targets use exact storage directory names or folders with their existing default/name selection. Help, completion, listings, receipts, config usage and transfer recovery use directory names; internal IDs still own locks and Docker associations. Saved formats are unchanged, with no migration or public hash aliases.
+- Ordinary access validates attachment state without demanding idleness. Last-attachment automatic shutdown and explicit keep-running intent are retained. Busy errors and detailed status show command action, host PID and start time.
+- Explicit `recreate --force` always replaces the verified runtime and permits interruption. The creation owner retires old leases only after runtime removal/confirmed absence. Late cleanup cannot affect the replacement; interrupted automatic sessions finish stopped. CLI and menu share the same service.
+- Full fast-suite equivalent, vet and CLI build/help checks pass using `.tools/go` (`make` is unavailable). Regression coverage includes stopped access with live attachments, automatic/manual shutdown, forced replacement and delayed cleanup, pre-removal failures, directory targeting, public ID rejection and transfer recovery. Live Docker, host-terminal acceptance and race checks remain unrun; this container has no C compiler.
+
+## Contextual menus, compact layout, and local hotkeys — implemented, host acceptance pending
+
+- The browser previews the highlighted object's shared menu actions without running handlers. Enter/Right opens its workflow; browser-wide commands remain separate under `b` Browser actions, with existing `n`/`a`/`r` shortcuts retained.
+- Session menus use compact harness/state/lifetime context and Use/Inspect/Container/Manage gutter groups separated by blank rows. Labels share one style regardless of navigation depth; only destructive actions retain red warning text. Shortcuts use a compact adjacent column, and Start keeps its lifetime explanation in help rather than its label. No menu-depth colors, font changes, or text markers remain; unused classification metadata and styling helpers were removed. Frequent session keys are `c`/`o`/`s`/`r`/`i`/`l`/`e`; Recreate's local `r` retains the existing confirmation.
+- Page keys move a visible page through lists or scroll read-only views; Home/End jump to endpoints. Ctrl+Page keys preserve independent long-detail scrolling. Snapshot, rendering, keyboard, and fake-Docker PTY regressions pass, including five repeated hotkey/current-folder/creation workflows and color/no-color layouts from 48×20 to 160×44. Updated the inventory and affected navigation docs.
+- Uniform-action styling passes the exact `make test-fast` Go command, affected-package vet, CLI build, and diff checks using `.tools/go` (`make` is unavailable). Category spacing shares its row plan with paging; regressions cover separator dispatch, filtered cursors, identical non-destructive action styles/no depth hints, nearby aligned shortcuts, and color/no-color layouts through 200×48. Race checks, live Docker, and manual host-terminal acceptance remain unrun.
+
+## Graphical UI scouting inventory — documented
+
+- Added [tui-inventory.md](tui-inventory.md): current graphical screens, schematic ASCII layouts, complete option/control lists, conditional states, entry points, and per-workflow keystroke/return routes. This is source/test-derived scouting, not an approved redesign or a UI change.
+- Screen call sites, conditional controls, document anchors, and source/test references checked. The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable), including embedded-documentation checks. No live Docker or manual terminal walkthrough was run.
+
+## OpenCode auth-wrapper hangup — implemented, live acceptance pending
+
+- The image-owned auth wrapper now handles SIGHUP alongside SIGINT/SIGTERM and shields credential publication from repeated hangup. Auth timeouts keep subprocesses in the terminal's process group so they receive hangup rather than delaying cleanup until timeout. Process-group regressions cover prompt exit during initial auth export and foreground use, preserving shared credentials and releasing the store lock for reopening.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable). Live Docker, real OpenCode backend shutdown, and manual terminal-close acceptance remain unrun. Existing images need explicit image recreation to adopt the wrapper; the reported first-start `sessionID` error remains undiagnosed.
+
+## Terminal hangup cleanup — implemented, live acceptance pending
+
+- SIGHUP cancels the whole command so normal attachment cleanup releases leases and stops the last automatically started session. Explicit manual-start intent and foreground Ctrl-C routing remain unchanged.
+- Subprocess signal regressions cover direct and foreground-operation attachments with automatic and manual lifetimes. The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable); hangup and foreground Ctrl-C regressions also pass five repeated runs. Live Docker and manual terminal-close acceptance remain unrun.
+
+## Explicit config application and transfer recovery — implemented, live acceptance pending
+
+- Access uses recorded runtime without resolving desired config or synchronizing managed files. Applied before-open scripts live in the container; missing copies require explicit application, while Shell/Exec remain available. Session schema 7 is unchanged.
+- Recreate applies runtime-only changes in place, replaces containers only when needed or requested with `--container`, and retains `--image` for forced uncached builds. Plans precede mutation; running intent, ownership and idle checks remain shared across CLI/menu/bulk paths.
+- Uncommitted transfers retry with current config or support explicit Abort; committed transfers remain cleanup-only. The consent gate converts preceding transfer journals without touching runtime/history. Corrupt-journal errors identify the blocking file; no automatic discard or generic repair was added.
+- Corrected validation tests that previously stopped at missing-session lookup and added access/application/abort/migration coverage. User docs retain actions, syntax and warnings; implementation and upgrade details stay in contributor docs. The full fast-suite equivalent, vet, integration compilation, CLI build/help and documentation links pass. No migration has run against user state. Live Docker and manual terminal acceptance remain unrun; race checks require a C compiler.
 
 ## Harness install files and OpenCode auth — implemented, live acceptance pending
 
@@ -18,6 +68,29 @@ Local config discovery and CLI/menu rename implemented. Local discovery filters 
 
 - Each harness defaults/config source tree reports at most ten skipped-entry example paths plus a count of the rest. Regular-file copying and symlink/special-entry skipping are unchanged; no dependency-directory exclusions were added.
 - Regression coverage checks zero warnings, the limit, overflow counts, independent source limits, and unchanged regular-file copying. The `make test-fast` equivalent passes using `.tools/go/bin/go` (`make` is unavailable), and `git diff --check` passes. Live Docker and manual host-terminal acceptance remain unrun.
+
+## Interrupted creation cleanup — implemented, live acceptance pending
+
+- CLI and menu deletion support explicit cleanup of incomplete-creation files; images remain retained.
+- Fast-suite equivalent and CLI build pass (`make` unavailable). Race checks unavailable without CGO/a C compiler; live Docker and host-terminal acceptance remain unrun.
+
+## Folder defaults and opt-in creation selection — implemented, live acceptance pending
+
+- Defaults use one `state/folder-defaults.json`; clearing/deleting removes the matching selection. The migration gate preserves existing choices without changing containers or history. No migration has run against user state.
+- Create session offers an unchecked Make folder default option, mirrored by `create --default`, and identifies the current choice it would replace. Failed builds leave defaults unchanged; a later selection failure retains the created session with repair guidance. No automatic first-session or survivor selection was added.
+- Updated the creation guide, command/storage references and contributor contracts. Fast-suite package runs and affected regressions, vet and integration compilation pass. Coverage includes concurrent default changes, opt-in selection, cancellation/partial creation, terminal presentation and migration preservation/retries. Live Docker and manual terminal acceptance remain unrun; race checks require a C compiler.
+
+## Readable sessions and disposable runtime — implemented, live acceptance pending
+
+Delivered the approved [first-phase plan](applied-config-snapshot-plan.md):
+
+- Only explicit Recreate replaces missing runtime, using current configs while retaining session identity, history, defaults and keep-running intent. Healthy-container config application is unchanged. Missing history stores block startup and transfers; committed retries never recopy source state.
+- Resource names include folder hints; status and completion identify workspace/name. Compact applied comparisons retain change reasons, and status gives exact recreate guidance for missing containers.
+- Managed configs and defaults exclude nested `.git` metadata. Installation files and Docker build contexts keep their existing rules.
+- Schema 6 → 7 migration requires agreement before continuing. Saved data remains; container-local files/tools are lost. Interrupted allocations remain available for explicit cleanup. No migration has run against user state.
+- User docs cover recreation, migration consequences and managed-file exclusions; implementation contracts remain in architecture. Deferred work is listed in the plan.
+
+Validation: full `make test-fast` equivalent, regression checks, vet, CLI build/smoke checks, integration compilation and diff checks pass using `.tools/go` (`make` is unavailable). Live Docker and manual terminal acceptance remain unrun; race checks require a C compiler.
 
 ## Unix socket bind mounts — implemented, validation pending
 

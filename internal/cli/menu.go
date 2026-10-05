@@ -38,6 +38,12 @@ func writeMenuTitle(out io.Writer, title string) error { return cliui.Title(out,
 func writeMenuHint(out io.Writer, text string) error   { return cliui.Hint(out, text) }
 func menuPrefix(n int) string                          { return cliui.Prefix(n) }
 
+func (m menu) warnings(warnings []string) {
+	for _, warning := range warnings {
+		m.Notice("Warning: " + displayCell(warning))
+	}
+}
+
 const menuChoicePrompt = cliui.ChoicePrompt
 
 // Domain failures can be retried only while the command itself is alive.

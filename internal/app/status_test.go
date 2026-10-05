@@ -50,11 +50,7 @@ func TestStatusDefaultMatchesSavedNameAndID(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := sessionRecord(t, e, made.SessionID)
-	key, err := store.WorkspaceKey(r.Settings.Workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(e.Store.Home, "state/workspaces", key+".json")
+	path := filepath.Join(e.Store.Home, "state/folder-defaults.json")
 	check := func(want bool) {
 		t.Helper()
 		for _, target := range []struct{ path, name string }{{made.SessionID, ""}, {q.Workspace, q.LocalName}} {
@@ -80,7 +76,7 @@ func TestStatusDefaultMatchesSavedNameAndID(t *testing.T) {
 		{ID: strings.Repeat("a", 32)},
 		{ID: strings.Repeat("b", 32)},
 	} {
-		data, err := json.Marshal(map[string]any{"version": 2, "workspace": q.Workspace, "default_session": selected})
+		data, err := json.Marshal(store.FolderDefaults{Version: 1, Defaults: map[string]string{q.Workspace: selected.ID}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -146,7 +142,7 @@ func TestStatusAllLeavesPendingTransfersUnclassified(t *testing.T) {
 		t.Fatal(err)
 	}
 	destination.Name = environment.ResourceName(destination.Workspace, destination.LocalName, "destination")
-	journal := store.Transfer{Version: 3, ContainerName: environment.ResourceName(destination.Workspace, destination.LocalName, "container"), SourceContainerID: source.Applied.SetupContainer, ID: strings.Repeat("a", 32), Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: destination, SourceID: source.ID, DestinationID: strings.Repeat("b", 32), Started: time.Now().UTC(), Desired: source.Applied.Fingerprints}
+	journal := store.Transfer{Version: 4, ContainerName: environment.ResourceName(destination.Workspace, destination.LocalName, "container"), SourceContainerID: source.Applied.SetupContainer, ID: strings.Repeat("a", 32), Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: destination, SourceID: source.ID, DestinationID: strings.Repeat("b", 32), Started: time.Now().UTC()}
 	if err := journal.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +164,7 @@ func TestStatusAllLeavesPendingTransfersUnclassified(t *testing.T) {
 		if err != nil || details.Pending == nil || details.Desired != "" || details.ConfigError != "" {
 			t.Fatal("single status resolved a pending endpoint", details, err)
 		}
-		if (details.Record != nil) != (view.Target == source.ID) {
+		if (details.Record != nil) != (view.Target == source.Directory) {
 			t.Fatal("incorrect record for pending endpoint", details)
 		}
 	}
@@ -193,7 +189,7 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 		if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 			t.Fatal(err)
 		}
-		names[profile] = result.SessionID
+		names[profile] = result.Session
 		records[profile] = sessionRecord(t, e, result.SessionID)
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/runtime/before-open.sh"), "echo updated")
@@ -233,7 +229,7 @@ func TestStatusAllClassifiesEachContainerWithoutMutations(t *testing.T) {
 		t.Fatal("wrong environment scope or missing unmatched warning", report, err)
 	}
 	calls := d.History()[before:]
-	if len(calls) != 2 || !reflect.DeepEqual(calls[0][:2], []string{"container", "ls"}) || !reflect.DeepEqual(calls[1][:2], []string{"container", "inspect"}) {
+	if len(calls) != 3 || !reflect.DeepEqual(calls[0][:2], []string{"container", "ls"}) || !reflect.DeepEqual(calls[1][:2], []string{"container", "inspect"}) || !reflect.DeepEqual(calls[2][:2], []string{"image", "ls"}) {
 		t.Fatal("status did more than batched Docker inventory", calls)
 	}
 	byName := map[string]View{}

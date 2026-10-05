@@ -42,7 +42,7 @@ func TestRecreateUsesRecordedExplicitSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: &dockertest.Daemon{}}, UID: 1000, GID: 1000}
-	made, err := engine.Create(ctx, app.Request{Workspace: workspace, LocalName: "test", Sources: append(testConfigSources(engine.Store.Home, "test"), config.Reference{Label: "overlay", Kind: config.ReferenceFixed, Path: projectDir})})
+	made, err := engine.Create(ctx, app.CreateRequest{Workspace: workspace, LocalName: "test", Sources: append(testConfigSources(engine.Store.Home, "test"), config.Reference{Label: "overlay", Kind: config.ReferenceFixed, Path: projectDir})})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestRecreateUsesRecordedExplicitSources(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{made.SessionID})
+	cmd.SetArgs([]string{before.Directory})
 	if err = cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}

@@ -218,24 +218,33 @@ func (r *Runner) terminalChoice(page Screen, actions []Action, cursor int, itemK
 	notices := strings.Join(r.notices, "\n")
 	r.notices = nil
 	canTab := page.OnTab != nil
-	page.Actions = slices.Clone(actions)
+	page.Actions = snapshotActions(actions)
 	page.Fields = snapshotFields(page.Fields)
+	page.Summary = snapshotFields(page.Summary)
 	page.Body = nil
 	page.Rows = nil
 	page.OnTab = nil
-	for i := range page.Actions {
-		a := &page.Actions[i]
-		a.Run = nil
-		a.Fields = snapshotFields(a.Fields)
-		if a.Checked != nil {
-			value := *a.Checked
-			a.Checked = &value
-		}
-	}
 	page.Collection = snapshotCollection(page.Collection)
 	page.Navigation = snapshotNavigation(page.Navigation)
 	return r.screen.present(&screenRequest{page: page, body: body, notice: notices, cursor: cursor, itemKey: itemKey, query: query, canTab: canTab})
 }
+func snapshotActions(actions []Action) []Action {
+	result := make([]Action, 0, len(actions))
+	for _, action := range actions {
+		if action.Hidden {
+			continue
+		}
+		action.Run = nil
+		action.Fields = snapshotFields(action.Fields)
+		if action.Checked != nil {
+			value := *action.Checked
+			action.Checked = &value
+		}
+		result = append(result, action)
+	}
+	return result
+}
+
 func snapshotFields(fields []Field) []Field {
 	fields = slices.Clone(fields)
 	for i := range fields {
@@ -260,6 +269,8 @@ func snapshotCollection(c *Collection) *Collection {
 	for i := range snapshot.Items {
 		snapshot.Items[i].Open = nil
 		snapshot.Items[i].Fields = snapshotFields(snapshot.Items[i].Fields)
+		snapshot.Items[i].Summary = snapshotFields(snapshot.Items[i].Summary)
+		snapshot.Items[i].Actions = snapshotActions(snapshot.Items[i].Actions)
 	}
 	return &snapshot
 }
@@ -272,7 +283,9 @@ func (r *Runner) terminalText(request TextRequest) (string, bool, error) {
 	return reply.value, !reply.back && err == nil, err
 }
 func (r *Runner) terminalConfirm(prompt string) (bool, error) {
-	reply, err := r.screen.present(&screenRequest{page: Screen{Title: "Confirm action", Back: "Cancel", Actions: []Action{{Label: "No — keep unchanged"}, {Label: "Yes — proceed", Danger: true}}}, body: ansi.Strip(r.screen.take()), prompt: prompt, confirm: true})
+	notice := strings.Join(r.notices, "\n")
+	r.notices = nil
+	reply, err := r.screen.present(&screenRequest{page: Screen{Title: "Confirm action", Back: "Cancel", Actions: []Action{{Label: "No — keep unchanged"}, {Label: "Yes — proceed", Danger: true}}}, body: ansi.Strip(r.screen.take()), notice: notice, prompt: prompt, confirm: true})
 	if err != nil {
 		pauseErr := r.Pause()
 		if pauseErr == nil {

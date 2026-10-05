@@ -61,7 +61,7 @@ func TestNativeFirstCreationAndSessionDefaultMenu(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := created.ID
+	name := created.Directory
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
 	if err != nil || selected != nil {
 		t.Fatal("creation selected a default", selected, err)
@@ -73,7 +73,7 @@ func TestNativeFirstCreationAndSessionDefaultMenu(t *testing.T) {
 	p.send("/Make folder\r\r")
 	p.wait("Clear folder default")
 	selected, err = e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected == nil || selected.ID != name {
+	if err != nil || selected == nil || selected.ID != created.ID {
 		t.Fatal("session menu did not set default", selected, err)
 	}
 	p.send("\r")
@@ -83,7 +83,7 @@ func TestNativeFirstCreationAndSessionDefaultMenu(t *testing.T) {
 		t.Fatal("same menu did not clear default", selected, err)
 	}
 	p.send("q")
-	p.wait("Application actions")
+	p.wait("Browser actions")
 	p.send("q")
 	p.finish(done)
 }

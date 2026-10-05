@@ -2,6 +2,7 @@ package environment
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -253,6 +254,34 @@ func TestMountParentCommandRejectsUnwritableImageParents(t *testing.T) {
 		t.Fatal("existing parent permissions were changed", err)
 	}
 }
+func TestPreparedUserSkipsLoginLogsForHostIDs(t *testing.T) {
+	h, err := harness.Load(t.TempDir(), "pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(t.TempDir(), "Dockerfile")
+	putBuild(t, source, "FROM debian:bookworm-slim\n")
+	for _, uid := range []int{1234, 2_000_000_000} {
+		t.Run(fmt.Sprint(uid), func(t *testing.T) {
+			for _, sources := range [][]string{nil, {source}} {
+				plan, err := PlanImage(sources, "debian:bookworm-slim", h, uid, 5678)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := fmt.Sprintf("useradd --no-log-init -m -s /bin/bash -u %d -g 5678 devuser", uid)
+				if !strings.Contains(string(plan.Prepared), want) {
+					t.Fatal("host UID creation must not initialize sparse login logs", string(plan.Prepared))
+				}
+				before := plan.inputs(h, "test").fingerprint()
+				plan.Prepared = []byte(strings.Replace(string(plan.Prepared), "--no-log-init ", "", 1))
+				if before == plan.inputs(h, "test").fingerprint() {
+					t.Fatal("login-log initialization changes must invalidate the image fingerprint")
+				}
+			}
+		})
+	}
+}
+
 func TestRuntimeLayerHonorsHostIDs(t *testing.T) {
 	h, _ := harness.Load(t.TempDir(), "opencode")
 	plan, err := PlanImage(nil, "debian:bookworm-slim", h, 1234, 5678)

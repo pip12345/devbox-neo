@@ -166,6 +166,9 @@ func (l *Locked) Save(record Record) error {
 	if record.Directory != l.Name || record.ID != l.ID {
 		return fmt.Errorf("record belongs to a different storage directory")
 	}
+	// Raw --env assignments are execution inputs, not durable state. Rebuilds
+	// resolve them afresh; the comparison form preserves argument order.
+	record.Applied.Creation.RawArgs = record.Applied.Inputs.Container.RawArgs
 	if err := record.Validate(l.Name); err != nil {
 		return err
 	}

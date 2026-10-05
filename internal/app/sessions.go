@@ -21,8 +21,14 @@ type StatusDetails struct {
 
 func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDetails, error) {
 	r, err := e.Locate(ctx, target, localName)
-	if errors.Is(err, os.ErrNotExist) && environment.IsSessionTarget(target) {
-		pending, pendingErr := e.Store.PendingID(target)
+	if errors.Is(err, os.ErrNotExist) && (environment.IsSessionTarget(target) || environment.IsSessionID(target)) {
+		var pending *store.Reservation
+		var pendingErr error
+		if environment.IsSessionTarget(target) {
+			pending, pendingErr = e.Store.Pending(target)
+		} else {
+			pending, pendingErr = e.Store.PendingID(target)
+		}
 		if pendingErr != nil {
 			return StatusDetails{}, pendingErr
 		}
@@ -71,13 +77,18 @@ func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDe
 	}
 	view.Pending = pending
 	if pending == nil {
+		available, imageErr := e.Docker.ImageAvailable(ctx, r.Applied.ImageID)
+		if imageErr != nil {
+			return StatusDetails{}, imageErr
+		}
+		view.ImageMissing = !available
 		e.desiredStatus(&view, r)
 	}
 	details := StatusDetails{View: view, Record: &r, Active: leases}
 	selected, defaultErr := e.Store.ReadDefault(ctx, r.Settings.Workspace)
 	if defaultErr != nil {
 		if errors.Is(defaultErr, context.Canceled) || errors.Is(defaultErr, context.DeadlineExceeded) {
-			return StatusDetails{}, defaultErr
+			return details, defaultErr
 		}
 		// Default metadata must not hide an explicitly selected session's
 		// saved details, container state, or configuration diagnostics.
@@ -109,8 +120,8 @@ func (e *Engine) planSessionDeletion(ctx context.Context, locks []*store.Locked,
 			return nil, err
 		}
 		if exists && !removingContainers {
-			return nil, commanderror.New("container_present", "Delete the container before deleting its session.", r.ID, nil,
-				commanderror.Next("Delete container", "delete", r.ID, "--container"))
+			return nil, commanderror.New("container_present", "Delete the container before deleting its session.", r.Directory, nil,
+				commanderror.Next("Delete container", "delete", r.Directory, "--container"))
 		}
 		image, tagged, err := e.Docker.TaggedImage(ctx, r.Applied.ImageTag)
 		if err != nil {
@@ -139,14 +150,14 @@ func (e *Engine) removeSessionState(ctx context.Context, planned []sessionRemova
 			if err := removeSavedSession(ctx, item.lock, item.record.Settings.Workspace, item.record.ID); err != nil {
 				return removed, err
 			}
-			removed = append(removed, item.record.ID)
+			removed = append(removed, item.record.Directory)
 			if item.tagged {
 				if err := e.Docker.Untag(ctx, item.record.Applied.ImageTag, item.record.Applied.ImageID, e.Store.Installation); err != nil {
 					return removed, fmt.Errorf("session state removed but image-tag cleanup failed: %w", err)
 				}
 			}
 		} else {
-			removed = append(removed, item.record.ID)
+			removed = append(removed, item.record.Directory)
 		}
 	}
 	return removed, nil

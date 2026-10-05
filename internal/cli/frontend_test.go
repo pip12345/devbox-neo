@@ -17,7 +17,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func frontendFixture(t *testing.T, input io.Reader) (*frontend, *bytes.Buffer, app.Request, string) {
+func frontendFixture(t *testing.T, input io.Reader) (*frontend, *bytes.Buffer, app.CreateRequest, string) {
 	t.Helper()
 	e, q, name := namedCLIFixture(t)
 	out := new(bytes.Buffer)
@@ -59,7 +59,7 @@ func TestSessionBrowserDispatchesRealLifetimeOperations(t *testing.T) {
 		if step != 1 && step != 3 {
 			return
 		}
-		r, err := f.e.Store.Find(context.Background(), name, nil)
+		r, err := f.e.Locate(context.Background(), name, "")
 		if err != nil || r.Settings.ManualStart != (step == 1) {
 			t.Fatal("UI did not persist actual lifetime intent", step, r.Settings.ManualStart, err)
 		}
@@ -67,7 +67,7 @@ func TestSessionBrowserDispatchesRealLifetimeOperations(t *testing.T) {
 	if err := f.session(app.View{Target: name}); err != nil {
 		t.Fatal(err, out.String())
 	}
-	r, err := f.e.Store.Find(context.Background(), name, nil)
+	r, err := f.e.Locate(context.Background(), name, "")
 	if err != nil || r.Settings.ManualStart || r.Action != "stop" {
 		t.Fatal(r, err)
 	}
@@ -90,7 +90,7 @@ func TestFrontendCopyAndMoveUseDurableTransfer(t *testing.T) {
 		}
 		input += "4\n0\n5\ny\n"
 		f, out, q, name := frontendFixture(t, strings.NewReader(input))
-		before, err := f.e.Store.Find(context.Background(), name, nil)
+		before, err := f.e.Locate(context.Background(), name, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -113,14 +113,14 @@ func TestFrontendCopyAndMoveUseDurableTransfer(t *testing.T) {
 }
 func TestFrontendDeletionRetainsHistoryWhenDeclined(t *testing.T) {
 	f, out, _, name := frontendFixture(t, strings.NewReader("1\n2\n4\ny\nn\n"))
-	before, err := f.e.Store.Find(context.Background(), name, nil)
+	before, err := f.e.Locate(context.Background(), name, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := f.delete([]string{name}); err != nil {
 		t.Fatal(err, out.String())
 	}
-	after, err := f.e.Store.Find(context.Background(), name, nil)
+	after, err := f.e.Locate(context.Background(), name, "")
 	if err != nil || before.ID != after.ID {
 		t.Fatal("declined history deletion removed state", err)
 	}

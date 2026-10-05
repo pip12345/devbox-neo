@@ -79,6 +79,15 @@ func (e *Engine) buildStage(ctx context.Context, stage environment.ImageStage, t
 }
 
 func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force bool) (image docker.Image, err error) {
+	occupant, exists, err := e.Docker.TaggedImage(ctx, environment.ImageTag(s.Identity.Workspace, s.Identity.LocalName, id))
+	if err != nil {
+		return image, err
+	}
+	if exists {
+		if err = occupant.Verify(e.Store.Installation); err != nil {
+			return image, err
+		}
+	}
 	type temporary struct{ tag, id string }
 	var intermediates []temporary
 	defer func() {
@@ -92,7 +101,7 @@ func (e *Engine) build(ctx context.Context, s environment.Spec, id string, force
 	ref := ""
 	var previous docker.Image
 	build := func(stage environment.ImageStage, final, verifyParent bool) (docker.Image, error) {
-		tag := docker.Namespace + "/session:" + id
+		tag := environment.ImageTag(s.Identity.Workspace, s.Identity.LocalName, id)
 		if !final {
 			nonce, err := fsutil.ID()
 			if err != nil {

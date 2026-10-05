@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"devbox/internal/commanderror"
 	"devbox/internal/docker"
-	"devbox/internal/filesync"
 	"devbox/internal/store"
 )
 
@@ -23,15 +21,15 @@ func creationRequired(workspace, localName string, cause error) error {
 		commanderror.Next("Create a session", "create", workspace))
 }
 
-// Open keeps the operation lock through stopped-only synchronization, startup,
-// and lease creation. The long foreground command runs after releasing it.
-func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error) {
+// Open keeps the operation lock through recorded startup and lease creation.
+// The long foreground command runs after releasing it.
+func (e *Engine) Open(ctx context.Context, q OpenRequest) (result Result, err error) {
 	invocationArgs := append([]string(nil), q.HarnessArgs...)
-	r, err := e.Locate(ctx, q.Workspace, q.LocalName)
+	r, err := e.Locate(ctx, q.Target, q.LocalName)
 	if err != nil {
 		return result, err
 	}
-	result.SessionID = r.ID
+	result.Session, result.SessionID = r.Directory, r.ID
 	if _, err = store.ProcessIdentity(os.Getpid()); err != nil {
 		return result, err
 	}
@@ -44,16 +42,6 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 	if err != nil {
 		return result, err
 	}
-	q.Workspace, q.LocalName, q.SessionID, q.Sources = record.Settings.Workspace, record.Settings.LocalName, record.ID, record.Settings.Sources
-	// Desired references are loaded and resolved under the operation lock.
-	// Otherwise a concurrent source edit could be overwritten by this open.
-	spec, err := e.resolveSpec(q)
-	if err != nil {
-		e.resolutionWarnings(spec)
-		return result, err
-	}
-	e.creationDrift(&result, record, spec)
-	e.resolutionWarnings(spec)
 	var c docker.Container
 	started := false
 	defer func() {
@@ -66,34 +54,14 @@ func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error)
 	if err != nil {
 		return result, err
 	}
-	wasRunning := exists && c.State.Running
-	c, started, err = e.startAccess(ctx, lock, c, exists, &record, &spec, &result)
-	if err == nil && wasRunning {
-		compatible := record.Applied.Definition.Hash == spec.Harness.Hash
-		if compatible && record.Applied.Fingerprints.Runtime != spec.Fingerprints.Runtime {
-			manifest, pathErr := lock.Path(filepath.Join("harnesses", record.Applied.Definition.Name, "managed-config.json"))
-			if pathErr != nil {
-				return result, pathErr
-			}
-			current, checkErr := filesync.Current(manifest, spec.Files, spec.Harness.Definition.Merge)
-			if checkErr != nil {
-				return result, checkErr
-			}
-			if current {
-				record.ApplyRuntime(spec.Inputs.Runtime)
-			} else {
-				e.diagnose(&result, Diagnostic{Code: "runtime_deferred", Message: "managed configuration is deferred while running; it will apply at the next startup", Command: []string{"dbx", "stop", record.ID}})
-			}
-		}
-		applyLaunch(&record, spec)
-	}
+	c, started, err = e.startAccess(ctx, lock, c, exists, record)
 	if err != nil {
 		return result, err
 	}
-	if err = e.installRuntime(ctx, record); err != nil {
+	if err = e.refreshNetwork(ctx, record); err != nil {
 		return result, err
 	}
-	if err = e.runHooks(ctx, c, record, spec.BeforeOpen); err != nil {
+	if err = e.runAppliedOpenHooks(ctx, c, record); err != nil {
 		return result, err
 	}
 	record.Activity = time.Now().UTC()

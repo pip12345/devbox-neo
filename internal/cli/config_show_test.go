@@ -37,7 +37,7 @@ func TestConfigShowUsesExplicitSourcesAndRedactsEnvironment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(overlay, "config.json"), []byte(`{"harness":"pi","harness_args":["--overlay"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	r, err := e.Store.Find(context.Background(), fullName, nil)
+	r, err := e.Locate(context.Background(), fullName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,10 @@ func TestIncompleteSavedConfigCanBeInspectedWithoutSelectingHarness(t *testing.T
 	if err != nil || !strings.Contains(out, `"harness":""`) || !strings.Contains(out, "built-in default") {
 		t.Fatal(out, err)
 	}
-	if _, err := e.Open(context.Background(), app.Request{Workspace: fullName}); err == nil {
-		t.Fatal("inspection implicitly made incomplete configuration runnable")
+	if _, err := e.Open(context.Background(), app.OpenRequest{Target: fullName}); err != nil {
+		t.Fatal("incomplete desired config blocked existing runtime", err)
+	}
+	if _, err := e.Recreate(context.Background(), app.RecreateRequest{Target: fullName}, false); err == nil || !strings.Contains(err.Error(), "No harness selected") {
+		t.Fatal("inspection made incomplete configuration applicable", err)
 	}
 }

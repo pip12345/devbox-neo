@@ -69,27 +69,7 @@ func TestDetailedComparisonCoversFingerprintInputs(t *testing.T) {
 		{"definition", "harness_definition", "file_content_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Definition.Hash = newHash }},
 		{"Dockerfile", "dockerfile", "file_content_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Stages[0].Dockerfile.Hash = newHash }},
 		{"ignore rules", "ignore_rules", "file_content_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Stages[0].Ignore.Hash = newHash }},
-		{"context content", "build_context", "file_content_changed", RebuildAndRecreate, func(i *Inputs) {
-			f := i.Image.Stages[0].Context["data"]
-			f.Hash = newHash
-			i.Image.Stages[0].Context["data"] = f
-		}},
-		{"context permissions", "build_context", "file_mode_changed", RebuildAndRecreate, func(i *Inputs) {
-			f := i.Image.Stages[0].Context["data"]
-			f.Mode = 0755
-			i.Image.Stages[0].Context["data"] = f
-		}},
-		{"context kind", "build_context", "file_kind_changed", RebuildAndRecreate, func(i *Inputs) {
-			f := i.Image.Stages[0].Context["data"]
-			f.Directory = true
-			i.Image.Stages[0].Context["data"] = f
-		}},
-		{"context added", "build_context", "file_added", RebuildAndRecreate, func(i *Inputs) {
-			f := i.Image.Stages[0].Context["data"]
-			f.Source += "-new"
-			i.Image.Stages[0].Context["new"] = f
-		}},
-		{"context removed", "build_context", "file_removed", RebuildAndRecreate, func(i *Inputs) { delete(i.Image.Stages[0].Context, "data") }},
+		{"context", "build_context", "input_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Stages[0].Context = newHash }},
 		{"generated image layer", "generated_layer", "input_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Layer = newHash }},
 		{"build arguments", "build_argument", "value_changed", RebuildAndRecreate, func(i *Inputs) { i.Image.Arguments["DEVBOX_UID"] = "1001" }},
 		{"workspace", "workspace", "value_changed", Recreate, func(i *Inputs) { i.Container.Workspace += "-new" }},
@@ -115,17 +95,7 @@ func TestDetailedComparisonCoversFingerprintInputs(t *testing.T) {
 		{"metadata", "metadata", "input_changed", Recreate, func(i *Inputs) { i.Container.Metadata = "[]" }},
 		{"host alias", "host_alias", "value_changed", Recreate, func(i *Inputs) { i.Container.HostAlias = "other.host" }},
 		{"runtime assets", "runtime_assets", "input_changed", RuntimeSync, func(i *Inputs) { i.Runtime.Assets = newHash }},
-		{"config content", "managed_config", "file_content_changed", RuntimeSync, func(i *Inputs) {
-			f := i.Runtime.Files["custom.json"]
-			f.Hash = newHash
-			i.Runtime.Files["custom.json"] = f
-		}},
-		{"config executable", "managed_config", "file_mode_changed", RuntimeSync, func(i *Inputs) {
-			f := i.Runtime.Files["custom.json"]
-			f.Mode = 0100
-			i.Runtime.Files["custom.json"] = f
-		}},
-		{"config removed", "managed_config", "file_removed", RuntimeSync, func(i *Inputs) { delete(i.Runtime.Files, "custom.json") }},
+		{"managed config", "managed_config", "input_changed", RuntimeSync, func(i *Inputs) { i.Runtime.Files = newHash }},
 		{"before open", "before_open", "file_content_changed", RuntimeSync, func(i *Inputs) { i.Runtime.BeforeOpen[0].Hash = newHash }},
 		{"before open removed", "before_open", "file_removed", RuntimeSync, func(i *Inputs) { i.Runtime.BeforeOpen = nil }},
 		{"launch args", "launch_args", "entry_added", RuntimeSync, func(i *Inputs) { i.Runtime.Launch.Args = append(i.Runtime.Launch.Args, "--new") }},
@@ -162,26 +132,15 @@ func TestDetailedComparisonRoundTripProvenanceAndDeduplication(t *testing.T) {
 	next.Image.Definition.Source = "/different/harness.json"
 	next.Container.Setup[0].Source = "/different/setup.sh"
 	next.Runtime.BeforeOpen[0].Source = "/different/before-open.sh"
-	for name, f := range next.Image.Stages[0].Context {
-		f.Source = filepath.Join("/different", name)
-		next.Image.Stages[0].Context[name] = f
-	}
-	for name, f := range next.Runtime.Files {
-		f.Source = filepath.Join("/different", name)
-		next.Runtime.Files[name] = f
-	}
 	if report := CompareInputs(s.Inputs, next); report.Change != NoChange || len(report.PendingInputChanges) != 0 {
 		t.Fatal("source-only move caused drift", report)
 	}
 	next = cloneInputs(t, s.Inputs)
 	next.Image.Stages[0].Dockerfile.Hash = Fingerprint("test", "new")
-	file := next.Image.Stages[0].Context["Dockerfile"]
-	file.Hash = next.Image.Stages[0].Dockerfile.Hash
-	next.Image.Stages[0].Context["Dockerfile"] = file
 	next.Container.Network = "host"
 	next.Runtime.Launch.Continue = append(next.Runtime.Launch.Continue, "--new")
 	report := CompareInputs(s.Inputs, next)
-	if report.Change != RebuildAndRecreate || len(report.PendingInputChanges) != 3 || len(report.PendingCreationChanges()) != 2 {
+	if report.Change != RebuildAndRecreate || len(report.PendingInputChanges) != 3 {
 		t.Fatal("duplicated image propagation or file reason", report)
 	}
 	for range 10 {
@@ -227,24 +186,26 @@ func TestInputSnapshotsAndReportsNeverExposeEnvOrFileContents(t *testing.T) {
 	}
 }
 
-func TestBuiltinConfigInputChangesKeepDistinctFileNames(t *testing.T) {
-	s, _ := driftFixture(t)
-	before := cloneInputs(t, s.Inputs)
-	for _, name := range []string{"builtin-one.json", "builtin-two.json"} {
-		before.Runtime.Files[name] = fileInput("test", "builtin", []byte("old"), 0, false)
-	}
-	after := cloneInputs(t, before)
-	for _, name := range []string{"builtin-one.json", "builtin-two.json"} {
-		after.Runtime.Files[name] = fileInput("test", "builtin", []byte("new"), 0, false)
-	}
-	report := CompareInputs(before, after)
-	if report.Change != RuntimeSync || len(report.PendingInputChanges) != 2 {
-		t.Fatal("shared builtin origin collapsed distinct config changes", report)
-	}
-	for _, inputChange := range report.PendingInputChanges {
-		if inputChange.Key == "" || !strings.Contains(inputChange.String(), inputChange.Key) {
-			t.Fatal("builtin change lost its file name", inputChange)
+func TestFileTreeDigestIncludesContentPathsModesAndKinds(t *testing.T) {
+	original := map[string]FileInput{"one": fileInput("test", "builtin", []byte("old"), 0600, false)}
+	before := FilesDigest(original)
+	for _, edit := range []func(map[string]FileInput){
+		func(m map[string]FileInput) { f := m["one"]; f.Hash = Fingerprint("test", "new"); m["one"] = f },
+		func(m map[string]FileInput) { f := m["one"]; f.Mode = 0700; m["one"] = f },
+		func(m map[string]FileInput) { f := m["one"]; f.Directory = true; m["one"] = f },
+		func(m map[string]FileInput) { m["two"] = m["one"]; delete(m, "one") },
+	} {
+		next := map[string]FileInput{"one": original["one"]}
+		edit(next)
+		if FilesDigest(next) == before {
+			t.Fatal("tree identity ignored a semantic input")
 		}
+	}
+	f := original["one"]
+	f.Source = "/different/source"
+	original["one"] = f
+	if FilesDigest(original) != before {
+		t.Fatal("source location changed content identity")
 	}
 }
 

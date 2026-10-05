@@ -235,6 +235,17 @@ func TestNativeScreensFitAndKeepControls(t *testing.T) {
 		}
 	}
 }
+func TestActionValueColumnsIncludeSelectionMarkers(t *testing.T) {
+	for _, checked := range []bool{false, true} {
+		req := request(Action{Label: "Make folder default", Value: "Replaces Main", Checked: &checked}, Action{Label: "Selected", Value: "value", Selected: true})
+		m := newTerminalModel(req, false)
+		text := ansi.Strip(m.actionList(90, 10, true))
+		if !strings.Contains(text, "Make folder default  Replaces Main") || !strings.Contains(text, "* Selected") || strings.Contains(text, "…") {
+			t.Fatal("markers clipped a label despite sufficient width", text)
+		}
+	}
+}
+
 func TestNativeSelectedValuesAndNoColor(t *testing.T) {
 	checked := true
 	req := request(Action{Label: "First"}, Action{Label: "Current", Selected: true, Checked: &checked})
