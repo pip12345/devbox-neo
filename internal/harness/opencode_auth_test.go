@@ -477,10 +477,10 @@ func TestOpenCodeAuthKilledRunRecoveryUsesOriginalSnapshot(t *testing.T) {
 	assertAuth(t, filepath.Join(a.data, "pulled"), refreshedAuth)
 }
 
-func TestOpenCodeAuthPinnedNativeCommands(t *testing.T) {
+func TestOpenCodeAuthNativeCommands(t *testing.T) {
 	binary := os.Getenv("DEVBOX_OPENCODE_NATIVE")
 	if binary == "" {
-		t.Skip("set DEVBOX_OPENCODE_NATIVE to verify the pinned native CLI with isolated synthetic auth")
+		t.Skip("set DEVBOX_OPENCODE_NATIVE to verify the native CLI with isolated synthetic auth")
 	}
 	f := authTestFixture(t)
 	f.native = binary

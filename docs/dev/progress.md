@@ -8,6 +8,13 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Stable OpenCode and high-UID image builds — implemented, live acceptance pending
+
+- OpenCode installs the latest stable v2 through the official `https://opencode.ai/v2/install` endpoint instead of compiling a pinned development commit. The released v2.0.23 binary passes isolated synthetic-auth import/export checks with the unchanged shared-auth wrapper; Node.js remains installed. Existing sessions adopt the image changes only through explicit recreation.
+- Image preparation uses `useradd --no-log-init` to avoid UID-indexed sparse login logs that Docker layers can expand into huge files. Regression coverage checks ordinary/high UIDs, both image build modes, and fingerprint invalidation. Installer regressions check native/wrapper publication and download/installer failure propagation.
+- Fixed the separately approved transfer-migration failure by sorting the complete endpoint directory set before `Store.LockAll`. A deterministic interleaved-endpoint regression fails before the fix and passes afterward; transfer identity, commitment, and idle checks remain unchanged.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable), including native released-binary auth checks. Transfer-migration regressions pass five repeated runs; affected-package vet, CLI build, formatting, and diff checks pass. The upstream installer download was verified in a temporary home. Live Docker image builds/high-UID layer handling, real OAuth refresh, and manual host acceptance remain unrun.
+
 ## Readable targets and attachment recovery — implemented, live acceptance pending
 
 - Public session targets use exact storage directory names or folders with their existing default/name selection. Help, completion, listings, receipts, config usage and transfer recovery use directory names; internal IDs still own locks and Docker associations. Saved formats are unchanged, with no migration or public hash aliases.

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"devbox/internal/app"
 	"devbox/internal/config"
@@ -115,6 +117,62 @@ func TestTransferMigrationPreservesCommitmentAndDoesNotTouchRuntime(t *testing.T
 				t.Fatal("converted transfer cannot recover", err)
 			}
 		})
+	}
+}
+
+func TestTransferMigrationSortsCompleteEndpointLockSet(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(s.Home, "state/transfers")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Source-sorted journals have interleaving destinations. Concatenating each
+	// endpoint pair cannot produce sorted directories, regardless of map order.
+	var originals []store.Transfer
+	for i, names := range [][2]string{{"b-source", "z-destination"}, {"c-source", "a-destination"}} {
+		source, err := environment.Identify(t.TempDir(), "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		destination, err := environment.Identify(t.TempDir(), "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		source.Name, destination.Name = names[0], names[1]
+		j := store.Transfer{
+			Version: 4, ID: fmt.Sprintf("%032x", i+1), Mode: "clone", Phase: "prepare",
+			Source: source, Destination: destination,
+			SourceID: fmt.Sprintf("%032x", i+10), DestinationID: fmt.Sprintf("%032x", i+20),
+			ContainerName: "dbx-project-111111111111.main", SourceContainerID: strings.Repeat("a", 64),
+			Started: time.Now().UTC(),
+		}
+		if i == 1 {
+			j.Mode, j.Phase = "relocate", "committed"
+			j.DestinationID = j.SourceID
+			j.Running, j.ManualStart = true, true
+		}
+		old := struct {
+			store.Transfer
+			Desired environment.Fingerprints `json:"desired"`
+		}{j, environment.Fingerprints{Image: strings.Repeat("a", 64), Container: strings.Repeat("b", 64), Runtime: strings.Repeat("c", 64)}}
+		old.Version = 3
+		if err := fsutil.JSON(filepath.Join(root, source.Name+".json"), old); err != nil {
+			t.Fatal(err)
+		}
+		originals = append(originals, j)
+	}
+	if err := migrateTransfers(ctx, s.Home); err != nil {
+		t.Fatal(err)
+	}
+	for _, original := range originals {
+		converted, err := s.ReadTransfer(original.Source.Name)
+		if err != nil || converted == nil || *converted != original {
+			t.Fatal("migration changed transfer endpoints or commitment", converted, err)
+		}
 	}
 }
 

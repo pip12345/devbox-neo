@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"devbox/internal/commanderror"
@@ -168,6 +169,7 @@ func migrateTransfers(ctx context.Context, home string) error {
 			ids[name] = id
 		}
 	}
+	slices.Sort(directories)
 	locks, err := s.LockAll(ctx, directories, ids)
 	if err != nil {
 		return err

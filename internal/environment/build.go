@@ -77,13 +77,15 @@ func PlanImage(paths []string, base string, h harness.Effective, uid, gid int) (
 }
 
 func preparedDockerfile(base string, uid, gid int) []byte {
+	// Login logs index records by UID; Docker layers can expand their sparse gaps.
+	// Skip initialization so high host UIDs cannot inflate the image or exhaust disk.
 	return []byte(fmt.Sprintf(`FROM %s
 USER root
 SHELL ["/bin/sh", "-c"]
 RUN . /etc/os-release && case "$ID" in debian|ubuntu) ;; *) echo "Devbox requires a Debian/Ubuntu-compatible base" >&2; exit 1 ;; esac
 RUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates curl git sudo procps vim zip unzip jq net-tools iputils-ping openssh-client util-linux && rm -rf /var/lib/apt/lists/*
 RUN echo "alias ll='ls -alF'" >> /etc/bash.bashrc && echo "alias vi='vim'" >> /etc/bash.bashrc
-RUN if id devuser >/dev/null 2>&1; then test "$(id -u devuser)" = %d && test "$(id -g devuser)" = %d && test "$(getent passwd devuser | cut -d: -f6)" = /home/devuser; else if getent passwd %d >/dev/null; then echo "Base image already owns the requested development UID; supply a compatible base without that account" >&2; exit 1; fi; (getent group %d >/dev/null || groupadd -g %d devuser) && useradd -m -s /bin/bash -u %d -g %d devuser; fi
+RUN if id devuser >/dev/null 2>&1; then test "$(id -u devuser)" = %d && test "$(id -g devuser)" = %d && test "$(getent passwd devuser | cut -d: -f6)" = /home/devuser; else if getent passwd %d >/dev/null; then echo "Base image already owns the requested development UID; supply a compatible base without that account" >&2; exit 1; fi; (getent group %d >/dev/null || groupadd -g %d devuser) && useradd --no-log-init -m -s /bin/bash -u %d -g %d devuser; fi
 RUN echo 'devuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/devuser && chmod 0440 /etc/sudoers.d/devuser
 USER devuser
 ENV HOME=/home/devuser USER=devuser PATH="/home/devuser/.local/bin:${PATH}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"

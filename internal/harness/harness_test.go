@@ -144,9 +144,9 @@ func TestBuiltinOpenCodeV2(t *testing.T) {
 		t.Fatal("OpenCode must own its installer and wrapper as image files", d.Install)
 	}
 	install := string(h.InstallFiles[d.Install.Script].Data)
-	for _, want := range []string{"--branch v2", "4c33a253aa89ec0fa4faaa5d5b4aefef7d1a3963", "--frozen-lockfile", "--skip-install", "opencode-auth.sh", "opencode-native", "nodejs", "setup_22.x", "bun-v1.4.2"} {
+	for _, want := range []string{"curl -fsSL https://opencode.ai/v2/install | bash -s -- --no-modify-path", "opencode-auth.sh", "opencode-native", "nodejs", "setup_22.x"} {
 		if !strings.Contains(install, want) {
-			t.Fatal("OpenCode must build the pinned merged credential API and install its wrapper", want)
+			t.Fatal("OpenCode must install stable v2 with Node.js and its shared-auth wrapper", want)
 		}
 	}
 	for name, file := range h.InstallFiles {
