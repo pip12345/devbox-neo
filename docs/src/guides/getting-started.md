@@ -37,8 +37,6 @@ A session is a saved environment for one project folder. With no sessions yet, *
 
 Devbox adds the new config to your session draft automatically. Optionally check **Make folder default** to select this session for commands such as `dbx open .`; it replaces any existing default. Choose **Create session** to build the environment. The first build can take a while.
 
-**Claude Code runs with its permission prompts bypassed.** See [harness defaults](../reference/harnesses.md#built-in-harnesses) before choosing it.
-
 ## Open it
 
 After the build, acknowledge the result. The new session's menu opens with **Continue** selected. Press **Enter**, then follow the harness's login or provider setup.
