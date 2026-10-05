@@ -33,7 +33,7 @@ func precedingTransfer(t *testing.T, committed bool) (*app.Engine, *dockertest.D
 	if err := os.WriteFile(filepath.Join(configDir, "config.json"), []byte(`{"harness":"pi"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	q := app.Request{Workspace: t.TempDir(), LocalName: "main", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: configDir}}}
+	q := app.CreateRequest{Workspace: t.TempDir(), LocalName: "main", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: configDir}}}
 	made, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)

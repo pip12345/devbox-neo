@@ -128,7 +128,7 @@ func (e *Engine) StatusAll(ctx context.Context, folder string) (InventoryReport,
 	}
 	for i := range report.Sessions {
 		if err := ctx.Err(); err != nil {
-			return InventoryReport{}, err
+			return report, err
 		}
 		view := &report.Sessions[i]
 		if r, ok := records[view.SessionID]; ok && view.Error == "" && view.Pending == nil {

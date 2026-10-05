@@ -19,29 +19,29 @@ import (
 
 // Create prepares a new environment without attaching a harness. Preparation
 // requires a running container, but successful standalone creation leaves it stopped.
-func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
+func (e *Engine) Create(ctx context.Context, q CreateRequest) (CreationResult, error) {
 	identity, err := environment.Identify(q.Workspace, q.LocalName)
 	if err != nil {
-		return Result{}, err
+		return CreationResult{}, err
 	}
 	q.Workspace = identity.Workspace
 	namesLock, err := e.Store.LockNames(ctx)
 	if err != nil {
-		return Result{}, err
+		return CreationResult{}, err
 	}
 	defer fsutil.Unlock(namesLock)
 	if err := e.Store.RequireUnusedBinding(ctx, identity.Binding, ""); err != nil {
-		return Result{}, err
+		return CreationResult{}, err
 	}
 	directory, err := store.AllocateDirectory(identity.Binding)
 	if err != nil {
-		return Result{}, err
+		return CreationResult{}, err
 	}
 	id, err := fsutil.ID()
 	if err != nil {
-		return Result{}, err
+		return CreationResult{}, err
 	}
-	result := Result{Session: directory, SessionID: id}
+	result := CreationResult{Result: Result{Session: directory, SessionID: id}}
 	lock, err := e.Store.Lock(ctx, directory, id)
 	if err != nil {
 		return result, err
@@ -54,7 +54,8 @@ func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return result, err
 	}
-	spec, err := e.Resolve(q)
+	spec, err := e.Resolve(ResolveRequest{Workspace: q.Workspace, LocalName: q.LocalName, Sources: q.Sources, Host: q.Host})
+	e.reportWarnings(spec.Warnings)
 	if err != nil {
 		return result, err
 	}
@@ -72,6 +73,7 @@ func (e *Engine) Create(ctx context.Context, q Request) (Result, error) {
 		defer cancel()
 		return result, errors.Join(err, e.discardUncommittedCreation(cleanup, lock, id))
 	}
+	result.Saved = true
 	var stopErr, defaultErr error
 	if err = e.Docker.Stop(ctx, c, e.owner(record)); err != nil {
 		stopErr = commanderror.New("create_stop_failed", "Environment created, but stopping it failed.", record.Directory, err,
@@ -407,14 +409,10 @@ func (e *Engine) runHooks(ctx context.Context, c docker.Container, r store.Recor
 	return nil
 }
 
-func (e *Engine) Recreate(ctx context.Context, q Request, image bool) (Result, error) {
+func (e *Engine) Recreate(ctx context.Context, q RecreateRequest, image bool) (Result, error) {
 	// Resolve from the locked record, never a source list captured by the CLI
 	// before another mutation or a default changed after this invocation chose it.
-	target := q.Workspace
-	if q.SessionID != "" {
-		target = q.SessionID
-	}
-	selected, err := e.Locate(ctx, target, q.LocalName)
+	selected, err := e.Locate(ctx, q.Target, q.LocalName)
 	if err != nil {
 		return Result{}, err
 	}
@@ -427,7 +425,8 @@ func (e *Engine) Recreate(ctx context.Context, q Request, image bool) (Result, e
 	if err != nil {
 		return Result{}, err
 	}
-	plan, err := e.planRecreate(ctx, l, old, q, image)
+	plan, err := e.planRecreate(ctx, l, old, q.Options, image)
+	e.reportWarnings(plan.spec.Warnings)
 	if err != nil {
 		return Result{}, err
 	}

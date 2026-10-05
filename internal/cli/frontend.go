@@ -325,10 +325,13 @@ func (f *frontend) sessionActions(v app.View) []cliui.Action {
 	}
 	addGroup("Use",
 		f.keyedAction("Continue", "Resume the harness conversation", "c", run("Continue", func(ctx context.Context) error {
-			_, err := f.e.Open(ctx, app.Request{Workspace: v.Target, Continue: true})
+			_, err := f.e.Open(ctx, app.OpenRequest{Target: v.Target, Continue: true})
 			return err
 		})),
-		f.keyedAction("Open", "Launch the recorded harness", "o", run("Open", func(ctx context.Context) error { _, err := f.e.Open(ctx, app.Request{Workspace: v.Target}); return err })),
+		f.keyedAction("Open", "Launch the recorded harness", "o", run("Open", func(ctx context.Context) error {
+			_, err := f.e.Open(ctx, app.OpenRequest{Target: v.Target})
+			return err
+		})),
 		f.action("Open with options", "Continuation and one-off harness arguments", func() error { return f.openWithOptions(v.Target) }),
 		f.keyedAction("Shell", "Attach to the configured shell", "s", run("Shell", func(ctx context.Context) error { return f.e.Exec(ctx, v.Target, "", nil, true) })),
 		f.keyedAction("Exec", "Run a command with exact arguments", "e", func() error { return f.exec(v.Target) }),
@@ -451,6 +454,9 @@ func (f *frontend) status(target string) error {
 	}
 	if target == "" {
 		report, err := f.e.StatusAll(f.m.Context, "")
+		for _, view := range report.Sessions {
+			f.m.warnings(view.Warnings)
+		}
 		if err != nil {
 			return err
 		}
@@ -465,6 +471,7 @@ func (f *frontend) status(target string) error {
 		})
 	}
 	details, err := f.e.Status(f.m.Context, target, "")
+	f.m.warnings(details.Warnings)
 	if err != nil {
 		return err
 	}
@@ -630,12 +637,12 @@ func (f *frontend) createSessionFromDraft(draft sessionCreationDraft) error {
 	if err != nil {
 		return err
 	}
-	var result app.Result
+	var result app.CreationResult
 	draft.workspace = workspace
 	draft, proceed, err := sessionCreationMenu(picker, f.e, draft, func(draft sessionCreationDraft) (bool, error) {
 		err := f.foreground("Create session", func(ctx context.Context) error {
 			var err error
-			result, err = f.e.Create(ctx, app.Request{Workspace: draft.workspace, LocalName: draft.name, Sources: draft.sources, MakeDefault: draft.makeDefault})
+			result, err = f.e.Create(ctx, app.CreateRequest{Workspace: draft.workspace, LocalName: draft.name, Sources: draft.sources, MakeDefault: draft.makeDefault})
 			return err
 		})
 		if err == nil {
@@ -644,8 +651,7 @@ func (f *frontend) createSessionFromDraft(draft sessionCreationDraft) error {
 		if f.m.Context.Err() != nil {
 			return false, f.m.Context.Err()
 		}
-		var failure *commanderror.Error
-		if errors.As(err, &failure) && (failure.Code == "create_stop_failed" || failure.Code == "create_default_failed") {
+		if result.Saved {
 			f.m.Notice("Session created. Use its menu to finish the reported steps.")
 			return true, nil
 		}

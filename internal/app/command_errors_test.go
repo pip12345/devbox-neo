@@ -79,7 +79,7 @@ func TestRecreateErrorRetainsDockerFailureIdentity(t *testing.T) {
 		}
 		return nil
 	}
-	_, err = e.Recreate(ctx, q, false)
+	_, err = e.Recreate(ctx, recreateRequest(q), false)
 	if !errors.Is(err, failure) {
 		t.Fatal(err)
 	}
@@ -96,9 +96,10 @@ func TestPiDefaultsToFullscreenAndAllowsLaterOverrides(t *testing.T) {
 	if !reflect.DeepEqual(r.Applied.Launch.Args, []string{"--tui-mode", "fullscreen"}) || !reflect.DeepEqual(r.Applied.Launch.Continue, []string{"-c"}) {
 		t.Fatal(r.Applied.Launch)
 	}
-	q.Continue = true
-	q.Args = []string{"--tui-mode", "regular"}
-	if _, err = e.Open(ctx, q); err != nil {
+	launch := openRequest(q)
+	launch.Continue = true
+	launch.Args = []string{"--tui-mode", "regular"}
+	if _, err = e.Open(ctx, launch); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"pi", "--tui-mode", "fullscreen", "-c", "--tui-mode", "regular"}
@@ -115,12 +116,10 @@ func TestPiDefaultsToFullscreenAndAllowsLaterOverrides(t *testing.T) {
 		t.Fatal("one-off TUI override was persisted")
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","harness_args":["--tui-mode","regular"]}`)
-	q.Args = nil
-	q.Continue = false
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Open(ctx, q); err != nil {
+	if _, err = e.Open(ctx, openRequest(q)); err != nil {
 		t.Fatal(err)
 	}
 	if got := sessionRecord(t, e, opened.SessionID).Applied.Launch.Args; !reflect.DeepEqual(got, []string{"--tui-mode", "fullscreen", "--tui-mode", "regular"}) {

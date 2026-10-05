@@ -102,7 +102,7 @@ func newRoot(runtime docker.Runtime) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		_, err = e.Open(cmd.Context(), app.Request{Workspace: args[0], LocalName: localName, Continue: resume, Args: args[1:], HarnessArgs: harnessArgs})
+		_, err = e.Open(cmd.Context(), app.OpenRequest{Target: args[0], LocalName: localName, Continue: resume, Args: args[1:], HarnessArgs: harnessArgs})
 		return err
 	}}
 	open.Flags().StringArrayVar(&harnessArgs, "harness-arg", nil, "Pass an argument to the harness (repeatable)")

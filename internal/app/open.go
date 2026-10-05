@@ -23,9 +23,9 @@ func creationRequired(workspace, localName string, cause error) error {
 
 // Open keeps the operation lock through recorded startup and lease creation.
 // The long foreground command runs after releasing it.
-func (e *Engine) Open(ctx context.Context, q Request) (result Result, err error) {
+func (e *Engine) Open(ctx context.Context, q OpenRequest) (result Result, err error) {
 	invocationArgs := append([]string(nil), q.HarnessArgs...)
-	r, err := e.Locate(ctx, q.Workspace, q.LocalName)
+	r, err := e.Locate(ctx, q.Target, q.LocalName)
 	if err != nil {
 		return result, err
 	}

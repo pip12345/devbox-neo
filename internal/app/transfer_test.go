@@ -26,7 +26,7 @@ func TestTransferResumesJournalBeforeDestinationCreation(t *testing.T) {
 	}
 	source := sessionRecord(t, e, opened.SessionID)
 	dest := t.TempDir()
-	spec, err := e.Resolve(Request{Workspace: dest, LocalName: q.LocalName, Sources: q.Sources})
+	spec, err := e.Resolve(ResolveRequest{Workspace: dest, LocalName: q.LocalName, Sources: q.Sources})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	dest := t.TempDir()
-	destOpen, err := e.Create(ctx, Request{Workspace: dest, LocalName: q.LocalName, Sources: q.Sources})
+	destOpen, err := e.Create(ctx, CreateRequest{Workspace: dest, LocalName: q.LocalName, Sources: q.Sources})
 	if err != nil {
 		t.Fatal(err)
 	}

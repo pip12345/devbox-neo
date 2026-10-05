@@ -24,18 +24,42 @@ type Engine struct {
 	// slices. Nil suppresses delivery, not collection in Result.Diagnostics.
 	OnDiagnostic func(Diagnostic)
 }
-type Request struct {
-	Workspace      string
-	LocalName      string
-	HarnessArgs    []string
-	Sources        []config.Reference
-	SessionID      string
-	Continue       bool
-	MakeDefault    bool
+type CreateRequest struct {
+	Workspace   string
+	LocalName   string
+	Sources     []config.Reference
+	MakeDefault bool
+	Host        config.Host
+}
+type OpenRequest struct {
+	Target      string
+	LocalName   string
+	HarnessArgs []string
+	Continue    bool
+	Args        []string
+}
+type ResolveRequest struct {
+	Workspace    string
+	LocalName    string
+	Sources      []config.Reference
+	RepairTarget string
+	Host         config.Host
+}
+type RecreateOptions struct {
 	ForceContainer bool
 	Force          bool
-	Args           []string
 	Host           config.Host
+}
+type RecreateRequest struct {
+	Target    string
+	LocalName string
+	Options   RecreateOptions
+}
+type CreationResult struct {
+	Result
+	// Saved confirms successful record publication. An unconfirmed save must
+	// not be interpreted as proof that no files were published.
+	Saved bool `json:"-"`
 }
 type Diagnostic struct {
 	Code    string
@@ -48,17 +72,12 @@ type Result struct {
 	Diagnostics []Diagnostic
 }
 
-func (e *Engine) resolveSpec(q Request) (environment.Spec, error) {
-	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, LocalName: q.LocalName, Sources: q.Sources, SessionID: q.SessionID, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
+func (e *Engine) Resolve(q ResolveRequest) (environment.Spec, error) {
+	return environment.Resolve(environment.Request{Home: e.Store.Home, Workspace: q.Workspace, LocalName: q.LocalName, Sources: q.Sources, RepairTarget: q.RepairTarget, UID: e.UID, GID: e.GID, Salt: e.Store.Installation, Host: q.Host})
 }
-func (e *Engine) Resolve(q Request) (environment.Spec, error) {
-	spec, err := e.resolveSpec(q)
-	e.resolutionWarnings(spec)
-	return spec, err
-}
-func (e *Engine) resolutionWarnings(spec environment.Spec) {
+func (e *Engine) reportWarnings(warnings []string) {
 	if e.Streams.Err != nil {
-		for _, warning := range spec.Warnings {
+		for _, warning := range warnings {
 			fmt.Fprintf(e.Streams.Err, "Warning: %s\n", warning)
 		}
 	}

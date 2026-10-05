@@ -28,7 +28,7 @@ func TestSelectedSourcesAreAppliedExplicitlyNotDuringAccess(t *testing.T) {
 	if r.Settings.LocalName != "test" || len(r.Settings.Sources) != 2 || r.Settings.Sources[1].Path != dir {
 		t.Fatal(r.Settings.Binding, r.Settings.Sources)
 	}
-	if got, err := e.Open(ctx, q); err != nil || got.SessionID != made.SessionID {
+	if got, err := e.Open(ctx, openRequest(q)); err != nil || got.SessionID != made.SessionID {
 		t.Fatal(got, err)
 	}
 	if status, err := e.Status(ctx, q.Workspace, q.LocalName); err != nil || status.ConfigError != "" || status.Target != r.Directory {
@@ -44,7 +44,7 @@ func TestSelectedSourcesAreAppliedExplicitlyNotDuringAccess(t *testing.T) {
 		t.Fatal(view, err)
 	}
 	forgetSession(t, e, made.SessionID)
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = e.Start(ctx, q.Workspace, q.LocalName); err != nil {
@@ -56,10 +56,10 @@ func TestSelectedSourcesAreAppliedExplicitlyNotDuringAccess(t *testing.T) {
 	if err = os.Remove(filepath.Join(dir, "config.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Open(ctx, Request{Workspace: made.SessionID}); err != nil {
+	if _, err = e.Open(ctx, OpenRequest{Target: made.SessionID}); err != nil {
 		t.Fatal("missing desired source blocked applied access", err)
 	}
-	if _, err = e.Recreate(ctx, Request{Workspace: made.SessionID}, false); err == nil {
+	if _, err = e.Recreate(ctx, RecreateRequest{Target: made.SessionID}, false); err == nil {
 		t.Fatal("explicit apply ignored a missing selected source")
 	}
 }
@@ -137,7 +137,7 @@ func TestProfileAndProjectScriptsRunInOrderAndStopOnFailure(t *testing.T) {
 			if !slices.Equal(hooks, []string{"profile setup", "project setup"}) {
 				t.Fatal(hooks)
 			}
-			_, err = e.Open(context.Background(), Request{Workspace: made.SessionID})
+			_, err = e.Open(context.Background(), OpenRequest{Target: made.SessionID})
 			if (err != nil) != fail {
 				t.Fatal(err)
 			}

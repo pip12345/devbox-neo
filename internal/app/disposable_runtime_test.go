@@ -34,7 +34,7 @@ func TestAccessRequiresExplicitRecreateForMissingRuntime(t *testing.T) {
 			before := len(d.History())
 			switch action {
 			case "open":
-				_, err = e.Open(ctx, q)
+				_, err = e.Open(ctx, openRequest(q))
 			case "start":
 				_, err = e.Start(ctx, old.ID, "")
 			case "shell", "exec":
@@ -57,7 +57,7 @@ func TestAccessRequiresExplicitRecreateForMissingRuntime(t *testing.T) {
 			if _, exists := sessionSnapshot(t, e, old.ID); exists {
 				t.Fatal("access rebuilt missing runtime")
 			}
-			if _, err := e.Recreate(ctx, q, false); err != nil {
+			if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 				t.Fatal(err)
 			}
 			current := sessionRecord(t, e, old.ID)
@@ -133,7 +133,7 @@ func TestRuntimeRebuildResolvesCurrentEnvAndSetup(t *testing.T) {
 		}
 		return nil
 	}
-	if _, err := e.Recreate(ctx, q, false); err != nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Contains(createdEnv, "TOKEN=new-secret") || !slices.Contains(createdEnv, "RAW=new-secret") || strings.Contains(strings.Join(createdEnv, "\n"), "old-secret") || setup.String() != "echo new-setup" {
@@ -178,7 +178,7 @@ func TestMissingDurableStoreBlocksRebuildWithoutReplacingHistory(t *testing.T) {
 	if err := os.RemoveAll(root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Recreate(context.Background(), q, false); err == nil {
+	if _, err := e.Recreate(context.Background(), recreateRequest(q), false); err == nil {
 		t.Fatal("lost store replaced by empty history")
 	}
 	if _, err := os.Stat(root); !os.IsNotExist(err) {
@@ -208,7 +208,7 @@ func TestSessionComparisonSizeDoesNotScaleWithTrees(t *testing.T) {
 		write(t, filepath.Join(source, "pi", fmt.Sprintf("file-%04d", i)), "managed")
 		write(t, filepath.Join(source, "docker", fmt.Sprintf("file-%04d", i)), "build")
 	}
-	if _, err := e.Recreate(ctx, q, false); err != nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.ReadFile(path)

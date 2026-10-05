@@ -69,7 +69,7 @@ func TestDeleteIncompleteCreationScopeAndConfirmation(t *testing.T) {
 			if err != nil {
 				t.Fatal(result, err)
 			}
-			if !reflect.DeepEqual(result.Targets, []string{name}) || len(result.Sessions)+len(result.Containers) != 0 {
+			if len(result.Targets) != 1 || result.Targets[0].Name() != name || result.Targets[0].sessionID != "" || len(result.Sessions)+len(result.Containers) != 0 {
 				t.Fatal("incomplete directory received a fabricated identity", result)
 			}
 			planned := tc.deleted || tc.dryRun

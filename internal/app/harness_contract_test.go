@@ -91,14 +91,15 @@ func TestBuiltinAndCustomHarnessesShareLifecycleAndStorage(t *testing.T) {
 					}
 				}
 			}
-			if _, err = e.Open(ctx, q); err != nil {
+			if _, err = e.Open(ctx, openRequest(q)); err != nil {
 				t.Fatal(err)
 			}
 			if count(d, "create") != 1 {
 				t.Fatal("reopen replaced runtime")
 			}
-			q.ForceContainer = true
-			if _, err = e.Recreate(ctx, q, false); err != nil {
+			recreate := recreateRequest(q)
+			recreate.Options.ForceContainer = true
+			if _, err = e.Recreate(ctx, recreate, false); err != nil {
 				t.Fatal(err)
 			}
 			after := sessionRecord(t, e, result.SessionID)
@@ -112,7 +113,7 @@ func TestBuiltinAndCustomHarnessesShareLifecycleAndStorage(t *testing.T) {
 				}
 			}
 			forgetSession(t, e, result.SessionID)
-			if _, err = e.Recreate(ctx, q, false); err != nil {
+			if _, err = e.Recreate(ctx, recreate, false); err != nil {
 				t.Fatal("explicit recreation failed", err)
 			}
 		})

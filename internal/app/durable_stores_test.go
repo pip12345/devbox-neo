@@ -39,7 +39,7 @@ func TestStoppedAccessRefusesMissingStoresBeforeSync(t *testing.T) {
 			calls := len(d.History())
 			switch tc.action {
 			case "open":
-				_, err = e.Open(ctx, q)
+				_, err = e.Open(ctx, openRequest(q))
 			case "start":
 				_, err = e.Start(ctx, before.ID, "")
 			case "exec":

@@ -26,6 +26,9 @@ func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 		}
 		if len(args) == 0 {
 			report, err := e.StatusAll(cmd.Context(), "")
+			for _, view := range report.Sessions {
+				writeWarnings(cmd.ErrOrStderr(), view.Warnings)
+			}
 			if err != nil {
 				return err
 			}
@@ -43,6 +46,7 @@ func statusCommand(factory engineFactory, localName *string) *cobra.Command {
 			return printUnmatchedContainers(cmd.OutOrStdout(), report.UnmatchedContainers)
 		}
 		details, err := e.Status(cmd.Context(), args[0], *localName)
+		writeWarnings(cmd.ErrOrStderr(), details.Warnings)
 		if err != nil {
 			return err
 		}

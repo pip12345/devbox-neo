@@ -9,16 +9,16 @@ import (
 	"testing"
 )
 
-func accessAction(ctx context.Context, e *Engine, q Request, name, action string) error {
+func accessAction(ctx context.Context, e *Engine, q CreateRequest, name, action string) error {
 	switch action {
 	case "open":
-		_, err := e.Open(ctx, q)
+		_, err := e.Open(ctx, openRequest(q))
 		return err
 	case "start":
 		_, err := e.Start(ctx, name, "")
 		return err
 	case "recreate":
-		_, err := e.Recreate(ctx, q, false)
+		_, err := e.Recreate(ctx, recreateRequest(q), false)
 		return err
 	default:
 		return e.Exec(ctx, name, "", []string{"true"}, action == "shell")
@@ -143,7 +143,7 @@ func TestExplicitApplyRestoresManagedFilesEvenWithoutSourceChanges(t *testing.T)
 	}
 	live := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, "harnesses/pi/stores/home/managed.txt")
 	write(t, live, "temporary edit")
-	if _, err := e.Recreate(ctx, q, false); err != nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	if string(getFile(t, live)) != "authoritative" {

@@ -39,7 +39,7 @@ func TestTerminalEnvCreationAttachmentAndRecovery(t *testing.T) {
 	ctx := context.Background()
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","env":["TERM=configured"]}`)
 	e.TerminalEnv = []string{"TERM=xterm-256color", "COLORTERM=truecolor", "NO_COLOR="}
-	spec, err := e.Resolve(q)
+	spec, err := e.Resolve(resolveRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestTerminalEnvCreationAttachmentAndRecovery(t *testing.T) {
 		}
 	}
 	e.TerminalEnv = []string{"TERM=screen-256color", "COLORTERM=24bit"}
-	reopened, err := e.Open(ctx, q)
+	reopened, err := e.Open(ctx, openRequest(q))
 	if err != nil || len(reopened.Diagnostics) != 0 || count(d, "create") != 1 {
 		t.Fatal("terminal change caused drift or recreation", reopened, err)
 	}
@@ -117,7 +117,7 @@ func TestTerminalEnvCreationAttachmentAndRecovery(t *testing.T) {
 	if err := e.Docker.Remove(ctx, c, e.owner(first)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Recreate(ctx, q, false); err != nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	if len(createdEnv) != 2 || !slices.Equal(createdEnv[1], append(slices.Clone(e.TerminalEnv), spec.Env()...)) {

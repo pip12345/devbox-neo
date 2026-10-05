@@ -75,7 +75,7 @@ func TestRecreateResolvesCurrentMountSourceType(t *testing.T) {
 			mountSource(t, source, after)
 			forgetSession(t, e, created.SessionID)
 			creates := count(d, "create")
-			_, err = e.Recreate(ctx, q, false)
+			_, err = e.Recreate(ctx, recreateRequest(q), false)
 			if after == "missing" || after == "fifo" {
 				if err == nil || count(d, "create") != creates {
 					t.Fatal("invalid current bind source was materialized", err)
@@ -110,7 +110,7 @@ func TestRemovedMountDoesNotBlockRecreate(t *testing.T) {
 	}
 	write(t, configPath, `{"version":1}`)
 	forgetSession(t, e, made.SessionID)
-	if _, err := e.Recreate(context.Background(), q, false); err != nil {
+	if _, err := e.Recreate(context.Background(), recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	if len(sessionRecord(t, e, made.SessionID).Applied.Inputs.Container.Mounts) != 0 {

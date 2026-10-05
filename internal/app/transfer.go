@@ -37,6 +37,7 @@ type TransferResult struct {
 	LocalName       string             `json:"local_name"`
 	Sources         []config.Reference `json:"sources"`
 	ResolvedSources []config.Source    `json:"resolved_sources"`
+	Warnings        []string           `json:"-"`
 }
 
 func (e *Engine) transferSource(ctx context.Context, q TransferOptions) (name, id string, err error) {
@@ -331,7 +332,11 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 			return result, readErr
 		}
 	}
-	spec, err := e.Resolve(Request{Workspace: destinationIdentity.Workspace, LocalName: destinationIdentity.LocalName, Sources: source.Settings.Sources})
+	spec, err := e.Resolve(ResolveRequest{Workspace: destinationIdentity.Workspace, LocalName: destinationIdentity.LocalName, Sources: source.Settings.Sources})
+	result.Warnings = spec.Warnings
+	if !q.DryRun {
+		e.reportWarnings(spec.Warnings)
+	}
 	if err != nil {
 		return result, err
 	}
@@ -349,6 +354,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		journal = &store.Transfer{Version: 4, ContainerName: environment.ResourceName(destinationIdentity.Workspace, destinationIdentity.LocalName, nonce), ID: nonce, Mode: q.Mode, Phase: "prepare", Source: sourceIdentity, SourceContainerID: source.Applied.SetupContainer, Destination: destinationIdentity, SourceID: source.ID, DestinationID: destinationID, Running: q.Mode == "relocate" && (source.Settings.ManualStart || (exists && c.State.Running)), ManualStart: q.Mode == "relocate" && source.Settings.ManualStart, Started: time.Now().UTC()}
 	}
 	result = transferResult(*journal, q.DryRun)
+	result.Warnings = spec.Warnings
 	result.Sources, result.ResolvedSources = spec.Sources, spec.ResolvedSources
 	if q.DryRun {
 		return result, nil

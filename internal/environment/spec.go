@@ -93,15 +93,15 @@ type Spec struct {
 	Host            config.Host `json:"-"`
 }
 type Request struct {
-	Salt      string
-	Home      string
-	Workspace string
-	LocalName string
-	Sources   []config.Reference
-	SessionID string
-	UID       int
-	GID       int
-	Host      config.Host `json:"-"`
+	Salt         string
+	Home         string
+	Workspace    string
+	LocalName    string
+	Sources      []config.Reference
+	RepairTarget string
+	UID          int
+	GID          int
+	Host         config.Host `json:"-"`
 }
 
 func Resolve(q Request) (Spec, error) {
@@ -119,16 +119,16 @@ func Resolve(q Request) (Spec, error) {
 	sources, err := config.ResolveReferences(q.Workspace, q.Sources)
 	if err != nil {
 		var next []commanderror.Step
-		if q.SessionID != "" {
-			next = append(next, commanderror.Next("Repair the session's selected configs", "edit", q.SessionID))
+		if q.RepairTarget != "" {
+			next = append(next, commanderror.Next("Repair the session's selected configs", "edit", q.RepairTarget))
 		}
-		return spec, commanderror.New("configuration_unavailable", "Cannot resolve selected configs: "+err.Error(), q.SessionID, err, next...)
+		return spec, commanderror.New("configuration_unavailable", "Cannot resolve selected configs: "+err.Error(), q.RepairTarget, err, next...)
 	}
 	r, err := artifact.Resolve(sources, q.Host)
 	if err != nil {
-		if q.SessionID != "" {
-			return spec, commanderror.New("invalid_configuration", err.Error(), q.SessionID, err,
-				commanderror.Next("Inspect and repair selected configs", "edit", q.SessionID))
+		if q.RepairTarget != "" {
+			return spec, commanderror.New("invalid_configuration", err.Error(), q.RepairTarget, err,
+				commanderror.Next("Inspect and repair selected configs", "edit", q.RepairTarget))
 		}
 		return spec, err
 	}
@@ -136,7 +136,7 @@ func Resolve(q Request) (Spec, error) {
 		var actionable *commanderror.Error
 		if errors.As(err, &actionable) && actionable.Code == "harness_required" {
 			step := commanderror.Next("Select a harness in a config", "config", "edit", sources[0].Path, "--harness", "<name>")
-			return spec, commanderror.New(actionable.Code, actionable.Message, q.SessionID, err, step)
+			return spec, commanderror.New(actionable.Code, actionable.Message, q.RepairTarget, err, step)
 		}
 		return spec, commanderror.New("invalid_configuration", "Invalid configuration: "+err.Error(), q.Workspace, err)
 	}

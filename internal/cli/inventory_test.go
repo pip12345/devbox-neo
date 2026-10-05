@@ -36,7 +36,7 @@ func inventoryCLI(t *testing.T) (*app.Engine, *dockertest.Daemon, string, func()
 	}
 	daemon := &dockertest.Daemon{}
 	engine := &app.Engine{Store: state, Docker: docker.Runtime{Runner: daemon}, UID: 1000, GID: 1000}
-	created, err := engine.Create(ctx, app.Request{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
+	created, err := engine.Create(ctx, app.CreateRequest{Workspace: t.TempDir(), LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	other := t.TempDir()
-	second, err := engine.Create(context.Background(), app.Request{Workspace: other, LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
+	second, err := engine.Create(context.Background(), app.CreateRequest{Workspace: other, LocalName: "test", Sources: testConfigSources(engine.Store.Home, "test")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestDeleteFolderExplainsItsSelectedDefaultAndPhases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := engine.Create(ctx, app.Request{Workspace: selected.Settings.Workspace, LocalName: "other", Sources: testConfigSources(engine.Store.Home, "test")})
+	other, err := engine.Create(ctx, app.CreateRequest{Workspace: selected.Settings.Workspace, LocalName: "other", Sources: testConfigSources(engine.Store.Home, "test")})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,6 +25,7 @@ func TestRecreateChoosesMinimumRequiredWork(t *testing.T) {
 			}
 			old := sessionRecord(t, e, made.SessionID)
 			builds, creates := count(d, "build"), count(d, "create")
+			recreate := recreateRequest(q)
 			switch kind {
 			case "runtime":
 				write(t, filepath.Join(q.Sources[0].Path, "pi/new-file"), "new")
@@ -33,14 +34,14 @@ func TestRecreateChoosesMinimumRequiredWork(t *testing.T) {
 			case "image":
 				write(t, filepath.Join(q.Sources[0].Path, "docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 			case "force-container":
-				q.ForceContainer = true
+				recreate.Options.ForceContainer = true
 			case "pruned-image":
 				delete(d.Images, old.Applied.ImageID)
 				delete(d.Images, old.Applied.ImageTag)
 			case "missing-container":
 				forgetSession(t, e, made.SessionID)
 			}
-			if _, err := e.Recreate(ctx, q, kind == "force-image"); err != nil {
+			if _, err := e.Recreate(ctx, recreate, kind == "force-image"); err != nil {
 				t.Fatal(err)
 			}
 			wantReplacement := kind != "runtime" && kind != "pruned-image"
@@ -86,7 +87,7 @@ func TestRuntimeApplyCapturesInputsAndPreservesLifetime(t *testing.T) {
 				write(t, filepath.Join(source, "config.json"), "broken after capture")
 				write(t, filepath.Join(source, "before-open.sh"), "echo must-not-apply")
 			}
-			if _, err := e.Recreate(ctx, q, false); err != nil {
+			if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 				t.Fatal(err)
 			}
 			current := sessionRecord(t, e, made.SessionID)
@@ -104,7 +105,7 @@ func TestRuntimeApplyCapturesInputsAndPreservesLifetime(t *testing.T) {
 			if c.State.Running != running || current.Settings.ManualStart != running {
 				t.Fatal("apply changed lifetime")
 			}
-			if _, err := e.Open(ctx, q); err != nil {
+			if _, err := e.Open(ctx, openRequest(q)); err != nil {
 				t.Fatal("access read broken desired config", err)
 			}
 		})
@@ -126,7 +127,7 @@ func TestAppliedRuntimeStopFailureSuggestsStopRatherThanReapplication(t *testing
 		return nil
 	}
 	var failure *commanderror.Error
-	if _, err := e.Recreate(ctx, q, false); !errors.As(err, &failure) || failure.Code != "runtime_apply_failed" {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); !errors.As(err, &failure) || failure.Code != "runtime_apply_failed" {
 		t.Fatal(err)
 	}
 	if !slices.Equal(failure.Next[len(failure.Next)-1].Command, []string{"dbx", "stop", made.Session}) {
@@ -155,7 +156,7 @@ func TestFailedRuntimeApplyRetainsAppliedLaunchAndHooks(t *testing.T) {
 		}
 		return nil
 	}
-	if _, err := e.Recreate(ctx, q, false); err == nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err == nil {
 		t.Fatal("apply failure hidden")
 	}
 	current := sessionRecord(t, e, made.SessionID)
@@ -163,7 +164,7 @@ func TestFailedRuntimeApplyRetainsAppliedLaunchAndHooks(t *testing.T) {
 		t.Fatal("failed apply advanced the record")
 	}
 	d.Fail = nil
-	if _, err := e.Open(ctx, q); err != nil {
+	if _, err := e.Open(ctx, openRequest(q)); err != nil {
 		t.Fatal("failed apply lost prior hook copies", err)
 	}
 	for _, args := range d.History() {

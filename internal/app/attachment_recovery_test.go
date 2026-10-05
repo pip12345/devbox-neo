@@ -103,7 +103,7 @@ func TestForcedRecreationRetiresOnlyOldAttachments(t *testing.T) {
 			}
 			open := func() <-chan error {
 				done := make(chan error, 1)
-				go func() { _, err := e.Open(ctx, q); done <- err }()
+				go func() { _, err := e.Open(ctx, openRequest(q)); done <- err }()
 				select {
 				case <-arrived:
 				case <-ctx.Done():
@@ -113,11 +113,12 @@ func TestForcedRecreationRetiresOnlyOldAttachments(t *testing.T) {
 			}
 			oldDone := open()
 			var busy *commanderror.Error
-			if _, err := e.Recreate(ctx, q, false); !errors.As(err, &busy) || busy.Code != "session_busy" || busy.Target != old.Directory || !strings.Contains(busy.Message, "host PID") || !reflect.DeepEqual(busy.Next[0].Command, []string{"dbx", "status", old.Directory}) {
+			if _, err := e.Recreate(ctx, recreateRequest(q), false); !errors.As(err, &busy) || busy.Code != "session_busy" || busy.Target != old.Directory || !strings.Contains(busy.Message, "host PID") || !reflect.DeepEqual(busy.Next[0].Command, []string{"dbx", "status", old.Directory}) {
 				t.Fatal("ordinary recreation lost attachment protection or actionable details", err)
 			}
-			q.Force = true
-			if _, err := e.Recreate(ctx, q, false); err != nil {
+			forced := recreateRequest(q)
+			forced.Options.Force = true
+			if _, err := e.Recreate(ctx, forced, false); err != nil {
 				t.Fatal(err)
 			}
 			current := sessionRecord(t, e, old.ID)
@@ -172,7 +173,8 @@ func TestForcedRecreationFailureRetainsAttachmentProtection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			q.Force = true
+			forced := recreateRequest(q)
+			forced.Options.Force = true
 			if failure == "config" {
 				write(t, filepath.Join(q.Sources[0].Path, "config.json"), "broken")
 			} else {
@@ -183,7 +185,7 @@ func TestForcedRecreationFailureRetainsAttachmentProtection(t *testing.T) {
 					return nil
 				}
 			}
-			if _, err := e.Recreate(ctx, q, failure == "build"); err == nil {
+			if _, err := e.Recreate(ctx, forced, failure == "build"); err == nil {
 				t.Fatal("injected failure did not fail recreation")
 			}
 			lock, err = e.Store.Lock(ctx, r.Directory, r.ID)

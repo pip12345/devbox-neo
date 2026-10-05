@@ -25,7 +25,7 @@ func TestNamedSessionsRequireExplicitDefaultsAndPinSources(t *testing.T) {
 	write(t, filepath.Join(e.Store.Home, "config.json"), `{"default_profile":"test"}`)
 	calls := len(d.History())
 	for _, action := range []func() error{
-		func() error { _, err := e.Open(ctx, Request{Workspace: q.Workspace}); return err },
+		func() error { _, err := e.Open(ctx, OpenRequest{Target: q.Workspace}); return err },
 		func() error { _, err := e.Start(ctx, q.Workspace, ""); return err },
 		func() error { return e.Stop(ctx, q.Workspace, "", false) },
 		func() error { return e.Exec(ctx, q.Workspace, "", []string{"true"}, false) },
@@ -54,14 +54,14 @@ func TestNamedSessionsRequireExplicitDefaultsAndPinSources(t *testing.T) {
 	if got, err := e.Locate(ctx, q.Workspace, ""); err != nil || got.ID != b.ID {
 		t.Fatal("did not select explicit default", got.ID, err)
 	}
-	if _, err = e.Open(ctx, Request{Workspace: first.SessionID}); err != nil {
+	if _, err = e.Open(ctx, OpenRequest{Target: first.SessionID}); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := e.Locate(ctx, q.Workspace, ""); err != nil || got.ID != b.ID {
 		t.Fatal("exact open changed default", got.ID, err)
 	}
 	write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"ports":["9090:90"]}`)
-	pinned := Request{Workspace: a.Settings.Workspace, SessionID: a.ID, Sources: a.Settings.Sources}
+	pinned := RecreateRequest{Target: a.ID}
 	if _, err = e.Recreate(ctx, pinned, false); err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestDirectLookupIgnoresUnrelatedCorruptionAndRejectsConflictingSelectors(t 
 	if err = e.Stop(ctx, made.SessionID, "wrong", false); err == nil {
 		t.Fatal("ignored conflicting exact selector")
 	}
-	if _, err = e.Open(ctx, Request{Workspace: made.SessionID, LocalName: "wrong"}); err == nil {
+	if _, err = e.Open(ctx, OpenRequest{Target: made.SessionID, LocalName: "wrong"}); err == nil {
 		t.Fatal("ignored conflicting open selector")
 	}
 	file, _ := e.Store.RecordPath(sessionRecord(t, e, made.SessionID).Directory)
@@ -149,9 +149,10 @@ func TestInvocationHarnessArgumentsAreNotSaved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q.HarnessArgs = []string{"--only-this-time"}
-	q.Args = []string{"--also-once"}
-	if _, err = e.Open(ctx, q); err != nil {
+	launch := openRequest(q)
+	launch.HarnessArgs = []string{"--only-this-time"}
+	launch.Args = []string{"--also-once"}
+	if _, err = e.Open(ctx, launch); err != nil {
 		t.Fatal(err)
 	}
 	r := sessionRecord(t, e, made.SessionID)

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"sort"
 	"time"
 
 	"devbox/internal/commanderror"
@@ -41,36 +40,35 @@ type DeleteOptions struct {
 }
 
 type DeleteResult struct {
-	// Targets pins session IDs and exact incomplete-directory names separately
-	// from the container names in receipts.
-	Targets                       []string `json:"-"`
-	Containers                    []string `json:"containers"`
-	Sessions                      []string `json:"sessions"`
-	Retained                      []string `json:"retained_sessions"`
-	DryRun                        bool     `json:"dry_run"`
-	Cancelled                     bool     `json:"cancelled"`
-	IncompleteDirectories         []string `json:"incomplete_directories,omitempty"`
-	RetainedIncompleteDirectories []string `json:"retained_incomplete_directories,omitempty"`
+	// Targets retains captured identities across a preview and a later form.
+	Targets                       []SelectedTarget `json:"-"`
+	Containers                    []string         `json:"containers"`
+	Sessions                      []string         `json:"sessions"`
+	Retained                      []string         `json:"retained_sessions"`
+	DryRun                        bool             `json:"dry_run"`
+	Cancelled                     bool             `json:"cancelled"`
+	IncompleteDirectories         []string         `json:"incomplete_directories,omitempty"`
+	RetainedIncompleteDirectories []string         `json:"retained_incomplete_directories,omitempty"`
 }
 
 func (r DeleteResult) DeletedCount() int {
 	return len(r.Containers) + len(r.Sessions) + len(r.IncompleteDirectories)
 }
 
-func (e *Engine) deletionTargets(ctx context.Context, options DeleteOptions, cutoff time.Time) ([]string, error) {
+func (e *Engine) deletionTargets(ctx context.Context, options DeleteOptions, cutoff time.Time) (selectedTargets, error) {
 	selection := options.Selection
 	filtered := selection.All || selection.Stopped || options.Orphaned || !cutoff.IsZero()
 	if !filtered {
-		return e.selectContainers(ctx, &selection)
+		return e.selectContainers(ctx, selection)
 	}
-	if len(selection.Targets) > 0 || selection.LocalName != "" {
+	if len(selection.Targets) > 0 || len(selection.Captured) > 0 || selection.LocalName != "" {
 		return nil, fmt.Errorf("use exact targets with optional --name, or selection filters, not both")
 	}
 	report, err := e.List(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	names := []string{}
+	targets := map[string]SelectedTarget{}
 	for _, view := range append(report.Sessions, report.UnmatchedContainers...) {
 		if view.Uncommitted {
 			continue
@@ -89,25 +87,17 @@ func (e *Engine) deletionTargets(ctx context.Context, options DeleteOptions, cut
 		if view.Pending != nil {
 			return nil, commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", view.Target, nil, view.Pending.RetryStep())
 		}
-		target := view.Target
+		target := SelectedTarget{name: view.Target, sessionID: view.OwnerSessionID, record: recordAbsent, containerID: view.ContainerID}
 		if view.SessionID != "" {
 			r, err := e.Store.Find(ctx, view.SessionID, nil)
 			if err != nil {
 				return nil, err
 			}
-			target = r.Directory
-			options.Selection.selectedIDs[target] = r.ID
-			options.Selection.operationIDs[target] = r.ID
+			target = selectedRecord(r)
 		}
-		if view.SessionID == "" {
-			options.Selection.operationIDs[target] = view.OwnerSessionID
-			options.Selection.selectedIDs[target] = ""
-			options.Selection.containerIDs[target] = view.ContainerID
-		}
-		names = append(names, target)
+		targets[target.name] = target
 	}
-	sort.Strings(names)
-	return names, nil
+	return orderedTargets(targets), nil
 }
 
 // Recheck discovered state under the full lock set, including after a prompt.
@@ -154,6 +144,9 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result Dele
 	if options.OlderThan > 0 {
 		cutoff = time.Now().Add(-options.OlderThan)
 	}
+	if len(options.Selection.Targets) > 0 && len(options.Selection.Captured) > 0 {
+		return result, fmt.Errorf("use requested or captured targets, not both")
+	}
 	incomplete, remaining, err := e.incompleteDeletionTargets(ctx, options)
 	if err != nil {
 		return result, err
@@ -171,26 +164,23 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result Dele
 			if err := directory.Check(ctx); err != nil {
 				return result, err
 			}
-			result.Targets = append(result.Targets, directory.Name)
+			result.Targets = append(result.Targets, SelectedTarget{name: directory.Name, incomplete: directory})
 			result.RetainedIncompleteDirectories = append(result.RetainedIncompleteDirectories, directory.Name)
 		}
-		options.Selection.Targets = remaining
+		options.Selection = remaining
 	}
 	defer func() {
 		result.Retained = slices.DeleteFunc(result.Retained, func(name string) bool { return slices.Contains(result.Sessions, name) })
 		result.RetainedIncompleteDirectories = slices.DeleteFunc(result.RetainedIncompleteDirectories, func(name string) bool { return slices.Contains(result.IncompleteDirectories, name) })
 	}()
-	options.Selection.selectedIDs = map[string]string{}
-	options.Selection.containerIDs = map[string]string{}
-	options.Selection.operationIDs = map[string]string{}
-	var names []string
-	if len(incomplete) == 0 || len(remaining) > 0 {
-		names, err = e.deletionTargets(ctx, options, cutoff)
+	var targets selectedTargets
+	if len(incomplete) == 0 || len(remaining.Targets)+len(remaining.Captured) > 0 {
+		targets, err = e.deletionTargets(ctx, options, cutoff)
 		if err != nil {
 			return result, err
 		}
 	}
-	locks, err := e.Store.LockAll(ctx, names, options.Selection.operationIDs)
+	locks, err := targets.lock(ctx, e.Store)
 	if err != nil {
 		return result, err
 	}
@@ -198,16 +188,16 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result Dele
 	if err := e.recheckDeleteFilters(ctx, locks, options, cutoff); err != nil {
 		return result, err
 	}
-	containers, err := e.deleteContainersLocked(ctx, options.Selection, locks, options.Force, true)
+	containers, err := e.deleteContainersLocked(ctx, targets, options.Selection, locks, options.Force, true)
 	if err != nil {
 		return result, err
 	}
 	sessionLocks := []*store.Locked{}
-	for _, lock := range locks {
+	for i, lock := range locks {
 		r, err := lock.Load()
 		if errors.Is(err, os.ErrNotExist) {
 			if slices.Contains(containers, lock.Name) {
-				result.Targets = append(result.Targets, lock.Name)
+				result.Targets = append(result.Targets, targets[i])
 			}
 			continue
 		}
@@ -218,7 +208,7 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result Dele
 			return result, fmt.Errorf("local name does not match the selected session")
 		}
 		sessionLocks = append(sessionLocks, lock)
-		result.Targets = append(result.Targets, r.ID)
+		result.Targets = append(result.Targets, selectedRecord(r))
 		result.Retained = append(result.Retained, r.Directory)
 	}
 	include := options.Scope == DeleteSession
@@ -245,7 +235,7 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result Dele
 	if err := e.recheckDeleteFilters(ctx, locks, options, cutoff); err != nil {
 		return result, err
 	}
-	result.Containers, err = e.deleteContainersLocked(ctx, options.Selection, locks, options.Force, options.DryRun)
+	result.Containers, err = e.deleteContainersLocked(ctx, targets, options.Selection, locks, options.Force, options.DryRun)
 	if err != nil {
 		return result, err
 	}

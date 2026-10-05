@@ -12,6 +12,13 @@ import (
 	"devbox/internal/store"
 )
 
+func openRequest(q app.CreateRequest) app.OpenRequest {
+	return app.OpenRequest{Target: q.Workspace, LocalName: q.LocalName}
+}
+func recreateRequest(q app.CreateRequest) app.RecreateRequest {
+	return app.RecreateRequest{Target: q.Workspace, LocalName: q.LocalName, Options: app.RecreateOptions{Host: q.Host}}
+}
+
 func sessionRecord(t *testing.T, e *app.Engine, id string) store.Record {
 	t.Helper()
 	r, err := e.Locate(context.Background(), id, "")

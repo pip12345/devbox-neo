@@ -955,6 +955,9 @@ func (m *terminalModel) workflowContentActive(w, h int, active bool) string {
 }
 func (m *terminalModel) confirmation(w, h int) string {
 	text := strings.TrimSpace(m.req.body + "\n\n" + m.req.prompt)
+	if m.req.notice != "" {
+		text = m.req.notice + "\n\n" + text
+	}
 	body := heading("Confirm action", w, true) + "\n" + fit(block(text, w), w, h-5, m.scroll) + "\n\n"
 	for i, label := range []string{"No — keep unchanged", "Yes — proceed"} {
 		prefix := "  "

@@ -24,7 +24,7 @@ func TestCreationRecordParity(t *testing.T) {
 			profile := filepath.Join(e.Store.Home, "profiles/test")
 			write(t, filepath.Join(profile, "config.json"), `{"version":1,"harness":"pi","harness_args":["--verbose"],"env":["TOKEN=not-saved"],"ports":["8080:80"],"docker_args":["--memory=256m"],"shell":["bash","-l"]}`)
 			write(t, filepath.Join(profile, "setup.sh"), "echo setup")
-			s, err := e.Resolve(q)
+			s, err := e.Resolve(resolveRequest(q))
 			if err != nil {
 				t.Fatal(err)
 			}

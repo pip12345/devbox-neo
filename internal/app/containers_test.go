@@ -99,7 +99,7 @@ func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
 	if _, ok := d.Images[initial.Applied.ImageTag]; !ok {
 		t.Fatal("container deletion removed session image")
 	}
-	if _, err = e.Recreate(ctx, Request{Workspace: first.SessionID}, false); err != nil {
+	if _, err = e.Recreate(ctx, RecreateRequest{Target: first.SessionID}, false); err != nil {
 		t.Fatal("retained record cannot recreate", err)
 	}
 	if sessionRecord(t, e, first.SessionID).ID != initial.ID {
@@ -130,7 +130,7 @@ func TestRecreateAllPreflightsAndPreservesRunningIntent(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := sessionRecord(t, e, a.SessionID).Applied.SetupContainer
-	result, err := e.RecreateAll(ctx, true, Request{})
+	result, err := e.RecreateAll(ctx, true, RecreateOptions{})
 	if err != nil || len(result) != 2 {
 		t.Fatal(result, err)
 	}
@@ -177,7 +177,7 @@ func TestSecondaryNetworksDoNotChangeCreationContract(t *testing.T) {
 		t.Fatal("secondary network changed durable fingerprints")
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host"}`)
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	if err = e.ChangeNetwork(ctx, result.SessionID, "", "extra", true); err == nil {
@@ -195,7 +195,7 @@ func TestExactTargetIgnoresObsoleteGlobalConfiguration(t *testing.T) {
 	}
 	write(t, filepath.Join(e.Store.Home, "config.json"), `{"version":1,"default_profile":"test","ignore_project":true}`)
 	q.Workspace = first.SessionID
-	again, err := e.Open(ctx, q)
+	again, err := e.Open(ctx, openRequest(q))
 	if err != nil || again.SessionID != first.SessionID {
 		t.Fatal("exact target switched slots", err)
 	}
@@ -212,7 +212,7 @@ func TestOwnedContainerWithoutRecordCanBeDeletedButNeverAdopted(t *testing.T) {
 	if err = os.Remove(recordPath); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Open(ctx, q); err == nil {
+	if _, err = e.Open(ctx, openRequest(q)); err == nil {
 		t.Fatal("recordless container was adopted")
 	}
 	if _, err = e.DeleteContainers(ctx, Selection{Targets: []string{result.SessionID}}, false); err != nil {

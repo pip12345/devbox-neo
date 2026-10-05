@@ -283,7 +283,9 @@ func (r *Runner) terminalText(request TextRequest) (string, bool, error) {
 	return reply.value, !reply.back && err == nil, err
 }
 func (r *Runner) terminalConfirm(prompt string) (bool, error) {
-	reply, err := r.screen.present(&screenRequest{page: Screen{Title: "Confirm action", Back: "Cancel", Actions: []Action{{Label: "No — keep unchanged"}, {Label: "Yes — proceed", Danger: true}}}, body: ansi.Strip(r.screen.take()), prompt: prompt, confirm: true})
+	notice := strings.Join(r.notices, "\n")
+	r.notices = nil
+	reply, err := r.screen.present(&screenRequest{page: Screen{Title: "Confirm action", Back: "Cancel", Actions: []Action{{Label: "No — keep unchanged"}, {Label: "Yes — proceed", Danger: true}}}, body: ansi.Strip(r.screen.take()), notice: notice, prompt: prompt, confirm: true})
 	if err != nil {
 		pauseErr := r.Pause()
 		if pauseErr == nil {

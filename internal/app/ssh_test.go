@@ -93,7 +93,7 @@ func TestSSHStartupLeasesConcurrentConnectionsAndCleanup(t *testing.T) {
 	if err := e.Stop(ctx, result.SessionID, "", false); err == nil {
 		t.Fatal("SSH lease did not protect stop")
 	}
-	if _, err := e.Recreate(ctx, q, false); err == nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err == nil {
 		t.Fatal("SSH lease did not protect recreation")
 	}
 	if err := e.SSH(ctx, result.SessionID, "", "staging", SSHOptions{}); err == nil || !strings.Contains(err.Error(), "already in use") {

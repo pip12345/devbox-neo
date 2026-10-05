@@ -29,13 +29,13 @@ func TestRecreateResolvesCurrentEnvironmentWithoutPersistingValues(t *testing.T)
 	}
 	before := sessionRecord(t, e, result.SessionID)
 	forgetSession(t, e, result.SessionID)
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal("explicit recreation failed", err)
 	}
 	forgetSession(t, e, result.SessionID)
 	t.Setenv("DEVBOX_TEST_TOKEN", "new-secret")
 	creates := count(d, "create")
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal("current env did not rebuild", err)
 	}
 	if count(d, "create") != creates+1 {
@@ -55,7 +55,7 @@ func TestPublicSubstitutionsAndCreationOptionsUseOneSnapshot(t *testing.T) {
 	file := filepath.Join(e.Store.Home, "profiles/test/config.json")
 	write(t, file, `{"version":1,"harness":"${env:AGENT}","network":"${env:NET}","env":["KEY=${env:SECRET}"],"mounts":["${env:DATA}:/data:ro"],"ports":["127.0.0.1:8080:80"],"docker_args":["--memory=256m"],"vscode":{"extensions":["example.extension"]}}`)
 	q.Host = config.Host{"AGENT": "pi", "NET": "default", "SECRET": "snapshot-value", "DATA": source}
-	spec, err := e.Resolve(q)
+	spec, err := e.Resolve(resolveRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestRecreateUsesCurrentSelectedSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	forgetSession(t, e, result.SessionID)
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal("recreation did not resolve current selected sources", err)
 	}
 	after := sessionRecord(t, e, result.SessionID)
@@ -147,12 +147,12 @@ func TestFileAndVolumeMountRecreationChecksKinds(t *testing.T) {
 		t.Fatal(err)
 	}
 	forgetSession(t, e, result.SessionID)
-	if _, err = e.Recreate(context.Background(), q, false); err != nil {
+	if _, err = e.Recreate(context.Background(), recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	forgetSession(t, e, result.SessionID)
 	delete(d.Volumes, "shared-volume")
-	if _, err = e.Recreate(context.Background(), q, false); err == nil {
+	if _, err = e.Recreate(context.Background(), recreateRequest(q), false); err == nil {
 		t.Fatal("missing volume silently recreated")
 	}
 }

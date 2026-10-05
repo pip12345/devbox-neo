@@ -74,10 +74,10 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 		t.Fatal("intermediate tag was not cleaned up")
 	}
 	before := count(d, "build")
-	if _, err = e.Open(context.Background(), q); err != nil || count(d, "build") != before {
+	if _, err = e.Open(context.Background(), openRequest(q)); err != nil || count(d, "build") != before {
 		t.Fatal("reopen rebuilt", err)
 	}
-	if _, err = e.Recreate(context.Background(), q, true); err != nil {
+	if _, err = e.Recreate(context.Background(), recreateRequest(q), true); err != nil {
 		t.Fatal(err)
 	}
 	history := d.History()
@@ -129,7 +129,7 @@ func TestNewDockerfileRemainsPendingUntilExplicitApplication(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(q.Workspace, ".devbox/docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
-	result, err := e.Open(ctx, q)
+	result, err := e.Open(ctx, openRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,7 +28,7 @@ func TestDriftBaselineTracksExplicitApplication(t *testing.T) {
 	if err != nil || before.Desired != environment.Recreate {
 		t.Fatal(before, err)
 	}
-	opened, err := e.Open(ctx, q)
+	opened, err := e.Open(ctx, openRequest(q))
 	if err != nil || len(opened.Diagnostics) != 0 {
 		t.Fatal(opened, err)
 	}
@@ -43,7 +43,7 @@ func TestDriftBaselineTracksExplicitApplication(t *testing.T) {
 	if err != nil || bytes.Contains(encoded, []byte("never-display-me")) {
 		t.Fatal("status exposed env values", err)
 	}
-	if _, err := e.Recreate(ctx, q, false); err != nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	final, err := e.Status(ctx, made.SessionID, "")
@@ -79,7 +79,7 @@ func TestAccessDoesNotAdvanceRuntimeBaseline(t *testing.T) {
 					return nil
 				}
 			}
-			result, err = e.Open(ctx, q)
+			result, err = e.Open(ctx, openRequest(q))
 			if !running && err == nil || running && err != nil {
 				t.Fatal(err)
 			}
@@ -115,7 +115,7 @@ func TestFailedRecreationPreservesImageBaseline(t *testing.T) {
 		}
 		return nil
 	}
-	if _, err := e.Recreate(ctx, q, false); err == nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err == nil {
 		t.Fatal("expected failure")
 	}
 	stored := sessionRecord(t, e, result.SessionID)
@@ -132,7 +132,7 @@ func TestFailedRecreationPreservesImageBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal("failed build left a wrong image-tag association blocking deletion", err)
 	}
-	if _, err := e.Recreate(ctx, q, false); err != nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	view, err = e.Status(ctx, result.SessionID, "")

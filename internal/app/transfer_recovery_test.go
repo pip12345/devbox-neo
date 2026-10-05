@@ -98,7 +98,7 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 		t.Fatal("pending cleanup not inspectable", err)
 	}
 	var pendingError *commanderror.Error
-	if _, err = e.Open(ctx, q); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" {
+	if _, err = e.Open(ctx, openRequest(q)); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" {
 		t.Fatal("source name became available during cleanup", err)
 	}
 	if _, err = e.Create(ctx, q); !errors.As(err, &pendingError) || pendingError.Code != "pending_transfer" {
@@ -128,7 +128,7 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 		t.Fatal("transfer cleanup rebuilt destination runtime")
 	}
 	write(t, configPath, `{"version":1,"harness":"pi","network":"host"}`)
-	if _, err := e.Recreate(ctx, Request{Workspace: result.Destination}, false); err != nil {
+	if _, err := e.Recreate(ctx, RecreateRequest{Target: result.Destination}, false); err != nil {
 		t.Fatal("explicit destination recreation failed", err)
 	}
 	if _, exists := sessionSnapshot(t, e, result.Destination); !exists {

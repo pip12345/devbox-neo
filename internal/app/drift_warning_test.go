@@ -56,7 +56,7 @@ func TestApplicationPlanPrecedesRuntimeMutations(t *testing.T) {
 				}
 				plans++
 			}
-			result, err := e.Recreate(ctx, q, false)
+			result, err := e.Recreate(ctx, recreateRequest(q), false)
 			if err != nil || plans != 1 || len(result.Diagnostics) != 1 {
 				t.Fatal(result, err)
 			}
@@ -77,7 +77,7 @@ func TestCancelledApplicationPlanDoesNotMutate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	e.OnDiagnostic = func(Diagnostic) { cancel() }
-	if _, err := e.Recreate(ctx, q, false); !errors.Is(err, context.Canceled) {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	if runtimeMutations(d) != before || string(getFile(t, path)) != beforeRecord {

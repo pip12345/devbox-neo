@@ -22,7 +22,7 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 				write(t, filepath.Join(q.Workspace, ".devbox/config.json"), `{"version":1,"harness":"pi"}`)
 			}
 			ctx := context.Background()
-			_, err := e.Open(ctx, q)
+			_, err := e.Open(ctx, openRequest(q))
 			var missing *commanderror.Error
 			if !errors.Is(err, os.ErrNotExist) || !errors.As(err, &missing) || missing.Code != "session_missing" {
 				t.Fatal(err)
@@ -43,7 +43,7 @@ func TestOpenRequiresExplicitCreation(t *testing.T) {
 			}
 			first := sessionRecord(t, e, opened.SessionID)
 			for range 2 {
-				if _, err = e.Open(ctx, q); err != nil {
+				if _, err = e.Open(ctx, openRequest(q)); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -82,7 +82,7 @@ func TestCreatePreparesWithoutOpeningAndLeavesStopped(t *testing.T) {
 	if hooks != 1 {
 		t.Fatal("create must run setup, not entrypoint", hooks)
 	}
-	if _, err = e.Open(ctx, q); err != nil {
+	if _, err = e.Open(ctx, openRequest(q)); err != nil {
 		t.Fatal(err)
 	}
 	c, _ = sessionSnapshot(t, e, result.SessionID)
@@ -99,10 +99,11 @@ func TestOpenLaunchOverridesDoNotRecreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := sessionRecord(t, e, created.SessionID)
-	q.HarnessArgs = []string{"--version"}
-	q.Continue = true
-	q.Args = []string{"--one-off"}
-	if _, err = e.Open(ctx, q); err != nil {
+	launch := openRequest(q)
+	launch.HarnessArgs = []string{"--version"}
+	launch.Continue = true
+	launch.Args = []string{"--one-off"}
+	if _, err = e.Open(ctx, launch); err != nil {
 		t.Fatal(err)
 	}
 	after := sessionRecord(t, e, created.SessionID)
@@ -154,11 +155,11 @@ func TestExplicitRecreateRestoresMissingContainerWithOwnedImage(t *testing.T) {
 			}
 			first := sessionRecord(t, e, result.SessionID)
 			forgetSession(t, e, result.SessionID)
-			if _, err = e.Recreate(ctx, q, false); err != nil {
+			if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 				t.Fatal(err)
 			}
 			if action == "open" {
-				_, err = e.Open(ctx, q)
+				_, err = e.Open(ctx, openRequest(q))
 			} else {
 				_, err = e.Start(ctx, result.SessionID, "")
 			}
@@ -205,7 +206,7 @@ func TestCreateRejectsCorruptOrUncommittedState(t *testing.T) {
 	for _, corrupt := range []bool{false, true} {
 		e, d, q := fixture(t)
 		ctx := context.Background()
-		spec, err := e.Resolve(q)
+		spec, err := e.Resolve(resolveRequest(q))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -226,12 +227,12 @@ func TestCreateRejectsCorruptOrUncommittedState(t *testing.T) {
 
 func TestOpenDoesNotInventMissingExactSession(t *testing.T) {
 	e, d, q := fixture(t)
-	spec, err := e.Resolve(q)
+	spec, err := e.Resolve(resolveRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
 	q.Workspace = spec.Identity.Name
-	_, err = e.Open(context.Background(), q)
+	_, err = e.Open(context.Background(), openRequest(q))
 	var missing *commanderror.Error
 	if !errors.As(err, &missing) || missing.Code != "session_missing" || len(d.History()) != 0 {
 		t.Fatal(err, d.History())

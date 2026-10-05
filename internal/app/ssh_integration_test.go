@@ -59,7 +59,7 @@ func TestDockerSSHMastersThroughProxyJump(t *testing.T) {
 	output := new(sshTestOutput)
 	e := &Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{Out: output, Err: output}, UID: os.Getuid(), GID: os.Getgid()}
 	e.OnDiagnostic = func(d Diagnostic) { t.Logf("diagnostic: %+v", d) }
-	result, err := e.Create(ctx, Request{Workspace: t.TempDir(), LocalName: "test", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: filepath.Join(state.Home, "profiles/test")}}})
+	result, err := e.Create(ctx, CreateRequest{Workspace: t.TempDir(), LocalName: "test", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: filepath.Join(state.Home, "profiles/test")}}})
 	if err != nil {
 		t.Fatalf("create: %v\n%s", err, output.String())
 	}

@@ -144,7 +144,7 @@ func TestConfigDeleteProtectsNestedSources(t *testing.T) {
 				t.Fatal(err)
 			}
 			if phase != "desired" {
-				if _, err := e.Recreate(ctx, q, false); err != nil {
+				if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 					t.Fatal(err)
 				}
 			}

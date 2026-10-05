@@ -88,7 +88,7 @@ func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDe
 	selected, defaultErr := e.Store.ReadDefault(ctx, r.Settings.Workspace)
 	if defaultErr != nil {
 		if errors.Is(defaultErr, context.Canceled) || errors.Is(defaultErr, context.DeadlineExceeded) {
-			return StatusDetails{}, defaultErr
+			return details, defaultErr
 		}
 		// Default metadata must not hide an explicitly selected session's
 		// saved details, container state, or configuration diagnostics.

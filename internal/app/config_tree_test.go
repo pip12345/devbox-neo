@@ -49,7 +49,7 @@ func TestExplicitApplicationWarnsAndSkipsConfigSymlinks(t *testing.T) {
 			}
 			e.Streams.Err = new(bytes.Buffer)
 			for i := 0; i < 2; i++ {
-				result, err := e.Recreate(context.Background(), q, false)
+				result, err := e.Recreate(context.Background(), recreateRequest(q), false)
 				if err != nil {
 					t.Fatal(err)
 				}

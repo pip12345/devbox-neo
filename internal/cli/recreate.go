@@ -16,15 +16,18 @@ func recreateCommand(factory engineFactory, localName *string) *cobra.Command {
 		if !all && len(args) != 1 {
 			return fmt.Errorf("provide a target or --all")
 		}
+		if all && *localName != "" {
+			return fmt.Errorf("--name requires an explicit folder target")
+		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
 		}
 		if all {
-			_, err = e.RecreateAll(cmd.Context(), image, app.Request{LocalName: *localName, ForceContainer: container, Force: force})
+			_, err = e.RecreateAll(cmd.Context(), image, app.RecreateOptions{ForceContainer: container, Force: force})
 			return err
 		}
-		q := app.Request{Workspace: args[0], LocalName: *localName, ForceContainer: container, Force: force}
+		q := app.RecreateRequest{Target: args[0], LocalName: *localName, Options: app.RecreateOptions{ForceContainer: container, Force: force}}
 		_, err = e.Recreate(cmd.Context(), q, image)
 		return err
 	}}

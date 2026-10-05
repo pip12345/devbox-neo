@@ -48,7 +48,7 @@ func TestApplicationDiagnosticPrecedesMutationAndChildOutput(t *testing.T) {
 		}
 		return nil
 	}
-	result, err := e.Recreate(context.Background(), q, false)
+	result, err := e.Recreate(context.Background(), recreateRequest(q), false)
 	if err != nil {
 		t.Fatal(err)
 	}

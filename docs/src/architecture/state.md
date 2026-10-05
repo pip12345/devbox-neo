@@ -100,6 +100,8 @@ The complete operation-lock set spans confirmations and both phases. `removeSave
 
 An incomplete creation directory has no session ID. Its cleanup therefore holds the name-namespace lock before any session locks, excluding concurrent creation and transfers through confirmation and removal. Recheck record absence, transfer reservations, directory identity, and bind use by any container before removal. Without recorded identity, cleanup cannot authorize image, default, or lease mutations.
 
+Selection requests contain selectors and filters, never mutable discovery bookkeeping. Discovery returns ordered targets carrying record expectations, lock ownership and any pinned container instance together. Preview results retain captured targets for a later form; saved targets resolve by their captured ID, not a changed folder default, while incomplete targets retain their directory snapshot.
+
 Selection filters intersect. Age uses recorded activity, and unknown activity is not guessed to be old. Activity and orphan status are rechecked under lock, including after confirmation, before deletion records its own activity. Dry-run preflight examines leases without reaping them. This prevents a stale preview or prompt from selecting a newly active/recovered environment.
 
 ## Transfer state machine

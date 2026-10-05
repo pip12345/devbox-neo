@@ -21,7 +21,7 @@ import (
 	"devbox/internal/store"
 )
 
-func fixture(t *testing.T) (*Engine, *dockertest.Daemon, Request) {
+func fixture(t *testing.T) (*Engine, *dockertest.Daemon, CreateRequest) {
 	t.Helper()
 	home := t.TempDir()
 	workspace := t.TempDir()
@@ -36,13 +36,22 @@ func fixture(t *testing.T) (*Engine, *dockertest.Daemon, Request) {
 		{Label: "base", Kind: config.ReferenceFixed, Path: filepath.Join(home, "profiles", "test")},
 		{Label: "workspace", Kind: config.ReferenceFixed, Path: filepath.Join(workspace, ".devbox")},
 	}
-	return &Engine{Store: s, Docker: docker.Runtime{Runner: d}, Streams: docker.Streams{Out: new(bytes.Buffer), Err: new(bytes.Buffer)}, UID: 1000, GID: 1000}, d, Request{Workspace: workspace, LocalName: "test", Sources: sources}
+	return &Engine{Store: s, Docker: docker.Runtime{Runner: d}, Streams: docker.Streams{Out: new(bytes.Buffer), Err: new(bytes.Buffer)}, UID: 1000, GID: 1000}, d, CreateRequest{Workspace: workspace, LocalName: "test", Sources: sources}
 }
-func createAndOpen(ctx context.Context, e *Engine, q Request) (Result, error) {
+func openRequest(q CreateRequest) OpenRequest {
+	return OpenRequest{Target: q.Workspace, LocalName: q.LocalName}
+}
+func recreateRequest(q CreateRequest) RecreateRequest {
+	return RecreateRequest{Target: q.Workspace, LocalName: q.LocalName, Options: RecreateOptions{Host: q.Host}}
+}
+func resolveRequest(q CreateRequest) ResolveRequest {
+	return ResolveRequest{Workspace: q.Workspace, LocalName: q.LocalName, Sources: q.Sources, Host: q.Host}
+}
+func createAndOpen(ctx context.Context, e *Engine, q CreateRequest) (Result, error) {
 	if result, err := e.Create(ctx, q); err != nil {
-		return result, err
+		return result.Result, err
 	}
-	return e.Open(ctx, q)
+	return e.Open(ctx, openRequest(q))
 }
 
 func write(t *testing.T, path, data string) {
@@ -97,7 +106,7 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 	}
 	state := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home/sessions/history.json")
 	write(t, state, "persistent conversation")
-	_, err = e.Open(ctx, q)
+	_, err = e.Open(ctx, openRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +114,7 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 		t.Fatal("reopen recreated runtime")
 	}
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"pi","network":"host"}`)
-	result, err = e.Open(ctx, q)
+	result, err = e.Open(ctx, openRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +124,7 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 	if sessionRecord(t, e, result.SessionID).Applied.Creation.Network != "default" {
 		t.Fatal("drift advanced recorded creation settings")
 	}
-	_, err = e.Recreate(ctx, q, false)
+	_, err = e.Recreate(ctx, recreateRequest(q), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +138,7 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 	if b, err := os.ReadFile(state); err != nil || string(b) != "persistent conversation" {
 		t.Fatal("lost persistent state")
 	}
-	_, err = e.Recreate(ctx, q, true)
+	_, err = e.Recreate(ctx, recreateRequest(q), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +214,7 @@ func TestRecreateUsesCurrentDefinitionAndSettings(t *testing.T) {
 	delete(d.Images, first.Applied.ImageTag)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), `{"version":1,"harness":"opencode","network":"host"}`)
 	write(t, filepath.Join(e.Store.Home, "harnesses/pi/harness.json"), "invalid unselected override")
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	second := sessionRecord(t, e, result.SessionID)
@@ -242,7 +251,7 @@ func TestManagedConfigWaitsForExplicitApply(t *testing.T) {
 	before, _ := os.ReadFile(manifest)
 	write(t, live, `{"packages":["old"],"theme":"user-owned"}`)
 	write(t, settings, `{"packages":["new"]}`)
-	result, err = e.Open(ctx, q)
+	result, err = e.Open(ctx, openRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,13 +265,13 @@ func TestManagedConfigWaitsForExplicitApply(t *testing.T) {
 	if err = e.Stop(ctx, result.SessionID, "", false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = e.Open(ctx, q); err != nil {
+	if _, err = e.Open(ctx, openRequest(q)); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(getFile(t, live)), "new") {
 		t.Fatal("stopped access applied desired files")
 	}
-	if _, err := e.Recreate(ctx, q, false); err != nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(live)
@@ -287,7 +296,7 @@ func TestHookChangesRemainPendingUntilExplicitApply(t *testing.T) {
 	manifest := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/managed-config.json")
 	before, _ := os.ReadFile(manifest)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/before-open.sh"), "echo runtime")
-	result, err = e.Open(ctx, q)
+	result, err = e.Open(ctx, openRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +307,7 @@ func TestHookChangesRemainPendingUntilExplicitApply(t *testing.T) {
 	if !bytes.Equal(before, after) {
 		t.Fatal("running open changed the manifest")
 	}
-	desired, err := e.Resolve(q)
+	desired, err := e.Resolve(resolveRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +326,7 @@ func TestOwnershipAndDaemonErrorsFailClosed(t *testing.T) {
 	c.Config.Labels[docker.Namespace+".installation"] = "foreign"
 	d.SetContainer(c)
 	before := count(d, "rm")
-	if _, err = e.Recreate(ctx, q, false); err == nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err == nil {
 		t.Fatal("foreign ownership accepted")
 	}
 	if count(d, "rm") != before {
@@ -329,7 +338,7 @@ func TestOwnershipAndDaemonErrorsFailClosed(t *testing.T) {
 		}
 		return nil
 	}
-	if _, err = e.Open(ctx, q); err == nil {
+	if _, err = e.Open(ctx, openRequest(q)); err == nil {
 		t.Fatal("daemon failure treated as absence")
 	}
 	if count(d, "create") != 1 {
@@ -367,7 +376,13 @@ func TestForegroundStatusAndConcurrentLeases(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range errs {
 		wg.Add(1)
-		go func(i int) { defer wg.Done(); _, err := e.Open(ctx, q); mu.Lock(); errs[i] = err; mu.Unlock() }(i)
+		go func(i int) {
+			defer wg.Done()
+			_, err := e.Open(ctx, openRequest(q))
+			mu.Lock()
+			errs[i] = err
+			mu.Unlock()
+		}(i)
 	}
 	for range 2 {
 		select {
@@ -445,7 +460,7 @@ func TestMissingImageIsRebuiltOnExplicitRecreate(t *testing.T) {
 	forgetSession(t, e, result.SessionID)
 	delete(d.Images, old.Applied.ImageID)
 	delete(d.Images, old.Applied.ImageTag)
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	current := sessionRecord(t, e, result.SessionID)
@@ -468,7 +483,7 @@ func TestFailedReplacementKeepsStateAndRetriesCurrentConfiguration(t *testing.T)
 		}
 		return nil
 	}
-	if _, err = e.Recreate(ctx, q, false); err == nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err == nil {
 		t.Fatal("failed setup reported successful recreation")
 	}
 	after := sessionRecord(t, e, result.SessionID)
@@ -476,7 +491,7 @@ func TestFailedReplacementKeepsStateAndRetriesCurrentConfiguration(t *testing.T)
 		t.Fatal("failed replacement advanced durable creation facts")
 	}
 	d.Fail = nil
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	if sessionRecord(t, e, result.SessionID).Applied.Fingerprints.Container == old.Applied.Fingerprints.Container {
@@ -535,7 +550,7 @@ func TestRecordedValuesNeverPersistHarnessEnv(t *testing.T) {
 	}
 	write(t, filepath.Join(e.Store.Home, "harnesses/custom/harness.json"), strings.Replace(def, "sentinel-secret", `multi\nline`, 1))
 	before := len(d.History())
-	if _, err := e.Recreate(context.Background(), q, false); err == nil {
+	if _, err := e.Recreate(context.Background(), recreateRequest(q), false); err == nil {
 		t.Fatal("unsupported multiline transport accepted")
 	}
 	if len(d.History()) != before {
@@ -551,7 +566,7 @@ func TestRecreateSynchronizesCurrentManagedConfig(t *testing.T) {
 	}
 	forgetSession(t, e, result.SessionID)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/pi/settings.json"), `{"packages":["recovered"]}`)
-	if _, err = e.Recreate(ctx, q, false); err != nil {
+	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home/settings.json"))
@@ -589,7 +604,7 @@ func TestCancellationReleasesLease(t *testing.T) {
 	entered := make(chan struct{})
 	done := make(chan error, 1)
 	d.Attached = func(ctx context.Context, _ docker.Command) error { close(entered); <-ctx.Done(); return ctx.Err() }
-	go func() { _, err := e.Open(ctx, q); done <- err }()
+	go func() { _, err := e.Open(ctx, openRequest(q)); done <- err }()
 	<-entered
 	cancel()
 	if err = <-done; !errors.Is(err, context.Canceled) {
@@ -602,12 +617,12 @@ func TestCancellationReleasesLease(t *testing.T) {
 }
 func TestFingerprintDependsOnInstallationSalt(t *testing.T) {
 	e, _, q := fixture(t)
-	s, err := e.Resolve(q)
+	s, err := e.Resolve(resolveRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}
 	e.Store.Installation, _ = fsutil.ID()
-	other, err := e.Resolve(q)
+	other, err := e.Resolve(resolveRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}

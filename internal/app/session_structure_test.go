@@ -42,7 +42,7 @@ func TestWorkspaceEditLeavesAppliedStateAndHistoryIntactUntilRecreation(t *testi
 	if r, err := e.Locate(ctx, next, q.LocalName); err != nil || r.ID != before.ID {
 		t.Fatal(r, err)
 	}
-	if _, err := e.Open(ctx, Request{Workspace: before.ID}); err != nil {
+	if _, err := e.Open(ctx, OpenRequest{Target: before.ID}); err != nil {
 		t.Fatal("pending workspace edit blocked applied runtime", err)
 	}
 	if current := sessionRecord(t, e, before.ID); !reflect.DeepEqual(current.Applied, before.Applied) {
@@ -55,7 +55,7 @@ func TestWorkspaceEditLeavesAppliedStateAndHistoryIntactUntilRecreation(t *testi
 	if err != nil || status.Desired != environment.Recreate {
 		t.Fatal(status, err)
 	}
-	if _, err := e.Recreate(ctx, Request{Workspace: before.ID}, false); err != nil {
+	if _, err := e.Recreate(ctx, RecreateRequest{Target: before.ID}, false); err != nil {
 		t.Fatal(err)
 	}
 	final := sessionRecord(t, e, before.ID)

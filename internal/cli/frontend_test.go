@@ -17,7 +17,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func frontendFixture(t *testing.T, input io.Reader) (*frontend, *bytes.Buffer, app.Request, string) {
+func frontendFixture(t *testing.T, input io.Reader) (*frontend, *bytes.Buffer, app.CreateRequest, string) {
 	t.Helper()
 	e, q, name := namedCLIFixture(t)
 	out := new(bytes.Buffer)

@@ -64,10 +64,10 @@ func TestIncompleteSavedConfigCanBeInspectedWithoutSelectingHarness(t *testing.T
 	if err != nil || !strings.Contains(out, `"harness":""`) || !strings.Contains(out, "built-in default") {
 		t.Fatal(out, err)
 	}
-	if _, err := e.Open(context.Background(), app.Request{Workspace: fullName}); err != nil {
+	if _, err := e.Open(context.Background(), app.OpenRequest{Target: fullName}); err != nil {
 		t.Fatal("incomplete desired config blocked existing runtime", err)
 	}
-	if _, err := e.Recreate(context.Background(), app.Request{Workspace: fullName}, false); err == nil || !strings.Contains(err.Error(), "No harness selected") {
+	if _, err := e.Recreate(context.Background(), app.RecreateRequest{Target: fullName}, false); err == nil || !strings.Contains(err.Error(), "No harness selected") {
 		t.Fatal("inspection made incomplete configuration applicable", err)
 	}
 }

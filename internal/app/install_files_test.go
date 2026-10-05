@@ -77,7 +77,7 @@ func TestRecreateAdoptsChangedHarnessInstallFiles(t *testing.T) {
 	}
 	forgetSession(t, e, made.SessionID)
 	write(t, filepath.Join(root, "install", "helper.sh"), "changed\n")
-	if _, err := e.Recreate(context.Background(), q, false); err != nil {
+	if _, err := e.Recreate(context.Background(), recreateRequest(q), false); err != nil {
 		t.Fatal("rebuild rejected current install code", err)
 	}
 	if count(d, "build") != 4 {

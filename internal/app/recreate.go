@@ -22,7 +22,7 @@ type recreatePlan struct {
 
 // Planning is read-only under the session lock. Bulk application resolves all
 // selected configs before starting; later Docker failures can still be partial.
-func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.Record, q Request, image bool) (recreatePlan, error) {
+func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.Record, q RecreateOptions, image bool) (recreatePlan, error) {
 	p := recreatePlan{lock: lock, record: r, image: image, force: q.Force}
 	if q.Force {
 		if _, err := lock.LiveLeases(); err != nil {
@@ -34,9 +34,8 @@ func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.R
 	if err := checkDurableStores(lock, r); err != nil {
 		return p, err
 	}
-	q.Workspace, q.LocalName, q.SessionID, q.Sources = r.Settings.Workspace, r.Settings.LocalName, r.ID, r.Settings.Sources
 	var err error
-	p.spec, err = e.Resolve(q)
+	p.spec, err = e.Resolve(ResolveRequest{Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, Sources: r.Settings.Sources, RepairTarget: r.Directory, Host: q.Host})
 	if err != nil {
 		return p, err
 	}

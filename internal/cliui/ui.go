@@ -535,6 +535,12 @@ func (r *Runner) Confirm(prompt string) (bool, error) {
 	if err := r.Context.Err(); err != nil {
 		return false, err
 	}
+	for _, notice := range r.notices {
+		if _, err := fmt.Fprintln(r.Out, notice); err != nil {
+			return false, err
+		}
+	}
+	r.notices = nil
 	if _, err := fmt.Fprint(r.Out, prompt); err != nil {
 		return false, err
 	}

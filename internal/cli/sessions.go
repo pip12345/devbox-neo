@@ -105,6 +105,9 @@ func transferCommand(factory engineFactory, name *string) *cobra.Command {
 			options.Destination = args[1]
 		}
 		result, err := e.Transfer(cmd.Context(), options)
+		if options.DryRun {
+			writeWarnings(cmd.ErrOrStderr(), result.Warnings)
+		}
 		if err != nil {
 			return err
 		}

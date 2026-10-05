@@ -64,7 +64,7 @@ func TestRuntimeDocsAndNetworkFactsAreStagedAndCleaned(t *testing.T) {
 }
 func TestFailedRuntimeCopyDoesNotLaunchOrLeaveStaging(t *testing.T) {
 	e, d, q := fixture(t)
-	spec, err := e.Resolve(q)
+	spec, err := e.Resolve(resolveRequest(q))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,9 +25,10 @@ func TestContinueUsesAppliedHooksWithoutSourceDirectories(t *testing.T) {
 	if err := os.RemoveAll(q.Sources[0].Path); err != nil {
 		t.Fatal(err)
 	}
-	q.Continue = true
+	launch := openRequest(q)
+	launch.Continue = true
 	before := len(d.History())
-	if _, err := e.Open(ctx, q); err != nil {
+	if _, err := e.Open(ctx, launch); err != nil {
 		t.Fatal(err)
 	}
 	path := docker.OpenHookPath(environment.Digest([]byte("echo original")))
@@ -59,19 +60,19 @@ func TestOlderContainerRequiresExplicitHookApplicationButAllowsRepair(t *testing
 	delete(d.Hooks, old.Applied.SetupContainer)
 	write(t, script, "echo current")
 	var failure *commanderror.Error
-	if _, err := e.Open(ctx, q); !errors.As(err, &failure) || failure.Code != "applied_hooks_unavailable" {
+	if _, err := e.Open(ctx, openRequest(q)); !errors.As(err, &failure) || failure.Code != "applied_hooks_unavailable" {
 		t.Fatal("missing installed hooks were silently bypassed", err)
 	}
 	if err := e.Exec(ctx, made.SessionID, "", []string{"true"}, true); err != nil {
 		t.Fatal("missing hooks blocked repair shell", err)
 	}
-	if _, err := e.Recreate(ctx, q, false); err != nil {
+	if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	if current := sessionRecord(t, e, made.SessionID); current.Applied.SetupContainer != old.Applied.SetupContainer {
 		t.Fatal("hook application replaced container")
 	}
-	if _, err := e.Open(ctx, q); err != nil {
+	if _, err := e.Open(ctx, openRequest(q)); err != nil {
 		t.Fatal(err)
 	}
 }

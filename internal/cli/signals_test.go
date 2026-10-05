@@ -69,7 +69,7 @@ func TestHangupCleansUpAttachment(t *testing.T) {
 				<-ctx.Done()
 				return ctx.Err()
 			}
-			_, err := e.Open(ctx, q)
+			_, err := e.Open(ctx, openRequest(q))
 			if !attached || !errors.Is(err, context.Canceled) || root.Err() != context.Canceled || parent.Err() != nil {
 				t.Fatal("hangup did not cancel the whole command", attached, err, root.Err(), parent.Err())
 			}

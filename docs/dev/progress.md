@@ -8,6 +8,13 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Explicit operation contracts — implemented, live acceptance pending
+
+- Selection now returns ordered resource snapshots instead of mutating parallel maps through copied options. Interactive deletion retains captured identities and incomplete-directory snapshots; locks, leases, ownership and phase rechecks remain shared.
+- Creation, access, resolution and recreation have separate request types. Compiler repair guidance uses readable session targets rather than ownership IDs; records and journal formats are unchanged, with no compatibility aliases or migration.
+- Creation reports confirmed saving independently of later errors. Shared resolution returns warnings; execution and CLI/menu presentation explicitly deliver them without changing JSON data. `edit` parses one operation before validating its requirements and dispatching it.
+- Full fast-suite equivalent, vet, CLI build/help checks and integration compilation pass using `.tools/go` (`make` is unavailable). Captured-selection, creation-outcome, warning-channel, edit-operation and lifecycle/terminal regressions pass five repeated runs. Confirmation screens retain queued warnings before approval. Live Docker and manual host-terminal acceptance remain unrun; race checks are unavailable without a C compiler/CGO.
+
 ## Stable OpenCode and high-UID image builds — implemented, live acceptance pending
 
 - OpenCode installs the latest stable v2 through the official `https://opencode.ai/v2/install` endpoint instead of compiling a pinned development commit. The released v2.0.23 binary passes isolated synthetic-auth import/export checks with the unchanged shared-auth wrapper; Node.js remains installed. Existing sessions adopt the image changes only through explicit recreation.

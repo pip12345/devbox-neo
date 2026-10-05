@@ -37,7 +37,7 @@ func oldFixture(t *testing.T) (*app.Engine, *dockertest.Daemon, store.Record, st
 	if err := os.WriteFile(filepath.Join(root, "docker/Dockerfile"), []byte("FROM ${DEVBOX_BASE}\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	q := app.Request{Workspace: workspace, LocalName: "main", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: root}}}
+	q := app.CreateRequest{Workspace: workspace, LocalName: "main", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: root}}}
 	made, err := e.Create(ctx, q)
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func oldFixture(t *testing.T) (*app.Engine, *dockertest.Daemon, store.Record, st
 	if err := os.WriteFile(history, []byte("saved history"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	spec, err := e.Resolve(q)
+	spec, err := e.Resolve(app.ResolveRequest{Workspace: q.Workspace, LocalName: q.LocalName, Sources: q.Sources, Host: q.Host})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestRuntimeCutoverPreservesStateAndRebuildsNormally(t *testing.T) {
 	}
 	// Untagging can retain a dangling image. Explicit recreation builds a new
 	// owned image from current sources rather than adopting the old image.
-	if _, err := e.Recreate(ctx, app.Request{Workspace: old.ID}, false); err != nil {
+	if _, err := e.Recreate(ctx, app.RecreateRequest{Target: old.ID}, false); err != nil {
 		t.Fatal("explicit recreation failed", err)
 	}
 	if image := d.Images[old.Applied.ImageID]; image.Config.Labels[docker.Namespace+".managed"] != "" {

@@ -71,7 +71,7 @@ The ordered `setup.sh` chain belongs to the per-container contract. Before-open 
 
 `createAs` prepares resources before passing explicit inputs to the side-effect-free `creationRecord` helper. The caller owns ID allocation and clock reads; the helper assembles fields and applies the existing activity/action/manual-start rules for new sessions, recreation, and prepared destinations. Materialization supplies the setup-container ID before publication.
 
-The record commits only after startup, declared preparation, setup, and binary-availability checks succeed. Creation then stops the container and, if requested, selects the saved session as the folder default while retaining its operation lock. A stop failure does not prevent the requested default selection. A default-selection failure retains the created session and returns an exact `edit --default` repair step. Neither failure is presented as an absent session that can be created again.
+The record commits only after startup, declared preparation, setup, and binary-availability checks succeed. Creation then stops the container and, if requested, selects the saved session as the folder default while retaining its operation lock. A stop failure does not prevent the requested default selection. A default-selection failure retains the created session and returns an exact `edit --default` repair step. Neither failure is presented as an absent session that can be created again. `CreationResult.Saved` confirms successful record publication independently of completion errors; the UI uses that outcome rather than classifying lifecycle error codes. An unconfirmed publication is not proof of absence.
 
 Recreation selects saved identity and rereads it under the operation lock before resolving its current desired references. A later default change cannot retarget the invocation. Source edits do not rename the session; a replaced durable ID fails rather than being adopted.
 
@@ -91,7 +91,7 @@ Open checks the complete applied hook chain before running it. Each hook is a se
 
 Container/image changes use the shared creation pipeline. A missing image alone does not replace a healthy container. Bulk application preflights and captures all selected plans before executing them; both interfaces use the same application owner.
 
-Typed plan diagnostics are collected in `Result.Diagnostics` and delivered synchronously through `Engine.OnDiagnostic`. The CLI renders them on stderr before runtime mutation. Callbacks may run under the operation lock and must not reenter session operations. Source-reading warnings and child streams remain separate. Ordinary access does not resolve config merely to produce drift warnings; Status owns that inspection.
+Typed plan diagnostics are collected in `Result.Diagnostics` and delivered synchronously through `Engine.OnDiagnostic`. The CLI renders them on stderr before runtime mutation. Callbacks may run under the operation lock and must not reenter session operations. Source-reading warnings and child streams remain separate. Shared resolution returns captured warnings without printing. Creation/application report them explicitly before mutation; status and transfer previews return warning data for the CLI/menu presentation owner, outside JSON command data. Ordinary access does not resolve config merely to produce drift warnings; Status owns that inspection.
 
 ## Missing runtime and explicit recreation
 

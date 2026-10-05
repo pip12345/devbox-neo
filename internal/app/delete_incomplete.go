@@ -15,30 +15,50 @@ import (
 
 // Incomplete directories are selectable only by their exact inventory name.
 // There is no committed identity or activity with which to apply bulk filters.
-func (e *Engine) incompleteDeletionTargets(ctx context.Context, options DeleteOptions) ([]*store.IncompleteDirectory, []string, error) {
-	remaining := slices.Clone(options.Selection.Targets)
-	if options.Selection.All || options.Selection.Stopped || options.Orphaned || options.OlderThan > 0 || options.Selection.LocalName != "" {
+func (e *Engine) incompleteDeletionTargets(ctx context.Context, options DeleteOptions) ([]*store.IncompleteDirectory, Selection, error) {
+	remaining := options.Selection
+	remaining.Targets = slices.Clone(remaining.Targets)
+	remaining.Captured = slices.Clone(remaining.Captured)
+	if remaining.All || remaining.Stopped || options.Orphaned || options.OlderThan > 0 || remaining.LocalName != "" {
 		return nil, remaining, nil
 	}
 	incomplete := []*store.IncompleteDirectory{}
-	remaining = nil
+	remaining.Targets, remaining.Captured = nil, nil
 	seen := map[string]bool{}
-	for _, target := range options.Selection.Targets {
+	inspect := func(target string) (bool, error) {
 		if !environment.ValidResourceName(target) {
-			remaining = append(remaining, target)
-			continue
+			return false, nil
 		}
 		directory, err := e.Store.InspectIncompleteDirectory(ctx, target)
-		if err != nil {
-			return nil, nil, err
-		}
-		if directory == nil {
-			remaining = append(remaining, target)
-			continue
+		if err != nil || directory == nil {
+			return false, err
 		}
 		if !seen[target] {
 			incomplete = append(incomplete, directory)
 			seen[target] = true
+		}
+		return true, nil
+	}
+	for _, target := range options.Selection.Targets {
+		found, err := inspect(target)
+		if err != nil {
+			return nil, Selection{}, err
+		}
+		if !found {
+			remaining.Targets = append(remaining.Targets, target)
+		}
+	}
+	for _, target := range options.Selection.Captured {
+		if target.sessionID != "" {
+			remaining.Captured = append(remaining.Captured, target)
+			continue
+		}
+		if target.incomplete == nil || target.incomplete.Path != filepath.Join(e.Store.Home, "sessions", target.name) {
+			return nil, Selection{}, fmt.Errorf("invalid captured incomplete directory")
+		}
+		if !seen[target.name] {
+			incomplete = append(incomplete, target.incomplete)
+			seen[target.name] = true
 		}
 	}
 	return incomplete, remaining, nil

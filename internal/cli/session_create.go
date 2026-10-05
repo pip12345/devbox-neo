@@ -61,7 +61,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 		if err := m.Finish(); err != nil {
 			return err
 		}
-		result, err := e.Create(cmd.Context(), app.Request{Workspace: workspace, LocalName: draft.name, Sources: draft.sources, MakeDefault: draft.makeDefault})
+		result, err := e.Create(cmd.Context(), app.CreateRequest{Workspace: workspace, LocalName: draft.name, Sources: draft.sources, MakeDefault: draft.makeDefault})
 		if err != nil {
 			return err
 		}
@@ -120,7 +120,8 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 			if err := p.Pause(); err != nil {
 				return false, err
 			}
-			spec, err := e.Resolve(app.Request{Workspace: p.workspace, LocalName: draft.name, Sources: draft.sources})
+			spec, err := e.Resolve(app.ResolveRequest{Workspace: p.workspace, LocalName: draft.name, Sources: draft.sources})
+			writeWarnings(e.Streams.Err, spec.Warnings)
 			if err != nil {
 				if len(spec.Warnings) > 0 {
 					if reviewErr := p.ReviewOutput(); reviewErr != nil {

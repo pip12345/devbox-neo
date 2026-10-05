@@ -13,7 +13,7 @@ import (
 	"devbox/internal/store"
 )
 
-func interruptedTransfer(t *testing.T, mode string, prepared bool) (*Engine, *dockertest.Daemon, Request, store.Record, TransferOptions, store.Transfer) {
+func interruptedTransfer(t *testing.T, mode string, prepared bool) (*Engine, *dockertest.Daemon, CreateRequest, store.Record, TransferOptions, store.Transfer) {
 	t.Helper()
 	e, d, q := fixture(t)
 	ctx := context.Background()

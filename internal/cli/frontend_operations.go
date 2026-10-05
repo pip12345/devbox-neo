@@ -129,10 +129,10 @@ func (f *frontend) recreate(target string) error {
 				}
 				err = f.foreground("Recreate", func(ctx context.Context) error {
 					if target == "" {
-						_, err := f.e.RecreateAll(ctx, noCache, app.Request{ForceContainer: container, Force: force})
+						_, err := f.e.RecreateAll(ctx, noCache, app.RecreateOptions{ForceContainer: container, Force: force})
 						return err
 					}
-					_, err := f.e.Recreate(ctx, app.Request{Workspace: target, ForceContainer: container, Force: force}, noCache)
+					_, err := f.e.Recreate(ctx, app.RecreateRequest{Target: target, Options: app.RecreateOptions{ForceContainer: container, Force: force}}, noCache)
 					return err
 				})
 				if err != nil {
@@ -217,7 +217,7 @@ func (f *frontend) openWithOptions(target string) error {
 			f.value("Trailing arguments", fmt.Sprint(args), func() error { return f.arguments("Arguments appended last", &args) }),
 			f.submit("Open", "Invocation-only options; nothing saved", func() error {
 				return f.foreground("Open", func(ctx context.Context) error {
-					_, err := f.e.Open(ctx, app.Request{Workspace: target, Continue: resume, HarnessArgs: harnessArgs, Args: args})
+					_, err := f.e.Open(ctx, app.OpenRequest{Target: target, Continue: resume, HarnessArgs: harnessArgs, Args: args})
 					return err
 				})
 			}),
@@ -304,6 +304,7 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 				preview := options
 				preview.DryRun = true
 				result, err := f.e.Transfer(f.m.Context, preview)
+				f.m.warnings(result.Warnings)
 				if err != nil {
 					return err
 				}
@@ -313,6 +314,7 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 				q := options
 				q.DryRun = true
 				preview, err := f.e.Transfer(f.m.Context, q)
+				f.m.warnings(preview.Warnings)
 				if err != nil {
 					return false, f.m.report(err)
 				}
@@ -398,7 +400,11 @@ func (f *frontend) delete(targets []string) error {
 
 func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 	options.Selection.Targets = slices.Clone(options.Selection.Targets)
-	targets := options.Selection.Targets
+	options.Selection.Captured = slices.Clone(options.Selection.Captured)
+	targets := slices.Clone(options.Selection.Targets)
+	for _, target := range options.Selection.Captured {
+		targets = append(targets, target.Name())
+	}
 	age := ""
 	if options.OlderThan > 0 {
 		age = options.OlderThan.String()
@@ -470,7 +476,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 		force.Description = "Allow interrupting attached commands; saved data still requires idle sessions"
 		actions = append(actions, choice, force)
 		blocked := ""
-		if len(options.Selection.Targets) == 0 && !options.Selection.All && !options.Selection.Stopped && !options.Orphaned && options.OlderThan == 0 {
+		if len(options.Selection.Targets)+len(options.Selection.Captured) == 0 && !options.Selection.All && !options.Selection.Stopped && !options.Orphaned && options.OlderThan == 0 {
 			blocked = "Select exact targets or at least one filter."
 		}
 		preview := f.action("Preview deletion", "Review what will be removed", func() error {
@@ -487,7 +493,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 			var result app.DeleteResult
 			err := f.foreground(title, func(ctx context.Context) error {
 				q := options
-				confirmation := deletionConfirmation{ui: f.m.Runner, singleTarget: len(q.Selection.Targets) == 1}
+				confirmation := deletionConfirmation{ui: f.m.Runner, singleTarget: len(q.Selection.Targets)+len(q.Selection.Captured) == 1}
 				q.Confirm = confirmation.confirm
 				var err error
 				result, err = f.e.Delete(ctx, q)
