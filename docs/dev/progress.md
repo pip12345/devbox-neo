@@ -8,6 +8,12 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Transfer abort ordering and manifest validation — implemented
+
+- Abort sorts endpoint directories before acquiring the existing lock set. Clone and move regressions cover a destination that sorts before its source, retaining source history and running intent.
+- Existing managed manifests must explicitly contain version 1 and a non-null files map. Missing fields fail before file mutation; absent manifests and valid empty ownership remain supported. Saved formats are unchanged.
+- Both regressions reproduce the previous failures and pass five repeated runs after the fixes using the local toolchain. Live Docker and manual acceptance remain unrun.
+
 ## Explicit operation contracts — implemented, live acceptance pending
 
 - Selection now returns ordered resource snapshots instead of mutating parallel maps through copied options. Interactive deletion retains captured identities and incomplete-directory snapshots; locks, leases, ownership and phase rechecks remain shared.
