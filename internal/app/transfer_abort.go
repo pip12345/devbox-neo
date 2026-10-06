@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"devbox/internal/commanderror"
 	"devbox/internal/environment"
@@ -44,7 +45,9 @@ func (e *Engine) AbortTransfer(ctx context.Context, sourceID string) (TransferRe
 	if j.Phase != "prepare" {
 		return result, commanderror.New("transfer_committed", "The destination is already committed; finish cleanup instead of aborting.", j.Source.Name, nil, j.RetryStep())
 	}
-	locks, err := e.Store.LockAll(ctx, []string{j.Source.Name, j.Destination.Name}, map[string]string{j.Source.Name: j.SourceID, j.Destination.Name: j.DestinationID})
+	directories := []string{j.Source.Name, j.Destination.Name}
+	sort.Strings(directories)
+	locks, err := e.Store.LockAll(ctx, directories, map[string]string{j.Source.Name: j.SourceID, j.Destination.Name: j.DestinationID})
 	if err != nil {
 		return result, err
 	}

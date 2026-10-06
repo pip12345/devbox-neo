@@ -68,6 +68,67 @@ func TestPreparationRetryUsesCorrectedCurrentConfig(t *testing.T) {
 	}
 }
 
+func TestAbortWithDestinationSortingBeforeSource(t *testing.T) {
+	for _, mode := range []string{"clone", "relocate"} {
+		t.Run(mode, func(t *testing.T) {
+			e, d, q := fixture(t)
+			ctx := context.Background()
+			root := t.TempDir()
+			q.Workspace = filepath.Join(root, "z-source")
+			destination := filepath.Join(root, "a-destination")
+			for _, path := range []string{q.Workspace, destination} {
+				if err := os.Mkdir(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			made, err := e.Create(ctx, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := sessionRecord(t, e, made.SessionID)
+			history := filepath.Join(e.Store.Home, "sessions", source.Directory, "harnesses/pi/stores/home/history")
+			write(t, history, "source history")
+			if mode == "relocate" {
+				if _, err := e.Start(ctx, source.Directory, ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+			failure := errors.New("interrupted preparation")
+			d.Fail = func(args []string) error {
+				if args[0] == "build" {
+					return failure
+				}
+				return nil
+			}
+			if _, err := e.Transfer(ctx, TransferOptions{Mode: mode, Source: source.Directory, Destination: destination}); !errors.Is(err, failure) {
+				t.Fatal("did not interrupt transfer preparation", err)
+			}
+			d.Fail = nil
+			journal, err := e.Store.ReadTransfer(source.Directory)
+			if err != nil || journal == nil || journal.Phase != "prepare" {
+				t.Fatal(journal, err)
+			}
+			if journal.Destination.Name >= journal.Source.Name {
+				t.Fatal("fixture must put destination before source", journal)
+			}
+			result, err := e.AbortTransfer(ctx, source.Directory)
+			if err != nil || !result.Aborted || result.SessionID != source.ID || result.Destination != journal.Destination.Name {
+				t.Fatal(result, err)
+			}
+			if pending, err := e.Store.PendingID(source.ID); err != nil || pending != nil {
+				t.Fatal("abort retained reservation", pending, err)
+			}
+			if string(getFile(t, history)) != "source history" {
+				t.Fatal("abort changed source history")
+			}
+			container, exists := sessionSnapshot(t, e, source.ID)
+			if !exists || container.State.Running != (mode == "relocate") {
+				t.Fatal("abort changed source runtime lifetime", container.State)
+			}
+		})
+	}
+}
+
 func TestAbortRetainsSourceWithoutResolvingBrokenConfig(t *testing.T) {
 	for _, mode := range []string{"clone", "relocate"} {
 		t.Run(mode, func(t *testing.T) {

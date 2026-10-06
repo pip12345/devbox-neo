@@ -85,6 +85,9 @@ func loadManifest(path string) (Manifest, error) {
 	if err != nil {
 		return m, err
 	}
+	// Defaults apply only to absence; missing ownership fields in an existing
+	// manifest must not silently become an empty ownership ledger.
+	m = Manifest{}
 	if err = config.Decode(b, &m); err != nil {
 		return m, fmt.Errorf("invalid managed manifest: %w", err)
 	}

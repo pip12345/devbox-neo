@@ -95,6 +95,67 @@ func TestJSONOwnedKeys(t *testing.T) {
 		t.Fatal("invalid desired JSON accepted")
 	}
 }
+func TestInvalidManifestStopsSyncBeforeMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name, data string
+	}{
+		{"missing both fields", `{}`},
+		{"missing version", `{"files":{}}`},
+		{"null version", `{"version":null,"files":{}}`},
+		{"missing files", `{"version":1}`},
+		{"null files", `{"version":1,"files":null}`},
+		{"unsupported version", `{"version":2,"files":{}}`},
+		{"malformed JSON", `{"version":1`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			manifest := filepath.Join(root, "manifest.json")
+			live := filepath.Join(root, "a.txt")
+			if err := os.WriteFile(manifest, []byte(tc.data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(live, []byte("keep"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			desired := map[string]artifact.File{"a.txt": {Data: []byte("replace")}, "b.txt": {Data: []byte("create")}}
+			if err := Sync(root, manifest, "home", desired, nil); err == nil {
+				t.Fatal("invalid manifest accepted")
+			}
+			if data, err := os.ReadFile(live); err != nil || string(data) != "keep" {
+				t.Fatal("invalid manifest allowed live file mutation", string(data), err)
+			}
+			if _, err := os.Stat(filepath.Join(root, "b.txt")); !os.IsNotExist(err) {
+				t.Fatal("invalid manifest allowed file creation", err)
+			}
+			if data, err := os.ReadFile(manifest); err != nil || string(data) != tc.data {
+				t.Fatal("invalid manifest was replaced", string(data), err)
+			}
+		})
+	}
+}
+
+func TestAbsentAndExplicitEmptyManifestAllowSync(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		t.Run(map[bool]string{false: "absent", true: "empty"}[existing], func(t *testing.T) {
+			root := t.TempDir()
+			manifest := filepath.Join(root, "manifest.json")
+			if existing {
+				if err := os.WriteFile(manifest, []byte(`{"version":1,"files":{}}`), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			desired := map[string]artifact.File{"a.txt": {Data: []byte("managed")}}
+			if err := Sync(root, manifest, "home", desired, nil); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filepath.Join(root, "a.txt"))
+			if err != nil || string(data) != "managed" {
+				t.Fatal("valid manifest did not allow synchronization", string(data), err)
+			}
+		})
+	}
+}
+
 func TestExecutableConfigAndUserModeChanges(t *testing.T) {
 	root := t.TempDir()
 	manifest := filepath.Join(root, "manifest.json")
