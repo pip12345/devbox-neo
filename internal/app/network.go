@@ -51,7 +51,7 @@ func (e *Engine) NetworkFacts(ctx context.Context, target, localName string) (Ne
 	}
 	if !exists {
 		return NetworkFacts{}, commanderror.New("container_missing", "Container not found; network details are unavailable.", r.Directory, nil,
-			commanderror.Next("Start or restore", "start", r.Directory))
+			commanderror.Next("Recreate from current configuration", "recreate", r.Directory))
 	}
 	return networkFacts(r, c), nil
 }
@@ -78,7 +78,7 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 	}
 	if !exists {
 		return commanderror.New("container_missing", "Container not found.", r.Directory, nil,
-			commanderror.Next("Start or restore", "start", r.Directory))
+			commanderror.Next("Recreate from current configuration", "recreate", r.Directory))
 	}
 	if r.Applied.Creation.Network == "host" || c.HostConfig.NetworkMode == "host" {
 		return fmt.Errorf("host-network containers cannot attach secondary networks")

@@ -27,6 +27,35 @@ func TestMountNormalizationAndOwnedTargetProtection(t *testing.T) {
 		t.Fatal("missing bind source accepted")
 	}
 }
+func TestRelativeRawBindGuidanceUsesConfigMounts(t *testing.T) {
+	workspace := t.TempDir()
+	source := filepath.Join(workspace, "data")
+	if err := os.Mkdir(source, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{
+		"--volume=./data:/extra",
+		"--mount=type=bind,src=./data,dst=/extra",
+	} {
+		err := ValidateRaw([]string{raw}, nil, workspace, "")
+		if err == nil || err.Error() != "raw bind sources must be absolute; use the config's mounts field for workspace-relative paths" {
+			t.Fatal("relative raw bind did not point to the supported config field", raw, err)
+		}
+	}
+	mount, err := ParseMount("./data:/extra", workspace, "")
+	if err != nil || mount.Source != source || mount.Target != "/extra" {
+		t.Fatal("suggested structured mount did not resolve", mount, err)
+	}
+	for _, raw := range []string{
+		"--volume=" + source + ":/extra",
+		"--mount=type=bind,src=" + source + ",dst=/extra",
+	} {
+		if err := ValidateRaw([]string{raw}, nil, workspace, ""); err != nil {
+			t.Fatal("absolute raw bind support changed", raw, err)
+		}
+	}
+}
+
 func TestPortValidation(t *testing.T) {
 	for _, value := range []string{"80", "8080:80", "127.0.0.1:8080:80", "[::1]:8080:80", "8000-8002:9000-9002/udp", ":80"} {
 		if err := ValidatePort(value); err != nil {

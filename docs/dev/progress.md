@@ -8,6 +8,12 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Consistent missing-runtime and bind-path guidance — implemented, live acceptance pending
+
+- Missing-container network inspection and connect/disconnect errors now point to Recreate, not Start. Network commands still perform no automatic recovery.
+- Relative raw bind errors for both `--volume` and `--mount` point to the config's `mounts` field. Absolute raw binds remain supported; no rename, mount-policy, or storage-layout changes were made.
+- Full `make test-fast` equivalent, affected-package vet, and CLI build pass using `.tools/go` (`make` is unavailable). Guidance and no-mutation regressions pass five repeated runs. Live Docker and manual acceptance remain unrun.
+
 ## Session-based bulk recreation — implemented, live acceptance pending
 
 - `recreate --all` and the shared menu operation select saved sessions, including missing containers, rather than starting from Docker inventory. The existing locked preflight/application owner still chooses minimal work and retains history, defaults, identity, and running intent.
