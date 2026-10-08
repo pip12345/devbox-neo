@@ -68,6 +68,26 @@ func TestRecreateUsesRecordedExplicitSources(t *testing.T) {
 	}
 }
 
+func TestRecreateAllIncludesSessionsWithoutContainers(t *testing.T) {
+	e, _, name := namedCLIFixture(t)
+	ctx := context.Background()
+	before := sessionRecord(t, e, name)
+	forgetSession(t, e, name)
+	localName := ""
+	cmd := recreateCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &localName)
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--all"})
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	after := sessionRecord(t, e, name)
+	c, exists, err := e.Docker.InspectID(ctx, after.Applied.SetupContainer)
+	if err != nil || !exists || c.State.Running || after.Applied.SetupContainer == before.Applied.SetupContainer {
+		t.Fatal("CLI bulk recreation skipped missing runtime", c, exists, err)
+	}
+}
+
 func TestRecreateRejectsInvalidTargetsBeforeInitialization(t *testing.T) {
 	for _, args := range [][]string{
 		{},

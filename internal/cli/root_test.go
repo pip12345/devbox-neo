@@ -61,7 +61,7 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 		{"list", "sort", "Sort sessions by folder, name, or last-active (newest first)"},
 		{"recreate", "image", "Force an uncached image rebuild and container replacement"},
 		{"recreate", "container", "Force container replacement, reusing a compatible image when available"},
-		{"recreate", "all", "Apply current config to all managed containers"},
+		{"recreate", "all", "Apply current config to all saved sessions, including missing containers"},
 		{"open", "name", "Select the session's folder-local name"},
 		{"stop", "force", "Stop even if commands are still running"},
 		{"delete", "force", "Allow container deletion despite attached commands; never implies deleting saved data"},

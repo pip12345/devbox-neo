@@ -8,6 +8,12 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Session-based bulk recreation — implemented, live acceptance pending
+
+- `recreate --all` and the shared menu operation select saved sessions, including missing containers, rather than starting from Docker inventory. The existing locked preflight/application owner still chooses minimal work and retains history, defaults, identity, and running intent.
+- Corrupt records, duplicate identities, pending transfers, and invalid/busy session plans block the batch before runtime application. Unmatched containers and incomplete allocations are not saved sessions and remain untouched.
+- Updated CLI/menu scope text and the command reference. Full `make test-fast` equivalent, affected-package vet, and CLI build pass using `.tools/go` (`make` is unavailable). Mixed-runtime, preflight, CLI/menu, and post-migration regressions pass five repeated runs. Live Docker and manual acceptance remain unrun. Rename and other audit findings are proposals, not implemented changes.
+
 ## Current-folder default focus and installer checksum verification — implemented, live acceptance pending
 
 - Bare `dbx` initially highlights the canonical invoking folder's saved default when it is present in inventory; without an available default it retains first-session focus. This neither launches the harness nor changes saved defaults, and returning to the browser keeps the user's latest selection.

@@ -365,7 +365,7 @@ func (f *frontend) allSessions() error {
 	return f.form("All-session operations", func() []cliui.Action {
 		return []cliui.Action{
 			f.action("Status for all sessions", "", func() error { return f.status("") }),
-			f.action("Recreate all", "Preflight and apply current settings", func() error { return f.recreate("") }),
+			f.action("Recreate all", "Apply current config to every saved session, including missing containers", func() error { return f.recreate("") }),
 			f.action("Bulk deletion", "Exact targets or intersecting filters", func() error { return f.delete(nil) }),
 		}
 	})

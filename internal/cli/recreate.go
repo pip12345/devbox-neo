@@ -34,6 +34,6 @@ func recreateCommand(factory engineFactory, localName *string) *cobra.Command {
 	cmd.Flags().BoolVar(&force, "force", false, "Replace the container even with attached commands; interrupts commands and loses container-local changes")
 	cmd.Flags().BoolVar(&image, "image", false, "Force an uncached image rebuild and container replacement")
 	cmd.Flags().BoolVar(&container, "container", false, "Force container replacement, reusing a compatible image when available")
-	cmd.Flags().BoolVar(&all, "all", false, "Apply current config to all managed containers")
+	cmd.Flags().BoolVar(&all, "all", false, "Apply current config to all saved sessions, including missing containers")
 	return sessionNameFlag(cmd, localName)
 }

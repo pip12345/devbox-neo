@@ -76,6 +76,34 @@ func (targets selectedTargets) lock(ctx context.Context, state *store.Store) ([]
 	return state.LockAll(ctx, names, ids)
 }
 
+func (e *Engine) selectSavedSessions(ctx context.Context) (selectedTargets, error) {
+	entries, err := e.Store.Inventory(ctx)
+	if err != nil {
+		return nil, err
+	}
+	targets := map[string]SelectedTarget{}
+	ids := map[string]bool{}
+	for _, entry := range entries {
+		if entry.Pending != nil {
+			return nil, commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", entry.Name, nil, entry.Pending.RetryStep())
+		}
+		// Incomplete allocations have no saved session to apply. Their files
+		// belong to explicit cleanup, not bulk recreation.
+		if os.IsNotExist(entry.Err) {
+			continue
+		}
+		if entry.Err != nil {
+			return nil, fmt.Errorf("cannot select saved session %s: %w", entry.Name, entry.Err)
+		}
+		if ids[entry.Record.ID] {
+			return nil, fmt.Errorf("ambiguous session identity; inspect session inventory")
+		}
+		ids[entry.Record.ID] = true
+		targets[entry.Name] = selectedRecord(entry.Record)
+	}
+	return orderedTargets(targets), nil
+}
+
 func (e *Engine) selectContainers(ctx context.Context, selection Selection) (selectedTargets, error) {
 	exact := len(selection.Targets) > 0 || len(selection.Captured) > 0
 	if (selection.All && selection.Stopped) || ((selection.All || selection.Stopped) && exact) || (len(selection.Targets) > 0 && len(selection.Captured) > 0) {

@@ -95,6 +95,20 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 	}
 }
 
+func TestFrontendRecreateAllIncludesSessionsWithoutContainers(t *testing.T) {
+	f, out, _, name := frontendFixture(t, strings.NewReader("5\ny\n"))
+	before := sessionRecord(t, f.e, name)
+	forgetSession(t, f.e, name)
+	if err := f.recreate(""); err != nil {
+		t.Fatal(err, out.String())
+	}
+	after := sessionRecord(t, f.e, name)
+	c, exists, err := f.e.Docker.InspectID(context.Background(), after.Applied.SetupContainer)
+	if err != nil || !exists || c.State.Running || after.Applied.SetupContainer == before.Applied.SetupContainer {
+		t.Fatal("menu bulk recreation skipped missing runtime", c, exists, err, out.String())
+	}
+}
+
 func TestNativeRecreateRefreshesNavigationAndRetainsFailedForm(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		nameCase := "missing to stopped"

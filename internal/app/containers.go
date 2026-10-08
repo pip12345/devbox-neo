@@ -259,8 +259,7 @@ func (e *Engine) RecreateAll(ctx context.Context, image bool, options RecreateOp
 	if options.Host == nil {
 		options.Host = config.Snapshot()
 	}
-	selection := Selection{All: true}
-	targets, err := e.selectContainers(ctx, selection)
+	targets, err := e.selectSavedSessions(ctx)
 	if err != nil {
 		return nil, err
 	}

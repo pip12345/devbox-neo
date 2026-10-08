@@ -36,7 +36,7 @@ These browsers require terminal input/output. Otherwise, including `TERM=dumb`, 
 | `exec <target> -- <argv...>` | Run a command without implicit shell parsing |
 | `logs <target> [-f] [--tail N\|all]` | Docker logs; default tail `100` |
 | `recreate <target> [--container] [--image] [--force]` | Apply current config; replace container/image only as needed |
-| `recreate --all [--container] [--image] [--force]` | Apply current config to all managed containers |
+| `recreate --all [--container] [--image] [--force]` | Apply current config to all saved sessions, including missing containers |
 
 Creation selects a folder default only when requested and never launches the harness. In a terminal, missing name/config inputs open the creation form; scripts must supply both. Container settings belong in configs, not `create` flags.
 
