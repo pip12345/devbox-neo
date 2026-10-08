@@ -149,22 +149,30 @@ func TestSessionFolderListLabels(t *testing.T) {
 	}
 }
 
-func TestFirstSessionInFolderUsesDisplayedOrder(t *testing.T) {
+func TestInitialSessionInFolderUsesDefaultThenDisplayedOrder(t *testing.T) {
 	f := frontend{}
 	c := f.sessionCollection(app.InventoryReport{Sessions: []app.View{
 		{Workspace: "/work/z", Target: "z-last", LocalName: "zulu"},
-		{Workspace: "/work/a", Target: "a-first", LocalName: "alpha"},
+		{Workspace: "/work/a", Target: "a-first", LocalName: "alpha", Default: true},
 		{Workspace: "/work/z", Target: "z-first", LocalName: "alpha"},
 	}}, "name")
 	for _, tt := range []struct{ folder, want string }{
 		{"/work/z", "z-first"}, {"/work/a", "a-first"}, {"/work/missing", ""},
 	} {
-		if got := firstSessionInFolder(c, tt.folder); got != tt.want {
-			t.Fatalf("first session in %s = %q, want %q", tt.folder, got, tt.want)
+		if got := initialSessionInFolder(c, tt.folder); got != tt.want {
+			t.Fatalf("initial session in %s = %q, want %q", tt.folder, got, tt.want)
 		}
 	}
+	for i := range c.Items {
+		if c.Items[i].Key == "z-last" {
+			c.Items[i].Selected = true
+		}
+	}
+	if got := initialSessionInFolder(c, "/work/z"); got != "z-last" {
+		t.Fatal("default did not take priority over displayed order", got)
+	}
 	f.knownFolder = "/work/empty"
-	if got := firstSessionInFolder(f.sessionCollection(app.InventoryReport{}, "name"), "/work/empty"); got != "" {
+	if got := initialSessionInFolder(f.sessionCollection(app.InventoryReport{}, "name"), "/work/empty"); got != "" {
 		t.Fatal("empty folder selected a session", got)
 	}
 }

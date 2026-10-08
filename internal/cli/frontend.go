@@ -133,7 +133,7 @@ func (f *frontend) browse(configs bool) error {
 			}
 			page.Collection = f.sessionCollection(report, f.sortBy)
 			if initialFocus && page.FocusItem == "" {
-				page.FocusItem = firstSessionInFolder(page.Collection, workspace)
+				page.FocusItem = initialSessionInFolder(page.Collection, workspace)
 			}
 			initialFocus = false
 			if err != nil {
@@ -176,11 +176,24 @@ func (f *frontend) browse(configs bool) error {
 		return page, nil
 	})
 }
-func firstSessionInFolder(collection *cliui.Collection, folder string) string {
+func initialSessionInFolder(collection *cliui.Collection, folder string) string {
 	for i, item := range collection.Items {
-		if item.Folder && item.Key == folder && i+1 < len(collection.Items) && collection.Items[i+1].Depth == 1 {
-			return collection.Items[i+1].Key
+		if !item.Folder || item.Key != folder {
+			continue
 		}
+		first := ""
+		for _, session := range collection.Items[i+1:] {
+			if session.Depth != 1 {
+				break
+			}
+			if session.Selected {
+				return session.Key
+			}
+			if first == "" {
+				first = session.Key
+			}
+		}
+		return first
 	}
 	return ""
 }

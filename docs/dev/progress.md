@@ -8,6 +8,12 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Current-folder default focus and installer checksum verification — implemented, live acceptance pending
+
+- Bare `dbx` initially highlights the canonical invoking folder's saved default when it is present in inventory; without an available default it retains first-session focus. This neither launches the harness nor changes saved defaults, and returning to the browser keeps the user's latest selection.
+- Added migration/application regression coverage for harness installer edits. Installation bytes continue to contribute to the image definition digest and appear in Status as a harness-definition change; no checksum or migration behavior was changed.
+- Full `make test-fast` equivalent and affected-package vet pass using `.tools/go` (`make` is unavailable). Default-focus unit/PTY and migrated-installer regressions pass five repeated runs. Live Docker and manual host-terminal acceptance remain unrun.
+
 ## Transfer abort ordering and manifest validation — implemented
 
 - Abort sorts endpoint directories before acquiring the existing lock set. Clone and move regressions cover a destination that sorts before its source, retaining source history and running intent.

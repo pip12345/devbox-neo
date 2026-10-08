@@ -54,7 +54,15 @@ func TestFrontendResumesPinnedTransferWithoutChangingEndpoints(t *testing.T) {
 	}
 }
 
-func TestNativeBrowserEnterResumesFirstCurrentFolderSession(t *testing.T) {
+func TestNativeBrowserEnterResumesCurrentFolderSelection(t *testing.T) {
+	for _, hasDefault := range []bool{false, true} {
+		t.Run(fmt.Sprintf("default=%t", hasDefault), func(t *testing.T) {
+			testNativeBrowserCurrentFolderSelection(t, hasDefault)
+		})
+	}
+}
+
+func testNativeBrowserCurrentFolderSelection(t *testing.T, hasDefault bool) {
 	e, q, _ := namedCLIFixture(t)
 	// The existing Main session's parent folder sorts before this workspace;
 	// neither its position nor its ancestry should make it the initial target.
@@ -63,13 +71,22 @@ func TestNativeBrowserEnterResumesFirstCurrentFolderSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	q.LocalName = "Zulu"
-	if _, err := e.Create(context.Background(), q); err != nil {
+	zulu, err := e.Create(context.Background(), q)
+	if err != nil {
 		t.Fatal(err)
 	}
 	q.LocalName = "Alpha"
 	created, err := e.Create(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
+	}
+	initial, other, navigation := "Alpha", "Zulu", "\x1b[B\r"
+	if hasDefault {
+		if err := e.SetDefault(context.Background(), sessionRecord(t, e, zulu.SessionID)); err != nil {
+			t.Fatal(err)
+		}
+		created = zulu
+		initial, other, navigation = "Zulu", "Alpha", "\x1b[A\r"
 	}
 	targetContainer := sessionRecord(t, e, created.SessionID).Applied.SetupContainer
 	attached := make(chan docker.Command, 1)
@@ -95,7 +112,7 @@ func TestNativeBrowserEnterResumesFirstCurrentFolderSession(t *testing.T) {
 	})
 	p.wait("Sessions")
 	p.send("\r")
-	p.wait("Session · Alpha")
+	p.wait("Session · " + initial)
 	p.send("\r")
 	p.wait("Press Enter")
 	select {
@@ -107,23 +124,30 @@ func TestNativeBrowserEnterResumesFirstCurrentFolderSession(t *testing.T) {
 		t.Fatal("Enter did not launch the harness")
 	}
 	p.send("\r")
-	p.wait("Session · Alpha")
+	p.wait("Session · " + initial)
 	p.send("q")
 	p.wait("Browser actions")
 	// Returning from a different session must not reapply the startup highlight.
-	p.send("\x1b[B\r")
-	p.wait("Session · Zulu")
+	p.send(navigation)
+	p.wait("Session · " + other)
 	p.send("q")
 	p.wait("Browser actions")
 	p.send("\r")
-	p.wait("Session · Zulu")
+	p.wait("Session · " + other)
 	p.send("q")
 	p.wait("Browser actions")
 	p.send("q")
 	p.finish(done)
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected != nil {
-		t.Fatal("browser navigation selected a folder default", selected, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasDefault {
+		if selected == nil || selected.ID != zulu.SessionID {
+			t.Fatal("browser navigation changed the saved default", selected)
+		}
+	} else if selected != nil {
+		t.Fatal("browser navigation selected a folder default", selected)
 	}
 }
 
