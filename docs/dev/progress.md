@@ -8,6 +8,12 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Readable Docker instance names — implemented, live Docker pending
+
+- New containers capture the public session name plus an eight-character creation suffix. Image aliases retain their existing ID/full-token format independently of display hints. Metadata edits do not rename live containers; explicit replacement adopts current hints without changing saved identity or storage.
+- Finish or abort pending Copy/Move operations with the preceding build before updating: their pinned names use its generation rule. No session-data migration, automatic replacement, or old-name compatibility path was added.
+- Full fast-suite equivalent, five repeated naming/creation/transfer regressions, affected-package vet, CLI build and diff checks pass using `.tools/go`. Existing opaque-name access and occupied-name failures are covered with fake Docker. Live Docker and race checks remain unrun.
+
 ## Integration-test progress and non-interactive opens — implemented, live Docker pending
 
 - Every Docker lifecycle open uses `--version`, avoiding interactive harness startup during pending-config and recreation checks. The integration target uses `-v -p=1`: verbose multi-package output otherwise remains buffered until each package finishes. Lifecycle/SSH stages and command output stream while synchronized capture remains available for assertions and failures.

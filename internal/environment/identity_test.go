@@ -38,22 +38,34 @@ func TestPublicNameUsesSessionIDAndSavedSettings(t *testing.T) {
 	}
 }
 
-func TestRuntimeNamesAndImageAliasesDoNotDependOnSettings(t *testing.T) {
-	id := strings.Repeat("a", 12)
-	a := ResourceName(id, "attempt-one")
-	if a == ResourceName(id, "attempt-two") || a == ResourceName(strings.Repeat("b", 12), "attempt-one") {
+func TestRuntimeNamesCaptureReadableHintsAndShortAttemptSuffix(t *testing.T) {
+	id := "9833cab43e72"
+	allocation := "2c7d3144cfe4f289cc8d3899b46ab700"
+	binding := Binding{Workspace: "/projects/hazeron", LocalName: "main"}
+	name := ResourceName(binding, id, allocation)
+	if name != "dbx-hazeron-9833cab43e72.main-2c7d3144" {
+		t.Fatal(name)
+	}
+	if name == ResourceName(binding, id, strings.Repeat("f", 32)) || name == ResourceName(binding, strings.Repeat("b", 12), allocation) {
 		t.Fatal("runtime instances collided")
 	}
-	if _, ok := SessionIDFromName(a); ok {
-		t.Fatal("runtime name became public session target")
+	changed := Binding{Workspace: "/projects/other", LocalName: "work"}
+	if name == ResourceName(changed, id, allocation) {
+		t.Fatal("creation hints did not follow captured settings")
 	}
-	if tag := ImageTag(a); !config.ImageReference.MatchString(tag) || len(strings.SplitN(tag, ":", 2)[1]) > 128 {
+	if name == PublicName(binding, id) {
+		t.Fatal("runtime name lacks an instance suffix")
+	}
+	// Docker hints and their shortened suffix cannot alter the image alias.
+	tag := ImageTag(id, allocation)
+	if tag != "dbx/session:"+id+"-"+allocation || !config.ImageReference.MatchString(tag) {
 		t.Fatal(tag)
 	}
 	for _, workspace := range []string{"/work/My Folder!", "/work/💥", "/work/" + strings.Repeat("x", 200)} {
-		name := PublicName(Binding{Workspace: workspace, LocalName: strings.Repeat("N", 64)}, id)
-		if len(name) > 106 {
-			t.Fatal("unbounded public hint", name)
+		binding := Binding{Workspace: workspace, LocalName: strings.Repeat("N", 64)}
+		name := PublicName(binding, id)
+		if len(name) > 106 || len(ResourceName(binding, id, allocation)) > 115 {
+			t.Fatal("unbounded readable hint", name)
 		}
 		if key, ok := SessionIDFromName(name); !ok || key != id {
 			t.Fatal(name)
@@ -75,7 +87,7 @@ func TestWorkspaceSelectionCanonicalizesSymlinksWithoutAllocatingNames(t *testin
 	if err != nil || a.Binding != b.Binding || a.Name != "" || b.Name != "" {
 		t.Fatal(a, b, err)
 	}
-	a.Name = ResourceName(strings.Repeat("a", 12), "attempt")
+	a.Name = ResourceName(a.Binding, strings.Repeat("a", 12), strings.Repeat("b", 32))
 	if err := a.Validate(); err != nil {
 		t.Fatal(err)
 	}

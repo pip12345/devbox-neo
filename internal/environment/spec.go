@@ -62,13 +62,16 @@ func PublicName(binding Binding, sessionID string) string {
 	return ContainerPrefix + workspaceHint(binding.Workspace) + "-" + sessionID + "." + binding.LocalName
 }
 
-func ResourceName(sessionID, allocation string) string {
-	return ContainerPrefix + sessionID + "-" + allocation
+// ResourceName captures readable settings at creation. The complete allocation
+// token supplies an eight-character suffix for concurrently existing instances;
+// the suffix is not session identity.
+func ResourceName(binding Binding, sessionID, allocation string) string {
+	return PublicName(binding, sessionID) + "-" + allocation[:8]
 }
 
-// Image aliases belong to a creation attempt, not editable session settings.
-func ImageTag(containerName string) string {
-	return docker.Namespace + "/session:" + strings.TrimPrefix(containerName, ContainerPrefix)
+// Image aliases use the complete creation token, independently of display hints.
+func ImageTag(sessionID, allocation string) string {
+	return docker.Namespace + "/session:" + sessionID + "-" + allocation
 }
 
 type Fingerprints struct {

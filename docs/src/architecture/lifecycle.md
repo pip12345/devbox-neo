@@ -51,7 +51,7 @@ Source paths explain changes but do not themselves change fingerprints when effe
 
 ## New-session creation
 
-`Engine.Create` checks workspace/name uniqueness under the namespace lock, allocates one complete 12-character session ID and exclusively claims its storage directory, acquires its operation lock, and resolves the explicit sources. Container creation allocates an internal instance name unrelated to editable settings. It then enters the shared creation pipeline. `Request.MakeDefault` is an explicit creation-only option; neither the first session nor a transfer destination becomes a default implicitly.
+`Engine.Create` checks workspace/name uniqueness under the namespace lock, allocates one complete 12-character session ID and exclusively claims its storage directory, acquires its operation lock, and resolves the explicit sources. Container creation captures the public session name plus eight characters of its creation token as a readable Docker name. Image aliases retain the complete token independently of those hints; later metadata edits rename neither resource. It then enters the shared creation pipeline. `Request.MakeDefault` is an explicit creation-only option; neither the first session nor a transfer destination becomes a default implicitly.
 
 ```mermaid
 flowchart TD

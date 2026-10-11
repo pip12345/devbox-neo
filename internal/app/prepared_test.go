@@ -36,14 +36,15 @@ func TestPreparedCreationStaysPrivateAndDoesNotOverwriteCandidate(t *testing.T) 
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(root, "history.jsonl"), "portable history")
-	seed := CreationIdentity{ID: j.DestinationID, StateTree: j.DestinationTree, ContainerName: j.ContainerName, Transfer: &j,
+	seed := CreationIdentity{ID: j.DestinationID, StateTree: j.DestinationTree, Attempt: j.ID, Transfer: &j,
 		Created: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)}
 	started := time.Now().UTC()
 	r, _, err := e.CreatePrepared(ctx, l, spec, seed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.ID != seed.ID || !r.Created.Equal(seed.Created) || r.Activity.Before(started) || r.Action != "create" {
+	if r.ID != seed.ID || !r.Created.Equal(seed.Created) || r.Activity.Before(started) || r.Action != "create" ||
+		r.Applied.Creation.Name != j.ContainerName || r.Applied.ImageTag != environment.ImageTag(j.DestinationID, j.ID) {
 		t.Fatal(r)
 	}
 	if _, err := l.ReadRecord(ctx); !os.IsNotExist(err) {

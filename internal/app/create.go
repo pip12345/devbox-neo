@@ -115,12 +115,12 @@ type creationOptions struct {
 // CreationIdentity supplies identity and creation time for a new destination.
 // Transfers pin these inputs before preparing the destination's state.
 type CreationIdentity struct {
-	ContainerName string
-	ID            string
-	Created       time.Time
-	ManualStart   bool
-	StateTree     string
-	Transfer      *store.Transfer
+	Attempt     string
+	ID          string
+	Created     time.Time
+	ManualStart bool
+	StateTree   string
+	Transfer    *store.Transfer
 }
 
 // CreatePrepared materializes a reserved backing tree. Its record is private
@@ -133,7 +133,7 @@ func (e *Engine) CreatePrepared(ctx context.Context, l *store.Locked, s environm
 	if err := j.Validate(); err != nil {
 		return store.Record{}, docker.Container{}, err
 	}
-	if identity.StateTree != j.DestinationTree || identity.ID != j.DestinationID || identity.ContainerName != j.ContainerName {
+	if identity.StateTree != j.DestinationTree || identity.ID != j.DestinationID || identity.Attempt != j.ID || s.Identity.Binding != j.Destination {
 		return store.Record{}, docker.Container{}, fmt.Errorf("prepared destination differs from transfer reservation")
 	}
 	if _, err := e.Store.ReadTransferDestination(ctx, j); err == nil {
@@ -200,14 +200,15 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 	if previous != nil {
 		created = previous.Created
 	}
-	s.Identity.Name = seed.ContainerName
-	if s.Identity.Name == "" {
-		allocation, allocationErr := fsutil.ID()
-		if allocationErr != nil {
-			return record, c, allocationErr
+	allocation := seed.Attempt
+	if allocation == "" {
+		allocation, err = fsutil.ID()
+		if err != nil {
+			return record, c, err
 		}
-		s.Identity.Name = environment.ResourceName(id, allocation)
 	}
+	s.Identity.Name = environment.ResourceName(s.Identity.Binding, id, allocation)
+	imageTag := environment.ImageTag(id, allocation)
 	if _, exists, err := e.Docker.Inspect(ctx, s.Identity.Name); err != nil {
 		return record, c, err
 	} else if exists {
@@ -230,10 +231,10 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		// Cache eligibility does not authorize adoption. A missing or unowned
 		// image is replaced by a fresh owned build, never executed or mutated.
 		if !reused {
-			image, err = e.build(ctx, s, false)
+			image, err = e.build(ctx, s, imageTag, false)
 		}
 	} else {
-		image, err = e.build(ctx, s, options.image)
+		image, err = e.build(ctx, s, imageTag, options.image)
 	}
 	if err != nil {
 		return record, c, err
@@ -241,7 +242,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 	if !reused {
 		// An uncommitted build tag must not point a surviving record at the
 		// wrong image after failure. Absence is valid: runtime is disposable.
-		tag := environment.ImageTag(s.Identity.Name)
+		tag := imageTag
 		defer func() {
 			if err == nil {
 				return
@@ -298,7 +299,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 			return record, c, err
 		}
 	}
-	record = creationRecord(s, image.ID, mounts, id, created, time.Now().UTC(), previous, seed)
+	record = creationRecord(s, image.ID, imageTag, mounts, id, created, time.Now().UTC(), previous, seed)
 	if reused {
 		record.Applied.ImageTag = previous.Applied.ImageTag
 	}

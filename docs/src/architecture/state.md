@@ -6,7 +6,7 @@ The saved session is the top-level environment model. Docker inventory supplies 
 
 `environment.ContainerPrefix` defines the `dbx-` lookup convention independently of `docker.Namespace`, which defines `dbx.*` labels and creation-attempt image aliases.
 
-One immutable 12-character hexadecimal ID identifies the saved session and its directory. `settings` contains editable workspace/name, config references, and keep-running intent. The public name is `dbx-<workspace-hint>-<id>.<local-name>`, derived from JSON rather than stored independently. `app.Locate` extracts its ID, reads saved metadata, and requires the complete public name to match before use. Captured services may address IDs internally; the CLI rejects raw IDs. Runtime names/image aliases belong to creation attempts and contain no editable naming authority.
+One immutable 12-character hexadecimal ID identifies the saved session and its directory. `settings` contains editable workspace/name, config references, and keep-running intent. The public name is `dbx-<workspace-hint>-<id>.<local-name>`, derived from JSON rather than stored independently. `app.Locate` extracts its ID, reads saved metadata, and requires the complete public name to match before use. Captured services may address IDs internally; the CLI rejects raw IDs. Docker names capture that public name plus an eight-character creation suffix. Image aliases use the full creation token without readable hints. Both remain creation-attempt resources, not editable naming authority.
 
 `store.Find` looks up an ID or workspace/name from saved records, without config resolution or a persistent index. Folder-only lookup reads its explicit default ID. `state/folder-defaults.json` uses schema 2 with a `defaults` map from canonical folder paths to session IDs. Only selected folders appear; clearing removes the entry. An absent file means no selections; malformed defaults are errors. Name reuse never inherits an old ID selection.
 
@@ -112,7 +112,7 @@ Unique endpoint IDs are locked in sorted order; Move uses one lock for both back
 
 The journal stores endpoint identities, session IDs, mode/phase, and intended running state. It contains no env/auth values. Destination creation uses the allocated ID, so retries cannot create a different session.
 
-Journal schema 5 pins bindings, IDs, source/destination tree paths, source container/image association, and the destination attempt name. Old unfinished journals must be completed or aborted using the preceding build before identity conversion. `--as` selects another local name; otherwise it is retained. Retry guidance derives the exact source public name from the pinned binding and ID, retaining destination and `--as` independently of defaults or workspace availability.
+Journal schema 5 pins bindings, IDs, source/destination tree paths, source container/image association, and the destination attempt name. Old unfinished journals must be completed or aborted using the preceding build before identity conversion or switching Docker naming formats. `--as` selects another local name; otherwise it is retained. Retry guidance derives the exact source public name from the pinned binding and ID, retaining destination and `--as` independently of defaults or workspace availability.
 
 Internal modes are `clone` for `copy` and `relocate` for `copy --move`. Harness capabilities and JSON output use these same values.
 

@@ -93,6 +93,11 @@ func TestTransferIdentityStateAndRunningPolicy(t *testing.T) {
 				if copied.Settings.Workspace != target || copied.Action != store.TransferCommand(mode) {
 					t.Fatal("wrong destination contract", copied.Settings.Binding)
 				}
+				suffix := strings.TrimPrefix(copied.Applied.Creation.Name, copied.PublicName()+"-")
+				allocation := strings.TrimPrefix(copied.Applied.ImageTag, "dbx/session:"+copied.ID+"-")
+				if len(suffix) != 8 || len(allocation) != 32 || suffix != allocation[:8] || copied.Applied.Creation.Name == original.Applied.Creation.Name {
+					t.Fatal("transfer destination lost readable name or distinct attempt", copied.Applied.Creation.Name)
+				}
 				view, err := e.Status(ctx, result.Destination, "")
 				if err != nil || view.Desired != environment.NoChange || len(view.PendingInputChanges) != 0 || copied.Applied.Inputs.Container.Workspace != copied.Settings.Workspace {
 					t.Fatal("destination did not commit its own input baseline", view, err)

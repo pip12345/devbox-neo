@@ -73,7 +73,7 @@ These are Devbox-managed runtime paths. Shared SSH data is transient, not a cred
 
 Local names are 1–64 ASCII characters: letters, digits, `_`, and `-`, starting with a letter or digit. Case matters: `work` and `Work` differ.
 
-Public names are `dbx-<workspace-hint>-<session-id>.<local-name>`, shown by `list` and `status`. The ID directly identifies the storage directory; the workspace hint and local name come from JSON. Rename or a changed workspace basename updates the public name without moving storage or renaming containers. Old names are not aliases. Docker names and raw IDs cannot be used as session targets.
+Public names are `dbx-<workspace-hint>-<session-id>.<local-name>`, shown by `list` and `status`. The ID directly identifies the storage directory; the workspace hint and local name come from JSON. New Docker containers use that public name plus an eight-character creation suffix. Rename or a changed workspace basename updates the public name without moving storage or renaming containers. Existing containers keep their names until explicitly replaced. Old names are not aliases. Docker names and raw IDs cannot be used as session targets.
 
 Portable Move prepares another tree under the same ID directory. Commitment switches the recorded tree/runtime before old-state cleanup; it never renames backing paths underneath container mounts.
 

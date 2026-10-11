@@ -306,7 +306,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		journal = &store.Transfer{Version: 5, ID: op, Mode: q.Mode, Phase: "prepare", Source: sourceBinding, Destination: destination,
 			SourceID: sourceID, DestinationID: destinationID, SourceTree: source.StateTree, DestinationTree: tree,
 			SourceContainerID: source.Applied.ContainerID, SourceImageID: source.Applied.ImageID, SourceImageTag: source.Applied.ImageTag,
-			ContainerName: environment.ResourceName(destinationID, op),
+			ContainerName: environment.ResourceName(destination, destinationID, op),
 			Running:       q.Mode == "relocate" && (source.Settings.ManualStart || exists && c.State.Running),
 			ManualStart:   q.Mode == "relocate" && source.Settings.ManualStart, Started: time.Now().UTC()}
 	}
@@ -395,7 +395,7 @@ func (e *Engine) Transfer(ctx context.Context, q TransferOptions) (result Transf
 		created = source.Created
 	}
 	r, _, err := e.CreatePrepared(ctx, destLock, spec, CreationIdentity{ID: destinationID, Created: created, ManualStart: journal.ManualStart,
-		ContainerName: journal.ContainerName, StateTree: journal.DestinationTree, Transfer: journal})
+		Attempt: journal.ID, StateTree: journal.DestinationTree, Transfer: journal})
 	if err != nil {
 		return result, err
 	}

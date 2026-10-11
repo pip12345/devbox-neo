@@ -404,8 +404,8 @@ func readConversionCandidate(home, directory string) (candidate, bool, error) {
 		return item, false, fmt.Errorf("invalid preceding image namespace")
 	}
 	r.ID, r.Directory, r.StateTree, r.Version = item.oldID[:12], item.oldID[:12], store.InitialStateTree, store.RecordVersion
-	r.Applied.Creation.Name = environment.ResourceName(r.ID, "converted")
-	r.Applied.ImageTag = environment.ImageTag(r.Applied.Creation.Name)
+	r.Applied.Creation.Name = environment.ResourceName(r.Settings.Binding, r.ID, item.oldID)
+	r.Applied.ImageTag = environment.ImageTag(r.ID, "converted")
 	r.Applied.Creation.RawArgs = r.Applied.Inputs.Container.RawArgs
 	root := filepath.Join(home, "sessions", r.ID)
 	for i := range r.Applied.Creation.Mounts {

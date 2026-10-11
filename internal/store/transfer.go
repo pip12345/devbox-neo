@@ -95,7 +95,7 @@ func (j Transfer) Validate() error {
 	if !ValidStateTree(j.SourceTree) || j.DestinationTree != expectedTree || (j.Mode == "relocate" && j.SourceTree == j.DestinationTree) {
 		return fmt.Errorf("invalid transfer trees")
 	}
-	if j.ContainerName != environment.ResourceName(j.DestinationID, j.ID) || !hashPattern.MatchString(j.SourceContainerID) ||
+	if j.ContainerName != environment.ResourceName(j.Destination, j.DestinationID, j.ID) || !hashPattern.MatchString(j.SourceContainerID) ||
 		!strings.HasPrefix(j.SourceImageID, "sha256:") || !hashPattern.MatchString(strings.TrimPrefix(j.SourceImageID, "sha256:")) ||
 		!strings.HasPrefix(j.SourceImageTag, "dbx/session:"+j.SourceID+"-") || !config.ImageReference.MatchString(j.SourceImageTag) {
 		return fmt.Errorf("invalid transfer runtime references")

@@ -30,7 +30,12 @@ func TestSessionNameAndDirectoryShareOneCompleteID(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, ok := d.Snapshot(r.Applied.Creation.Name)
-	if !ok || c.Config.Labels[docker.Namespace+".session"] != r.ID || r.Applied.ImageTag != environment.ImageTag(r.Applied.Creation.Name) {
+	if !ok || c.Config.Labels[docker.Namespace+".session"] != r.ID {
+		t.Fatal("runtime ownership differs from record")
+	}
+	allocation := strings.TrimPrefix(r.Applied.ImageTag, docker.Namespace+"/session:"+r.ID+"-")
+	if len(allocation) != 32 || r.Applied.ImageTag != environment.ImageTag(r.ID, allocation) ||
+		r.Applied.Creation.Name != environment.ResourceName(r.Settings.Binding, r.ID, allocation) {
 		t.Fatal("runtime ownership/alias differs from record")
 	}
 	before := r.Applied
@@ -50,5 +55,21 @@ func TestSessionNameAndDirectoryShareOneCompleteID(t *testing.T) {
 	}
 	if _, err := e.Locate(ctx, c.Name, ""); err == nil {
 		t.Fatal("Docker name became a session selector")
+	}
+	moved, err := e.SetWorkspace(ctx, after.PublicName(), "", t.TempDir())
+	if err != nil || !reflect.DeepEqual(moved.Applied, before) {
+		t.Fatal("workspace edit renamed or changed the runtime", err)
+	}
+	if _, exists := d.Snapshot(before.Creation.Name); !exists {
+		t.Fatal("metadata edits renamed the live container")
+	}
+	if _, err := e.Recreate(ctx, RecreateRequest{Target: moved.PublicName(), Options: RecreateOptions{ForceContainer: true}}, false); err != nil {
+		t.Fatal(err)
+	}
+	replaced := sessionRecord(t, e, r.ID)
+	if !strings.HasPrefix(replaced.Applied.Creation.Name, replaced.PublicName()+"-") ||
+		len(strings.TrimPrefix(replaced.Applied.Creation.Name, replaced.PublicName()+"-")) != 8 ||
+		replaced.Applied.ImageTag != before.ImageTag || replaced.ID != r.ID || replaced.StateTree != r.StateTree {
+		t.Fatal("replacement lost readable hints, image alias or saved identity", replaced.Applied)
 	}
 }

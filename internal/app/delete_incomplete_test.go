@@ -263,7 +263,7 @@ func TestDeleteIncompleteCreationRejectsPendingTransfer(t *testing.T) {
 	name, root := incompleteFixture(t, e)
 	j := transferJournal(t, source, environment.Binding{Workspace: q.Workspace, LocalName: "copy"}, "clone")
 	j.DestinationID = name
-	j.ContainerName = environment.ResourceName(name, j.ID)
+	j.ContainerName = environment.ResourceName(j.Destination, name, j.ID)
 	saveTransferJournal(t, e, j)
 	result, err := e.Delete(ctx, DeleteOptions{Selection: Selection{IncompleteDirs: []string{name}}, Scope: DeleteSession, Force: true})
 	var failure *commanderror.Error
