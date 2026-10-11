@@ -409,7 +409,7 @@ func TestForegroundStatusAndConcurrentLeases(t *testing.T) {
 	if c.State.Running {
 		t.Fatal("last lease did not stop")
 	}
-	l, err := e.Store.Lock(ctx, sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).ID)
+	l, err := e.Store.Lock(ctx, result.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

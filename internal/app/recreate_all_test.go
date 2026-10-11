@@ -114,7 +114,7 @@ func TestRecreateAllPreflightsSavedSessionsBeforeMutation(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "active command":
-				lock, err := e.Store.Lock(ctx, broken.Directory, broken.ID)
+				lock, err := e.Store.Lock(ctx, broken.ID)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -140,8 +140,7 @@ func (e *Engine) lockTransfer(ctx context.Context, sourceID, destinationID strin
 		ids = append(ids, destinationID)
 	}
 	sort.Strings(ids)
-	mapping := map[string]string{sourceID: sourceID, destinationID: destinationID}
-	locks, err := e.Store.LockAll(ctx, ids, mapping)
+	locks, err := e.Store.LockAll(ctx, ids)
 	if err != nil {
 		return nil, nil, nil, err
 	}

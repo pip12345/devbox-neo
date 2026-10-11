@@ -46,7 +46,7 @@ func TestSessionDeletionPreservesExternalLocksAuthCacheAndWorkspace(t *testing.T
 			t.Fatal("unrelated data removed", p)
 		}
 	}
-	lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	lock, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		t.Fatal("external operation lock was broken", err)
 	}

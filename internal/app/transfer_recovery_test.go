@@ -67,7 +67,7 @@ func TestTransferJournalSurvivesSourceDeletion(t *testing.T) {
 	if err = e.Docker.Remove(ctx, c, e.owner(source)); err != nil {
 		t.Fatal(err)
 	}
-	lock, err := e.Store.Lock(ctx, source.Directory, source.ID)
+	lock, err := e.Store.Lock(ctx, source.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

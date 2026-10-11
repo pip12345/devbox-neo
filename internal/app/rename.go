@@ -32,7 +32,7 @@ func (e *Engine) Rename(ctx context.Context, target, localName, to string, dryRu
 	if err != nil {
 		return result, err
 	}
-	lock, err := e.Store.Lock(ctx, selected.Directory, selected.ID)
+	lock, err := e.Store.Lock(ctx, selected.ID)
 	if err != nil {
 		return result, err
 	}

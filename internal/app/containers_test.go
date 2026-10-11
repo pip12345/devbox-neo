@@ -70,7 +70,7 @@ func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
 	initial := sessionRecord(t, e, first.SessionID)
 	marker := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, first.SessionID).Directory, sessionRecord(t, e, first.SessionID).StateTree, "harnesses/pi/stores/home/marker")
 	write(t, marker, "keep")
-	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, second.SessionID).Directory, sessionRecord(t, e, second.SessionID).ID)
+	lock, err := e.Store.Lock(ctx, second.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
 	if _, exists := sessionSnapshot(t, e, first.SessionID); !exists {
 		t.Fatal("bulk operation mutated before complete preflight")
 	}
-	lock, _ = e.Store.Lock(ctx, sessionRecord(t, e, second.SessionID).Directory, sessionRecord(t, e, second.SessionID).ID)
+	lock, _ = e.Store.Lock(ctx, second.SessionID)
 	lock.Release(lease.ID)
 	lock.Close()
 	removed, err := e.DeleteContainers(ctx, Selection{Stopped: true}, false)

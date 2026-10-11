@@ -63,7 +63,7 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 	if err != nil {
 		return err
 	}
-	lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	lock, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		return err
 	}

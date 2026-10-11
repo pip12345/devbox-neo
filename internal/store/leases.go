@@ -177,7 +177,7 @@ func (l *Locked) RequireIdle() error {
 		for i, lease := range active {
 			commands[i] = fmt.Sprintf("%q: host PID %d, since %s", lease.Action, lease.Process.PID, lease.Created.Format(time.RFC3339))
 		}
-		target := l.Name
+		target := l.ID
 		steps := []commanderror.Step{commanderror.Next("Inspect saved sessions", "list")}
 		if r, err := l.ReadRecord(l.ctx); err == nil {
 			target = r.PublicName()

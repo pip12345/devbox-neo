@@ -15,7 +15,7 @@ func TestSessionDirectoryTargetsAndBlockerDetails(t *testing.T) {
 	e, q, target := namedCLIFixture(t)
 	r := sessionRecord(t, e, target)
 	ctx := context.Background()
-	lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	lock, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestRecreateForceFlagReplacesWithActiveCommands(t *testing.T) {
 	e, _, target := namedCLIFixture(t)
 	r := sessionRecord(t, e, target)
 	ctx := context.Background()
-	lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	lock, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

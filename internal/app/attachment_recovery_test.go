@@ -24,7 +24,7 @@ func TestStoppedAccessAllowsExistingAttachment(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := sessionRecord(t, e, made.SessionID)
-			lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
+			lock, err := e.Store.Lock(ctx, r.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -40,7 +40,7 @@ func TestStoppedAccessAllowsExistingAttachment(t *testing.T) {
 			if !exists || !c.State.Running {
 				t.Fatal("access did not start the recorded container")
 			}
-			lock, err = e.Store.Lock(ctx, r.Directory, r.ID)
+			lock, err = e.Store.Lock(ctx, r.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -164,7 +164,7 @@ func TestForcedRecreationFailureRetainsAttachmentProtection(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := sessionRecord(t, e, made.SessionID)
-			lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
+			lock, err := e.Store.Lock(ctx, r.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -188,7 +188,7 @@ func TestForcedRecreationFailureRetainsAttachmentProtection(t *testing.T) {
 			if _, err := e.Recreate(ctx, forced, failure == "build"); err == nil {
 				t.Fatal("injected failure did not fail recreation")
 			}
-			lock, err = e.Store.Lock(ctx, r.Directory, r.ID)
+			lock, err = e.Store.Lock(ctx, r.ID)
 			if err != nil {
 				t.Fatal(err)
 			}

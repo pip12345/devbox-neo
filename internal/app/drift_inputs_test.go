@@ -123,7 +123,7 @@ func TestFailedRecreationPreservesImageBaseline(t *testing.T) {
 		t.Fatal("failed recreation advanced baseline")
 	}
 	d.Fail = nil
-	lock, err := e.Store.Lock(ctx, stored.Directory, stored.ID)
+	lock, err := e.Store.Lock(ctx, stored.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

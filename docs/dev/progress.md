@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## ID-only locking API — implemented
+
+- Single and bulk session locks accept only IDs. Removed duplicate lock names, directory-to-ID maps and shared-handle wrappers; sorted unique acquisition, cancellation cleanup and external lock paths are unchanged. Saved formats need no migration.
+- Full fast-suite equivalent, five repeated lock regressions, affected-package vet, CLI build and diff checks pass using `.tools/go`. Tests use temporary homes and fake Docker; live Docker and race checks remain unrun.
+
 ## Migration save retention and transfer cleanup — implemented
 
 - Conversion uses the record reloaded under its session lock, retaining saves completed while it waited. Transfer completion/abort durably removes the journal before discarding private retry files; interrupted file cleanup no longer strands a committed session.

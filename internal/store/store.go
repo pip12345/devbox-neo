@@ -64,27 +64,17 @@ func Open(ctx context.Context, home string) (*Store, error) {
 	return &Store{Home: absolute, Installation: id}, nil
 }
 
-type operationLock struct{ file *os.File }
 type Locked struct {
 	ctx       context.Context
 	store     *Store
-	Name      string
 	ID        string
-	operation *operationLock
+	operation *os.File
 }
 
-func (s *Store) Lock(ctx context.Context, directory, id string) (*Locked, error) {
-	if directory != id || !idPattern.MatchString(id) {
+func (s *Store) Lock(ctx context.Context, id string) (*Locked, error) {
+	if !idPattern.MatchString(id) {
 		return nil, fmt.Errorf("invalid session lock reference")
 	}
-	operation, err := s.lockID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return &Locked{ctx: ctx, store: s, Name: directory, ID: id, operation: operation}, nil
-}
-
-func (s *Store) lockID(ctx context.Context, id string) (*operationLock, error) {
 	path, err := fsutil.Path(s.Home, filepath.Join("state/locks/sessions", id+".lock"))
 	if err != nil {
 		return nil, err
@@ -93,17 +83,17 @@ func (s *Store) lockID(ctx context.Context, id string) (*operationLock, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &operationLock{file: f}, nil
+	return &Locked{ctx: ctx, store: s, ID: id, operation: f}, nil
 }
 func (l *Locked) Close() error {
 	if !l.Held() {
 		return nil
 	}
-	err := fsutil.Unlock(l.operation.file)
-	l.operation.file = nil
+	err := fsutil.Unlock(l.operation)
+	l.operation = nil
 	return err
 }
-func (l *Locked) Held() bool { return l.operation != nil && l.operation.file != nil }
+func (l *Locked) Held() bool { return l.operation != nil }
 func (l *Locked) check() error {
 	if !l.Held() {
 		return fmt.Errorf("session operation lock is not held")
@@ -117,7 +107,7 @@ func (l *Locked) Path(rel string) (string, error) {
 	if rel != "." && !filepath.IsLocal(rel) {
 		return "", fmt.Errorf("session path must remain relative")
 	}
-	return fsutil.Path(l.store.Home, filepath.Join("sessions", l.Name, rel))
+	return fsutil.Path(l.store.Home, filepath.Join("sessions", l.ID, rel))
 }
 func (l *Locked) Dir(rel string) (string, error) {
 	if err := l.check(); err != nil {
@@ -126,7 +116,7 @@ func (l *Locked) Dir(rel string) (string, error) {
 	if rel != "." && !filepath.IsLocal(rel) {
 		return "", fmt.Errorf("session path must remain relative")
 	}
-	return fsutil.Dir(l.store.Home, filepath.Join("sessions", l.Name, rel), 0700)
+	return fsutil.Dir(l.store.Home, filepath.Join("sessions", l.ID, rel), 0700)
 }
 func (l *Locked) TreePath(tree, rel string) (string, error) {
 	if !ValidStateTree(tree) || (rel != "." && !filepath.IsLocal(rel)) {
@@ -198,13 +188,13 @@ func (l *Locked) Save(record Record) error {
 	if err := l.check(); err != nil {
 		return err
 	}
-	if record.Directory != l.Name || record.ID != l.ID {
+	if record.Directory != l.ID || record.ID != l.ID {
 		return fmt.Errorf("record belongs to a different storage directory")
 	}
 	// Raw --env assignments are execution inputs, not durable state. Rebuilds
 	// resolve them afresh; the comparison form preserves argument order.
 	record.Applied.Creation.RawArgs = record.Applied.Inputs.Container.RawArgs
-	if err := record.Validate(l.Name); err != nil {
+	if err := record.Validate(l.ID); err != nil {
 		return err
 	}
 	if _, err := l.Dir("."); err != nil {

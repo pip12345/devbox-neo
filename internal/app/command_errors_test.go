@@ -36,7 +36,7 @@ func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
+	lock, err := e.Store.Lock(ctx, opened.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 	if err := e.Stop(ctx, opened.SessionID, "", false); !errors.As(err, &busy) || busy.Code != "session_busy" || len(busy.Next) != 1 || strings.Contains(strings.Join(busy.Next[0].Command, " "), "--force") {
 		t.Fatal(err)
 	}
-	lock, _ = e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
+	lock, _ = e.Store.Lock(ctx, opened.SessionID)
 	lock.Release(lease.ID)
 	lock.Close()
 	path, _ := e.Store.RecordPath(sessionRecord(t, e, opened.SessionID).Directory)

@@ -12,7 +12,7 @@ func TestLeaseReleaseDistinguishesRetiredAttachment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, err := s.Lock(ctx, strings.Repeat("a", 12), strings.Repeat("a", 12))
+	lock, err := s.Lock(ctx, strings.Repeat("a", 12))
 	if err != nil {
 		t.Fatal(err)
 	}

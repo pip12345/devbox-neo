@@ -21,7 +21,7 @@ func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
 		t.Fatal(err)
 	}
 	shown := sessionRecord(t, e, made.SessionID)
-	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, made.SessionID).Directory, sessionRecord(t, e, made.SessionID).ID)
+	lock, err := e.Store.Lock(ctx, made.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
 	}
 	// Existing empty records remain readable and repairable. The nonempty rule
 	// belongs to saved edits, not record decoding or creation drafts.
-	lock, err = e.Store.Lock(ctx, sessionRecord(t, e, made.SessionID).Directory, sessionRecord(t, e, made.SessionID).ID)
+	lock, err = e.Store.Lock(ctx, made.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

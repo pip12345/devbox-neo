@@ -29,7 +29,7 @@ func TestHomeAndExternalLocks(t *testing.T) {
 	if len(entries) != 0 {
 		t.Fatal("fresh home seeded configs")
 	}
-	l, err := s.Lock(ctx, strings.Repeat("a", 12), strings.Repeat("a", 12))
+	l, err := s.Lock(ctx, strings.Repeat("a", 12))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestHomeAndExternalLocks(t *testing.T) {
 	}
 	wait, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
 	defer cancel()
-	if _, err = s.Lock(wait, strings.Repeat("a", 12), strings.Repeat("a", 12)); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err = s.Lock(wait, strings.Repeat("a", 12)); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("session deletion unlinked active lock: %v", err)
 	}
 	if _, err = l.Path("../../escape"); err == nil {
@@ -57,7 +57,7 @@ func TestLeasePIDReuseAndCorruption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l, err := s.Lock(context.Background(), strings.Repeat("a", 12), strings.Repeat("a", 12))
+	l, err := s.Lock(context.Background(), strings.Repeat("a", 12))
 	if err != nil {
 		t.Fatal(err)
 	}

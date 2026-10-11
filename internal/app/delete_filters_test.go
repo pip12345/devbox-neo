@@ -37,7 +37,7 @@ func TestDeleteFiltersIntersectAndScopeIsIndependent(t *testing.T) {
 				if name == "old-missing" {
 					forgetSession(t, e, created.SessionID)
 				}
-				lock, err := e.Store.Lock(ctx, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
+				lock, err := e.Store.Lock(ctx, created.SessionID)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -80,7 +80,7 @@ func TestAgeSelectionIsRecheckedAfterInventoryBeforeMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	setActivity := func(at time.Time) {
-		lock, err := e.Store.Lock(ctx, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
+		lock, err := e.Store.Lock(ctx, created.SessionID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -119,7 +119,7 @@ func TestOrphanSelectionRechecksContainerAbsence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
+	lock, err := e.Store.Lock(ctx, created.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

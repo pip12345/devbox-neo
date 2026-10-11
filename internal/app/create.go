@@ -36,7 +36,7 @@ func (e *Engine) Create(ctx context.Context, q CreateRequest) (CreationResult, e
 		return CreationResult{}, err
 	}
 	result := CreationResult{Result: Result{Session: environment.PublicName(identity.Binding, id), SessionID: id}}
-	lock, err := e.Store.Lock(ctx, id, id)
+	lock, err := e.Store.Lock(ctx, id)
 	if err != nil {
 		return result, err
 	}
@@ -302,7 +302,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 	if reused {
 		record.Applied.ImageTag = previous.Applied.ImageTag
 	}
-	record.Directory = l.Name
+	record.Directory = l.ID
 	c, err = e.materialize(ctx, record)
 	if err != nil {
 		return record, c, err
@@ -406,7 +406,7 @@ func (e *Engine) Recreate(ctx context.Context, q RecreateRequest, image bool) (R
 	if err != nil {
 		return Result{}, err
 	}
-	l, err := e.Store.Lock(ctx, selected.Directory, selected.ID)
+	l, err := e.Store.Lock(ctx, selected.ID)
 	if err != nil {
 		return Result{}, err
 	}

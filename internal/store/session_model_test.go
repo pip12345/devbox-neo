@@ -19,7 +19,7 @@ func TestCompleteSessionIDAndExclusiveDirectoryClaim(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, err := s.Lock(context.Background(), id, id)
+	lock, err := s.Lock(context.Background(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestCompleteSessionIDAndExclusiveDirectoryClaim(t *testing.T) {
 	if data, err := os.ReadFile(marker); err != nil || string(data) != "original allocation" {
 		t.Fatal("existing state changed", err)
 	}
-	if _, err := s.Lock(context.Background(), "a-name-not-an-id", id); err == nil {
+	if _, err := s.Lock(context.Background(), "a-name-not-an-id"); err == nil {
 		t.Fatal("storage alias accepted")
 	}
 }

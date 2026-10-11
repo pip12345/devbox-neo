@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"devbox/internal/fsutil"
 )
@@ -72,37 +71,24 @@ func (s *Store) Inventory(ctx context.Context) ([]Entry, error) {
 	return result, nil
 }
 
-// LockAll acquires the complete unique ID set in sorted order. Move uses one
-// handle for its source and destination trees.
-func (s *Store) LockAll(ctx context.Context, names []string, ids map[string]string) ([]*Locked, error) {
-	byID := map[string]*Locked{}
-	order := []string{}
-	for i, name := range names {
-		if (i > 0 && names[i-1] >= name) || name != ids[name] || !idPattern.MatchString(ids[name]) {
+// LockAll requires sorted, unique session IDs so overlapping operations acquire
+// locks in the same order. Failure releases every lock acquired by this call.
+func (s *Store) LockAll(ctx context.Context, ids []string) ([]*Locked, error) {
+	for i, id := range ids {
+		if !idPattern.MatchString(id) || (i > 0 && ids[i-1] >= id) {
 			return nil, fmt.Errorf("invalid session lock set")
 		}
-		if _, seen := byID[ids[name]]; !seen {
-			byID[ids[name]] = nil
-			order = append(order, ids[name])
-		}
 	}
-	sort.Strings(order)
-	acquired := []*Locked{}
-	for _, id := range order {
-		operation, err := s.lockID(ctx, id)
+	locks := make([]*Locked, 0, len(ids))
+	for _, id := range ids {
+		lock, err := s.Lock(ctx, id)
 		if err != nil {
-			CloseAll(acquired)
+			CloseAll(locks)
 			return nil, err
 		}
-		lock := &Locked{ctx: ctx, store: s, ID: id, operation: operation}
-		byID[id] = lock
-		acquired = append(acquired, lock)
+		locks = append(locks, lock)
 	}
-	result := make([]*Locked, 0, len(names))
-	for _, name := range names {
-		result = append(result, &Locked{ctx: ctx, store: s, Name: name, ID: ids[name], operation: byID[ids[name]].operation})
-	}
-	return result, nil
+	return locks, nil
 }
 func CloseAll(locks []*Locked) {
 	for i := len(locks) - 1; i >= 0; i-- {

@@ -85,7 +85,7 @@ func TestCancelledApplicationPlanDoesNotMutate(t *testing.T) {
 	}
 	lockCtx, stop := context.WithTimeout(context.Background(), time.Second)
 	defer stop()
-	lock, err := e.Store.Lock(lockCtx, r.Directory, r.ID)
+	lock, err := e.Store.Lock(lockCtx, r.ID)
 	if err != nil {
 		t.Fatal("apply leaked lock", err)
 	}

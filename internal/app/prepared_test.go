@@ -26,7 +26,7 @@ func TestPreparedCreationStaysPrivateAndDoesNotOverwriteCandidate(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	l, err := e.Store.Lock(ctx, j.DestinationID, j.DestinationID)
+	l, err := e.Store.Lock(ctx, j.DestinationID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestPreparedCreationRequiresValidIdentityAndHeldLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := strings.Repeat("f", 12)
-	l, err := e.Store.Lock(ctx, id, id)
+	l, err := e.Store.Lock(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}

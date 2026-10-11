@@ -42,7 +42,7 @@ func (e *Engine) Status(ctx context.Context, target, localName string) (StatusDe
 	if err != nil {
 		return StatusDetails{}, err
 	}
-	lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	lock, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		return StatusDetails{}, err
 	}
@@ -178,8 +178,8 @@ func removeSavedSession(ctx context.Context, lock *store.Locked, workspace, id s
 		return err
 	}
 	if err := lock.DeleteContext(ctx); err != nil {
-		return commanderror.New("session_delete_incomplete", "Saved session removal failed; its default may already be cleared.", lock.Name, err,
-			commanderror.Next("Inspect retained state", "status", lock.Name))
+		return commanderror.New("session_delete_incomplete", "Saved session removal failed; its default may already be cleared.", lock.ID, err,
+			commanderror.Next("Inspect retained state", "status", lock.ID))
 	}
 	return nil
 }

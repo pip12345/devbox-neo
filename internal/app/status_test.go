@@ -103,7 +103,7 @@ func TestStatusReportsLiveLeasesWithoutReaping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).ID)
+	lock, err := e.Store.Lock(ctx, result.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

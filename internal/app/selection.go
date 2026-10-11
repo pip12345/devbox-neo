@@ -68,16 +68,16 @@ func orderedTargets(targets map[string]SelectedTarget) selectedTargets {
 	return result
 }
 func (targets selectedTargets) lock(ctx context.Context, state *store.Store) ([]*store.Locked, error) {
-	ids := map[string]string{}
+	seen := map[string]bool{}
 	for _, target := range targets {
-		ids[target.sessionID] = target.sessionID
+		seen[target.sessionID] = true
 	}
-	var names []string
-	for id := range ids {
-		names = append(names, id)
+	var ids []string
+	for id := range seen {
+		ids = append(ids, id)
 	}
-	sort.Strings(names)
-	locks, err := state.LockAll(ctx, names, ids)
+	sort.Strings(ids)
+	locks, err := state.LockAll(ctx, ids)
 	if err != nil {
 		return nil, err
 	}

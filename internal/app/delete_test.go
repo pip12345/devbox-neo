@@ -135,7 +135,7 @@ func TestDeleteForceNeverImpliesSavedDataDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, _ := e.Store.Lock(ctx, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
+	lock, _ := e.Store.Lock(ctx, created.SessionID)
 	lease, err := lock.Lease("exec")
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestDeleteForceNeverImpliesSavedDataDeletion(t *testing.T) {
 	if _, err := e.Store.Find(ctx, created.SessionID, nil); err != nil {
 		t.Fatal("force lost saved state", err)
 	}
-	lock, _ = e.Store.Lock(ctx, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
+	lock, _ = e.Store.Lock(ctx, created.SessionID)
 	lock.Release(lease.ID)
 	lock.Close()
 }
@@ -234,7 +234,7 @@ func TestDeleteKeepsEndpointLockAcrossBothPrompts(t *testing.T) {
 				calls++
 				attempt, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
 				defer cancel()
-				lock, err := e.Store.Lock(attempt, sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).ID)
+				lock, err := e.Store.Lock(attempt, created.SessionID)
 				if err == nil {
 					lock.Close()
 					t.Fatal("another operation acquired the endpoint during confirmation")

@@ -13,7 +13,7 @@ import (
 )
 
 func (e *Engine) SetDefault(ctx context.Context, selected store.Record) error {
-	lock, err := e.Store.Lock(ctx, selected.Directory, selected.ID)
+	lock, err := e.Store.Lock(ctx, selected.ID)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func (e *Engine) UpdateSources(ctx context.Context, shown store.Record, sources 
 	if err := config.ValidateReferenceChain(shown.Settings.Workspace, sources); err != nil {
 		return store.Record{}, err
 	}
-	lock, err := e.Store.Lock(ctx, shown.Directory, shown.ID)
+	lock, err := e.Store.Lock(ctx, shown.ID)
 	if err != nil {
 		return store.Record{}, err
 	}

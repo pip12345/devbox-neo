@@ -128,7 +128,7 @@ func TestFolderDefaultClearRequiresMatchingID(t *testing.T) {
 	workspace := "/missing/workspace"
 	id := strings.Repeat("a", 12)
 	testDefault(t, s, workspace, &DefaultSession{ID: id})
-	lock, err := s.Lock(ctx, id, id)
+	lock, err := s.Lock(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,7 @@ func TestSessionLockAndLeasesAreIndependentOfStateTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := strings.Repeat("a", 12)
-	lock, err := s.Lock(ctx, id, id)
+	lock, err := s.Lock(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,14 +34,14 @@ func TestSessionLockAndLeasesAreIndependentOfStateTree(t *testing.T) {
 	}
 	wait, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
 	defer cancel()
-	if _, err := s.Lock(wait, id, id); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := s.Lock(wait, id); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("another tree bypassed the session lock", err)
 	}
 	lock.Close()
 	if lock.Held() {
 		t.Fatal("released lock remained held")
 	}
-	current, err := s.Lock(ctx, id, id)
+	current, err := s.Lock(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}

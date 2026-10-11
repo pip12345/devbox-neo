@@ -118,7 +118,7 @@ func TestSSHStartupLeasesConcurrentConnectionsAndCleanup(t *testing.T) {
 	if len(entries) != 0 {
 		t.Fatal("dead connections still published", entries)
 	}
-	l, err := e.Store.Lock(ctx, sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).ID)
+	l, err := e.Store.Lock(ctx, result.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestSSHMissingMountNeedsExplicitRecreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l, err := e.Store.Lock(ctx, sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).ID)
+	l, err := e.Store.Lock(ctx, result.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

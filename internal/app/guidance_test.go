@@ -28,7 +28,7 @@ func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
 			t.Fatal("actions must be structured, not embedded in the message", actionable)
 		}
 	}
-	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).ID)
+	lock, err := e.Store.Lock(ctx, result.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

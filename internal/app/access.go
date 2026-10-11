@@ -130,7 +130,7 @@ func (e *Engine) Start(ctx context.Context, target, localName string) (result Re
 	if err != nil {
 		return Result{}, err
 	}
-	l, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	l, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -166,7 +166,7 @@ func (e *Engine) Stop(ctx context.Context, target, localName string, force bool)
 	if err != nil {
 		return err
 	}
-	l, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	l, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		return err
 	}
@@ -205,7 +205,7 @@ func (e *Engine) Exec(ctx context.Context, target, localName string, argv []stri
 	if err != nil {
 		return err
 	}
-	l, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	l, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		return err
 	}

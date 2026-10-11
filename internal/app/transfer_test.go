@@ -308,7 +308,7 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 		t.Fatal("preflight mutated destination")
 	}
 	_ = sessionRecord(t, e, destOpen.SessionID)
-	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
+	lock, err := e.Store.Lock(ctx, opened.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 	if _, err = e.Transfer(ctx, opts); err == nil {
 		t.Fatal("transferred active source")
 	}
-	lock, _ = e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
+	lock, _ = e.Store.Lock(ctx, opened.SessionID)
 	if _, err = lock.Release(lease.ID); err != nil {
 		t.Fatal(err)
 	}

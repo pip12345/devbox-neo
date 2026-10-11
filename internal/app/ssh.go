@@ -26,7 +26,7 @@ func (e *Engine) SSH(ctx context.Context, target, localName, destination string,
 	if err != nil {
 		return err
 	}
-	l, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	l, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		return err
 	}

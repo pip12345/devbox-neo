@@ -45,11 +45,11 @@ func TestCreationRecordParity(t *testing.T) {
 			if mode == "prepared" || previous != nil {
 				seed.ManualStart = true
 			}
-			directory, lockedID := strings.Repeat("f", 12), strings.Repeat("f", 12)
+			directory := strings.Repeat("f", 12)
 			if previous != nil {
-				directory, lockedID = previous.Directory, previous.ID
+				directory = previous.ID
 			}
-			l, err := e.Store.Lock(ctx, directory, lockedID)
+			l, err := e.Store.Lock(ctx, directory)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -169,7 +169,7 @@ func (l *Locked) SelectDefault(expectedID string) error {
 		return err
 	}
 	if record.ID != expectedID {
-		return commanderror.New("session_changed", "Session identity changed; select it again.", l.Name, nil)
+		return commanderror.New("session_changed", "Session identity changed; select it again.", l.ID, nil)
 	}
 	lock, err := l.store.LockDefaults(l.ctx)
 	if err != nil {

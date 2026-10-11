@@ -25,7 +25,7 @@ func (e *Engine) SetWorkspace(ctx context.Context, target, localName, workspace 
 	if err != nil {
 		return store.Record{}, err
 	}
-	lock, err := e.Store.Lock(ctx, selected.Directory, selected.ID)
+	lock, err := e.Store.Lock(ctx, selected.ID)
 	if err != nil {
 		return store.Record{}, err
 	}

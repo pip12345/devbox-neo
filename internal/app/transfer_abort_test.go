@@ -213,7 +213,7 @@ func TestAbortRejectsBusyOrForeignEndpoints(t *testing.T) {
 			e, d, _, source, _, journal := interruptedTransfer(t, "clone", true)
 			ctx := context.Background()
 			if unsafe == "busy" {
-				lock, err := e.Store.Lock(ctx, source.Directory, source.ID)
+				lock, err := e.Store.Lock(ctx, source.ID)
 				if err != nil {
 					t.Fatal(err)
 				}
