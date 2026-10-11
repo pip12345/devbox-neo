@@ -8,10 +8,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"devbox/internal/docker/dockertest"
 	"devbox/internal/environment"
@@ -30,25 +28,17 @@ func TestTransferResumesJournalBeforeDestinationCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nonce, _ := fsutil.ID()
-	newID, _ := fsutil.ID()
-	spec.Identity.Name = environment.ResourceName(dest, q.LocalName, "directory")
-	j := store.Transfer{Version: 4, ContainerName: environment.ResourceName(dest, q.LocalName, nonce), SourceContainerID: source.Applied.SetupContainer, ID: nonce, Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: spec.Identity, SourceID: source.ID, DestinationID: newID, Started: time.Now().UTC()}
-	names := []string{source.Directory, spec.Identity.Name}
-	sort.Strings(names)
-	locks, err := e.Store.LockAll(ctx, names, map[string]string{source.Directory: source.ID, spec.Identity.Name: newID})
+	j := transferJournal(t, source, spec.Identity.Binding, "clone")
+	newID := j.DestinationID
+	locks, a, b, err := e.lockTransfer(ctx, source.ID, newID)
 	if err != nil {
 		t.Fatal(err)
-	}
-	a, b := locks[0], locks[1]
-	if a.Name != source.Directory {
-		a, b = b, a
 	}
 	if err = a.SaveTransfer(b, j); err != nil {
 		t.Fatal(err)
 	}
 	altered := j
-	altered.DestinationID, _ = fsutil.ID()
+	altered.DestinationID, _ = fsutil.SessionID()
 	if err = a.SaveTransfer(b, altered); err == nil {
 		t.Fatal("journal contract changed")
 	}
@@ -61,7 +51,7 @@ func TestTransferResumesJournalBeforeDestinationCreation(t *testing.T) {
 	if _, err = e.Transfer(ctx, TransferOptions{Mode: "clone", Source: opened.SessionID, Destination: dest}); err != nil {
 		t.Fatal(err)
 	}
-	if sessionRecord(t, e, spec.Identity.Name).ID != newID {
+	if sessionRecord(t, e, j.DestinationName()).ID != newID {
 		t.Fatal("retry allocated another identity")
 	}
 }
@@ -77,7 +67,7 @@ func TestTransferIdentityStateAndRunningPolicy(t *testing.T) {
 				}
 				original := sessionRecord(t, e, opened.SessionID)
 				rel := "harnesses/pi/stores/home/sessions/history.json"
-				write(t, filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, opened.SessionID).Directory, rel), "conversation")
+				write(t, filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).StateTree, rel), "conversation")
 				if running {
 					if _, err = e.Start(ctx, opened.SessionID, ""); err != nil {
 						t.Fatal(err)
@@ -107,7 +97,7 @@ func TestTransferIdentityStateAndRunningPolicy(t *testing.T) {
 				if err != nil || view.Desired != environment.NoChange || len(view.PendingInputChanges) != 0 || copied.Applied.Inputs.Container.Workspace != copied.Settings.Workspace {
 					t.Fatal("destination did not commit its own input baseline", view, err)
 				}
-				data, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, rel))
+				data, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, sessionRecord(t, e, result.Destination).StateTree, rel))
 				if err != nil || string(data) != "conversation" {
 					t.Fatal("lost state", err)
 				}
@@ -129,8 +119,8 @@ func TestTransferIdentityStateAndRunningPolicy(t *testing.T) {
 					if sessionRecord(t, e, opened.SessionID).ID != original.ID {
 						t.Fatal("source changed")
 					}
-				} else if _, err = e.Store.Read(ctx, original.Directory); !os.IsNotExist(err) {
-					t.Fatal("source record remained", err)
+				} else if _, err = os.Stat(filepath.Join(e.Store.Home, "sessions", original.ID, original.StateTree)); !os.IsNotExist(err) {
+					t.Fatal("source tree remained", err)
 				}
 			})
 		}
@@ -176,7 +166,7 @@ func TestTransferNamesAndDryRun(t *testing.T) {
 	if count(d, "create") != before {
 		t.Fatal("dry run created container")
 	}
-	if _, err = e.Store.Read(ctx, result.Destination); !os.IsNotExist(err) {
+	if _, err = e.Store.Read(ctx, result.SessionID); !os.IsNotExist(err) {
 		t.Fatal("dry run created state", err)
 	}
 	if j, err := pendingTransfer(e, opened.SessionID); err != nil || j != nil {
@@ -202,7 +192,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 		t.Fatal(err)
 	}
 	rel := "harnesses/pi/stores/home/sessions/history.json"
-	sourcePath := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, opened.SessionID).Directory, rel)
+	sourcePath := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).StateTree, rel)
 	write(t, sourcePath, "before")
 	opts := TransferOptions{Mode: "relocate", Source: opened.SessionID, Destination: t.TempDir()}
 	source := sessionRecord(t, e, opened.SessionID)
@@ -227,7 +217,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	if err != nil || j == nil || j.Phase != "prepare" {
 		t.Fatal(j, err)
 	}
-	if _, err = e.Start(ctx, j.Destination.Name, ""); err == nil {
+	if _, err = e.Start(ctx, j.DestinationName(), ""); err == nil {
 		t.Fatal("pending destination not guarded")
 	}
 	if _, err = e.DeleteContainers(ctx, Selection{Targets: []string{opened.SessionID}}, true); err == nil {
@@ -245,7 +235,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	if _, err = e.Transfer(ctx, opts); err == nil || !strings.Contains(err.Error(), "prepare interrupted") || strings.Contains(err.Error(), "not-for-journals") {
 		t.Fatal("changed config did not reach preparation or leaked", err)
 	}
-	journalData := getFile(t, filepath.Join(e.Store.Home, "state/transfers", source.Directory+".json"))
+	journalData := getFile(t, filepath.Join(e.Store.Home, "state/transfers", source.ID, "journal.json"))
 	if strings.Contains(string(journalData), "not-for-journals") {
 		t.Fatal("retry persisted env values")
 	}
@@ -255,7 +245,7 @@ func TestTransferFailedPreparationRestoresSourceAndRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, rel))
+	data, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, sessionRecord(t, e, result.Destination).StateTree, rel))
 	if err != nil || string(data) != "new source write after rollback" {
 		t.Fatal("retry used stale snapshot", err)
 	}
@@ -270,7 +260,7 @@ func TestTransferCommittedRetryOnlyCleansSource(t *testing.T) {
 	source := sessionRecord(t, e, opened.SessionID)
 	opts := TransferOptions{Mode: "relocate", Source: opened.SessionID, Destination: t.TempDir()}
 	d.Fail = func(args []string) error {
-		if args[0] == "rm" && args[len(args)-1] == source.Applied.SetupContainer {
+		if args[0] == "rm" && args[len(args)-1] == source.Applied.ContainerID {
 			return errors.New("source removal interrupted")
 		}
 		return nil
@@ -285,7 +275,7 @@ func TestTransferCommittedRetryOnlyCleansSource(t *testing.T) {
 	}
 	created := count(d, "create")
 	rel := "harnesses/pi/stores/home/sessions/after-commit.json"
-	write(t, filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, rel), "destination owns this")
+	write(t, filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, sessionRecord(t, e, result.Destination).StateTree, rel), "destination owns this")
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken desired config")
 	d.Fail = nil
 	if _, err = e.Transfer(ctx, opts); err != nil {
@@ -294,7 +284,7 @@ func TestTransferCommittedRetryOnlyCleansSource(t *testing.T) {
 	if count(d, "create") != created {
 		t.Fatal("committed retry recreated destination")
 	}
-	if _, err = os.Stat(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, rel)); err != nil {
+	if _, err = os.Stat(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.Destination).Directory, sessionRecord(t, e, result.Destination).StateTree, rel)); err != nil {
 		t.Fatal("retry replaced destination", err)
 	}
 }
@@ -336,9 +326,10 @@ func TestTransferRejectsOccupiedDestinationAndActiveSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	lock.Close()
-	id, _ := environment.Identify(opts.Destination, q.LocalName)
+	journal := transferJournal(t, sessionRecord(t, e, opened.SessionID), environment.Binding{Workspace: opts.Destination, LocalName: q.LocalName}, "relocate")
+	saveTransferJournal(t, e, journal)
 	foreign, _ := sessionSnapshot(t, e, opened.SessionID)
-	foreign.Name = "/" + id.Name
+	foreign.Name = "/" + journal.ContainerName
 	foreign.Config.Labels = map[string]string{}
 	d.SetContainer(foreign)
 	if _, err = e.Transfer(ctx, opts); err == nil {

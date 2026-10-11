@@ -62,7 +62,7 @@ func TestSessionDeletionDoesNotFollowStoreSymlinks(t *testing.T) {
 	}
 	external := filepath.Join(t.TempDir(), "data")
 	write(t, external, "keep")
-	link := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home/link")
+	link := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).StateTree, "harnesses/pi/stores/home/link")
 	if err := os.Symlink(external, link); err != nil {
 		t.Fatal(err)
 	}

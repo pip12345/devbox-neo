@@ -32,7 +32,7 @@ func TestRecreateAllIncludesMissingRuntimeAndPreservesSessionState(t *testing.T)
 			}
 		}
 		r := sessionRecord(t, e, made.SessionID)
-		write(t, filepath.Join(e.Store.Home, "sessions", r.Directory, "harnesses/pi/stores/home/history"), name)
+		write(t, filepath.Join(e.Store.Home, "sessions", r.Directory, r.StateTree, "harnesses/pi/stores/home/history"), name)
 		if strings.HasPrefix(name, "missing") {
 			forgetSession(t, e, r.ID)
 		}
@@ -51,7 +51,7 @@ func TestRecreateAllIncludesMissingRuntimeAndPreservesSessionState(t *testing.T)
 	sort.Slice(records, func(i, j int) bool { return records[i].Directory < records[j].Directory })
 	var want []string
 	for _, before := range records {
-		want = append(want, before.ID)
+		want = append(want, before.PublicName())
 		after := sessionRecord(t, e, before.ID)
 		c, exists := sessionSnapshot(t, e, before.ID)
 		if !exists || c.State.Running != (before.Settings.LocalName == "running" || before.Settings.ManualStart) {
@@ -61,10 +61,10 @@ func TestRecreateAllIncludesMissingRuntimeAndPreservesSessionState(t *testing.T)
 			t.Fatal("bulk recreation changed saved session identity/settings", after)
 		}
 		missing := strings.HasPrefix(before.Settings.LocalName, "missing")
-		if (after.Applied.SetupContainer != before.Applied.SetupContainer) != missing {
+		if (after.Applied.ContainerID != before.Applied.ContainerID) != missing {
 			t.Fatal("bulk recreation did not choose minimal work", before.Settings.LocalName)
 		}
-		if string(getFile(t, filepath.Join(e.Store.Home, "sessions", before.Directory, "harnesses/pi/stores/home/history"))) != before.Settings.LocalName {
+		if string(getFile(t, filepath.Join(e.Store.Home, "sessions", before.Directory, before.StateTree, "harnesses/pi/stores/home/history"))) != before.Settings.LocalName {
 			t.Fatal("bulk recreation changed saved history")
 		}
 	}
@@ -110,7 +110,7 @@ func TestRecreateAllPreflightsSavedSessionsBeforeMutation(t *testing.T) {
 				}
 				write(t, path, string(data))
 			case "missing store":
-				if err := os.RemoveAll(filepath.Join(e.Store.Home, "sessions", broken.Directory, "harnesses/pi/stores/home")); err != nil {
+				if err := os.RemoveAll(filepath.Join(e.Store.Home, "sessions", broken.Directory, broken.StateTree, "harnesses/pi/stores/home")); err != nil {
 					t.Fatal(err)
 				}
 			case "active command":
@@ -177,7 +177,7 @@ func TestRecreateAllDoesNotAdoptContainersOrIncompleteAllocations(t *testing.T) 
 	marker := filepath.Join(e.Store.Home, "sessions/dbx-incomplete/marker")
 	write(t, marker, "retain")
 	applied, err := e.RecreateAll(ctx, false, RecreateOptions{})
-	if err != nil || len(applied) != 1 || applied[0] != made.SessionID {
+	if err != nil || len(applied) != 1 || applied[0] != made.Session {
 		t.Fatal("bulk recreation selected something other than saved sessions", applied, err)
 	}
 	if got, exists := d.Snapshot("dbx-unmatched"); !exists || !reflect.DeepEqual(got, c) || string(getFile(t, marker)) != "retain" {

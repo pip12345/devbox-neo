@@ -43,7 +43,7 @@ flowchart TD
 | Container | Image dependency, mounts, network, env verification, ordered setup inputs | Creation/recreation commit |
 | Runtime | Managed files, launch settings, ordered before-open inputs, runtime assets | Successful explicit application through `Record.ApplyRuntime` |
 
-Schema `7` validates public settings and aggregate content hashes, never file contents or env values. Managed trees and build contexts contribute one digest each rather than a persisted per-file inventory. Applied source directories retain provenance for config-usage reporting, not authority to reconstruct historical inputs.
+Schema `8` validates public settings and aggregate content hashes, never file contents or env values. Managed trees and build contexts contribute one digest each rather than a persisted per-file inventory. Applied source directories retain provenance for config-usage reporting, not authority to reconstruct historical inputs.
 
 `CompareInputs` emits public-setting and category changes in stable order. Action priority is image over container over runtime. The image-to-container hash dependency does not become a duplicate user-facing reason. Dockerfiles/scripts retain specific reasons; build-context and managed-tree reasons deliberately do not enumerate changed filenames.
 
@@ -51,7 +51,7 @@ Source paths explain changes but do not themselves change fingerprints when effe
 
 ## New-session creation
 
-`Engine.Create` checks workspace/name uniqueness under the namespace lock, allocates a session ID and storage directory, acquires its operation lock, and resolves the explicit sources. Container creation allocates a separate Docker name. It then enters the shared creation pipeline. `Request.MakeDefault` is an explicit creation-only option; neither the first session nor a transfer destination becomes a default implicitly.
+`Engine.Create` checks workspace/name uniqueness under the namespace lock, allocates one complete 12-character session ID and exclusively claims its storage directory, acquires its operation lock, and resolves the explicit sources. Container creation allocates an internal instance name unrelated to editable settings. It then enters the shared creation pipeline. `Request.MakeDefault` is an explicit creation-only option; neither the first session nor a transfer destination becomes a default implicitly.
 
 ```mermaid
 flowchart TD
@@ -81,7 +81,7 @@ Explicit application preserves the session ID and stores. Runtime-only changes u
 
 `app.startAccess` is the shared boundary for `open`, `start`, `shell`, `exec`, and `ssh`. It validates ownership and durable stores, starts the recorded container if needed without requiring attachment idleness. It never resolves desired configs or synchronizes managed files. Pending workspace/config edits therefore do not block access to the applied runtime. Missing backing stores remain errors; missing containers require explicit recreation.
 
-Open and Continue launch the recorded harness and arguments. Before-open scripts are installed under `/devbox/hooks/` during creation/application, keyed by their content hashes. The recorded runtime inputs already retain their order and hashes, so session schema 7 needs no conversion or script contents. Staging and atomic file replacement prevent failed publication from truncating previously applied scripts. These copies are disposable container files, not a historical reconstruction archive.
+Open and Continue launch the recorded harness and arguments. Before-open scripts are installed under `/devbox/hooks/` during creation/application, keyed by their content hashes. The recorded runtime inputs already retain their order and hashes, so the session record needs no script contents. Staging and atomic file replacement prevent failed publication from truncating previously applied scripts. These copies are disposable container files, not a historical reconstruction archive.
 
 Open checks the complete applied hook chain before running it. Each hook is a separate process; failure blocks harness attachment. Shell/Exec never run before-open hooks or parse live harness JSON, so they remain usable for repair. An older container without installed hook copies gets an exact `recreate` step, never a fallback to current source files.
 
@@ -95,9 +95,9 @@ Typed plan diagnostics are collected in `Result.Diagnostics` and delivered synch
 
 ## Missing runtime and explicit recreation
 
-Containers and images are disposable, but their absence does not authorize replacement. Open, Start, Shell, Exec and SSH return `container_missing` with an exact `dbx recreate <session-directory>` step. They leave saved identity, applied state and history unchanged. Logs/status never build runtime. A healthy container remains usable when its image has been pruned.
+Containers and images are disposable, but their absence does not authorize replacement. Open, Start, Shell, Exec and SSH return `container_missing` with an exact `dbx recreate <public-session-name>` step. They leave saved identity, applied state and history unchanged. Logs/status never build runtime. A healthy container remains usable when its image has been pruned.
 
-Only explicit recreation replaces an existing session's runtime. When replacement is needed, it resolves current selected sources under the operation lock and calls the creation pipeline with the previous record. It preserves session ID, directory, creation time, history, defaults and manual-start intent. It reuses a matching available installation-owned image or builds a new one; it does not reconstruct historical configuration or adopt unowned images.
+Only explicit recreation replaces an existing session's runtime. When replacement is needed, it resolves current selected sources under the operation lock and calls the creation pipeline with the previous record. It preserves session ID, directory, current data tree, creation time, history, defaults and manual-start intent. It reuses a matching available installation-owned image or builds a new one; it does not reconstruct historical configuration or adopt unowned images.
 
 The creation path checks previously committed harness-store roots before creating directories; missing durable stores are errors, not empty replacements. Still-requested previously mounted named volumes must exist. A new runtime association commits only after materialization succeeds.
 

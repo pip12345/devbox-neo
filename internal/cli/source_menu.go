@@ -42,7 +42,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			if asJSON {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(r)
 			}
-			cmd.Printf("Workspace saved: %s\nRecreate to apply it. A matching old-folder default was cleared.\n%s", displayCell(r.Settings.Workspace), stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.Directory)}, e.Store.Home)))
+			cmd.Printf("Workspace saved: %s\nRecreate to apply it. A matching old-folder default was cleared.\n%s", displayCell(r.Settings.Workspace), stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.PublicName())}, e.Store.Home)))
 			return nil
 		case editConfigs:
 			return replaceSessionConfigs(cmd, e, args[0], *name, references, asJSON)
@@ -82,7 +82,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			target = r.Directory
+			target = r.PublicName()
 		} else {
 			target, err = environment.CanonicalWorkspace(args[0])
 			if err != nil {

@@ -56,7 +56,7 @@ func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 	write(t, path, "broken")
 	before := len(d.History())
 	var invalid *commanderror.Error
-	if _, err := e.Start(ctx, opened.SessionID, ""); !errors.As(err, &invalid) || invalid.Code != "inventory_incomplete" || errors.Is(err, os.ErrNotExist) {
+	if _, err := e.Start(ctx, opened.SessionID, ""); !errors.As(err, &invalid) || invalid.Code != "invalid_session_record" || errors.Is(err, os.ErrNotExist) {
 		t.Fatal(err)
 	}
 	if len(d.History()) != before {

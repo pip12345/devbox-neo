@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -16,12 +15,11 @@ import (
 	"devbox/internal/docker"
 	"devbox/internal/environment"
 	"devbox/internal/fsutil"
-	"devbox/internal/store"
 )
 
 func incompleteFixture(t *testing.T, e *Engine) (string, string) {
 	t.Helper()
-	name := "dbx-42643868833d.main"
+	name := "42643868833d"
 	root := filepath.Join(e.Store.Home, "sessions", name)
 	write(t, filepath.Join(root, "harnesses/pi/stores/home/extensions-pip/copied-file"), "keep until confirmed")
 	if err := os.MkdirAll(filepath.Join(root, "runtime/ssh"), 0700); err != nil {
@@ -33,18 +31,19 @@ func incompleteFixture(t *testing.T, e *Engine) (string, string) {
 func TestDeleteIncompleteCreationScopeAndConfirmation(t *testing.T) {
 	yes, no := true, false
 	for _, tc := range []struct {
-		name    string
-		scope   DeleteScope
-		dryRun  bool
-		answer  *bool
-		deleted bool
+		name     string
+		scope    DeleteScope
+		dryRun   bool
+		answer   *bool
+		deleted  bool
+		rejected bool
 	}{
-		{name: "container retains directory", scope: DeleteContainer},
+		{name: "container scope rejects directory cleanup", scope: DeleteContainer, rejected: true},
 		{name: "whole session removes directory", scope: DeleteSession, deleted: true},
 		{name: "preview", scope: DeleteSession, dryRun: true},
 		{name: "confirm data", scope: DeleteSession, answer: &yes, deleted: true},
 		{name: "decline data", scope: DeleteSession, answer: &no},
-		{name: "unscoped confirm", answer: &yes, deleted: true},
+		{name: "unscoped directory cleanup rejected", answer: &yes, rejected: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, d, _ := fixture(t)
@@ -54,7 +53,7 @@ func TestDeleteIncompleteCreationScopeAndConfirmation(t *testing.T) {
 			if err != nil || len(report.Sessions) != 1 || !report.Sessions[0].Uncommitted {
 				t.Fatal("missing interrupted-creation row", report, err)
 			}
-			options := DeleteOptions{Selection: Selection{Targets: []string{name, name}}, Scope: tc.scope, DryRun: tc.dryRun}
+			options := DeleteOptions{Selection: Selection{IncompleteDirs: []string{name, name}}, Scope: tc.scope, DryRun: tc.dryRun}
 			prompts := 0
 			if tc.answer != nil {
 				options.Confirm = func(prompt DeletePrompt) (bool, error) {
@@ -66,6 +65,15 @@ func TestDeleteIncompleteCreationScopeAndConfirmation(t *testing.T) {
 				}
 			}
 			result, err := e.Delete(ctx, options)
+			if tc.rejected {
+				if err == nil || result.DeletedCount() != 0 {
+					t.Fatal("unsupported scope mutated files", result, err)
+				}
+				if _, err := os.Stat(root); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(result, err)
 			}
@@ -120,7 +128,7 @@ func TestDeleteIncompleteCreationProtectsMountedState(t *testing.T) {
 				// backing files. Force is not permission to break those mounts.
 				c := docker.Container{ID: strings.Repeat("a", 64), Name: "/unmanaged", Mounts: []docker.ContainerMount{{Type: kind, Source: source, Destination: "/data"}}}
 				d.SetContainer(c)
-				result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{name}}, Scope: DeleteSession, Force: true, DryRun: dryRun})
+				result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{IncompleteDirs: []string{name}}, Scope: DeleteSession, Force: true, DryRun: dryRun})
 				var failure *commanderror.Error
 				if blocked {
 					if !errors.As(err, &failure) || failure.Code != "incomplete_directory_in_use" || result.DeletedCount() != 0 {
@@ -142,7 +150,7 @@ func TestDeleteIncompleteCreationRechecksAfterConfirmation(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			e, d, _ := fixture(t)
 			name, root := incompleteFixture(t, e)
-			result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{name}}, Scope: DeleteSession, Confirm: func(DeletePrompt) (bool, error) {
+			result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{IncompleteDirs: []string{name}}, Scope: DeleteSession, Confirm: func(DeletePrompt) (bool, error) {
 				switch change {
 				case "record":
 					write(t, filepath.Join(root, "session.json"), "not a valid record")
@@ -171,7 +179,7 @@ func TestDeleteIncompleteCreationRechecksAfterConfirmation(t *testing.T) {
 func TestDeleteIncompleteCreationKeepsNamespaceLock(t *testing.T) {
 	e, _, _ := fixture(t)
 	name, _ := incompleteFixture(t, e)
-	_, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{name}}, Scope: DeleteSession, Confirm: func(DeletePrompt) (bool, error) {
+	_, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{IncompleteDirs: []string{name}}, Scope: DeleteSession, Confirm: func(DeletePrompt) (bool, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 		defer cancel()
 		lock, err := e.Store.LockNames(ctx)
@@ -199,7 +207,7 @@ func TestDeleteIncompleteCreationWaitsForCreationNamespace(t *testing.T) {
 	defer fsutil.Unlock(lock)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
-	_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{name}}, Scope: DeleteSession})
+	_, err = e.Delete(ctx, DeleteOptions{Selection: Selection{IncompleteDirs: []string{name}}, Scope: DeleteSession})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
 	}
@@ -230,7 +238,7 @@ func TestDeleteIncompleteCreationMixedPreflight(t *testing.T) {
 	}
 	name, root := incompleteFixture(t, e)
 	d.SetContainer(docker.Container{ID: strings.Repeat("c", 64), Name: "/foreign", Mounts: []docker.ContainerMount{{Type: "bind", Source: root}}})
-	result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{created.SessionID, name}}, Scope: DeleteSession})
+	result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}, IncompleteDirs: []string{name}}, Scope: DeleteSession})
 	if err == nil || result.DeletedCount() != 0 {
 		t.Fatal(result, err)
 	}
@@ -238,7 +246,7 @@ func TestDeleteIncompleteCreationMixedPreflight(t *testing.T) {
 		t.Fatal("removed valid container before incomplete preflight")
 	}
 	delete(d.Containers, "foreign")
-	result, err = e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{created.SessionID, name}}, Scope: DeleteSession})
+	result, err = e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}, IncompleteDirs: []string{name}}, Scope: DeleteSession})
 	if err != nil || result.DeletedCount() != 3 || len(result.Retained)+len(result.RetainedIncompleteDirectories) != 0 {
 		t.Fatal(result, err)
 	}
@@ -253,25 +261,11 @@ func TestDeleteIncompleteCreationRejectsPendingTransfer(t *testing.T) {
 	}
 	source := sessionRecord(t, e, created.SessionID)
 	name, root := incompleteFixture(t, e)
-	id, _ := fsutil.ID()
-	nonce, _ := fsutil.ID()
-	j := store.Transfer{Version: 4, ContainerName: environment.ResourceName(q.Workspace, "copy", nonce), SourceContainerID: source.Applied.SetupContainer, ID: nonce, Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: environment.Identity{Binding: environment.Binding{Workspace: q.Workspace, LocalName: "copy"}, Name: name}, SourceID: source.ID, DestinationID: id, Started: time.Now().UTC()}
-	names := []string{source.Directory, name}
-	sort.Strings(names)
-	locks, err := e.Store.LockAll(ctx, names, map[string]string{source.Directory: source.ID, name: id})
-	if err != nil {
-		t.Fatal(err)
-	}
-	a, b := locks[0], locks[1]
-	if a.Name != source.Directory {
-		a, b = b, a
-	}
-	err = a.SaveTransfer(b, j)
-	store.CloseAll(locks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{name}}, Scope: DeleteSession, Force: true})
+	j := transferJournal(t, source, environment.Binding{Workspace: q.Workspace, LocalName: "copy"}, "clone")
+	j.DestinationID = name
+	j.ContainerName = environment.ResourceName(name, j.ID)
+	saveTransferJournal(t, e, j)
+	result, err := e.Delete(ctx, DeleteOptions{Selection: Selection{IncompleteDirs: []string{name}}, Scope: DeleteSession, Force: true})
 	var failure *commanderror.Error
 	if !errors.As(err, &failure) || failure.Code != "pending_transfer" || result.DeletedCount() != 0 {
 		t.Fatal(result, err)
@@ -285,7 +279,7 @@ func TestDeleteIncompleteCreationRejectsAmbiguousContainerName(t *testing.T) {
 	e, d, _ := fixture(t)
 	name, root := incompleteFixture(t, e)
 	d.SetContainer(docker.Container{ID: strings.Repeat("d", 64), Name: "/" + name})
-	result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{name}}, Scope: DeleteSession})
+	result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{IncompleteDirs: []string{name}}, Scope: DeleteSession})
 	if err == nil || !strings.Contains(err.Error(), "both an incomplete directory and a container") || result.DeletedCount() != 0 {
 		t.Fatal(result, err)
 	}
@@ -311,7 +305,7 @@ func TestDeleteIncompleteCreationInspectionFailurePreventsMutation(t *testing.T)
 		}
 		return nil
 	}
-	result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{name, created.SessionID}}, Scope: DeleteSession})
+	result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}, IncompleteDirs: []string{name}}, Scope: DeleteSession})
 	if !errors.Is(err, failure) || result.DeletedCount() != 0 {
 		t.Fatal(result, err)
 	}
@@ -337,7 +331,7 @@ func TestDeleteIncompleteCreationDoesNotRemoveUnverifiedImage(t *testing.T) {
 	if err := os.Remove(p); err != nil {
 		t.Fatal(err)
 	}
-	result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{r.Directory}}, Scope: DeleteSession})
+	result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{IncompleteDirs: []string{r.Directory}}, Scope: DeleteSession})
 	if err != nil || !slices.Equal(result.IncompleteDirectories, []string{r.Directory}) {
 		t.Fatal(result, err)
 	}

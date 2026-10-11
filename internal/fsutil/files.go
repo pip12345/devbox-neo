@@ -12,8 +12,14 @@ import (
 	"strings"
 )
 
-func ID() (string, error) {
-	b := make([]byte, 16)
+func ID() (string, error) { return randomHex(16) }
+
+// SessionID is the complete installation-local session identity, not an
+// abbreviation of another identifier.
+func SessionID() (string, error) { return randomHex(6) }
+
+func randomHex(size int) (string, error) {
+	b := make([]byte, size)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}

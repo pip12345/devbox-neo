@@ -12,22 +12,6 @@ import (
 	"devbox/internal/store"
 )
 
-func (e *Engine) readSession(ctx context.Context, name string) (store.Record, error) {
-	r, err := e.Store.Read(ctx, name)
-	if os.IsNotExist(err) {
-		pending, pendingErr := e.Store.Pending(name)
-		if pendingErr != nil {
-			return r, pendingErr
-		}
-		if pending != nil {
-			return r, commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", name, err, pending.RetryStep())
-		}
-		err = commanderror.New("session_missing", "Session not found.", name, err,
-			commanderror.Next("List sessions", "list"))
-	}
-	return r, err
-}
-
 func incompleteInventory(err error) bool {
 	var failure *commanderror.Error
 	return errors.As(err, &failure) && failure.Code == "inventory_incomplete"
@@ -41,20 +25,33 @@ func sessionAbsent(err error) bool {
 	return errors.Is(err, os.ErrNotExist)
 }
 
-// Locate chooses saved identity before resolving configuration. Public targets
-// are storage directory names or folders; captured internal operations can use
-// immutable IDs. A folder needs its explicit local name or saved default.
+// Locate resolves public metadata handles before configuration. Internal
+// captured operations may use IDs; the CLI rejects raw IDs as user targets.
+// Folder targets retain explicit local-name/default selection.
 func (e *Engine) Locate(ctx context.Context, target, localName string) (store.Record, error) {
 	if environment.IsSessionTarget(target) || environment.IsSessionID(target) {
-		var r store.Record
-		var err error
-		if environment.IsSessionTarget(target) {
-			r, err = e.readSession(ctx, target)
-		} else {
-			r, err = e.Store.Find(ctx, target, nil)
+		id := target
+		public := environment.IsSessionTarget(target)
+		if public {
+			var ok bool
+			id, ok = environment.SessionIDFromName(target)
+			if !ok {
+				return store.Record{}, commanderror.New("session_missing", "Session not found.", target, nil, commanderror.Next("List sessions", "list"))
+			}
 		}
+		r, err := e.Store.Find(ctx, id, nil)
 		if sessionAbsent(err) {
 			return r, commanderror.New("session_missing", "Session not found.", target, err, commanderror.Next("List sessions", "list"))
+		}
+		if err == nil && public && r.PublicName() != target {
+			pending, pendingErr := e.Store.PendingID(id)
+			if pendingErr != nil {
+				return r, pendingErr
+			}
+			if pending != nil && (target == pending.Source || target == pending.Destination) {
+				return r, commanderror.New("pending_transfer", "The selected endpoint is reserved by an unfinished transfer.", target, nil, pending.RetryStep())
+			}
+			return r, commanderror.New("session_name_changed", "The public name does not match the saved session; select its current name.", target, nil, commanderror.Next("Inspect the current session", "status", r.PublicName()))
 		}
 		if err == nil && localName != "" && localName != r.Settings.LocalName {
 			return store.Record{}, fmt.Errorf("local name does not match the recorded session")
@@ -123,7 +120,7 @@ func loadSelected(lock *store.Locked, selected store.Record) (store.Record, erro
 		return current, err
 	}
 	if current.ID != selected.ID {
-		return store.Record{}, commanderror.New("session_changed", "Selected session was replaced; select it again.", selected.Directory, nil)
+		return store.Record{}, commanderror.New("session_changed", "Selected session was replaced; select it again.", selected.PublicName(), nil)
 	}
 	return current, nil
 }
@@ -146,7 +143,7 @@ func (e *Engine) Start(ctx context.Context, target, localName string) (result Re
 	if err != nil {
 		return Result{}, err
 	}
-	result = Result{Session: r.Directory, SessionID: r.ID}
+	result = Result{Session: r.PublicName(), SessionID: r.ID}
 	started := false
 	defer func() {
 		if err != nil && started {
@@ -188,8 +185,8 @@ func (e *Engine) Stop(ctx context.Context, target, localName string, force bool)
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "Container not found.", r.Directory, nil,
-			commanderror.Next("Inspect session", "status", r.Directory))
+		return commanderror.New("container_missing", "Container not found.", r.PublicName(), nil,
+			commanderror.Next("Inspect session", "status", r.PublicName()))
 	}
 	if c.State.Running {
 		if err = e.Docker.Stop(ctx, c, e.owner(r)); err != nil {

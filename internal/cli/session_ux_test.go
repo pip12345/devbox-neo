@@ -76,8 +76,8 @@ func TestNativeSessionHotkeysKeepTargetAndRecreateConfirmation(t *testing.T) {
 	}
 	t.Chdir(q.Workspace)
 	d := e.Docker.Runner.(*dockertest.Daemon)
-	firstContainer := sessionRecord(t, e, first).Applied.SetupContainer
-	secondContainer := sessionRecord(t, e, second.SessionID).Applied.SetupContainer
+	firstContainer := sessionRecord(t, e, first).Applied.ContainerID
+	secondContainer := sessionRecord(t, e, second.SessionID).Applied.ContainerID
 	attached := make(chan docker.Command, 2)
 	d.Attached = func(_ context.Context, c docker.Command) error {
 		if c.Stdin != nil {
@@ -109,7 +109,7 @@ func TestNativeSessionHotkeysKeepTargetAndRecreateConfirmation(t *testing.T) {
 	// Neither the action hotkey nor Enter on default No may apply config.
 	p.send("r\r")
 	p.wait("Inspect pending changes")
-	if got := sessionRecord(t, e, first).Applied.SetupContainer; got != firstContainer {
+	if got := sessionRecord(t, e, first).Applied.ContainerID; got != firstContainer {
 		t.Fatal("Recreate shortcut bypassed confirmation", got, firstContainer)
 	}
 	p.send("q")

@@ -46,7 +46,7 @@ func (e *Engine) Rename(ctx context.Context, target, localName, to string, dryRu
 	if err := e.Store.RequireUnusedBinding(ctx, next, r.Directory); err != nil {
 		return result, err
 	}
-	result = RenameResult{Session: r.Directory, SessionID: r.ID, PreviousName: r.Settings.LocalName, LocalName: to, Workspace: r.Settings.Workspace, DryRun: dryRun}
+	result = RenameResult{Session: environment.PublicName(next, r.ID), SessionID: r.ID, PreviousName: r.Settings.LocalName, LocalName: to, Workspace: r.Settings.Workspace, DryRun: dryRun}
 	if dryRun || r.Settings.LocalName == to {
 		return result, nil
 	}

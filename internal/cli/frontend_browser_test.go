@@ -77,7 +77,7 @@ func TestSessionCollectionContainsOnlyFolderAndSessionObjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := f.sessionCollection(report, "folder")
-	if len(c.Items) != 2 || c.Items[0].Key != q.Workspace || c.Items[1].Key != name || c.Items[1].Depth != 1 {
+	if len(c.Items) != 2 || c.Items[0].Key != q.Workspace || c.Items[1].Key != sessionRecord(t, f.e, name).ID || c.Items[1].Depth != 1 {
 		t.Fatal(c)
 	}
 	if c.Items[0].Open == nil || c.Items[1].Open == nil {

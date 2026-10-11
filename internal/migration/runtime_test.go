@@ -15,6 +15,7 @@ import (
 	"devbox/internal/docker"
 	"devbox/internal/docker/dockertest"
 	"devbox/internal/environment"
+	"devbox/internal/fsutil"
 	"devbox/internal/store"
 )
 
@@ -46,14 +47,38 @@ func oldFixture(t *testing.T) (*app.Engine, *dockertest.Daemon, store.Record, st
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.SetDefault(ctx, r); err != nil {
+	currentRoot := filepath.Join(s.Home, "sessions", r.ID)
+	legacyDirectory := "dbx-legacy-" + r.ID + ".main"
+	legacyRoot := filepath.Join(s.Home, "sessions", legacyDirectory)
+	if err := os.Rename(currentRoot, legacyRoot); err != nil {
 		t.Fatal(err)
 	}
-	history := filepath.Join(s.Home, "sessions", r.Directory, "harnesses/pi/stores/home/history")
+	if err := os.Rename(filepath.Join(legacyRoot, r.StateTree, "harnesses"), filepath.Join(legacyRoot, "harnesses")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(legacyRoot, "runtime"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(legacyRoot, "ssh"), filepath.Join(legacyRoot, "runtime/ssh")); err != nil {
+		t.Fatal(err)
+	}
+	r.ID, r.Directory, r.StateTree = r.ID+strings.Repeat("a", 20), legacyDirectory, ""
+	for i := range r.Applied.Creation.Mounts {
+		m := &r.Applied.Creation.Mounts[i]
+		if m.Target == "/devbox/ssh" {
+			m.Source = filepath.Join(legacyRoot, "runtime/ssh")
+		}
+		for _, st := range r.Applied.Stores {
+			if st.Scope == "environment" && m.Target == st.Target {
+				m.Source = filepath.Join(legacyRoot, "harnesses", r.Applied.Definition.Name, "stores", st.Name)
+			}
+		}
+	}
+	history := filepath.Join(legacyRoot, "harnesses/pi/stores/home/history")
 	if err := os.WriteFile(history, []byte("saved history"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	spec, err := e.Resolve(app.ResolveRequest{Workspace: q.Workspace, LocalName: q.LocalName, Sources: q.Sources, Host: q.Host})
+	spec, err := e.Resolve(app.ResolveRequest{Workspace: q.Workspace, LocalName: q.LocalName, Sources: q.Sources})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +101,13 @@ func oldFixture(t *testing.T) (*app.Engine, *dockertest.Daemon, store.Record, st
 	d.Images[r.Applied.ImageID], d.Images[oldTag] = image, image
 	c, _ := d.Snapshot(r.Applied.Creation.Name)
 	c.Config.Labels = map[string]string{oldNamespace + ".managed": "true", oldNamespace + ".ownership": "1", oldNamespace + ".installation": s.Installation, oldNamespace + ".session": r.ID}
+	for i := range c.Mounts {
+		for _, m := range r.Applied.Creation.Mounts {
+			if c.Mounts[i].Destination == m.Target {
+				c.Mounts[i].Source = m.Source
+			}
+		}
+	}
 	d.SetContainer(c)
 	r.Version, r.Applied.ImageTag = 6, oldTag
 	r.Applied.Fingerprints = legacyFingerprints(r, contexts, files)
@@ -87,7 +119,11 @@ func oldFixture(t *testing.T) (*app.Engine, *dockertest.Daemon, store.Record, st
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatal(err)
 	}
-	inputs := raw["applied"].(map[string]any)["inputs"].(map[string]any)
+	delete(raw, "state_tree")
+	applied := raw["applied"].(map[string]any)
+	applied["setup_container"] = applied["container_id"]
+	delete(applied, "container_id")
+	inputs := applied["inputs"].(map[string]any)
 	stages := inputs["image"].(map[string]any)["stages"].([]any)
 	for i, context := range contexts {
 		stage := stages[i].(map[string]any)
@@ -97,16 +133,26 @@ func oldFixture(t *testing.T) (*app.Engine, *dockertest.Daemon, store.Record, st
 	runtime := inputs["runtime"].(map[string]any)
 	delete(runtime, "files_hash")
 	runtime["files"] = files
-	applied := raw["applied"].(map[string]any)
 	applied["setup"] = spec.Setup
 	applied["env_sources"] = []any{map[string]any{"kind": "file", "path": filepath.Join(root, "config.json"), "field": "env", "index": 0, "raw_hash": strings.Repeat("a", 64), "value_hash": strings.Repeat("b", 64)}}
 	data, err = json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(s.Home, "sessions", r.Directory, "session.json")
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(legacyRoot, "session.json"), data, 0600); err != nil {
 		t.Fatal(err)
+	}
+	defaults, _ := json.Marshal(map[string]any{"version": 1, "defaults": map[string]string{workspace: r.ID}})
+	if err := os.WriteFile(filepath.Join(s.Home, "state/folder-defaults.json"), defaults, 0600); err != nil {
+		if !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(s.Home, "state"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(s.Home, "state/folder-defaults.json"), defaults, 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return e, d, r, history
 }
@@ -132,8 +178,10 @@ func TestRuntimeCutoverPreservesStateAndRebuildsNormally(t *testing.T) {
 	if _, err := Run(ctx, e.Store.Home, e.Docker, true); err != nil {
 		t.Fatal(err)
 	}
-	current, err := e.Store.Read(ctx, old.Directory)
-	if err != nil || current.ID != old.ID || current.Directory != old.Directory {
+	path = filepath.Join(e.Store.Home, "sessions", old.ID[:12], "session.json")
+	history = filepath.Join(e.Store.Home, "sessions", old.ID[:12], store.InitialStateTree, "harnesses/pi/stores/home/history")
+	current, err := e.Store.Read(ctx, old.ID[:12])
+	if err != nil || current.ID != old.ID[:12] || current.Directory != old.ID[:12] {
 		t.Fatal(current, err)
 	}
 	data, _ := os.ReadFile(path)
@@ -142,7 +190,7 @@ func TestRuntimeCutoverPreservesStateAndRebuildsNormally(t *testing.T) {
 			t.Fatal("old inventory/recovery data retained", forbidden)
 		}
 	}
-	if selected, err := e.Store.ReadDefault(ctx, old.Settings.Workspace); err != nil || selected == nil || selected.ID != old.ID {
+	if selected, err := e.Store.ReadDefault(ctx, old.Settings.Workspace); err != nil || selected == nil || selected.ID != old.ID[:12] {
 		t.Fatal("default lost", err)
 	}
 	if after, _ := os.ReadFile(history); string(after) != "saved history" {
@@ -157,7 +205,7 @@ func TestRuntimeCutoverPreservesStateAndRebuildsNormally(t *testing.T) {
 	// Untagging can retain a dangling image. Explicit recreation builds a new
 	// owned image from current sources rather than adopting the old image.
 	applied, err := e.RecreateAll(ctx, false, app.RecreateOptions{})
-	if err != nil || len(applied) != 1 || applied[0] != old.ID {
+	if err != nil || len(applied) != 1 || applied[0] != environment.PublicName(old.Settings.Binding, old.ID[:12]) {
 		t.Fatal("bulk recreation skipped the migrated session", applied, err)
 	}
 	if image := d.Images[old.Applied.ImageID]; image.Config.Labels[docker.Namespace+".managed"] != "" {
@@ -203,14 +251,18 @@ func TestRuntimeCutoverRefusesForeignOwnershipAndActiveWork(t *testing.T) {
 				i.Config.Labels[oldNamespace+".installation"] = "foreign"
 				d.Images[old.Applied.ImageTag] = i
 			case "active":
-				lock, err := e.Store.Lock(ctx, old.Directory, old.ID)
+				process, err := store.ProcessIdentity(os.Getpid())
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := lock.Lease("exec"); err != nil {
+				id := strings.Repeat("f", 32)
+				path := filepath.Join(e.Store.Home, "state/leases", old.ID, id+".json")
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 					t.Fatal(err)
 				}
-				lock.Close()
+				if err := fsutil.JSON(path, store.Lease{Version: 2, ID: id, Process: process, Action: "exec", Created: old.Created}); err != nil {
+					t.Fatal(err)
+				}
 			case "corrupt fingerprint":
 				p := filepath.Join(e.Store.Home, "sessions", old.Directory, "session.json")
 				data, _ := os.ReadFile(p)
@@ -262,7 +314,7 @@ func TestCutoverPreservesIncompleteAllocationsButRejectsCorruptRecords(t *testin
 				if err != nil {
 					t.Fatal("incomplete allocation blocked migration", err)
 				}
-				if _, err := e.Store.Read(context.Background(), old.Directory); err != nil {
+				if _, err := e.Store.Read(context.Background(), old.ID[:12]); err != nil {
 					t.Fatal("saved session not converted", err)
 				}
 				if _, err := os.Stat(filepath.Join(root, "session.json")); !os.IsNotExist(err) {
@@ -271,6 +323,9 @@ func TestCutoverPreservesIncompleteAllocationsButRejectsCorruptRecords(t *testin
 			}
 			if data, err := os.ReadFile(marker); err != nil || string(data) != "keep for explicit cleanup" {
 				t.Fatal("incomplete allocation modified", err)
+			}
+			if !corrupt {
+				history = filepath.Join(e.Store.Home, "sessions", old.ID[:12], store.InitialStateTree, "harnesses/pi/stores/home/history")
 			}
 			if data, err := os.ReadFile(history); err != nil || string(data) != "saved history" {
 				t.Fatal("history modified", err)

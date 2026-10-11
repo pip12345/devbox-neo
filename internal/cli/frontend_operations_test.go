@@ -67,7 +67,8 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 			input += "y\n"
 		}
 		f, out, q, name := frontendFixture(t, strings.NewReader(input))
-		containerName := sessionRecord(t, f.e, name).Applied.Creation.Name
+		record := sessionRecord(t, f.e, name)
+		containerName := record.Applied.Creation.Name
 		if err := f.delete([]string{name}); err != nil {
 			t.Fatal(err, out.String())
 		}
@@ -84,7 +85,7 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 		if strings.Contains(text, "Preview scope") || strings.Contains(text, "Delete saved data and history?") != whole || strings.Contains(text, "Would delete session "+name) != whole {
 			t.Fatal("preview and execution disagree", text)
 		}
-		_, err := f.e.Store.Read(context.Background(), name)
+		_, err := f.e.Store.Read(context.Background(), record.ID)
 		if os.IsNotExist(err) != whole {
 			t.Fatal("wrong saved-state outcome", whole, err, text)
 		}
@@ -103,8 +104,8 @@ func TestFrontendRecreateAllIncludesSessionsWithoutContainers(t *testing.T) {
 		t.Fatal(err, out.String())
 	}
 	after := sessionRecord(t, f.e, name)
-	c, exists, err := f.e.Docker.InspectID(context.Background(), after.Applied.SetupContainer)
-	if err != nil || !exists || c.State.Running || after.Applied.SetupContainer == before.Applied.SetupContainer {
+	c, exists, err := f.e.Docker.InspectID(context.Background(), after.Applied.ContainerID)
+	if err != nil || !exists || c.State.Running || after.Applied.ContainerID == before.Applied.ContainerID {
 		t.Fatal("menu bulk recreation skipped missing runtime", c, exists, err, out.String())
 	}
 }

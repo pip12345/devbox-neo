@@ -44,9 +44,9 @@ func TestFolderDefaultsPersistenceAndAbsentReads(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("absent read/clear seeded defaults", err)
 	}
-	want := &DefaultSession{ID: strings.Repeat("a", 32)}
+	want := &DefaultSession{ID: strings.Repeat("a", 12)}
 	testDefault(t, s, workspace, want)
-	testDefault(t, s, "/other", &DefaultSession{ID: strings.Repeat("b", 32)})
+	testDefault(t, s, "/other", &DefaultSession{ID: strings.Repeat("b", 12)})
 	if got, err := s.ReadDefault(ctx, workspace); err != nil || got == nil || *got != *want {
 		t.Fatal(got, err)
 	}
@@ -66,7 +66,7 @@ func TestFolderDefaultsPersistenceAndAbsentReads(t *testing.T) {
 	if err := json.Unmarshal(data, &state); err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Defaults) != 1 || state.Defaults["/other"] != strings.Repeat("b", 32) || strings.Contains(string(data), "null") {
+	if len(state.Defaults) != 1 || state.Defaults["/other"] != strings.Repeat("b", 12) || strings.Contains(string(data), "null") {
 		t.Fatal("clear removed another choice or retained an empty entry", string(data))
 	}
 	if selected, err := s.ReadDefault(ctx, workspace); err != nil || selected != nil {
@@ -88,7 +88,7 @@ func TestFolderDefaultsPersistenceAndAbsentReads(t *testing.T) {
 
 func TestFolderDefaultsCorruptionIsNotAbsence(t *testing.T) {
 	for _, contents := range []string{
-		`{`, `null`, `{}`, `{"version":1}`, `{"version":2,"defaults":{}}`,
+		`{`, `null`, `{}`, `{"version":1}`, `{"version":1,"defaults":{}}`,
 		`{"version":1,"defaults":null}`, `{"version":1,"defaults":{"/work":null}}`,
 		`{"version":1,"defaults":{"/work":"bad"}}`,
 		`{"version":1,"defaults":{"relative":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}`,
@@ -126,14 +126,14 @@ func TestFolderDefaultClearRequiresMatchingID(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace := "/missing/workspace"
-	id := strings.Repeat("a", 32)
+	id := strings.Repeat("a", 12)
 	testDefault(t, s, workspace, &DefaultSession{ID: id})
-	lock, err := s.Lock(ctx, "session-directory", id)
+	lock, err := s.Lock(ctx, id, id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	if err := lock.ClearMatchingDefault(ctx, workspace, strings.Repeat("b", 32)); err == nil {
+	if err := lock.ClearMatchingDefault(ctx, workspace, strings.Repeat("b", 12)); err == nil {
 		t.Fatal("wrong session ID bypassed lock")
 	}
 	if err := lock.ClearMatchingDefault(ctx, workspace, id); err != nil {
@@ -143,11 +143,11 @@ func TestFolderDefaultClearRequiresMatchingID(t *testing.T) {
 		t.Fatal(got, err)
 	}
 	// A newer selection in the same folder must survive cleanup of the old one.
-	testDefault(t, s, workspace, &DefaultSession{ID: strings.Repeat("b", 32)})
+	testDefault(t, s, workspace, &DefaultSession{ID: strings.Repeat("b", 12)})
 	if err := lock.ClearMatchingDefault(ctx, workspace, id); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := s.ReadDefault(ctx, workspace); err != nil || got == nil || got.ID != strings.Repeat("b", 32) {
+	if got, err := s.ReadDefault(ctx, workspace); err != nil || got == nil || got.ID != strings.Repeat("b", 12) {
 		t.Fatal(got, err)
 	}
 	lock.Close()
@@ -164,7 +164,7 @@ func TestDefaultsLockSurvivesDataDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	if err := lock.set("/workspace", strings.Repeat("a", 32)); err != nil {
+	if err := lock.set("/workspace", strings.Repeat("a", 12)); err != nil {
 		t.Fatal(err)
 	}
 	path, _ := lock.path()
@@ -197,7 +197,7 @@ func TestConcurrentFolderSelectionsDoNotLoseUpdates(t *testing.T) {
 				return
 			}
 			defer lock.Close()
-			results <- lock.set(fmt.Sprintf("/folder-%d", i), fmt.Sprintf("%032x", i+1))
+			results <- lock.set(fmt.Sprintf("/folder-%d", i), fmt.Sprintf("%012x", i+1))
 		}()
 	}
 	for range 12 {
@@ -207,7 +207,7 @@ func TestConcurrentFolderSelectionsDoNotLoseUpdates(t *testing.T) {
 	}
 	for i := range 12 {
 		got, err := s.ReadDefault(ctx, fmt.Sprintf("/folder-%d", i))
-		if err != nil || got == nil || got.ID != fmt.Sprintf("%032x", i+1) {
+		if err != nil || got == nil || got.ID != fmt.Sprintf("%012x", i+1) {
 			t.Fatal("lost concurrent selection", got, err)
 		}
 	}

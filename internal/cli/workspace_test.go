@@ -32,7 +32,7 @@ func TestEditWorkspaceSavesDesiredSettingsWithoutApplying(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	after := sessionRecord(t, e, id)
+	after := sessionRecord(t, e, before.ID)
 	if result.ID != before.ID || after.Settings.Workspace != next || after.Directory != before.Directory || !reflect.DeepEqual(after.Applied, before.Applied) {
 		t.Fatal("workspace edit applied runtime changes", after)
 	}

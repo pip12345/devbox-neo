@@ -4,11 +4,11 @@ The saved session is the top-level environment model. Docker inventory supplies 
 
 ## Identity and ownership
 
-`environment.ContainerPrefix` defines the `dbx-` lookup convention independently of `docker.Namespace`, which defines `dbx.*` labels and `dbx/session:<folder>-<name>-<session-id>` image tags.
+`environment.ContainerPrefix` defines the `dbx-` lookup convention independently of `docker.Namespace`, which defines `dbx.*` labels and creation-attempt image aliases.
 
-The immutable session ID identifies the saved session. `settings` contains the editable workspace, local name, config references, and keep-running intent. Storage directories and Docker names are independently allocated as `dbx-<folder>-<allocation-hash>.<local-name>` hints; neither is parsed or required to match settings or the other name. Public exact targets use the session directory name, not the internal ID or Docker name. `app.Locate` reads that directory, then locks and validates its saved ID. Captured internal service operations may still address immutable IDs; the CLI rejects them as public targets.
+One immutable 12-character hexadecimal ID identifies the saved session and its directory. `settings` contains editable workspace/name, config references, and keep-running intent. The public name is `dbx-<workspace-hint>-<id>.<local-name>`, derived from JSON rather than stored independently. `app.Locate` extracts its ID, reads saved metadata, and requires the complete public name to match before use. Captured services may address IDs internally; the CLI rejects raw IDs. Runtime names/image aliases belong to creation attempts and contain no editable naming authority.
 
-`store.Find` looks up an ID or workspace/name from saved records, without config resolution or a persistent index. Folder-only lookup reads its explicit default ID. `state/folder-defaults.json` uses schema 1 with a `defaults` map from canonical folder paths to session IDs. Only selected folders appear; clearing removes the entry. An absent file means no selections; malformed defaults are errors. Name reuse never inherits an old ID selection.
+`store.Find` looks up an ID or workspace/name from saved records, without config resolution or a persistent index. Folder-only lookup reads its explicit default ID. `state/folder-defaults.json` uses schema 2 with a `defaults` map from canonical folder paths to session IDs. Only selected folders appear; clearing removes the entry. An absent file means no selections; malformed defaults are errors. Name reuse never inherits an old ID selection.
 
 Docker ownership uses installation ID, ownership version, and session ID. Workspace/name labels are descriptive. Existing containers are inspected by recorded Docker ID, with image/instance checks; names alone never authorize adoption or mutation.
 
@@ -16,15 +16,15 @@ Images carry installation ownership and final session tags. Removing a tag requi
 
 ## Record structure
 
-`sessions/<directory>/session.json` holds:
+`sessions/<id>/session.json` holds:
 
-- immutable `id` and activity metadata;
+- immutable `id`, validated relative `state_tree`, and activity metadata;
 - `settings`: workspace, local name, ordered config references, and `manual_start`;
 - `applied`: current creation/launch settings, image/container association, harness layout, compact comparison inputs and fingerprints.
 
-Schema `7` validates settings and applied state independently. Their differences are pending changes, not corruption. Applied mounts must agree with applied inputs, not desired settings. `applied.inputs.sources` retains applied provenance for config usage, not historical recovery authority. No directory name is persisted. Per-tree content digests replace per-file input inventories; setup bytes and env restoration references are not persisted.
+Schema `8` validates settings and applied state independently; differences between desired and applied settings are pending changes, not corruption. Managed store sources must agree with the ID and current state tree. Applied mounts must agree with applied inputs, not desired settings. `applied.inputs.sources` retains applied provenance for config usage, not historical recovery authority. No directory name is persisted. Per-tree content digests replace per-file input inventories; setup bytes and env restoration references are not persisted.
 
-Ordinary readers reject older records. Before CLI/menu state initialization, `migration.Pending` recognizes required format updates without Docker/config resolution. A generic blocking screen requires agreement before the conversion service verifies/removes linked old-namespace containers/tags and atomically publishes compact records under the complete lock set. It refuses active commands/pending transfers and retains history/defaults. Partial retries recognize completed current-format records. Noninteractive/JSON use stays blocked; there is no separate migration command, silent conversion, old-format runtime reader or general importer.
+Ordinary readers reject preceding records. The consent gate recognizes schemas 6/7 without resolving Docker/config. Conversion holds namespace plus old/new identity locks, refuses active commands and pending transfers, and preflights all destination paths and linked ownership. Defaults publish their complete checked shortened-ID mapping before records move; retries cannot infer lost old identity associations. Harness state moves into `data/base`, IDs/references change to 12 characters, and linked bind-backed containers are removed. Current-namespace owned images may be retagged; applied comparison inputs are not replaced with current configs. A preceding header remains until atomic current-record publication, so interrupted directory/tree moves can resume. Noninteractive/JSON calls cannot consent. No aliases, ordinary old-format readers or importer are provided.
 
 The same gate offers a separate folder-default conversion for the preceding per-folder files. It uses the namespace, preceding folder locks and current defaults lock, publishes the complete mapping before removing known old files, and retries matching partial conversions without overwriting conflicting selections. It preserves stale session IDs rather than guessing new defaults. This conversion does not touch Docker or session data; ordinary defaults readers only support the new file. Older builds must not use the home after conversion.
 
@@ -106,13 +106,13 @@ Selection filters intersect. Age uses recorded activity, and unknown activity is
 
 ## Transfer state machine
 
-`app/transfer.go` owns `copy` / `copy --move` orchestration; `store` owns journal persistence and portable store copying. A single external journal at `state/transfers/<source-directory>.json` reserves both endpoint names.
+`app/transfer.go` owns `copy` / `copy --move` orchestration; `store` owns journal persistence and portable store copying. An external `state/transfers/<source-id>/journal.json` reserves both endpoint bindings. `destination.json` holds the private prepared record.
 
-Both endpoint operation locks are acquired in sorted order. Ordinary `Locked.Load` rejects pending work, while inventory and transfer operations can inspect it. Pending lookup scans unfinished journals; corrupt journals fail mutations closed because endpoint reservations cannot be trusted.
+Unique endpoint IDs are locked in sorted order; Move uses one lock for both backing trees. Ordinary `Locked.Load` rejects pending work, while inventory and transfer operations can inspect it. Pending lookup scans unfinished journals; corrupt journals fail mutations closed because endpoint reservations cannot be trusted.
 
 The journal stores endpoint identities, session IDs, mode/phase, and intended running state. It contains no env/auth values. Destination creation uses the allocated ID, so retries cannot create a different session.
 
-Journal schema 4 pins endpoint directories, bindings, IDs, the source container ID, and the separately allocated destination container name. The consent gate converts schema-3 journals by removing obsolete config fingerprints while preserving all transaction intent and commitment. It preflights the journals and idle endpoint lock set before publishing; no runtime or session data changes. `--as` may select another name in the same or a different folder; otherwise preserve the source name. Retry guidance uses exact source directory name, destination workspace, and `--as`, without resolving a changed default.
+Journal schema 5 pins bindings, IDs, source/destination tree paths, source container/image association, and the destination attempt name. Old unfinished journals must be completed or aborted using the preceding build before identity conversion. `--as` selects another local name; otherwise it is retained. Retry guidance derives the exact source public name from the pinned binding and ID, retaining destination and `--as` independently of defaults or workspace availability.
 
 Internal modes are `clone` for `copy` and `relocate` for `copy --move`. Harness capabilities and JSON output use these same values.
 
@@ -133,16 +133,16 @@ Only declared environment stores and ownership manifests are copied. Auth overla
 
 OpenCode's database contains cached credentials and is transferred unchanged. Its shared auth directory is excluded; the next launch replaces copied credentials from that directory. Pending auth write-back retains source authority across a copy.
 
-Destination resolution preserves the source reference order and kind. Relative references expand against the destination workspace; fixed references stay absolute. Config directories are not copied. Resolution uses the normal configuration pipeline. Image building, synchronization, setup, and runtime installation follow ordinary creation. `copy` leaves the destination stopped; `copy --move` restores the source's original running intent at the destination.
+Copy allocates a new ID directory; Move allocates another data tree under the same ID. Neither changes the source record or tree during preparation. Destination resolution preserves the source reference order and kind. Relative references expand against the destination workspace; fixed references stay absolute. Config directories are not copied. Resolution uses the normal configuration pipeline. Image building, synchronization, setup, and runtime installation follow ordinary creation. `copy` leaves the destination stopped; `copy --move` restores the source's original running intent at the destination.
 
-If preparation fails, bounded rollback cleans the destination, restores the source image tag after a relocation build, and restarts a previously running source. The journal remains pending. A preparation retry resolves current config and recopies the authoritative source because rollback may have restarted it and allowed its state to change. Config repair must not be rejected as a changed transfer contract; only endpoints, mode and source identity stay pinned.
+If preparation fails, bounded rollback cleans the destination attempt and restarts a previously running source. Attempt-specific image aliases never replace the source alias. The journal remains pending. A preparation retry resolves current config and recopies the authoritative source because rollback may have restarted it and allowed its state to change. Config repair must not be rejected as a changed transfer contract; only endpoints, mode and source identity stay pinned.
 
 An explicit `copy <source-session> --abort` can abandon preparation without resolving config or loading current harness definitions. It requires idle endpoints and intact source stores, verifies/removes the destination attempt, restores source running intent and only then removes the journal. Failure retains the reservation for retry. It never aborts commitment. Corrupt journals identify their path and fail closed rather than guessing endpoints or deleting a reservation.
 
 ### Committed: destination is authoritative
 
-Publishing `committed` changes authority before source removal. Once publication is attempted, rollback cannot delete the destination: a directory sync error can occur after rename already succeeded.
+Publishing `committed` changes authority before canonical-record publication or source removal. Recovery first publishes the verified private destination record, then removes the pinned source runtime and old tree without deleting Move's ID directory. Once publication is attempted, rollback cannot delete the destination: a directory sync error can occur after rename already succeeded.
 
 A committed retry never copies source state again. It verifies the destination and finishes source cleanup. If destination runtime is missing, cleanup still finishes without resolving config or rebuilding it. After the journal releases the endpoints, explicit recreation can rebuild against the committed backing stores. Copying again here could overwrite newer destination history with stale source data.
 
-The journal lives outside the source directory so deleting source state cannot lose the recovery plan or reservation. Committed move cleanup uses `removeSavedSession` too, including retries after the source record is gone; the journal supplies its workspace and ID. Copy preserves source defaults. Move clears only a matching source default and never selects a destination default. Only completed cleanup removes the journal and releases both names. `copy` creates a new session ID; `copy --move` preserves it. No permanent lineage record is needed after completion.
+The external journal and prepared record survive source-tree or source-record loss. Committed Move cleanup clears the matching old-folder default and removes only the retired tree/runtime, never the live session root. The journal supplies exact identity and instance expectations. Copy preserves source defaults. Move clears only a matching source default and never selects a destination default. Only completed cleanup removes the journal and releases both names. `copy` creates a new session ID; `copy --move` preserves it. No permanent lineage record is needed after completion.

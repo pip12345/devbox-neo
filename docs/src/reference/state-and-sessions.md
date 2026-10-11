@@ -24,14 +24,14 @@ Paths below are relative to the selected home. Use Devbox commands to manage ses
 | `harnesses/<name>/` | User definitions and defaults |
 | `auth/<harness>/` | Managed authentication |
 | `cache/harnesses/<harness>/<store>/` | Shared caches |
-| `sessions/<directory>/session.json` | Session ID, editable `settings`, recorded `applied` runtime, and activity |
+| `sessions/<session-id>/session.json` | Complete 12-character ID, current `state_tree`, desired `settings`, recorded `applied` runtime, and activity |
 | `state/leases/<session-id>/` | Active command records |
-| `sessions/<directory>/harnesses/<harness>/stores/<store>/` | Per-session harness state |
-| `sessions/<directory>/harnesses/<harness>/managed-config.json` | Managed file/key tracking |
-| `sessions/<directory>/runtime/ssh/` | Temporary shared SSH connections |
+| `sessions/<session-id>/<state_tree>/harnesses/<harness>/stores/<store>/` | Per-session harness state; initial tree is `data/base` |
+| `sessions/<session-id>/<state_tree>/harnesses/<harness>/managed-config.json` | Managed file/key tracking |
+| `sessions/<session-id>/ssh/` | Temporary shared SSH connections |
 | `state/installation-id` | Installation identity |
 | `state/folder-defaults.json` | Folder-to-default-session selections |
-| `state/transfers/<source-directory>.json` | Pending transfer |
+| `state/transfers/<source-id>/` | Pending journal and private prepared destination record |
 | `state/locks/` | Installation, config, folder, and session locks |
 
 Finish or abort pending transfers with the [transfer commands](commands.md#transfers), rather than deleting their files.
@@ -73,7 +73,9 @@ These are Devbox-managed runtime paths. Shared SSH data is transient, not a cred
 
 Local names are 1–64 ASCII characters: letters, digits, `_`, and `-`, starting with a letter or digit. Case matters: `work` and `Work` differ.
 
-Exact session targets are directory names under `sessions/`, shown by `list` and `status`. Docker container names are separate and cannot be used as saved-session targets. Renaming a session or changing its workspace does not rename either directory or container. Internal IDs keep locks and ownership attached to the saved session; they are not CLI targets.
+Public names are `dbx-<workspace-hint>-<session-id>.<local-name>`, shown by `list` and `status`. The ID directly identifies the storage directory; the workspace hint and local name come from JSON. Rename or a changed workspace basename updates the public name without moving storage or renaming containers. Old names are not aliases. Docker names and raw IDs cannot be used as session targets.
+
+Portable Move prepares another tree under the same ID directory. Commitment switches the recorded tree/runtime before old-state cleanup; it never renames backing paths underneath container mounts.
 
 Folder-only commands require a saved default. Devbox checks that Docker resources belong to the selected installation and session before changing them.
 

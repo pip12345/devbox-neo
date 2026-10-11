@@ -12,6 +12,7 @@ import (
 
 	"devbox/internal/app"
 	"devbox/internal/cliui"
+	"devbox/internal/environment"
 	"devbox/internal/sshshare"
 	"devbox/internal/store"
 )
@@ -269,19 +270,24 @@ func (f *frontend) ssh(target string) error {
 func (f *frontend) transfer(target string) (moved bool, err error) {
 	options := app.TransferOptions{Source: target, Mode: "clone"}
 	move := false
-	pending, err := f.e.Store.Pending(target)
+	id := target
+	if environment.IsSessionTarget(target) {
+		id, _ = environment.SessionIDFromName(target)
+	}
+	pending, err := f.e.Store.PendingID(id)
 	if err != nil {
 		return false, err
 	}
 	if pending != nil {
-		journal, err := f.e.Store.ReadTransfer(pending.Source)
+		sourceID, _ := environment.SessionIDFromName(pending.Source)
+		journal, err := f.e.Store.ReadTransfer(sourceID)
 		if err != nil {
 			return false, err
 		}
 		if journal == nil {
 			return false, fmt.Errorf("transfer changed; select it again")
 		}
-		options.Source, options.Destination, options.As = journal.Source.Name, journal.Destination.Workspace, journal.Destination.LocalName
+		options.Source, options.Destination, options.As = journal.SourceName(), journal.Destination.Workspace, journal.Destination.LocalName
 		move = journal.Mode == "relocate"
 	}
 	err = f.form("Copy or move", func() []cliui.Action {
@@ -325,6 +331,7 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 				err = f.foreground("Transfer", func(ctx context.Context) error {
 					result, err := f.e.Transfer(ctx, options)
 					if err == nil {
+						f.focusItem = result.SessionID
 						moved = result.Mode == "relocate"
 						fmt.Fprintf(f.cmd.OutOrStdout(), "%s: %s -> %s\n", store.TransferCommand(result.Mode), result.Source, result.Destination)
 					}
@@ -349,7 +356,7 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 				if err != nil {
 					return false, f.m.report(err)
 				}
-				f.focusItem = options.Source
+				f.focusItem, _ = environment.SessionIDFromName(options.Source)
 				moved = target != options.Source
 				return true, nil
 			}})
@@ -377,7 +384,10 @@ func (f *frontend) chooseDeleteTargets(targets *[]string) error {
 	}
 	return f.form("Select deletion targets", func() []cliui.Action {
 		var actions []cliui.Action
-		for _, v := range append(report.Sessions, report.UnmatchedContainers...) {
+		for _, v := range report.Sessions {
+			if v.SessionID == "" || v.Uncommitted || !environment.IsSessionTarget(v.Target) {
+				continue
+			}
 			v := v
 			selected := slices.Contains(*targets, v.Target)
 			a := f.action(v.Target, displayCell(v.Workspace), func() error {
@@ -401,7 +411,11 @@ func (f *frontend) delete(targets []string) error {
 func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 	options.Selection.Targets = slices.Clone(options.Selection.Targets)
 	options.Selection.Captured = slices.Clone(options.Selection.Captured)
+	options.Selection.ContainerNames = slices.Clone(options.Selection.ContainerNames)
+	options.Selection.IncompleteDirs = slices.Clone(options.Selection.IncompleteDirs)
 	targets := slices.Clone(options.Selection.Targets)
+	targets = append(targets, options.Selection.ContainerNames...)
+	targets = append(targets, options.Selection.IncompleteDirs...)
 	for _, target := range options.Selection.Captured {
 		targets = append(targets, target.Name())
 	}
@@ -468,6 +482,9 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 			}
 			return err
 		})
+		if len(options.Selection.ContainerNames)+len(options.Selection.IncompleteDirs) > 0 {
+			choice.Blocked = "Cleanup selector fixes the scope; it does not select saved sessions."
+		}
 		forceValue := "Off"
 		if options.Force {
 			forceValue = "On"
@@ -476,7 +493,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 		force.Description = "Allow interrupting attached commands; saved data still requires idle sessions"
 		actions = append(actions, choice, force)
 		blocked := ""
-		if len(options.Selection.Targets)+len(options.Selection.Captured) == 0 && !options.Selection.All && !options.Selection.Stopped && !options.Orphaned && options.OlderThan == 0 {
+		if len(options.Selection.Targets)+len(options.Selection.Captured)+len(options.Selection.ContainerNames)+len(options.Selection.IncompleteDirs) == 0 && !options.Selection.All && !options.Selection.Stopped && !options.Orphaned && options.OlderThan == 0 {
 			blocked = "Select exact targets or at least one filter."
 		}
 		preview := f.action("Preview deletion", "Review what will be removed", func() error {
@@ -493,7 +510,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 			var result app.DeleteResult
 			err := f.foreground(title, func(ctx context.Context) error {
 				q := options
-				confirmation := deletionConfirmation{ui: f.m.Runner, singleTarget: len(q.Selection.Targets)+len(q.Selection.Captured) == 1}
+				confirmation := deletionConfirmation{ui: f.m.Runner, singleTarget: len(q.Selection.Targets)+len(q.Selection.Captured)+len(q.Selection.ContainerNames)+len(q.Selection.IncompleteDirs) == 1}
 				q.Confirm = confirmation.confirm
 				var err error
 				result, err = f.e.Delete(ctx, q)

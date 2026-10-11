@@ -23,7 +23,7 @@ func (e *Engine) SetDefault(ctx context.Context, selected store.Record) error {
 		return err
 	}
 	if current.Settings.Workspace != selected.Settings.Workspace {
-		return commanderror.New("workspace_changed", "Workspace changed; select the folder default again.", selected.Directory, nil)
+		return commanderror.New("workspace_changed", "Workspace changed; select the folder default again.", selected.PublicName(), nil)
 	}
 	return lock.SelectDefault(selected.ID)
 }
@@ -52,7 +52,7 @@ func (e *Engine) UpdateSources(ctx context.Context, shown store.Record, sources 
 	// Drafts may be empty, but a saved selection must be replaceable without
 	// passing through an unconfigured state. This does not require runnable inputs.
 	if len(sources) == 0 {
-		return store.Record{}, commanderror.New("configs_required", "Select at least one config; replace the final config instead of removing it.", shown.Directory, nil)
+		return store.Record{}, commanderror.New("configs_required", "Select at least one config; replace the final config instead of removing it.", shown.PublicName(), nil)
 	}
 	if err := config.ValidateReferenceChain(shown.Settings.Workspace, sources); err != nil {
 		return store.Record{}, err
@@ -67,7 +67,7 @@ func (e *Engine) UpdateSources(ctx context.Context, shown store.Record, sources 
 		return store.Record{}, err
 	}
 	if current.Settings.Workspace != shown.Settings.Workspace || !reflect.DeepEqual(current.Settings.Sources, shown.Settings.Sources) {
-		return store.Record{}, commanderror.New("sources_changed", "Selected configs changed; review the current selection and retry.", shown.Directory, nil)
+		return store.Record{}, commanderror.New("sources_changed", "Selected configs changed; review the current selection and retry.", shown.PublicName(), nil)
 	}
 	current.Settings.Sources = slices.Clone(sources)
 	return current, lock.Save(current)

@@ -158,7 +158,7 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	marker := ""
 	for _, declared := range first.Applied.Stores {
 		if declared.Scope == "environment" {
-			marker = filepath.Join(s.Home, "sessions", first.Directory, "harnesses", harnessName, "stores", declared.Name, "preservation-check")
+			marker = filepath.Join(s.Home, "sessions", first.Directory, first.StateTree, "harnesses", harnessName, "stores", declared.Name, "preservation-check")
 			break
 		}
 	}
@@ -189,7 +189,7 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 		t.Fatal(err)
 	}
 	reopened := sessionRecord(t, e, result.SessionID)
-	if reopened.Applied.SetupContainer != first.Applied.SetupContainer {
+	if reopened.Applied.ContainerID != first.Applied.ContainerID {
 		t.Fatal("reopen recreated container")
 	}
 	socketDir, err := os.MkdirTemp("", "dbx-socket-")
@@ -213,14 +213,14 @@ func dockerHarnessLifecycle(t *testing.T, harnessName string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Diagnostics) != 0 || sessionRecord(t, e, result.SessionID).Applied.SetupContainer != first.Applied.SetupContainer {
+	if len(result.Diagnostics) != 0 || sessionRecord(t, e, result.SessionID).Applied.ContainerID != first.Applied.ContainerID {
 		t.Fatal("open resolved or applied pending configuration")
 	}
 	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
 	recreated := sessionRecord(t, e, result.SessionID)
-	if recreated.ID != first.ID || recreated.Applied.SetupContainer == first.Applied.SetupContainer {
+	if recreated.ID != first.ID || recreated.Applied.ContainerID == first.Applied.ContainerID {
 		t.Fatal("wrong recreation identity")
 	}
 	output.Reset()

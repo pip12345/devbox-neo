@@ -32,7 +32,7 @@ func namedCLIFixture(t *testing.T) (*app.Engine, app.CreateRequest, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return e, q, sessionRecord(t, e, made.SessionID).Directory
+	return e, q, made.Session
 }
 
 func testConfigOwner(t *testing.T, home, reference string) resource.Owner {

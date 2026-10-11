@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -105,8 +106,8 @@ func TestCopyCommandModes(t *testing.T) {
 			if (copied.ID == source.ID) != tt.move || copied.Settings.ManualStart != (tt.move && tt.running) || copied.Action != label {
 				t.Fatal("incorrect destination identity or lifetime", copied)
 			}
-			if _, err = state.Read(ctx, source.Directory); tt.move && !os.IsNotExist(err) || !tt.move && err != nil {
-				t.Fatal("incorrect source retention", err)
+			if _, err = os.Stat(filepath.Join(state.Home, "sessions", source.ID, source.StateTree)); tt.move && !os.IsNotExist(err) || !tt.move && err != nil {
+				t.Fatal("incorrect source-tree retention", err)
 			}
 			container, exists := daemon.Snapshot(copied.Applied.Creation.Name)
 			if !exists || container.State.Running != (tt.move && tt.running) {

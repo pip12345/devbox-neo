@@ -48,7 +48,7 @@ func (operation editOperation) validate(asJSON, named, direct, terminal bool) er
 	switch operation {
 	case editWorkspace, editShow, editDefault, editConfigs:
 		if !direct {
-			return fmt.Errorf("%s requires --name or a session directory name", operation)
+			return fmt.Errorf("%s requires --name or a public session name", operation)
 		}
 	case editBrowse:
 		if !terminal {

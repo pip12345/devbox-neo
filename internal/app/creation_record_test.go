@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"devbox/internal/docker"
-	"devbox/internal/environment"
 	"devbox/internal/sshshare"
 	"devbox/internal/store"
 )
@@ -41,12 +40,12 @@ func TestCreationRecordParity(t *testing.T) {
 			seed := CreationIdentity{}
 			fixed := time.Date(2024, 2, 3, 4, 5, 6, 0, time.UTC)
 			if strings.HasPrefix(mode, "prepared") || previous != nil {
-				seed = CreationIdentity{ID: strings.Repeat("f", 32), Created: fixed}
+				seed = CreationIdentity{ID: strings.Repeat("f", 12), Created: fixed}
 			}
 			if mode == "prepared" || previous != nil {
 				seed.ManualStart = true
 			}
-			directory, lockedID := "prepared-directory", strings.Repeat("f", 32)
+			directory, lockedID := strings.Repeat("f", 12), strings.Repeat("f", 12)
 			if previous != nil {
 				directory, lockedID = previous.Directory, previous.ID
 			}
@@ -70,7 +69,7 @@ func TestCreationRecordParity(t *testing.T) {
 			case mode == "prepared-defaults":
 				id, created = seed.ID, seed.Created
 			}
-			if mode == "create" && (len(r.ID) != 32 || r.Created.Before(start) || r.Created.After(end)) {
+			if mode == "create" && (len(r.ID) != 12 || r.Created.Before(start) || r.Created.After(end)) {
 				t.Fatal("creation identity/time not allocated at creation", r.ID, r.Created)
 			}
 			if previous == nil && (r.Activity.Before(start) || r.Activity.After(end)) {
@@ -80,7 +79,7 @@ func TestCreationRecordParity(t *testing.T) {
 			mounts := []docker.Mount{{Source: s.Identity.Workspace, Target: "/workspace"}, {Source: filepath.Join(root, sshshare.RelativeRoot), Target: sshshare.Mount}}
 			d := s.Harness.Definition
 			for _, st := range d.Stores {
-				source := filepath.Join(root, "harnesses", d.Name, "stores", st.Name)
+				source := filepath.Join(root, r.StateTree, "harnesses", d.Name, "stores", st.Name)
 				if st.Scope != "environment" {
 					source = filepath.Join(e.Store.Home, "cache/harnesses", d.Name, st.Name)
 				}
@@ -91,14 +90,14 @@ func TestCreationRecordParity(t *testing.T) {
 			}
 			mounts = append(mounts, s.ExtraMounts...)
 			want := store.Record{
-				Version: store.RecordVersion, ID: id, Directory: directory, Created: created, Activity: activity, Action: action, Settings: store.Settings{Binding: s.Identity.Binding, Sources: s.Sources,
+				Version: store.RecordVersion, ID: id, StateTree: r.StateTree, Directory: directory, Created: created, Activity: activity, Action: action, Settings: store.Settings{Binding: s.Identity.Binding, Sources: s.Sources,
 					ManualStart: manual}, Applied: store.AppliedState{Fingerprints: s.FingerprintsFor(c.Image), Inputs: s.Inputs,
-					ImageTag: environment.ImageTag(s.Identity.Workspace, s.Identity.LocalName, id), ImageID: c.Image,
+					ImageTag: r.Applied.ImageTag, ImageID: c.Image,
 					Creation:   docker.CreatePlan{Name: strings.TrimPrefix(c.Name, "/"), Image: c.Image, Network: s.Settings.Network, Mounts: mounts, Env: s.Env(), Ports: s.Settings.Ports, RawArgs: s.Settings.DockerArgs, Metadata: s.Metadata},
 					Definition: store.DefinitionInput{Name: d.Name, Origin: s.Harness.Origin, Hash: s.Harness.Hash},
 					Stores:     d.Stores, Auth: d.Auth, Config: d.Config, Merge: d.Merge, Prepare: d.Prepare,
 					Launch: store.Launch{Binary: d.Binary, Args: append(append([]string(nil), d.Launch.Args...), s.Settings.HarnessArgs...), Continue: d.Launch.Continue, Shell: s.Settings.Shell},
-					Setup:  s.Setup, SetupContainer: c.ID, Ownership: 1, ManifestVersion: 1},
+					Setup:  s.Setup, ContainerID: c.ID, Ownership: 1, ManifestVersion: 1},
 			}
 			if !reflect.DeepEqual(r, want) {
 				t.Fatalf("returned record changed:\ngot  %#v\nwant %#v", r, want)

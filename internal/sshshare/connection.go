@@ -19,7 +19,7 @@ import (
 )
 
 const Mount = "/devbox/ssh"
-const RelativeRoot = "runtime/ssh"
+const RelativeRoot = "ssh"
 
 //go:embed master.sh
 var Supervisor string

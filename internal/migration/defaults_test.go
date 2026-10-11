@@ -49,7 +49,7 @@ func TestDefaultsMigrationPreservesChoicesWithoutDockerOrSessions(t *testing.T) 
 	}
 	ctx := context.Background()
 	required, err := Pending(ctx, home)
-	if err != nil || required == nil || !strings.Contains(required.Description, "Containers, session data and history are unchanged") {
+	if err != nil || required == nil || !strings.Contains(required.Description, "Containers and session history are unchanged") {
 		t.Fatal(required, err)
 	}
 	if after, err := os.ReadFile(first); err != nil || !bytes.Equal(before, after) {
@@ -66,7 +66,7 @@ func TestDefaultsMigrationPreservesChoicesWithoutDockerOrSessions(t *testing.T) 
 		t.Fatal("preference migration touched Docker")
 	}
 	s := &store.Store{Home: home}
-	for folder, id := range map[string]string{"/removed/folder": strings.Repeat("a", 32), "/another": strings.Repeat("b", 32)} {
+	for folder, id := range map[string]string{"/removed/folder": strings.Repeat("a", 12), "/another": strings.Repeat("b", 12)} {
 		got, err := s.ReadDefault(ctx, folder)
 		if err != nil || got == nil || got.ID != id {
 			t.Fatal("selection lost", folder, got, err)
@@ -98,7 +98,7 @@ func TestDefaultsMigrationRetriesPublishedMappingWithoutReplacingChoices(t *test
 			if conflict {
 				id = strings.Repeat("b", 32)
 			}
-			if err := lock.Save(store.FolderDefaults{Version: 1, Defaults: map[string]string{"/remaining": id, "/already-converted": strings.Repeat("c", 32)}}); err != nil {
+			if err := lock.Save(store.FolderDefaults{Version: 2, Defaults: map[string]string{"/remaining": id[:12], "/already-converted": strings.Repeat("c", 12)}}); err != nil {
 				t.Fatal(err)
 			}
 			lock.Close()

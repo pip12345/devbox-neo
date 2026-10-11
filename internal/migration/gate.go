@@ -51,8 +51,8 @@ func Pending(ctx context.Context, home string) (*Requirement, error) {
 	}
 	if defaults {
 		updates = append(updates, &Requirement{
-			Name:        "Consolidate folder defaults",
-			Description: "Saved folder defaults move into one file. Existing selections are kept, including references to unavailable sessions. Empty selections are omitted.\nContainers, session data and history are unchanged.",
+			Name:        "Update folder-default identity references",
+			Description: "Saved folder defaults use the new 12-character session IDs. Preceding per-folder files move into one mapping. Existing selections, including unavailable sessions, are retained.\nContainers and session history are unchanged.",
 			Warning:     "Close other dbx commands before migrating. Do not use older builds with this home afterward.",
 			apply:       func(ctx context.Context, _ docker.Runtime) error { return migrateFolderDefaults(ctx, home) },
 		})
@@ -121,7 +121,7 @@ func runtimeMigration(ctx context.Context, home string) (*Requirement, error) {
 			continue
 		}
 		switch header.Version {
-		case 6:
+		case 6, 7:
 			needed = true
 		case store.RecordVersion:
 		default:
@@ -132,9 +132,9 @@ func runtimeMigration(ctx context.Context, home string) (*Requirement, error) {
 		return nil, nil
 	}
 	return &Requirement{
-		Name:        "Update Docker naming and saved session records",
-		Description: "This update applies to all saved sessions in this Devbox home.\nSaved harness history, configs, auth, caches and workspace defaults are kept.\nOld linked containers and image tags are removed. Use Recreate afterward to rebuild runtime from current config.",
-		Warning:     "Container-local files and tools will be lost. Finish active commands and pending transfers with the previous build first.",
+		Name:        "Convert sessions to ID-backed storage",
+		Description: "This update applies to all saved sessions in this home. IDs become 12 characters; saved data moves to sessions/<id>/data/base. Public names come from JSON and include that same ID. Existing command target strings and external storage-path references change.\nHistory, config selections, folder defaults and applied comparison baselines are retained. Linked containers are removed; use explicit Recreate afterward. Owned current-namespace images can be retained.",
+		Warning:     "Container-local files and tools will be lost. Finish active commands and pending transfers with the previous build first. Do not use older builds with this home afterward.",
 		apply: func(ctx context.Context, runtime docker.Runtime) error {
 			_, err := Run(ctx, home, runtime, true)
 			return err

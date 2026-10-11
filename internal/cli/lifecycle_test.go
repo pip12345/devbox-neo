@@ -143,7 +143,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 		}
 		for i, view := range views {
 			fields := strings.Fields(rows[i])
-			if len(fields) < 3 || fields[0] != view.Workspace || fields[1] != view.Target || fields[2] != view.LocalName || strings.Contains(table, view.SessionID) {
+			if len(fields) < 3 || fields[0] != view.Workspace || fields[1] != view.Target || fields[2] != view.LocalName {
 				t.Fatal("session text and JSON identities/order disagree", table, views)
 			}
 		}
@@ -157,7 +157,7 @@ func TestContainerAndSessionCLIUseSeparateDeletionContracts(t *testing.T) {
 	if out, err := run("delete", result.Session, "--container"); err != nil || !strings.Contains(out, "retained") {
 		t.Fatal(out, err)
 	}
-	if out, err := run("list", "--wide"); err != nil || !strings.Contains(out, result.Session) || strings.Contains(out, result.SessionID) || !strings.Contains(out, "missing") {
+	if out, err := run("list", "--wide"); err != nil || !strings.Contains(out, result.Session) || !strings.Contains(out, "missing") {
 		t.Fatal("session list hid a missing container", out, err)
 	}
 	if out, err := run("delete", "--session", "--orphaned", "--dry-run"); err != nil || !strings.Contains(out, "Would delete") {

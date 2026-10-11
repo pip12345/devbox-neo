@@ -35,7 +35,7 @@ func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.R
 		return p, err
 	}
 	var err error
-	p.spec, err = e.Resolve(ResolveRequest{Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, Sources: r.Settings.Sources, RepairTarget: r.Directory, Host: q.Host})
+	p.spec, err = e.Resolve(ResolveRequest{Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, Sources: r.Settings.Sources, RepairTarget: r.PublicName(), Host: q.Host})
 	if err != nil {
 		return p, err
 	}
@@ -54,7 +54,7 @@ func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.R
 }
 
 func (e *Engine) applyRecreate(ctx context.Context, p recreatePlan) (result Result, err error) {
-	result.Session, result.SessionID = p.record.Directory, p.record.ID
+	result.Session, result.SessionID = p.record.PublicName(), p.record.ID
 	message := "Apply runtime configuration without replacing the container. It may be briefly started or restarted."
 	if p.replace {
 		message = "Replace the container with current configuration; reuse a compatible available image or build one. Container-local changes will be lost."
@@ -67,7 +67,7 @@ func (e *Engine) applyRecreate(ctx context.Context, p recreatePlan) (result Resu
 	if p.force {
 		message += " Attached commands will be interrupted."
 	}
-	e.diagnose(&result, Diagnostic{Code: "apply_plan", Message: message, Target: p.record.Directory})
+	e.diagnose(&result, Diagnostic{Code: "apply_plan", Message: message, Target: p.record.PublicName()})
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
@@ -80,7 +80,7 @@ func (e *Engine) applyRecreate(ctx context.Context, p recreatePlan) (result Resu
 	}
 	if !p.running {
 		if err := e.Docker.Stop(ctx, c, e.owner(r)); err != nil {
-			return result, commanderror.New("apply_stop_failed", "Configuration applied, but stopping the container failed.", r.Directory, err, commanderror.Next("Stop", "stop", r.Directory))
+			return result, commanderror.New("apply_stop_failed", "Configuration applied, but stopping the container failed.", r.PublicName(), err, commanderror.Next("Stop", "stop", r.PublicName()))
 		}
 	}
 	return result, nil
@@ -99,7 +99,7 @@ func (e *Engine) applyRuntime(ctx context.Context, p recreatePlan) (err error) {
 		defer cancel()
 		live, exists, restoreErr := e.inspect(cleanup, r)
 		if restoreErr == nil && !exists {
-			restoreErr = commanderror.New("container_missing", "Container disappeared during configuration application.", r.Directory, nil)
+			restoreErr = commanderror.New("container_missing", "Container disappeared during configuration application.", r.PublicName(), nil)
 		}
 		if restoreErr == nil && exists {
 			if p.running && !live.State.Running {
@@ -112,18 +112,18 @@ func (e *Engine) applyRuntime(ctx context.Context, p recreatePlan) (err error) {
 		err = errors.Join(err, restoreErr)
 		if err != nil {
 			message := "Runtime configuration application failed; some managed files may have changed. Repair the cause and retry."
-			next := commanderror.Next("Apply current configuration", "recreate", r.Directory)
+			next := commanderror.Next("Apply current configuration", "recreate", r.PublicName())
 			if applied {
 				message = "Configuration applied, but restoring the container's running/stopped state failed."
 				if exists {
-					next = commanderror.Next("Restore stopped state", "stop", r.Directory)
+					next = commanderror.Next("Restore stopped state", "stop", r.PublicName())
 					if p.running {
-						next = commanderror.Next("Restore running state", "start", r.Directory)
+						next = commanderror.Next("Restore running state", "start", r.PublicName())
 					}
 				}
 			}
-			err = commanderror.New("runtime_apply_failed", message, r.Directory, err,
-				commanderror.Next("Inspect session", "status", r.Directory), next)
+			err = commanderror.New("runtime_apply_failed", message, r.PublicName(), err,
+				commanderror.Next("Inspect session", "status", r.PublicName()), next)
 		}
 	}()
 	if c.State.Running {
@@ -131,7 +131,7 @@ func (e *Engine) applyRuntime(ctx context.Context, p recreatePlan) (err error) {
 			return err
 		}
 	}
-	if err = e.sync(p.lock, p.spec); err != nil {
+	if err = e.sync(p.lock, p.spec, r.StateTree); err != nil {
 		return err
 	}
 	if err = e.start(ctx, c, r); err != nil {

@@ -2,11 +2,19 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). Legacy chats remain in old Devbox; the legacy Devbox import tool has been removed. Earlier milestone entries below are historical delivery records, not current build instructions.
 
-The executable and completion target are `dbx`; the home remains `~/.devbox-neo`. New session/container allocations include workspace hints, and image tags/ownership labels use the `dbx` namespace. Schema-6 development state requires agreement through the blocking migration gate described below; there is no automatic adoption or legacy Devbox importer.
+The executable and completion target are `dbx`; the home remains `~/.devbox-neo`. Schema 8 uses complete 12-character session IDs, metadata-derived public names, and ID-backed data trees. Preceding schemas 6/7 require explicit agreement through the migration gate; there is no automatic adoption or legacy Devbox importer.
 
 The initial session-structure refactor delivered schema 6 with ID-based lookup/locks/leases, independent resource names, metadata-only rename and explicit workspace edits. Its validation passed without a migration/reset path at that stage. The current schema-7 cutover and validation are recorded below.
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
+
+## ID-backed session model — implemented, live acceptance pending
+
+- One complete 12-character ID identifies each session, directory, lock, lease namespace, default and Docker owner. Public names use the saved workspace hint, that same ID and local name; raw IDs, directory names and Docker names are not public session selectors. Rename/workspace edits leave backing paths untouched.
+- Schema 8 stores a validated current data-tree pointer alongside desired settings and applied runtime. Portable Move prepares another tree under the same root and publishes journal authority before its canonical record; committed retries only publish/clean up, never recopy. Copy allocates a new ID. No backing-directory swaps or extra public naming keys were added.
+- Listings, completion, receipts and repair suggestions use metadata names. Status exposes the storage mapping and pending applied workspace. Separate `--container-name` and `--incomplete-dir` selectors retain cleanup ownership, scopes, locks and checks.
+- Explicit conversion shortens old identities/references, relocates stores/SSH paths, removes linked old-path runtimes, and retains applied comparison baselines and current-namespace owned images where possible. It refuses active commands, unfinished transfers, occupied destinations and unrelated bind users. Default mappings publish before identity/path changes so interrupted conversion cannot lose their original association. No user state or live Docker has been touched.
+- Full fast-suite equivalent, five repeated model/transfer/conversion/CLI/PTY regressions, package vet, CLI build/help and diff checks pass using `.tools/go` (`make` is unavailable). No conversion has run against user state. Live Docker and manual host acceptance remain unrun; race checks require CGO/a C compiler, unavailable here.
 
 ## Consistent missing-runtime and bind-path guidance — implemented, live acceptance pending
 

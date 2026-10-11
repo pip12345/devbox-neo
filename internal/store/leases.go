@@ -82,7 +82,7 @@ func (l *Locked) Lease(action string) (Lease, error) {
 // replacement removes old leases, so their later cleanup must not touch the
 // replacement's activity or automatic lifetime.
 func (l *Locked) Release(id string) (bool, error) {
-	if !idPattern.MatchString(id) {
+	if !tokenPattern.MatchString(id) {
 		return false, fmt.Errorf("invalid lease ID")
 	}
 	p, err := l.leasePath(id + ".json")
@@ -103,6 +103,23 @@ func (l *Locked) active(reap bool) ([]Lease, error) {
 	if err != nil {
 		return nil, err
 	}
+	var release func(string) (bool, error)
+	if reap {
+		release = l.Release
+	}
+	return inspectLeases(dir, release)
+}
+
+// InspectLeases reads the same process-identity contract without changing lease
+// files. Callers which mutate state must already hold the owning session lock.
+func InspectLeases(directory string) ([]Lease, error) {
+	if _, err := fsutil.Path(directory, "."); err != nil {
+		return nil, err
+	}
+	return inspectLeases(directory, nil)
+}
+
+func inspectLeases(dir string, release func(string) (bool, error)) ([]Lease, error) {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -115,7 +132,7 @@ func (l *Locked) active(reap bool) ([]Lease, error) {
 		if strings.HasPrefix(entry.Name(), ".write-") {
 			continue
 		}
-		p, err := l.leasePath(entry.Name())
+		p, err := fsutil.Path(dir, entry.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -127,13 +144,13 @@ func (l *Locked) active(reap bool) ([]Lease, error) {
 		if err = config.Decode(b, &lease); err != nil {
 			return nil, fmt.Errorf("corrupt lease: %w", err)
 		}
-		if lease.Version != 2 || !idPattern.MatchString(lease.ID) || entry.Name() != lease.ID+".json" || lease.Process.PID < 1 || lease.Process.Start == "" || lease.Process.Boot == "" {
+		if lease.Version != 2 || !tokenPattern.MatchString(lease.ID) || entry.Name() != lease.ID+".json" || lease.Process.PID < 1 || lease.Process.Start == "" || lease.Process.Boot == "" {
 			return nil, fmt.Errorf("invalid lease identity")
 		}
 		current, err := ProcessIdentity(lease.Process.PID)
 		if os.IsNotExist(err) || (err == nil && current != lease.Process) {
-			if reap {
-				if _, err = l.Release(lease.ID); err != nil {
+			if release != nil {
+				if _, err = release(lease.ID); err != nil {
 					return nil, err
 				}
 			}
@@ -160,8 +177,13 @@ func (l *Locked) RequireIdle() error {
 		for i, lease := range active {
 			commands[i] = fmt.Sprintf("%q: host PID %d, since %s", lease.Action, lease.Process.PID, lease.Created.Format(time.RFC3339))
 		}
-		return commanderror.New("session_busy", fmt.Sprintf("Environment is in use by %d %s (%s).", len(active), noun, strings.Join(commands, "; ")), l.Name, nil,
-			commanderror.Next("Inspect active commands", "status", l.Name))
+		target := l.Name
+		steps := []commanderror.Step{commanderror.Next("Inspect saved sessions", "list")}
+		if r, err := l.ReadRecord(l.ctx); err == nil {
+			target = r.PublicName()
+			steps = []commanderror.Step{commanderror.Next("Inspect active commands", "status", target)}
+		}
+		return commanderror.New("session_busy", fmt.Sprintf("Environment is in use by %d %s (%s).", len(active), noun, strings.Join(commands, "; ")), target, nil, steps...)
 	}
 	return nil
 }

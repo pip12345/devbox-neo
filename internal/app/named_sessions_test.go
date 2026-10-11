@@ -87,9 +87,9 @@ func TestStaleDefaultDoesNotSelectAReusedLocalName(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, localName := range []string{"", q.LocalName} {
-		name, id, err := e.transferSource(ctx, TransferOptions{Source: q.Workspace, LocalName: localName})
-		if err != nil || name != original.Directory || id != original.ID {
-			t.Fatal("transfer source selection lost its durable-ID snapshot", name, id, err)
+		id, err := e.transferSource(ctx, TransferOptions{Source: q.Workspace, LocalName: localName})
+		if err != nil || id != original.ID {
+			t.Fatal("transfer source selection lost its durable-ID snapshot", id, err)
 		}
 	}
 	path := filepath.Join(e.Store.Home, "state/folder-defaults.json")

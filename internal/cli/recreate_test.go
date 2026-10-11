@@ -58,7 +58,7 @@ func TestRecreateUsesRecordedExplicitSources(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{before.Directory})
+	cmd.SetArgs([]string{before.PublicName()})
 	if err = cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}
@@ -82,8 +82,8 @@ func TestRecreateAllIncludesSessionsWithoutContainers(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := sessionRecord(t, e, name)
-	c, exists, err := e.Docker.InspectID(ctx, after.Applied.SetupContainer)
-	if err != nil || !exists || c.State.Running || after.Applied.SetupContainer == before.Applied.SetupContainer {
+	c, exists, err := e.Docker.InspectID(ctx, after.Applied.ContainerID)
+	if err != nil || !exists || c.State.Running || after.Applied.ContainerID == before.Applied.ContainerID {
 		t.Fatal("CLI bulk recreation skipped missing runtime", c, exists, err)
 	}
 }

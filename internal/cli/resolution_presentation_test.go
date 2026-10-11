@@ -24,7 +24,7 @@ func TestRecreateRepairStepsUsePublicTarget(t *testing.T) {
 	if code := Execute(context.Background(), root); code != 1 {
 		t.Fatal(code, out.String(), stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "edit "+target) || strings.Contains(stderr.String(), r.ID) {
+	if !strings.Contains(stderr.String(), "edit "+target) || strings.Contains(stderr.String(), " edit "+r.ID) {
 		t.Fatal("repair points at an internal selector", stderr.String())
 	}
 }

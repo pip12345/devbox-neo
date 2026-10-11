@@ -105,9 +105,9 @@ func TestFrontendCopyAndMoveUseDurableTransfer(t *testing.T) {
 		if (record.ID == before.ID) != move {
 			t.Fatal("transfer lineage changed", record.ID, before.ID)
 		}
-		_, err = f.e.Store.Read(context.Background(), before.Directory)
+		_, err = os.Stat(filepath.Join(f.e.Store.Home, "sessions", before.ID, before.StateTree))
 		if os.IsNotExist(err) != move {
-			t.Fatal("source retention changed", move, err)
+			t.Fatal("source-tree retention changed", move, err)
 		}
 	}
 }

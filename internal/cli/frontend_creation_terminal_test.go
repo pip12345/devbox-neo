@@ -61,7 +61,7 @@ func TestNativeFirstCreationAndSessionDefaultMenu(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := created.Directory
+	name := created.PublicName()
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
 	if err != nil || selected != nil {
 		t.Fatal("creation selected a default", selected, err)

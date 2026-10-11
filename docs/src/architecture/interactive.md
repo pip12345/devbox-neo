@@ -69,6 +69,6 @@ Keep error/partial-result output visible before returning. Color-independent mar
 
 ## Completion
 
-Completion bypasses store initialization and locking record readers. Config directories provide named suggestions; session directory names and folder-local names come from readable saved settings, without requiring valid applied runtime state. Session candidates include escaped workspace/name descriptions for shells that display them; the inserted target is the exact storage directory name. Harness enumeration uses valid effective definitions. Live container suggestions use bounded installation-filtered inventory and tolerate unavailable Docker.
+Completion bypasses store initialization and locking record readers. Config directories provide named suggestions; public session names and folder-local names come from readable saved settings, without requiring valid applied runtime state. Session candidates include escaped workspace/name descriptions for shells that display them; the inserted target is the metadata-derived public name; the directory must match its recorded ID. Harness enumeration uses valid effective definitions. Live container suggestions use bounded installation-filtered inventory and tolerate unavailable Docker.
 
 Completion must not seed state, create locks, resolve a full environment, or mutate Docker. Generated scripts register completion for `dbx` only.

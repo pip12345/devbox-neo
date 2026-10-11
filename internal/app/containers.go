@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ type View struct {
 	ManualStart         bool                      `json:"manual_start"`
 	Harness             string                    `json:"harness,omitempty"`
 	SessionID           string                    `json:"session_id,omitempty"`
+	StoragePath         string                    `json:"storage_path,omitempty"`
 	LastActivity        time.Time                 `json:"last_activity,omitempty"`
 	LastAction          string                    `json:"last_action,omitempty"`
 	CreatedAt           time.Time                 `json:"created_at,omitempty"`
@@ -45,7 +47,7 @@ type View struct {
 }
 
 func recordView(r store.Record) View {
-	return View{Target: r.Directory, ContainerName: r.Applied.Creation.Name, Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, Sources: r.Settings.Sources, ManualStart: r.Settings.ManualStart, Harness: r.Applied.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action, CreatedAt: r.Created}
+	return View{Target: r.PublicName(), ContainerName: r.Applied.Creation.Name, Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, Sources: r.Settings.Sources, ManualStart: r.Settings.ManualStart, Harness: r.Applied.Definition.Name, SessionID: r.ID, LastActivity: r.Activity, LastAction: r.Action, CreatedAt: r.Created}
 }
 func (e *Engine) inventory(ctx context.Context) ([]store.Entry, []docker.Container, error) {
 	entries, err := e.Store.Inventory(ctx)
@@ -60,8 +62,8 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 	byContainer := map[string]string{}
 	for _, entry := range entries {
 		records[entry.Name] = entry
-		if entry.Record.Applied.SetupContainer != "" {
-			byContainer[entry.Record.Applied.SetupContainer] = entry.Name
+		if entry.Record.Applied.ContainerID != "" {
+			byContainer[entry.Record.Applied.ContainerID] = entry.Name
 		}
 	}
 	result := []View{}
@@ -75,14 +77,17 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 		view := View{Target: name}
 		if found && entry.Record.ID != "" {
 			view = recordView(entry.Record)
-			view.Target = entry.Name
+			view.Target = entry.Record.PublicName()
+		}
+		if view.SessionID != "" {
+			view.StoragePath = filepath.Join(e.Store.Home, "sessions", view.SessionID)
 		}
 		view.ContainerID, view.ContainerName = container.ID, name
 		view.Exists, view.Running = true, container.State.Running
 		if found && entry.Err == nil && entry.Record.ID != "" {
 			if err := container.Verify(e.owner(entry.Record)); err != nil {
 				view.Error = err.Error()
-			} else if container.ID != entry.Record.Applied.SetupContainer || container.Image != entry.Record.Applied.ImageID {
+			} else if container.ID != entry.Record.Applied.ContainerID || container.Image != entry.Record.Applied.ImageID {
 				view.Error = "container differs from committed creation contract"
 			}
 		} else if found && entry.Err != nil {
@@ -101,6 +106,9 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 			if view.Target == "" {
 				view.Target = name
 			}
+			if view.SessionID != "" {
+				view.StoragePath = filepath.Join(e.Store.Home, "sessions", view.SessionID)
+			}
 			view.Pending = entry.Pending
 			if entry.Err != nil {
 				view.Error = entry.Err.Error()
@@ -113,7 +121,7 @@ func (e *Engine) inventoryViews(entries []store.Entry, live []docker.Container, 
 	return result
 }
 func (e *Engine) desiredStatus(view *View, r store.Record) {
-	desired, err := e.Resolve(ResolveRequest{Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, RepairTarget: r.Directory, Sources: r.Settings.Sources})
+	desired, err := e.Resolve(ResolveRequest{Workspace: r.Settings.Workspace, LocalName: r.Settings.LocalName, RepairTarget: r.PublicName(), Sources: r.Settings.Sources})
 	view.Warnings = desired.Warnings
 	if err != nil {
 		view.ConfigError = err.Error()
@@ -132,7 +140,7 @@ func (e *Engine) Logs(ctx context.Context, target, localName string, follow bool
 		return err
 	}
 	if !exists {
-		return commanderror.New("container_missing", "Container not found; its logs are unavailable.", r.Directory, nil, commanderror.Next("Inspect session", "status", r.Directory))
+		return commanderror.New("container_missing", "Container not found; its logs are unavailable.", r.PublicName(), nil, commanderror.Next("Inspect session", "status", r.PublicName()))
 	}
 	return e.Docker.Logs(ctx, c, e.owner(r), follow, tail, e.Streams.Out, e.Streams.Err)
 }
@@ -174,11 +182,26 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, targets selectedTar
 		var c docker.Container
 		var exists bool
 		var owner docker.Owner
-		if loadErr == nil {
+		if target.unmatched {
+			c, exists, err = e.Docker.InspectID(ctx, target.containerID)
+			if err == nil && exists {
+				owner, err = e.orphanOwner(c)
+				if err == nil && owner.Session != target.sessionID {
+					err = fmt.Errorf("selected container ownership changed")
+				}
+				if loadErr == nil && r.Applied.ContainerID == c.ID {
+					return nil, fmt.Errorf("container became the recorded runtime; select public session %s", r.PublicName())
+				}
+			}
+		} else if loadErr == nil {
 			c, exists, err = e.inspect(ctx, r)
 			owner = e.owner(r)
 		} else {
-			c, exists, err = e.Docker.Inspect(ctx, lock.Name)
+			if target.containerID != "" {
+				c, exists, err = e.Docker.InspectID(ctx, target.containerID)
+			} else {
+				c, exists, err = e.Docker.Inspect(ctx, target.name)
+			}
 			if err == nil && exists {
 				owner, err = e.orphanOwner(c)
 				if err == nil {
@@ -192,7 +215,7 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, targets selectedTar
 					// Missing records never authorize bypassing a retained session's lock.
 					_, findErr := e.Store.Find(ctx, owner.Session, nil)
 					if findErr == nil {
-						return nil, fmt.Errorf("container has a saved session; refresh selection and delete by session directory name")
+						return nil, fmt.Errorf("container has a saved session; refresh selection and delete by public session name")
 					}
 					if !sessionAbsent(findErr) && !incompleteInventory(findErr) {
 						return nil, findErr
@@ -214,6 +237,9 @@ func (e *Engine) deleteContainersLocked(ctx context.Context, targets selectedTar
 		}
 		if selection.Stopped && c.State.Running {
 			return nil, fmt.Errorf("selected container started during preflight")
+		}
+		if target.unmatched {
+			r = store.Record{} // resource cleanup never updates saved-session activity
 		}
 		removals = append(removals, removal{r, c, lock, owner})
 	}
@@ -250,7 +276,7 @@ func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 	labels := c.Config.Labels
 	owner := docker.Owner{Installation: e.Store.Installation, Session: labels[docker.Namespace+".session"], Workspace: labels[docker.Namespace+".workspace"], LocalName: labels[docker.Namespace+".local-name"]}
 	id, err := hex.DecodeString(owner.Session)
-	if err != nil || len(id) != 16 || hex.EncodeToString(id) != owner.Session {
+	if err != nil || len(id) != 6 || hex.EncodeToString(id) != owner.Session {
 		return owner, fmt.Errorf("invalid container session ownership")
 	}
 	return owner, c.Verify(owner)
@@ -287,7 +313,7 @@ func (e *Engine) RecreateAll(ctx context.Context, image bool, options RecreateOp
 		if err != nil {
 			return applied, err
 		}
-		applied = append(applied, result.SessionID)
+		applied = append(applied, result.Session)
 	}
 	return applied, nil
 }

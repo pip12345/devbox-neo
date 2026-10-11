@@ -113,7 +113,7 @@ func TestForcedRecreationRetiresOnlyOldAttachments(t *testing.T) {
 			}
 			oldDone := open()
 			var busy *commanderror.Error
-			if _, err := e.Recreate(ctx, recreateRequest(q), false); !errors.As(err, &busy) || busy.Code != "session_busy" || busy.Target != old.Directory || !strings.Contains(busy.Message, "host PID") || !reflect.DeepEqual(busy.Next[0].Command, []string{"dbx", "status", old.Directory}) {
+			if _, err := e.Recreate(ctx, recreateRequest(q), false); !errors.As(err, &busy) || busy.Code != "session_busy" || busy.Target != old.PublicName() || !strings.Contains(busy.Message, "host PID") || !reflect.DeepEqual(busy.Next[0].Command, []string{"dbx", "status", old.PublicName()}) {
 				t.Fatal("ordinary recreation lost attachment protection or actionable details", err)
 			}
 			forced := recreateRequest(q)
@@ -122,7 +122,7 @@ func TestForcedRecreationRetiresOnlyOldAttachments(t *testing.T) {
 				t.Fatal(err)
 			}
 			current := sessionRecord(t, e, old.ID)
-			if current.ID != old.ID || current.Directory != old.Directory || current.Applied.SetupContainer == old.Applied.SetupContainer {
+			if current.ID != old.ID || current.Directory != old.Directory || current.Applied.ContainerID == old.Applied.ContainerID {
 				t.Fatal("forced recreation changed identity or retained the old container")
 			}
 			c, _ := sessionSnapshot(t, e, old.ID)

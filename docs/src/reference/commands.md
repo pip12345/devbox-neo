@@ -7,11 +7,11 @@ Prefix commands below with `dbx`. Use `<command> --help` for options. For a walk
 | Input | Meaning |
 |---|---|
 | `--home PATH` | Devbox home; overrides `DEVBOX_HOME`, then `~/.devbox-neo` |
-| `<target>` | A project folder or exact session directory name from `list` |
+| `<target>` | A project folder or exact public session name from `list` |
 | `--name NAME` | Select a folder-local session instead of the folder default |
 | `.` | Current folder |
 
-A folder alone requires a saved default, even if it has only one session. An exact session directory name, such as `dbx-api-123456abcdef.work`, works from any directory. It is independent of the Docker container name. A local name alone is not a target. Use `./` or an absolute path for a project folder whose basename starts with `dbx-`.
+A folder alone requires a saved default, even if it has only one session. A public session name, such as `dbx-api-123456abcdef.work`, works from any directory. Its 12-character ID names the directory under `sessions/`; its readable parts come from saved workspace/name metadata. Docker names and raw IDs are not session targets. A local name alone is not a target. Use `./` or an absolute path for a project folder whose basename starts with `dbx-`.
 
 ## Interactive frontend
 
@@ -61,7 +61,7 @@ Configured arguments precede continuation and one-off arguments. One-off argumen
 
 | Command | Output |
 |---|---|
-| `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Sessions, including missing containers; session directory names are always shown; `--wide` adds container names and exact activity details |
+| `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Sessions, including missing containers; public session names are always shown; `--wide` adds IDs, storage paths, container names and exact activity details |
 | `status [--json]` | Configuration health for all sessions |
 | `status <target> [--json]` | One session's state, active commands, and pending changes |
 
@@ -84,7 +84,7 @@ Checks compare local inputs, not upstream releases. See [output formats](output.
 | `edit <target> --show [--json]` | Combined settings; folder targets require `--name` |
 | `edit <target> --config REF [--config REF…] [--json]` | Replace the entire ordered config selection; folder targets require `--name` |
 
-`--config` requires at least one reference and replaces the list in flag order. Config, workspace, inspection, and default operations cannot be combined. `--workspace` requires a session directory name or explicit `--name`.
+`--config` requires at least one reference and replaces the list in flag order. Config, workspace, inspection, and default operations cannot be combined. `--workspace` requires a public session name or explicit `--name`. It changes the readable workspace hint, not the ID or storage location.
 
 Settings edits save immediately. Nested config creation adds its result to the session draft; that config remains saved if the draft is cancelled. [Config reference](configuration.md) covers paths and merge rules.
 
@@ -116,7 +116,7 @@ The browser offers Make/Clear folder default in the session menu. Selection does
 
 When **Migration required** appears, **Migrate** updates the selected home and continues your command only after success. **Exit** leaves it unchanged.
 
-Review the screen's listed effects before agreeing. **Some migrations remove containers and their local files/tools.** The screen explains what is kept and any required next steps.
+Review the screen's listed effects before agreeing. **Some migrations move saved data, change session IDs/target names, and remove containers and their local files/tools.** The screen explains what is kept and any required next steps.
 
 Follow the screen's prerequisites and close other Devbox commands before migrating. Do not use older builds with the updated home. If migration fails, fix the reported problem and retry. Scripts and `--json` calls cannot approve migration; run `dbx` in a terminal with the same home. Help, version and completion remain available. Migration does not import old Devbox data.
 
@@ -172,21 +172,25 @@ Omitting the destination keeps the source workspace. Starting a transfer require
 
 Only declared harness state transfers. Project/config files, container-local tools, auth, caches, and live connections do not. Relative config references follow the destination; fixed ones keep their paths. Neither operation selects a destination default.
 
-`--abort` is available only before the destination is ready. It requires the exact source session directory name and cannot combine with a destination, `--as`, `--move`, `--name`, or `--dry-run`. Otherwise, fix the error and retry the original transfer command.
+`--abort` is available only before the destination is ready. It requires the exact public source session name and cannot combine with a destination, `--as`, `--move`, `--name`, or `--dry-run`. Otherwise, fix the error and retry the original transfer command.
 
 JSON uses `clone` for Copy and `relocate` for Move; successful abort adds `aborted: true`.
 
-`rename --to NAME` changes only the session label; storage, container, history, and default are unchanged. It accepts `--name` for source selection, `--dry-run`, and `--json`, and runs without prompting.
+`rename --to NAME` changes the local and public session name; its ID, storage, container, history, and default are unchanged. The old public name is not retained as an alias. It accepts `--name` for source selection, `--dry-run`, and `--json`, and runs without prompting.
 
 ## Deletion
 
 ```sh
 dbx delete <target>... [--container|--session]
 dbx delete [filters...] --container|--session
+dbx delete --container-name NAME --container
+dbx delete --incomplete-dir DIRECTORY --session
 ```
 
 | Flag | Meaning |
 |---|---|
+| `--container-name NAME` | Select an unmatched managed Docker instance; requires `--container` |
+| `--incomplete-dir DIRECTORY` | Select files under `sessions/` without a record; requires `--session` |
 | `--container` | Remove containers; retain saved session data and images |
 | `--session` | Remove containers, saved data/history, and session image tags |
 | `--force` | Allow interruption of attached container commands |

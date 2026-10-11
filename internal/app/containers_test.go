@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"devbox/internal/docker"
-	"devbox/internal/environment"
 )
 
 func TestContainerViewsUseBatchedInventoryAndBrokenConfigDoesNotHideState(t *testing.T) {
@@ -69,7 +68,7 @@ func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
 		t.Fatal(err)
 	}
 	initial := sessionRecord(t, e, first.SessionID)
-	marker := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, first.SessionID).Directory, "harnesses/pi/stores/home/marker")
+	marker := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, first.SessionID).Directory, sessionRecord(t, e, first.SessionID).StateTree, "harnesses/pi/stores/home/marker")
 	write(t, marker, "keep")
 	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, second.SessionID).Directory, sessionRecord(t, e, second.SessionID).ID)
 	if err != nil {
@@ -129,7 +128,7 @@ func TestRecreateAllPreflightsAndPreservesRunningIntent(t *testing.T) {
 	if _, err = e.Start(ctx, a.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
-	before := sessionRecord(t, e, a.SessionID).Applied.SetupContainer
+	before := sessionRecord(t, e, a.SessionID).Applied.ContainerID
 	result, err := e.RecreateAll(ctx, true, RecreateOptions{})
 	if err != nil || len(result) != 2 {
 		t.Fatal(result, err)
@@ -215,7 +214,7 @@ func TestOwnedContainerWithoutRecordCanBeDeletedButNeverAdopted(t *testing.T) {
 	if _, err = e.Open(ctx, openRequest(q)); err == nil {
 		t.Fatal("recordless container was adopted")
 	}
-	if _, err = e.DeleteContainers(ctx, Selection{Targets: []string{result.SessionID}}, false); err != nil {
+	if _, err = e.DeleteContainers(ctx, Selection{ContainerNames: []string{runtimeName}}, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, exists := d.Snapshot(runtimeName); exists {
@@ -233,7 +232,7 @@ func TestExplicitProfileLocateIgnoresUnrelatedCorruptRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	other := environment.ResourceName("/unrelated", "project", "broken")
+	other := strings.Repeat("f", 12)
 	write(t, filepath.Join(e.Store.Home, "sessions", other, "session.json"), "broken")
 	r, err := e.Locate(ctx, q.Workspace, q.LocalName)
 	if err != nil || r.ID != first.SessionID {

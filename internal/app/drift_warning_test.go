@@ -39,7 +39,7 @@ func TestApplicationPlanPrecedesRuntimeMutations(t *testing.T) {
 				write(t, filepath.Join(source, "docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 			}
 			r := sessionRecord(t, e, made.SessionID)
-			live := filepath.Join(e.Store.Home, "sessions", r.Directory, "harnesses/pi/stores/home/new-file")
+			live := filepath.Join(e.Store.Home, "sessions", r.Directory, r.StateTree, "harnesses/pi/stores/home/new-file")
 			before, plans := runtimeMutations(d), 0
 			e.OnDiagnostic = func(diagnostic Diagnostic) {
 				if diagnostic.Code != "apply_plan" {

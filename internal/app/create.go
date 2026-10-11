@@ -3,11 +3,9 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"devbox/internal/commanderror"
@@ -33,39 +31,28 @@ func (e *Engine) Create(ctx context.Context, q CreateRequest) (CreationResult, e
 	if err := e.Store.RequireUnusedBinding(ctx, identity.Binding, ""); err != nil {
 		return CreationResult{}, err
 	}
-	directory, err := store.AllocateDirectory(identity.Binding)
+	id, err := fsutil.SessionID()
 	if err != nil {
 		return CreationResult{}, err
 	}
-	id, err := fsutil.ID()
-	if err != nil {
-		return CreationResult{}, err
-	}
-	result := CreationResult{Result: Result{Session: directory, SessionID: id}}
-	lock, err := e.Store.Lock(ctx, directory, id)
+	result := CreationResult{Result: Result{Session: environment.PublicName(identity.Binding, id), SessionID: id}}
+	lock, err := e.Store.Lock(ctx, id, id)
 	if err != nil {
 		return result, err
 	}
 	defer lock.Close()
-	if _, err = lock.Load(); err == nil {
-		return result, commanderror.New("session_exists", "Environment already exists.", directory, nil,
-			commanderror.Next("Open", "open", directory),
-			commanderror.Next("Or recreate with current configuration", "recreate", directory))
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return result, err
-	}
 	spec, err := e.Resolve(ResolveRequest{Workspace: q.Workspace, LocalName: q.LocalName, Sources: q.Sources, Host: q.Host})
 	e.reportWarnings(spec.Warnings)
 	if err != nil {
-		return result, err
-	}
-	if err = e.requireNew(ctx, lock); err != nil {
 		return result, err
 	}
 	if q.MakeDefault {
 		if _, err := e.Store.ReadDefault(ctx, identity.Workspace); err != nil {
 			return result, err
 		}
+	}
+	if err := lock.Claim(); err != nil {
+		return result, fmt.Errorf("cannot allocate session directory: %w", err)
 	}
 	record, c, err := e.createAs(ctx, lock, spec, nil, creationOptions{}, CreationIdentity{ID: id})
 	if err != nil {
@@ -76,15 +63,15 @@ func (e *Engine) Create(ctx context.Context, q CreateRequest) (CreationResult, e
 	result.Saved = true
 	var stopErr, defaultErr error
 	if err = e.Docker.Stop(ctx, c, e.owner(record)); err != nil {
-		stopErr = commanderror.New("create_stop_failed", "Environment created, but stopping it failed.", record.Directory, err,
-			commanderror.Next("Stop", "stop", record.Directory))
+		stopErr = commanderror.New("create_stop_failed", "Environment created, but stopping it failed.", record.PublicName(), err,
+			commanderror.Next("Stop", "stop", record.PublicName()))
 	}
 	// The session is committed. A failed preference update must not discard it
 	// or encourage retrying Create; default selection has its own repair step.
 	if q.MakeDefault {
 		if err := lock.SelectDefault(record.ID); err != nil {
-			defaultErr = commanderror.New("create_default_failed", "Session created, but selecting it as the folder default failed.", record.Directory, err,
-				commanderror.Next("Select the created session as default", "edit", record.Directory, "--default"))
+			defaultErr = commanderror.New("create_default_failed", "Session created, but selecting it as the folder default failed.", record.PublicName(), err,
+				commanderror.Next("Select the created session as default", "edit", record.PublicName(), "--default"))
 		}
 	}
 	return result, errors.Join(stopErr, defaultErr)
@@ -120,21 +107,6 @@ func (e *Engine) discardUncommittedCreation(ctx context.Context, lock *store.Loc
 	return lock.DeleteContext(ctx)
 }
 
-func (e *Engine) requireNew(ctx context.Context, l *store.Locked) error {
-	dir, err := l.Path(".")
-	if err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if len(entries) > 0 {
-		return fmt.Errorf("uncommitted session state exists at %s.\nInspect this directory before retrying creation.", dir)
-	}
-	return nil
-}
-
 type creationOptions struct {
 	image bool
 	force bool
@@ -147,20 +119,25 @@ type CreationIdentity struct {
 	ID            string
 	Created       time.Time
 	ManualStart   bool
+	StateTree     string
+	Transfer      *store.Transfer
 }
 
-// CreatePrepared materializes current-format state prepared under the supplied
-// operation lock. The caller owns publication and recovery of the prepared
-// directory; this method never adopts an existing record or container.
+// CreatePrepared materializes a reserved backing tree. Its record is private
+// transaction state; only the committed transfer owner publishes session.json.
 func (e *Engine) CreatePrepared(ctx context.Context, l *store.Locked, s environment.Spec, identity CreationIdentity) (store.Record, docker.Container, error) {
-	if !l.Held() || l.ID != identity.ID || identity.Created.IsZero() || len(identity.ID) != 32 {
+	if !l.Held() || l.ID != identity.ID || identity.Created.IsZero() || !environment.IsSessionID(identity.ID) || identity.Transfer == nil {
 		return store.Record{}, docker.Container{}, fmt.Errorf("invalid prepared destination identity or lock")
 	}
-	if _, err := hex.DecodeString(identity.ID); err != nil || strings.ToLower(identity.ID) != identity.ID {
-		return store.Record{}, docker.Container{}, fmt.Errorf("invalid prepared session ID")
+	j := *identity.Transfer
+	if err := j.Validate(); err != nil {
+		return store.Record{}, docker.Container{}, err
 	}
-	if _, err := l.ReadRecord(ctx); err == nil {
-		return store.Record{}, docker.Container{}, fmt.Errorf("prepared destination already has a session record")
+	if identity.StateTree != j.DestinationTree || identity.ID != j.DestinationID || identity.ContainerName != j.ContainerName {
+		return store.Record{}, docker.Container{}, fmt.Errorf("prepared destination differs from transfer reservation")
+	}
+	if _, err := e.Store.ReadTransferDestination(ctx, j); err == nil {
+		return store.Record{}, docker.Container{}, fmt.Errorf("prepared destination already has a record")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return store.Record{}, docker.Container{}, err
 	}
@@ -171,6 +148,14 @@ func (e *Engine) CreatePrepared(ctx context.Context, l *store.Locked, s environm
 // runtime resources, but cannot change the identity protected by that lock.
 func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Spec, previous *store.Record, options creationOptions, seed CreationIdentity) (record store.Record, c docker.Container, err error) {
 	id, created := l.ID, seed.Created
+	tree := seed.StateTree
+	if previous != nil {
+		tree = previous.StateTree
+	}
+	if tree == "" {
+		tree = store.InitialStateTree
+	}
+	seed.StateTree = tree
 	if (previous == nil && seed.ID != "" && seed.ID != id) || (previous != nil && previous.ID != id) {
 		return record, c, fmt.Errorf("creation identity differs from its operation lock")
 	}
@@ -221,7 +206,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		if allocationErr != nil {
 			return record, c, allocationErr
 		}
-		s.Identity.Name = environment.ResourceName(s.Identity.Workspace, s.Identity.LocalName, allocation)
+		s.Identity.Name = environment.ResourceName(id, allocation)
 	}
 	if _, exists, err := e.Docker.Inspect(ctx, s.Identity.Name); err != nil {
 		return record, c, err
@@ -245,10 +230,10 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		// Cache eligibility does not authorize adoption. A missing or unowned
 		// image is replaced by a fresh owned build, never executed or mutated.
 		if !reused {
-			image, err = e.build(ctx, s, id, false)
+			image, err = e.build(ctx, s, false)
 		}
 	} else {
-		image, err = e.build(ctx, s, id, options.image)
+		image, err = e.build(ctx, s, options.image)
 	}
 	if err != nil {
 		return record, c, err
@@ -256,7 +241,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 	if !reused {
 		// An uncommitted build tag must not point a surviving record at the
 		// wrong image after failure. Absence is valid: runtime is disposable.
-		tag := environment.ImageTag(s.Identity.Workspace, s.Identity.LocalName, id)
+		tag := environment.ImageTag(s.Identity.Name)
 		defer func() {
 			if err == nil {
 				return
@@ -293,11 +278,11 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 			return record, c, err
 		}
 	}
-	mounts, err := e.mountPlan(l, s)
+	mounts, err := e.mountPlan(l, s, tree)
 	if err != nil {
 		return record, c, err
 	}
-	if err = e.sync(l, s); err != nil {
+	if err = e.sync(l, s, tree); err != nil {
 		return record, c, err
 	}
 	if existed {
@@ -334,8 +319,13 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 			}
 		}
 	}()
-	record.Applied.SetupContainer = c.ID
-	if err = l.Save(record); err != nil {
+	record.Applied.ContainerID = c.ID
+	if seed.Transfer != nil {
+		err = l.SaveTransferDestination(*seed.Transfer, record)
+	} else {
+		err = l.Save(record)
+	}
+	if err != nil {
 		return record, c, err
 	}
 	committed = true
@@ -344,7 +334,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker.Container, err error) {
 	// This attempt prepares a new instance; only its successful caller commits
 	// the new setup-container ID. Existing-instance access never clears it.
-	record.Applied.SetupContainer = ""
+	record.Applied.ContainerID = ""
 	if err = prepareMountParents(record); err != nil {
 		return c, err
 	}

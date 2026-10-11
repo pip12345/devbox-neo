@@ -29,7 +29,7 @@ func validDefaultFolder(workspace string) bool {
 }
 
 func (d FolderDefaults) Validate() error {
-	if d.Version != 1 || d.Defaults == nil {
+	if d.Version != 2 || d.Defaults == nil {
 		return fmt.Errorf("invalid folder defaults format")
 	}
 	for workspace, id := range d.Defaults {
@@ -77,7 +77,7 @@ func (l *LockedDefaults) path() (string, error) {
 }
 
 func (l *LockedDefaults) Read() (FolderDefaults, error) {
-	state := FolderDefaults{Version: 1, Defaults: map[string]string{}}
+	state := FolderDefaults{Version: 2, Defaults: map[string]string{}}
 	path, err := l.path()
 	if err != nil {
 		return state, err

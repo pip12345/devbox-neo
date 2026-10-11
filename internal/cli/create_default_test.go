@@ -35,7 +35,7 @@ func TestCreateDefaultFlagSelectsCreatedSession(t *testing.T) {
 	if err != nil || created.Settings.LocalName != "New" {
 		t.Fatal(created, err)
 	}
-	if !strings.Contains(out.String(), "Folder default: New") || !strings.Contains(out.String(), "dbx open "+created.Directory) || strings.Contains(out.String(), "Select it as") {
+	if !strings.Contains(out.String(), "Folder default: New") || !strings.Contains(out.String(), "dbx open "+created.PublicName()) || strings.Contains(out.String(), "Select it as") {
 		t.Fatal("misleading creation receipt", out.String())
 	}
 }
@@ -77,7 +77,7 @@ func TestCreationDefaultFailureOpensSavedSessionInsteadOfRetryingCreate(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "Session · New") || !strings.Contains(out.String(), "dbx edit "+created.Directory+" --default") {
+	if !strings.Contains(out.String(), "Session · New") || !strings.Contains(out.String(), "dbx edit "+created.PublicName()+" --default") {
 		t.Fatal("post-creation failure lost saved session or repair guidance", out.String())
 	}
 }

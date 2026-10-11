@@ -89,7 +89,7 @@ func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 	text := out.String()
 	folders := []string{first.Settings.Workspace, other}
 	sort.Strings(folders)
-	if !strings.HasPrefix(text, "FOLDER") || strings.Index(text, folders[0]) < 0 || strings.Index(text, folders[1]) < 0 || strings.Index(text, folders[0]) >= strings.Index(text, folders[1]) || !strings.Contains(text, firstName) || !strings.Contains(text, second.Session) || strings.Contains(text, second.SessionID) || strings.Contains(text, "\n\n") {
+	if !strings.HasPrefix(text, "FOLDER") || strings.Index(text, folders[0]) < 0 || strings.Index(text, folders[1]) < 0 || strings.Index(text, folders[0]) >= strings.Index(text, folders[1]) || !strings.Contains(text, firstName) || !strings.Contains(text, second.Session) || strings.Contains(text, "\n\n") {
 		t.Fatal("global list did not render and sort folder rows", text)
 	}
 	rows := strings.Split(strings.TrimSpace(text), "\n")[1:]

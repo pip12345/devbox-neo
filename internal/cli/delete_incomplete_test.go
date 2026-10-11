@@ -15,7 +15,7 @@ import (
 
 func incompleteCLIState(t *testing.T, e *app.Engine) (string, string) {
 	t.Helper()
-	name := "dbx-42643868833d.main"
+	name := "42643868833d"
 	root := filepath.Join(e.Store.Home, "sessions", name)
 	if err := os.MkdirAll(filepath.Join(root, "harnesses/pi/stores/home/extensions-pip"), 0700); err != nil {
 		t.Fatal(err)
@@ -37,12 +37,22 @@ func TestDeleteIncompleteCreationCLIJSON(t *testing.T) {
 				cmd.SetContext(context.Background())
 				out := new(bytes.Buffer)
 				cmd.SetOut(out)
-				args := []string{name, scope, "--json"}
+				args := []string{"--incomplete-dir", name, scope, "--json"}
 				if preview {
 					args = append(args, "--dry-run")
 				}
 				cmd.SetArgs(args)
-				if err := cmd.Execute(); err != nil {
+				err := cmd.Execute()
+				if scope == "--container" {
+					if err == nil {
+						t.Fatal("container scope selected incomplete files")
+					}
+					if _, err := os.Stat(root); err != nil {
+						t.Fatal(err)
+					}
+					return
+				}
+				if err != nil {
 					t.Fatal(err, out.String())
 				}
 				var result app.DeleteResult
@@ -56,7 +66,7 @@ func TestDeleteIncompleteCreationCLIJSON(t *testing.T) {
 				} else if len(result.IncompleteDirectories) != 0 || len(result.RetainedIncompleteDirectories) != 1 {
 					t.Fatal(result)
 				}
-				_, err := os.Stat(root)
+				_, err = os.Stat(root)
 				if os.IsNotExist(err) != (scope == "--session" && !preview) {
 					t.Fatal(result, err)
 				}

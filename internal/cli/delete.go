@@ -169,6 +169,8 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 		}
 		return printDeleteResult(cmd.OutOrStdout(), result)
 	}}
+	cmd.Flags().StringArrayVar(&options.Selection.ContainerNames, "container-name", nil, "Select an unmatched managed Docker container by its actual name")
+	cmd.Flags().StringArrayVar(&options.Selection.IncompleteDirs, "incomplete-dir", nil, "Select an incomplete directory under sessions/ with no session.json")
 	cmd.Flags().BoolVar(&options.Selection.All, "all", false, "Select all saved environments and unmatched managed containers")
 	cmd.Flags().BoolVar(&options.Selection.Stopped, "stopped", false, "Select environments with stopped containers")
 	cmd.Flags().BoolVar(&container, "container", false, "Delete containers without prompting; retain saved session data")

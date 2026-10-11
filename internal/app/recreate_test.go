@@ -50,7 +50,7 @@ func TestRecreateChoosesMinimumRequiredWork(t *testing.T) {
 			if (count(d, "create") > creates) != wantReplacement || (count(d, "build") > builds) != wantBuild {
 				t.Fatal("wrong application level", d.History())
 			}
-			if current.ID != old.ID || (current.Applied.SetupContainer != old.Applied.SetupContainer) != wantReplacement {
+			if current.ID != old.ID || (current.Applied.ContainerID != old.Applied.ContainerID) != wantReplacement {
 				t.Fatal("wrong saved/runtime identity")
 			}
 			if kind == "force-image" {
@@ -91,14 +91,14 @@ func TestRuntimeApplyCapturesInputsAndPreservesLifetime(t *testing.T) {
 				t.Fatal(err)
 			}
 			current := sessionRecord(t, e, made.SessionID)
-			if !reflect.DeepEqual(current.Applied.Inputs.Image, old.Applied.Inputs.Image) || !reflect.DeepEqual(current.Applied.Inputs.Container, old.Applied.Inputs.Container) || current.Applied.SetupContainer != old.Applied.SetupContainer {
+			if !reflect.DeepEqual(current.Applied.Inputs.Image, old.Applied.Inputs.Image) || !reflect.DeepEqual(current.Applied.Inputs.Container, old.Applied.Inputs.Container) || current.Applied.ContainerID != old.Applied.ContainerID {
 				t.Fatal("runtime apply changed creation contract")
 			}
 			if !slices.Contains(current.Applied.Launch.Args, "--captured") || !slices.Equal(current.Applied.Launch.Shell, []string{"sh"}) {
 				t.Fatal("launch did not use captured inputs")
 			}
 			path := docker.OpenHookPath(environment.Digest([]byte("echo captured")))
-			if string(d.Hooks[current.Applied.SetupContainer][path]) != "echo captured" {
+			if string(d.Hooks[current.Applied.ContainerID][path]) != "echo captured" {
 				t.Fatal("hook was reread")
 			}
 			c, _ := sessionSnapshot(t, e, made.SessionID)

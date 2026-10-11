@@ -34,15 +34,15 @@ type Settings struct {
 }
 
 type Record struct {
-	Version  int          `json:"version"`
-	ID       string       `json:"id"`
-	Settings Settings     `json:"settings"`
-	Applied  AppliedState `json:"applied"`
-	Created  time.Time    `json:"created_at"`
-	Activity time.Time    `json:"last_activity"`
-	Action   string       `json:"last_action"`
-	// Directory is discovered by the store, never inferred from settings or
-	// persisted as another source of identity.
+	Version   int          `json:"version"`
+	ID        string       `json:"id"`
+	StateTree string       `json:"state_tree"`
+	Settings  Settings     `json:"settings"`
+	Applied   AppliedState `json:"applied"`
+	Created   time.Time    `json:"created_at"`
+	Activity  time.Time    `json:"last_activity"`
+	Action    string       `json:"last_action"`
+	// Directory is the verified ID-backed storage location, not a public name.
 	Directory string `json:"-"`
 }
 
@@ -63,12 +63,21 @@ type AppliedState struct {
 	// in the container and their ordered hashes already belong to Inputs.
 	Setup           []environment.Hook `json:"-"`
 	BeforeOpen      []environment.Hook `json:"-"`
-	SetupContainer  string             `json:"setup_container"`
+	ContainerID     string             `json:"container_id"`
 	Ownership       int                `json:"ownership_version"`
 	ManifestVersion int                `json:"manifest_version"`
 }
 
-const RecordVersion = 7
+const RecordVersion = 8
+
+const InitialStateTree = "data/base"
+
+func (r Record) PublicName() string { return environment.PublicName(r.Settings.Binding, r.ID) }
+
+func ValidStateTree(tree string) bool {
+	return filepath.Clean(tree) == tree && strings.HasPrefix(tree, "data/") &&
+		validName(strings.TrimPrefix(tree, "data/"))
+}
 
 // Explicit runtime application advances its explanation baseline together with
 // its fingerprint. Ordinary access never advances applied configuration.
@@ -77,7 +86,8 @@ func (r *Record) ApplyRuntime(inputs environment.RuntimeInputs) {
 	r.Applied.Fingerprints.Runtime = inputs.Fingerprint()
 }
 
-var idPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
+var idPattern = regexp.MustCompile(`^[a-f0-9]{12}$`)
+var tokenPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 var hashPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func (s Settings) Validate() error {
@@ -96,7 +106,7 @@ func (r Record) Validate(directory string) error {
 	if r.Version != RecordVersion {
 		return fmt.Errorf("unsupported session record version; start dbx in a terminal to review available migrations, or reset unsupported development state explicitly")
 	}
-	if !idPattern.MatchString(r.ID) || !validName(directory) {
+	if !idPattern.MatchString(r.ID) || directory != r.ID || !ValidStateTree(r.StateTree) {
 		return fmt.Errorf("invalid session identity or directory")
 	}
 	if r.Created.IsZero() || r.Activity.IsZero() {
@@ -105,14 +115,28 @@ func (r Record) Validate(directory string) error {
 	if err := r.Settings.Validate(); err != nil {
 		return err
 	}
-	return r.Applied.Validate(r.ID)
+	if err := r.Applied.Validate(r.ID); err != nil {
+		return err
+	}
+	for _, st := range r.Applied.Stores {
+		if st.Scope != "environment" {
+			continue
+		}
+		suffix := string(filepath.Separator) + filepath.Join("sessions", r.ID, r.StateTree, "harnesses", r.Applied.Definition.Name, "stores", st.Name)
+		for _, mount := range r.Applied.Creation.Mounts {
+			if mount.Target == st.Target && !strings.HasSuffix(mount.Source, suffix) {
+				return fmt.Errorf("recorded store mount differs from session state tree")
+			}
+		}
+	}
+	return nil
 }
 
 func (a AppliedState) Validate(sessionID string) error {
 	if a.Ownership != 1 || a.ManifestVersion != 1 {
 		return fmt.Errorf("unsupported applied runtime contract")
 	}
-	if !strings.HasPrefix(a.ImageID, "sha256:") || !hashPattern.MatchString(strings.TrimPrefix(a.ImageID, "sha256:")) || (!strings.HasPrefix(a.ImageTag, docker.Namespace+"/session:") || !strings.HasSuffix(a.ImageTag, "-"+sessionID) || !config.ImageReference.MatchString(a.ImageTag)) || !environment.ValidResourceName(a.Creation.Name) || a.Creation.Image != a.ImageID {
+	if !strings.HasPrefix(a.ImageID, "sha256:") || !hashPattern.MatchString(strings.TrimPrefix(a.ImageID, "sha256:")) || (!strings.HasPrefix(a.ImageTag, docker.Namespace+"/session:"+sessionID+"-") || !config.ImageReference.MatchString(a.ImageTag)) || !environment.ValidResourceName(a.Creation.Name) || a.Creation.Image != a.ImageID {
 		return fmt.Errorf("incomplete recorded creation contract")
 	}
 	if !hashPattern.MatchString(a.Fingerprints.Image) || !hashPattern.MatchString(a.Fingerprints.Container) || !hashPattern.MatchString(a.Fingerprints.Runtime) || !hashPattern.MatchString(a.Definition.Hash) {
@@ -133,7 +157,7 @@ func (a AppliedState) Validate(sessionID string) error {
 	if a.Launch.Binary == "" || len(a.Launch.Shell) == 0 || !config.Name.MatchString(a.Definition.Name) {
 		return fmt.Errorf("invalid recorded launch contract")
 	}
-	if !hashPattern.MatchString(a.SetupContainer) {
+	if !hashPattern.MatchString(a.ContainerID) {
 		return fmt.Errorf("incomplete creation commit")
 	}
 	if a.Definition.Origin != "builtin" && !filepath.IsAbs(a.Definition.Origin) {

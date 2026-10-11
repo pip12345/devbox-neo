@@ -63,7 +63,7 @@ For host masters, a bounded Docker inspection each second also terminates sharin
 
 ## Socket paths and generated clients
 
-`sessions/<name>/runtime/ssh` is a private writable mount at `/devbox/ssh`. It is separate from transferable harness stores and excluded from runtime-asset permission changes. The mount is a creation input; a recorded container without it requires recreation rather than late mount injection.
+`sessions/<id>/ssh` is a private writable mount at `/devbox/ssh`. It is separate from transferable harness stores and excluded from runtime-asset permission changes. The mount is a creation input; a recorded container without it requires recreation rather than late mount injection.
 
 Host masters use short `/proc/<controller-pid>/fd` paths backed by an open directory. This avoids Unix socket path-length limits without changing the caller's working directory, which matters for relative SSH configuration. Controller probes can use `/proc/self/fd` for long home paths too.
 

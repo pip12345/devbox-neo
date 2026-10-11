@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"devbox/internal/commanderror"
+	"devbox/internal/store"
 )
 
 func TestRequiredMigrationDetectionAndApplication(t *testing.T) {
@@ -31,12 +32,13 @@ func TestRequiredMigrationDetectionAndApplication(t *testing.T) {
 	if required, err := Pending(ctx, e.Store.Home); err != nil || required != nil {
 		t.Fatal("completed migration still blocks", required, err)
 	}
-	if r, err := e.Store.Read(ctx, old.Directory); err != nil || r.ID != old.ID {
+	if r, err := e.Store.Read(ctx, old.ID[:12]); err != nil || r.ID != old.ID[:12] {
 		t.Fatal("identity lost", err)
 	}
-	if selected, err := e.Store.ReadDefault(ctx, old.Settings.Workspace); err != nil || selected == nil || selected.ID != old.ID {
+	if selected, err := e.Store.ReadDefault(ctx, old.Settings.Workspace); err != nil || selected == nil || selected.ID != old.ID[:12] {
 		t.Fatal("combined update lost default", selected, err)
 	}
+	history = filepath.Join(e.Store.Home, "sessions", old.ID[:12], store.InitialStateTree, "harnesses/pi/stores/home/history")
 	if data, err := os.ReadFile(history); err != nil || string(data) != "saved history" {
 		t.Fatal("history lost", err)
 	}

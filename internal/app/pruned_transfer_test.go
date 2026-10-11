@@ -16,7 +16,7 @@ func TestMovePreparationFailureDoesNotRequirePrunedSourceImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := sessionRecord(t, e, made.SessionID)
-	write(t, filepath.Join(e.Store.Home, "sessions", source.Directory, "harnesses/pi/stores/home/history"), "source history")
+	write(t, filepath.Join(e.Store.Home, "sessions", source.Directory, source.StateTree, "harnesses/pi/stores/home/history"), "source history")
 	forgetSession(t, e, source.ID)
 	delete(d.Images, source.Applied.ImageID)
 	delete(d.Images, source.Applied.ImageTag)
@@ -41,7 +41,7 @@ func TestMovePreparationFailureDoesNotRequirePrunedSourceImage(t *testing.T) {
 	if r.ID != source.ID {
 		t.Fatal("move changed session identity")
 	}
-	if got := string(getFile(t, filepath.Join(e.Store.Home, "sessions", r.Directory, "harnesses/pi/stores/home/history"))); got != "source history" {
+	if got := string(getFile(t, filepath.Join(e.Store.Home, "sessions", r.Directory, r.StateTree, "harnesses/pi/stores/home/history"))); got != "source history" {
 		t.Fatal("source-authoritative history lost", got)
 	}
 }

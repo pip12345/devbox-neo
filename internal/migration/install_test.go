@@ -38,25 +38,25 @@ func TestMigratedSessionDetectsHarnessInstallerChanges(t *testing.T) {
 	if _, err := Run(ctx, e.Store.Home, e.Docker, true); err != nil {
 		t.Fatal(err)
 	}
-	converted, err := e.Store.Read(ctx, old.Directory)
+	converted, err := e.Store.Read(ctx, old.ID[:12])
 	if err != nil || converted.Applied.Inputs.Image.Definition.Hash != old.Applied.Inputs.Image.Definition.Hash {
 		t.Fatal("migration replaced the applied definition with current inputs", err)
 	}
-	if _, err := e.Recreate(ctx, app.RecreateRequest{Target: old.Directory}, false); err != nil {
+	if _, err := e.Recreate(ctx, app.RecreateRequest{Target: old.ID[:12]}, false); err != nil {
 		t.Fatal(err)
 	}
-	baseline, err := e.Store.Read(ctx, old.Directory)
+	baseline, err := e.Store.Read(ctx, old.ID[:12])
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, err := e.Status(ctx, old.Directory, "")
+	status, err := e.Status(ctx, old.ID[:12], "")
 	if err != nil || status.ConfigError != "" || status.Desired != environment.NoChange {
 		t.Fatal("recreated baseline is not current", status.View, err)
 	}
 	if err := os.WriteFile(installer, []byte("true\n# changed installer\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	status, err = e.Status(ctx, old.Directory, "")
+	status, err = e.Status(ctx, old.ID[:12], "")
 	if err != nil || status.ConfigError != "" || status.Desired != environment.RebuildAndRecreate {
 		t.Fatal("installer edit did not require image rebuilding", status.View, err)
 	}
@@ -82,13 +82,13 @@ func TestMigratedSessionDetectsHarnessInstallerChanges(t *testing.T) {
 		return n
 	}
 	before := builds()
-	if _, err := e.Recreate(ctx, app.RecreateRequest{Target: old.Directory}, false); err != nil {
+	if _, err := e.Recreate(ctx, app.RecreateRequest{Target: old.ID[:12]}, false); err != nil {
 		t.Fatal(err)
 	}
 	if builds() <= before {
 		t.Fatal("installer edit reused the previous image")
 	}
-	status, err = e.Status(ctx, old.Directory, "")
+	status, err = e.Status(ctx, old.ID[:12], "")
 	if err != nil || status.ConfigError != "" || status.Desired != environment.NoChange {
 		t.Fatal("installer recreation did not commit current inputs", status.View, err)
 	}

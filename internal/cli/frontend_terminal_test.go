@@ -21,7 +21,7 @@ import (
 
 func TestFrontendResumesPinnedTransferWithoutChangingEndpoints(t *testing.T) {
 	f, out, q, name := frontendFixture(t, strings.NewReader("1\n2\n3\n5\ny\n"))
-	c, _, err := f.e.Docker.InspectID(context.Background(), sessionRecord(t, f.e, name).Applied.SetupContainer)
+	c, _, err := f.e.Docker.InspectID(context.Background(), sessionRecord(t, f.e, name).Applied.ContainerID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func testNativeBrowserCurrentFolderSelection(t *testing.T, hasDefault bool) {
 		created = zulu
 		initial, other, navigation = "Zulu", "Alpha", "\x1b[A\r"
 	}
-	targetContainer := sessionRecord(t, e, created.SessionID).Applied.SetupContainer
+	targetContainer := sessionRecord(t, e, created.SessionID).Applied.ContainerID
 	attached := make(chan docker.Command, 1)
 	e.Docker.Runner.(*dockertest.Daemon).Attached = func(_ context.Context, c docker.Command) error {
 		if c.Stdin != nil {

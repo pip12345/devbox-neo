@@ -33,7 +33,7 @@ func TestRecreateContainerFlagForcesReplacement(t *testing.T) {
 			t.Fatal(err)
 		}
 		current := sessionRecord(t, e, id)
-		if (current.Applied.SetupContainer != old.Applied.SetupContainer) != force || current.Applied.ImageID != old.Applied.ImageID {
+		if (current.Applied.ContainerID != old.Applied.ContainerID) != force || current.Applied.ImageID != old.Applied.ImageID {
 			t.Fatal("force flag did not preserve minimal/default behavior")
 		}
 	}

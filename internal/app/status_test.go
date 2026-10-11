@@ -10,7 +10,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"devbox/internal/docker"
 	"devbox/internal/environment"
@@ -73,10 +72,10 @@ func TestStatusDefaultMatchesSavedNameAndID(t *testing.T) {
 		t.Fatal("default-selected folder status lost default flag", details, err)
 	}
 	for _, selected := range []store.DefaultSession{
-		{ID: strings.Repeat("a", 32)},
-		{ID: strings.Repeat("b", 32)},
+		{ID: strings.Repeat("a", 12)},
+		{ID: strings.Repeat("b", 12)},
 	} {
-		data, err := json.Marshal(store.FolderDefaults{Version: 1, Defaults: map[string]string{q.Workspace: selected.ID}})
+		data, err := json.Marshal(store.FolderDefaults{Version: 2, Defaults: map[string]string{q.Workspace: selected.ID}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -141,16 +140,8 @@ func TestStatusAllLeavesPendingTransfersUnclassified(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	destination.Name = environment.ResourceName(destination.Workspace, destination.LocalName, "destination")
-	journal := store.Transfer{Version: 4, ContainerName: environment.ResourceName(destination.Workspace, destination.LocalName, "container"), SourceContainerID: source.Applied.SetupContainer, ID: strings.Repeat("a", 32), Mode: "clone", Phase: "prepare", Source: environment.Identity{Binding: source.Settings.Binding, Name: source.Directory}, Destination: destination, SourceID: source.ID, DestinationID: strings.Repeat("b", 32), Started: time.Now().UTC()}
-	if err := journal.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	b, err := json.Marshal(journal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	write(t, filepath.Join(e.Store.Home, "state/transfers", source.Directory+".json"), string(b))
+	journal := transferJournal(t, source, destination.Binding, "clone")
+	saveTransferJournal(t, e, journal)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
 	report, err := e.StatusAll(context.Background(), "")
 	if err != nil || len(report.Sessions) != 2 {
@@ -164,7 +155,7 @@ func TestStatusAllLeavesPendingTransfersUnclassified(t *testing.T) {
 		if err != nil || details.Pending == nil || details.Desired != "" || details.ConfigError != "" {
 			t.Fatal("single status resolved a pending endpoint", details, err)
 		}
-		if (details.Record != nil) != (view.Target == source.Directory) {
+		if (details.Record != nil) != (view.Target == source.PublicName()) {
 			t.Fatal("incorrect record for pending endpoint", details)
 		}
 	}

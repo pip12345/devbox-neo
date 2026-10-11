@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -10,7 +9,6 @@ import (
 
 	"devbox/internal/commanderror"
 	"devbox/internal/docker"
-	"devbox/internal/environment"
 	"devbox/internal/store"
 )
 
@@ -18,11 +16,13 @@ import (
 // targets retain the identity chosen by an earlier preview instead of resolving
 // a folder's potentially changed default again.
 type Selection struct {
-	Targets   []string
-	Captured  []SelectedTarget
-	LocalName string
-	All       bool
-	Stopped   bool
+	Targets        []string
+	ContainerNames []string
+	IncompleteDirs []string
+	Captured       []SelectedTarget
+	LocalName      string
+	All            bool
+	Stopped        bool
 }
 
 type recordExpectation uint8
@@ -43,6 +43,7 @@ type SelectedTarget struct {
 	record      recordExpectation
 	containerID string
 	incomplete  *store.IncompleteDirectory
+	unmatched   bool
 }
 
 func (t SelectedTarget) Name() string { return t.name }
@@ -53,7 +54,7 @@ func (t SelectedTarget) selector() string {
 	return t.name
 }
 func selectedRecord(r store.Record) SelectedTarget {
-	return SelectedTarget{name: r.Directory, sessionID: r.ID, record: recordPresent}
+	return SelectedTarget{name: r.PublicName(), sessionID: r.ID, record: recordPresent}
 }
 
 type selectedTargets []SelectedTarget
@@ -67,13 +68,28 @@ func orderedTargets(targets map[string]SelectedTarget) selectedTargets {
 	return result
 }
 func (targets selectedTargets) lock(ctx context.Context, state *store.Store) ([]*store.Locked, error) {
-	names := make([]string, 0, len(targets))
-	ids := make(map[string]string, len(targets))
+	ids := map[string]string{}
 	for _, target := range targets {
-		names = append(names, target.name)
-		ids[target.name] = target.sessionID
+		ids[target.sessionID] = target.sessionID
 	}
-	return state.LockAll(ctx, names, ids)
+	var names []string
+	for id := range ids {
+		names = append(names, id)
+	}
+	sort.Strings(names)
+	locks, err := state.LockAll(ctx, names, ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := map[string]*store.Locked{}
+	for _, lock := range locks {
+		byID[lock.ID] = lock
+	}
+	result := make([]*store.Locked, 0, len(targets))
+	for _, target := range targets {
+		result = append(result, byID[target.sessionID])
+	}
+	return result, nil
 }
 
 func (e *Engine) selectSavedSessions(ctx context.Context) (selectedTargets, error) {
@@ -105,11 +121,11 @@ func (e *Engine) selectSavedSessions(ctx context.Context) (selectedTargets, erro
 }
 
 func (e *Engine) selectContainers(ctx context.Context, selection Selection) (selectedTargets, error) {
-	exact := len(selection.Targets) > 0 || len(selection.Captured) > 0
+	exact := len(selection.Targets) > 0 || len(selection.Captured) > 0 || len(selection.ContainerNames) > 0
 	if (selection.All && selection.Stopped) || ((selection.All || selection.Stopped) && exact) || (len(selection.Targets) > 0 && len(selection.Captured) > 0) {
 		return nil, fmt.Errorf("use exact targets, --all, or --stopped, not a combination")
 	}
-	if selection.LocalName != "" && (selection.All || selection.Stopped || len(selection.Captured) > 0) {
+	if selection.LocalName != "" && (selection.All || selection.Stopped || len(selection.Captured) > 0 || len(selection.ContainerNames) > 0) {
 		return nil, fmt.Errorf("--name requires an explicit folder target")
 	}
 	targets := map[string]SelectedTarget{}
@@ -124,8 +140,8 @@ func (e *Engine) selectContainers(ctx context.Context, selection Selection) (sel
 		}
 		byContainer := map[string]store.Record{}
 		for _, entry := range entries {
-			if entry.Record.Applied.SetupContainer != "" {
-				byContainer[entry.Record.Applied.SetupContainer] = entry.Record
+			if entry.Record.Applied.ContainerID != "" {
+				byContainer[entry.Record.Applied.ContainerID] = entry.Record
 			}
 		}
 		for _, c := range containers {
@@ -137,11 +153,11 @@ func (e *Engine) selectContainers(ctx context.Context, selection Selection) (sel
 				target = selectedRecord(r)
 			}
 			if target.sessionID == "" {
-				owner, err := e.orphanOwner(c)
+				selected, err := e.selectUnmatchedInstance(ctx, c)
 				if err != nil {
 					return nil, err
 				}
-				target.sessionID = owner.Session
+				target = *selected
 			}
 			targets[target.name] = target
 		}
@@ -158,8 +174,37 @@ func (e *Engine) selectContainers(ctx context.Context, selection Selection) (sel
 				targets[target.name] = *target
 			}
 		}
+		for _, name := range selection.ContainerNames {
+			target, err := e.selectUnmatchedContainer(ctx, name)
+			if err != nil {
+				return nil, err
+			}
+			if target != nil {
+				targets[target.name] = *target
+			}
+		}
 		for _, captured := range selection.Captured {
-			target, err := e.selectContainer(ctx, captured.selector(), "")
+			var target *SelectedTarget
+			var err error
+			if captured.unmatched {
+				c, exists, inspectErr := e.Docker.InspectID(ctx, captured.containerID)
+				if inspectErr != nil {
+					return nil, inspectErr
+				}
+				if exists {
+					target, err = e.selectUnmatchedInstance(ctx, c)
+				} else {
+					_, occupied, inspectErr := e.Docker.Inspect(ctx, captured.name)
+					if inspectErr != nil {
+						return nil, inspectErr
+					}
+					if occupied {
+						return nil, fmt.Errorf("selected container instance changed; preview deletion again")
+					}
+				}
+			} else {
+				target, err = e.selectContainer(ctx, captured.selector(), "")
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -177,37 +222,22 @@ func (e *Engine) selectContainers(ctx context.Context, selection Selection) (sel
 
 func (e *Engine) selectContainer(ctx context.Context, target, localName string) (*SelectedTarget, error) {
 	r, err := e.Locate(ctx, target, localName)
-	if err == nil {
-		selected := selectedRecord(r)
-		return &selected, nil
-	}
-	byID := environment.IsSessionID(target) && (sessionAbsent(err) || incompleteInventory(err))
-	if byID {
-		live, inventoryErr := e.Docker.Inventory(ctx, e.Store.Installation)
-		if inventoryErr != nil {
-			return nil, inventoryErr
-		}
-		match := ""
-		for _, c := range live {
-			if c.Config.Labels[docker.Namespace+".session"] == target {
-				if match != "" {
-					return nil, fmt.Errorf("multiple containers use this session ID; select an exact Docker name for cleanup")
-				}
-				match = strings.TrimPrefix(c.Name, "/")
-			}
-		}
-		if match == "" {
-			return nil, err
-		}
-		target = match
-	}
-	if !byID && !(errors.Is(err, os.ErrNotExist) && strings.HasPrefix(target, environment.ContainerPrefix) && !strings.ContainsAny(target, "/\\")) {
+	if err != nil {
 		return nil, err
 	}
-	c, exists, err := e.Docker.Inspect(ctx, target)
+	selected := selectedRecord(r)
+	return &selected, nil
+}
+
+func (e *Engine) selectUnmatchedContainer(ctx context.Context, name string) (*SelectedTarget, error) {
+	c, exists, err := e.Docker.Inspect(ctx, name)
 	if err != nil || !exists {
 		return nil, err
 	}
+	return e.selectUnmatchedInstance(ctx, c)
+}
+
+func (e *Engine) selectUnmatchedInstance(ctx context.Context, c docker.Container) (*SelectedTarget, error) {
 	owner, err := e.orphanOwner(c)
 	if err != nil {
 		return nil, err
@@ -217,19 +247,14 @@ func (e *Engine) selectContainer(ctx context.Context, target, localName string) 
 		return nil, err
 	}
 	if pending != nil {
-		return nil, commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", owner.Session, nil, pending.RetryStep())
+		return nil, commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", pending.Source, nil, pending.RetryStep())
 	}
-	linked, findErr := e.Store.Find(ctx, owner.Session, nil)
-	if findErr == nil {
-		if linked.Applied.SetupContainer != c.ID {
-			return nil, fmt.Errorf("container is not the recorded session instance")
-		}
-		selected := selectedRecord(linked)
-		selected.containerID = c.ID
-		return &selected, nil
+	r, findErr := e.Store.Find(ctx, owner.Session, nil)
+	if findErr == nil && r.Applied.ContainerID == c.ID {
+		return nil, fmt.Errorf("container is the recorded runtime; select public session %s instead", r.PublicName())
 	}
-	if !sessionAbsent(findErr) && !incompleteInventory(findErr) {
+	if findErr != nil && !sessionAbsent(findErr) && !incompleteInventory(findErr) {
 		return nil, findErr
 	}
-	return &SelectedTarget{name: target, sessionID: owner.Session, record: recordAbsent, containerID: c.ID}, nil
+	return &SelectedTarget{name: strings.TrimPrefix(c.Name, "/"), sessionID: owner.Session, containerID: c.ID, unmatched: true}, nil
 }

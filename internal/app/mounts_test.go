@@ -94,7 +94,7 @@ func TestMountParentPreparationRejectsMissingRootsAndSymlinks(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := sessionRecord(t, e, opened.SessionID)
-			state := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, opened.SessionID).Directory, "harnesses/third/stores/state")
+			state := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).StateTree, "harnesses/third/stores/state")
 			outside := t.TempDir()
 			if kind == "missing-root" {
 				err = os.RemoveAll(state)

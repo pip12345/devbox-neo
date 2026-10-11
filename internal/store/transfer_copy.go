@@ -26,11 +26,11 @@ func (l *Locked) CopyTransferState(destination *Locked, j Transfer, definitions 
 				continue
 			}
 			rel := filepath.Join("harnesses", d.Name, "stores", s.Name)
-			source, err := l.Path(rel)
+			source, err := l.TreePath(j.SourceTree, rel)
 			if err != nil {
 				return err
 			}
-			target, err := destination.Path(rel)
+			target, err := destination.TreePath(j.DestinationTree, rel)
 			if err != nil {
 				return err
 			}
@@ -45,7 +45,7 @@ func (l *Locked) CopyTransferState(destination *Locked, j Transfer, definitions 
 			}
 		}
 		rel := filepath.Join("harnesses", d.Name, "managed-config.json")
-		source, err := l.Path(rel)
+		source, err := l.TreePath(j.SourceTree, rel)
 		if err != nil {
 			return err
 		}
@@ -54,7 +54,7 @@ func (l *Locked) CopyTransferState(destination *Locked, j Transfer, definitions 
 		} else if err != nil {
 			return err
 		}
-		target, err := destination.Path(rel)
+		target, err := destination.TreePath(j.DestinationTree, rel)
 		if err != nil {
 			return err
 		}
@@ -62,7 +62,7 @@ func (l *Locked) CopyTransferState(destination *Locked, j Transfer, definitions 
 			return err
 		}
 	}
-	root, err := destination.Path(".")
+	root, err := destination.TreePath(j.DestinationTree, ".")
 	if err != nil {
 		return err
 	}

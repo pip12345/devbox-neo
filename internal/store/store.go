@@ -53,7 +53,7 @@ func Open(ctx context.Context, home string) (*Store, error) {
 		return nil, err
 	}
 	id := strings.TrimSpace(string(b))
-	if !idPattern.MatchString(id) {
+	if !tokenPattern.MatchString(id) {
 		return nil, fmt.Errorf("corrupt installation identity")
 	}
 	for _, dir := range []string{"configs", "harnesses", "auth", "cache/harnesses", "sessions"} {
@@ -74,7 +74,7 @@ type Locked struct {
 }
 
 func (s *Store) Lock(ctx context.Context, directory, id string) (*Locked, error) {
-	if !validName(directory) || !idPattern.MatchString(id) {
+	if directory != id || !idPattern.MatchString(id) {
 		return nil, fmt.Errorf("invalid session lock reference")
 	}
 	operation, err := s.lockID(ctx, id)
@@ -128,12 +128,47 @@ func (l *Locked) Dir(rel string) (string, error) {
 	}
 	return fsutil.Dir(l.store.Home, filepath.Join("sessions", l.Name, rel), 0700)
 }
+func (l *Locked) TreePath(tree, rel string) (string, error) {
+	if !ValidStateTree(tree) || (rel != "." && !filepath.IsLocal(rel)) {
+		return "", fmt.Errorf("invalid session state-tree path")
+	}
+	return l.Path(filepath.Join(tree, rel))
+}
+
+func (l *Locked) TreeDir(tree, rel string) (string, error) {
+	if !ValidStateTree(tree) || (rel != "." && !filepath.IsLocal(rel)) {
+		return "", fmt.Errorf("invalid session state-tree path")
+	}
+	return l.Dir(filepath.Join(tree, rel))
+}
+
+// Claim allocates a new session root without adopting or replacing existing
+// state, including an incomplete allocation with no session record.
+func (l *Locked) Claim() error {
+	root, err := l.Path(".")
+	if err != nil {
+		return err
+	}
+	return os.Mkdir(root, 0700)
+}
+
 func (l *Locked) Load() (Record, error) {
 	if err := l.RequireAvailable(); err != nil {
 		return Record{}, err
 	}
 	return l.ReadRecord(l.ctx)
 }
+func (l *Locked) ReadRecord(ctx context.Context) (Record, error) {
+	if err := l.check(); err != nil {
+		return Record{}, err
+	}
+	r, err := l.store.Read(ctx, l.ID)
+	if err == nil && r.ID != l.ID {
+		return r, fmt.Errorf("session identity differs from operation lock")
+	}
+	return r, err
+}
+
 func (s *Store) Read(ctx context.Context, name string) (Record, error) {
 	var record Record
 	if err := ctx.Err(); err != nil {

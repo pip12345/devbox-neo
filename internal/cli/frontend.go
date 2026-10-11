@@ -241,7 +241,7 @@ func (f *frontend) sessionCollection(report app.InventoryReport, sortBy string) 
 		if v.Error != "" {
 			state = "error"
 		}
-		return cliui.Item{Key: v.Target, Label: label, Description: v.Workspace + " " + v.Harness, Depth: depth,
+		return cliui.Item{Key: sessionItemKey(v), Label: label, Description: v.Workspace + " " + v.Harness, Depth: depth,
 			Status: state, Activity: activityAge(v.LastActivity, time.Now()), Selected: v.Default, Fields: sessionFields(v),
 			Summary: sessionSummary(v), Actions: f.sessionActions(v),
 			Open: func() error { return f.m.report(f.session(v)) }}
@@ -308,10 +308,10 @@ func (f *frontend) session(v app.View) error {
 		// for stop/delete or other repair operations.
 		var navigation *cliui.Navigation
 		if report, err := f.e.List(f.m.Context, ""); err == nil {
-			navigation = &cliui.Navigation{Collection: *f.sessionCollection(report, f.sortBy), Key: v.Target}
+			navigation = &cliui.Navigation{Collection: *f.sessionCollection(report, f.sortBy), Key: sessionItemKey(v)}
 			found := false
 			for _, row := range append(report.Sessions, report.UnmatchedContainers...) {
-				if row.Target == v.Target {
+				if sessionItemKey(row) == sessionItemKey(v) {
 					v = row
 					found = true
 					break
@@ -325,7 +325,26 @@ func (f *frontend) session(v app.View) error {
 	})
 }
 
+func sessionItemKey(v app.View) string {
+	if v.SessionID != "" {
+		return v.SessionID
+	}
+	if id, ok := environment.SessionIDFromName(v.Target); ok {
+		return id
+	}
+	if v.ContainerID != "" {
+		return "container:" + v.ContainerID
+	}
+	return v.Target
+}
+
 func (f *frontend) sessionActions(v app.View) []cliui.Action {
+	// Actions retain the identity shown by this snapshot. Display-name changes
+	// cannot redirect a pending form or attachment to another session.
+	target := v.Target
+	if v.SessionID != "" {
+		target = v.SessionID
+	}
 	run := func(title string, op func(context.Context) error) func() error {
 		return func() error { return f.foreground(title, op) }
 	}
@@ -338,40 +357,40 @@ func (f *frontend) sessionActions(v app.View) []cliui.Action {
 	}
 	addGroup("Use",
 		f.keyedAction("Continue", "Resume the harness conversation", "c", run("Continue", func(ctx context.Context) error {
-			_, err := f.e.Open(ctx, app.OpenRequest{Target: v.Target, Continue: true})
+			_, err := f.e.Open(ctx, app.OpenRequest{Target: target, Continue: true})
 			return err
 		})),
 		f.keyedAction("Open", "Launch the recorded harness", "o", run("Open", func(ctx context.Context) error {
-			_, err := f.e.Open(ctx, app.OpenRequest{Target: v.Target})
+			_, err := f.e.Open(ctx, app.OpenRequest{Target: target})
 			return err
 		})),
-		f.action("Open with options", "Continuation and one-off harness arguments", func() error { return f.openWithOptions(v.Target) }),
-		f.keyedAction("Shell", "Attach to the configured shell", "s", run("Shell", func(ctx context.Context) error { return f.e.Exec(ctx, v.Target, "", nil, true) })),
-		f.keyedAction("Exec", "Run a command with exact arguments", "e", func() error { return f.exec(v.Target) }),
-		f.action("SSH", "Share an authenticated SSH connection", func() error { return f.ssh(v.Target) }),
+		f.action("Open with options", "Continuation and one-off harness arguments", func() error { return f.openWithOptions(target) }),
+		f.keyedAction("Shell", "Attach to the configured shell", "s", run("Shell", func(ctx context.Context) error { return f.e.Exec(ctx, target, "", nil, true) })),
+		f.keyedAction("Exec", "Run a command with exact arguments", "e", func() error { return f.exec(target) }),
+		f.action("SSH", "Share an authenticated SSH connection", func() error { return f.ssh(target) }),
 	)
 	addGroup("Inspect",
-		f.keyedAction("Status", "Live state, active commands and pending changes", "i", func() error { return f.status(v.Target) }),
-		f.keyedAction("Logs", "Choose Docker log tail and follow options", "l", func() error { return f.logs(v.Target) }),
-		f.action("Networks", "Inspect networks and manage secondary attachments", func() error { return f.networks(v.Target) }),
+		f.keyedAction("Status", "Live state, active commands and pending changes", "i", func() error { return f.status(target) }),
+		f.keyedAction("Logs", "Choose Docker log tail and follow options", "l", func() error { return f.logs(target) }),
+		f.action("Networks", "Inspect networks and manage secondary attachments", func() error { return f.networks(target) }),
 	)
 	addGroup("Container",
-		f.action("Start", "Keep running until explicitly stopped", run("Start", func(ctx context.Context) error { _, err := f.e.Start(ctx, v.Target, ""); return err })),
-		f.action("Stop", "Stop the container and clear keep-running intent; choose Force in the form", func() error { return f.stop(v.Target) }),
-		f.keyedAction("Recreate", "Apply current config; replace runtime only as needed", "r", func() error { return f.recreate(v.Target) }),
+		f.action("Start", "Keep running until explicitly stopped", run("Start", func(ctx context.Context) error { _, err := f.e.Start(ctx, target, ""); return err })),
+		f.action("Stop", "Stop the container and clear keep-running intent; choose Force in the form", func() error { return f.stop(target) }),
+		f.keyedAction("Recreate", "Apply current config; replace runtime only as needed", "r", func() error { return f.recreate(target) }),
 	)
 	addGroup("Manage",
-		f.action("Selected configs", "Edit selected config references and their order: "+sourceSummary(v.Sources), func() error { return f.editSession(v.Target) }),
+		f.action("Selected configs", "Edit selected config references and their order: "+sourceSummary(v.Sources), func() error { return f.editSession(target) }),
 		f.defaultAction(v),
 		cliui.Action{Label: "Copy or move", Description: "Destination, name, preview and explicit transfer", Run: func() (bool, error) {
-			moved, err := f.transfer(v.Target)
+			moved, err := f.transfer(target)
 			if err != nil {
 				return false, f.m.report(err)
 			}
 			return moved, nil
 		}},
 		cliui.Action{Label: "Rename session", Description: "Change the session label without changing its container", Run: func() (bool, error) {
-			renamed, err := f.rename(v.Target)
+			renamed, err := f.rename(target)
 			if err != nil {
 				return false, f.m.report(err)
 			}
@@ -382,18 +401,21 @@ func (f *frontend) sessionActions(v app.View) []cliui.Action {
 			if err != nil || !ok {
 				return err
 			}
-			r, err := f.e.SetWorkspace(f.m.Context, v.Target, "", path)
+			r, err := f.e.SetWorkspace(f.m.Context, target, "", path)
 			if err == nil {
-				f.m.Receipt("Workspace saved. Recreate explicitly to apply it.\n" + stepsText(scopedSteps(f.cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.Directory)}, f.s.Home)))
+				f.m.Receipt("Workspace saved. Recreate explicitly to apply it.\n" + stepsText(scopedSteps(f.cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.PublicName())}, f.s.Home)))
 			}
 			return err
 		}),
 		cliui.Action{Label: "Delete", Description: "Container first; saved data/history separately", Danger: true, Run: func() (bool, error) {
-			options := app.DeleteOptions{Selection: app.Selection{Targets: []string{v.Target}}, Scope: app.DeleteContainer}
+			options := app.DeleteOptions{Selection: app.Selection{Targets: []string{target}}, Scope: app.DeleteContainer}
 			if v.Uncommitted {
 				// There is no recorded container to delete. Show the applicable
 				// data scope in the form; it still requires confirmation.
 				options.Scope = app.DeleteSession
+				options.Selection = app.Selection{IncompleteDirs: []string{v.Target}}
+			} else if v.SessionID == "" {
+				options.Selection = app.Selection{ContainerNames: []string{v.ContainerName}}
 			}
 			if err := f.deleteWithOptions(options); err != nil {
 				return false, f.m.report(err)
@@ -402,7 +424,11 @@ func (f *frontend) sessionActions(v app.View) []cliui.Action {
 				directory, err := f.e.Store.InspectIncompleteDirectory(f.m.Context, v.Target)
 				return directory == nil && err == nil, err
 			}
-			_, err := f.e.Store.Read(f.m.Context, v.Target)
+			if v.SessionID == "" {
+				_, exists, err := f.e.Docker.InspectID(f.m.Context, v.ContainerID)
+				return !exists && err == nil, err
+			}
+			_, err := f.e.Store.Read(f.m.Context, v.SessionID)
 			return os.IsNotExist(err), nil
 		}},
 	)
@@ -502,8 +528,12 @@ func (f *frontend) editSession(name string) error {
 	}
 	saved, err := sourceChainMenu(f.m, f.e, record, "Back")
 	if saved {
+		public := record.PublicName()
+		if latest, readErr := f.e.Store.Read(f.m.Context, record.ID); readErr == nil {
+			public = latest.PublicName()
+		}
 		f.m.Notice("Selected configs saved. Check status before applying container changes.")
-		f.m.Receipt("Selected configs saved; container changes may still be pending.\n" + stepsText(scopedSteps(f.cmd, []commanderror.Step{commanderror.Next("Review pending changes", "status", name)}, f.s.Home)))
+		f.m.Receipt("Selected configs saved; container changes may still be pending.\n" + stepsText(scopedSteps(f.cmd, []commanderror.Step{commanderror.Next("Review pending changes", "status", public)}, f.s.Home)))
 	}
 	return err
 }
@@ -520,13 +550,17 @@ func (f *frontend) defaultAction(v app.View) cliui.Action {
 		if v.Default {
 			return f.clearDefault(v.Workspace)
 		}
-		record, err := f.e.Store.Read(f.m.Context, v.Target)
+		if id, ok := environment.SessionIDFromName(v.Target); ok && id != v.SessionID {
+			return fmt.Errorf("session identity changed; select it again")
+		}
+		record, err := f.e.Store.Read(f.m.Context, v.SessionID)
 		if err != nil {
 			return err
 		}
 		if record.ID != v.SessionID {
 			return fmt.Errorf("session identity changed; select it again")
 		}
+		record.Settings.Workspace = v.Workspace // require the folder shown by the snapshot
 		err = f.e.SetDefault(f.m.Context, record)
 		if err == nil {
 			f.m.Receipt("Default session for " + displayCell(v.Workspace) + ": " + displayCell(v.LocalName))
@@ -674,8 +708,8 @@ func (f *frontend) createSessionFromDraft(draft sessionCreationDraft) error {
 		return err
 	}
 	// Return to the saved session without launching its harness.
-	f.focusItem = result.Session
-	return f.session(app.View{Target: result.Session, LocalName: draft.name, Workspace: draft.workspace})
+	f.focusItem = result.SessionID
+	return f.session(app.View{Target: result.Session, SessionID: result.SessionID, LocalName: draft.name, Workspace: draft.workspace})
 }
 func (f *frontend) help() error {
 	actions := []cliui.Action{f.action("Command reference", Version, func() error {

@@ -69,7 +69,7 @@ func statusRecreateSteps(cmd *cobra.Command, view app.View, home string) []comma
 
 func printStatusDetails(out io.Writer, details app.StatusDetails, steps []commanderror.Step) error {
 	view := details.View
-	if _, err := fmt.Fprintf(out, "%s  %s\n", sessionLabel(view), containerState(view)); err != nil {
+	if _, err := fmt.Fprintf(out, "%s  %s\n", displayCell(view.Target), containerState(view)); err != nil {
 		return err
 	}
 	if view.Pending != nil {
@@ -83,7 +83,10 @@ func printStatusDetails(out io.Writer, details app.StatusDetails, steps []comman
 		fmt.Fprintf(out, "Default selection unavailable: %s\n", displayCell(details.DefaultError))
 	}
 	if details.Record != nil {
-		fmt.Fprintf(out, "Session: %s\nHarness: %s\nContainer: %s (%s)\nImage: %s\nActive commands: %d\n", displayCell(details.Record.Directory), displayCell(details.Harness), displayCell(view.ContainerName), displayCell(view.ContainerID), displayCell(details.Record.Applied.ImageID), len(details.Active))
+		fmt.Fprintf(out, "Session: %s\nWorkspace: %s\nLocal name: %s\nStorage: %s\nHarness: %s\nContainer: %s (%s)\nImage: %s\nActive commands: %d\n", displayCell(details.Record.PublicName()), displayCell(details.Record.Settings.Workspace), displayCell(details.Record.Settings.LocalName), displayCell(details.StoragePath), displayCell(details.Harness), containerState(view), displayCell(view.ContainerID), displayCell(details.Record.Applied.ImageID), len(details.Active))
+		if details.Record.Settings.Workspace != details.Record.Applied.Inputs.Container.Workspace {
+			fmt.Fprintf(out, "Applied workspace: %s\n", displayCell(details.Record.Applied.Inputs.Container.Workspace))
+		}
 		for _, lease := range details.Active {
 			fmt.Fprintf(out, "  %s — host PID %d, since %s\n", displayCell(lease.Action), lease.Process.PID, exactTime(lease.Created))
 		}

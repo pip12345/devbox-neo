@@ -76,9 +76,9 @@ func transferCommand(factory engineFactory, name *string) *cobra.Command {
 	var options app.TransferOptions
 	var asJSON, move, abort bool
 	description := "Copy session state to another folder or local name"
-	cmd := &cobra.Command{Use: "copy <folder|session> [destination-folder]", Short: description, Long: description + ".\nBy default, keep the source and leave the destination stopped.\nWith --move, remove the source after the destination is ready and preserve its running intent.\nUse --as NAME to choose another destination name, including within the same folder.\nRetry with current config to prepare an uncommitted transfer, or use --abort with its exact source session directory name. Committed retries only finish cleanup.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "copy <folder|session> [destination-folder]", Short: description, Long: description + ".\nBy default, keep the source and leave the destination stopped.\nWith --move, remove the source after the destination is ready and preserve its running intent.\nUse --as NAME to choose another destination name, including within the same folder.\nRetry with current config to prepare an uncommitted transfer, or use --abort with its exact public source session name. Committed retries only finish cleanup.", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
 		if abort && (len(args) != 1 || move || options.As != "" || options.DryRun || *name != "") {
-			return fmt.Errorf("--abort requires only the source session directory name; do not combine it with a destination, --move, --as, --name, or --dry-run")
+			return fmt.Errorf("--abort requires only the public source session name; do not combine it with a destination, --move, --as, --name, or --dry-run")
 		}
 		e, err := factory(cmd)
 		if err != nil {

@@ -43,7 +43,7 @@ func TestAccessRequiresExplicitRecreateForMissingRuntime(t *testing.T) {
 				err = e.SSH(ctx, old.ID, "", "user@example.com", SSHOptions{})
 			}
 			var missing *commanderror.Error
-			if !errors.As(err, &missing) || missing.Code != "container_missing" || missing.Target != old.Directory || len(missing.Next) != 1 || !reflect.DeepEqual(missing.Next[0].Command, []string{"dbx", "recreate", old.Directory}) {
+			if !errors.As(err, &missing) || missing.Code != "container_missing" || missing.Target != old.PublicName() || len(missing.Next) != 1 || !reflect.DeepEqual(missing.Next[0].Command, []string{"dbx", "recreate", old.PublicName()}) {
 				t.Fatal("missing recreate guidance", err)
 			}
 			for _, args := range d.History()[before:] {
@@ -61,7 +61,7 @@ func TestAccessRequiresExplicitRecreateForMissingRuntime(t *testing.T) {
 				t.Fatal(err)
 			}
 			current := sessionRecord(t, e, old.ID)
-			if current.ID != old.ID || current.Applied.SetupContainer == old.Applied.SetupContainer || current.Settings.ManualStart {
+			if current.ID != old.ID || current.Applied.ContainerID == old.Applied.ContainerID || current.Settings.ManualStart {
 				t.Fatal("explicit recreation changed identity or intent")
 			}
 		})
@@ -85,7 +85,7 @@ func TestPrunedImageDoesNotRecreateHealthyContainer(t *testing.T) {
 	if err := e.Exec(ctx, old.ID, "", []string{"true"}, false); err != nil {
 		t.Fatal(err)
 	}
-	if current := sessionRecord(t, e, old.ID); current.Applied.SetupContainer != old.Applied.SetupContainer || count(d, "create") != 1 {
+	if current := sessionRecord(t, e, old.ID); current.Applied.ContainerID != old.Applied.ContainerID || count(d, "create") != 1 {
 		t.Fatal("healthy runtime recreated because image was pruned")
 	}
 }
@@ -174,7 +174,7 @@ func TestMissingDurableStoreBlocksRebuildWithoutReplacingHistory(t *testing.T) {
 	}
 	r := sessionRecord(t, e, made.SessionID)
 	forgetSession(t, e, r.ID)
-	root := filepath.Join(e.Store.Home, "sessions", r.Directory, "harnesses/pi/stores/home")
+	root := filepath.Join(e.Store.Home, "sessions", r.Directory, r.StateTree, "harnesses/pi/stores/home")
 	if err := os.RemoveAll(root); err != nil {
 		t.Fatal(err)
 	}

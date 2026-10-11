@@ -67,11 +67,10 @@ func sessionRecord(t *testing.T, e *Engine, name string) store.Record {
 	t.Helper()
 	var r store.Record
 	var err error
-	if environment.IsSessionID(name) {
-		r, err = e.Store.Find(context.Background(), name, nil)
-	} else {
-		r, err = e.Store.Read(context.Background(), name)
+	if id, ok := environment.SessionIDFromName(name); ok {
+		name = id
 	}
+	r, err = e.Store.Find(context.Background(), name, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,10 +100,10 @@ func TestCreateReopenDriftAndRecreate(t *testing.T) {
 	if container.State.Running {
 		t.Fatal("automatic shutdown did not stop the container")
 	}
-	if first.Applied.SetupContainer != container.ID || first.Applied.Fingerprints.Container == "" {
+	if first.Applied.ContainerID != container.ID || first.Applied.Fingerprints.Container == "" {
 		t.Fatal("creation contract incomplete")
 	}
-	state := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home/sessions/history.json")
+	state := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).StateTree, "harnesses/pi/stores/home/sessions/history.json")
 	write(t, state, "persistent conversation")
 	_, err = e.Open(ctx, openRequest(q))
 	if err != nil {
@@ -201,7 +200,7 @@ func TestRecreateUsesCurrentDefinitionAndSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := sessionRecord(t, e, result.SessionID)
-	history := filepath.Join(e.Store.Home, "sessions", first.Directory, "harnesses/pi/stores/home/history")
+	history := filepath.Join(e.Store.Home, "sessions", first.Directory, first.StateTree, "harnesses/pi/stores/home/history")
 	write(t, history, "preserved")
 	if err := e.SetDefault(ctx, first); err != nil {
 		t.Fatal(err)
@@ -221,7 +220,7 @@ func TestRecreateUsesCurrentDefinitionAndSettings(t *testing.T) {
 	if first.ID != second.ID || first.Directory != second.Directory || second.Applied.Definition.Name != "opencode" || second.Applied.Creation.Network != "host" || !second.Settings.ManualStart {
 		t.Fatal("rebuild did not preserve identity/adopt current configuration")
 	}
-	if first.Applied.SetupContainer == second.Applied.SetupContainer || count(d, "build") != 4 {
+	if first.Applied.ContainerID == second.Applied.ContainerID || count(d, "build") != 4 {
 		t.Fatal("missing runtime was not rebuilt")
 	}
 	if b, err := os.ReadFile(history); err != nil || string(b) != "preserved" {
@@ -246,8 +245,8 @@ func TestManagedConfigWaitsForExplicitApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := sessionRecord(t, e, result.SessionID)
-	live := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home/settings.json")
-	manifest := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/managed-config.json")
+	live := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).StateTree, "harnesses/pi/stores/home/settings.json")
+	manifest := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).StateTree, "harnesses/pi/managed-config.json")
 	before, _ := os.ReadFile(manifest)
 	write(t, live, `{"packages":["old"],"theme":"user-owned"}`)
 	write(t, settings, `{"packages":["new"]}`)
@@ -293,7 +292,7 @@ func TestHookChangesRemainPendingUntilExplicitApply(t *testing.T) {
 	if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
-	manifest := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/managed-config.json")
+	manifest := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).StateTree, "harnesses/pi/managed-config.json")
 	before, _ := os.ReadFile(manifest)
 	write(t, filepath.Join(e.Store.Home, "profiles/test/before-open.sh"), "echo runtime")
 	result, err = e.Open(ctx, openRequest(q))
@@ -487,7 +486,7 @@ func TestFailedReplacementKeepsStateAndRetriesCurrentConfiguration(t *testing.T)
 		t.Fatal("failed setup reported successful recreation")
 	}
 	after := sessionRecord(t, e, result.SessionID)
-	if after.ID != old.ID || after.Applied.Fingerprints != old.Applied.Fingerprints || after.Applied.SetupContainer != old.Applied.SetupContainer {
+	if after.ID != old.ID || after.Applied.Fingerprints != old.Applied.Fingerprints || after.Applied.ContainerID != old.Applied.ContainerID {
 		t.Fatal("failed replacement advanced durable creation facts")
 	}
 	d.Fail = nil
@@ -569,7 +568,7 @@ func TestRecreateSynchronizesCurrentManagedConfig(t *testing.T) {
 	if _, err = e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home/settings.json"))
+	b, err := os.ReadFile(filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).StateTree, "harnesses/pi/stores/home/settings.json"))
 	if err != nil || !bytes.Contains(b, []byte("recovered")) {
 		t.Fatalf("recreation did not synchronize: %s %v", b, err)
 	}

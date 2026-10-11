@@ -61,7 +61,7 @@ func (e *Engine) deletionTargets(ctx context.Context, options DeleteOptions, cut
 	if !filtered {
 		return e.selectContainers(ctx, selection)
 	}
-	if len(selection.Targets) > 0 || len(selection.Captured) > 0 || selection.LocalName != "" {
+	if len(selection.Targets) > 0 || len(selection.Captured) > 0 || len(selection.ContainerNames)+len(selection.IncompleteDirs) > 0 || selection.LocalName != "" {
 		return nil, fmt.Errorf("use exact targets with optional --name, or selection filters, not both")
 	}
 	report, err := e.List(ctx, "")
@@ -87,7 +87,7 @@ func (e *Engine) deletionTargets(ctx context.Context, options DeleteOptions, cut
 		if view.Pending != nil {
 			return nil, commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", view.Target, nil, view.Pending.RetryStep())
 		}
-		target := SelectedTarget{name: view.Target, sessionID: view.OwnerSessionID, record: recordAbsent, containerID: view.ContainerID}
+		target := SelectedTarget{name: view.Target, sessionID: view.OwnerSessionID, containerID: view.ContainerID, unmatched: true}
 		if view.SessionID != "" {
 			r, err := e.Store.Find(ctx, view.SessionID, nil)
 			if err != nil {
@@ -137,6 +137,12 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result Dele
 	if options.Scope == "" && (options.Confirm == nil || options.DryRun) {
 		return result, fmt.Errorf("choose container or session deletion scope")
 	}
+	if len(options.Selection.ContainerNames) > 0 && options.Scope != DeleteContainer {
+		return result, fmt.Errorf("--container-name requires --container; it never selects saved session data")
+	}
+	if len(options.Selection.IncompleteDirs) > 0 && options.Scope != DeleteSession {
+		return result, fmt.Errorf("--incomplete-dir requires --session")
+	}
 	if options.OlderThan < 0 {
 		return result, fmt.Errorf("age must be positive")
 	}
@@ -150,6 +156,9 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result Dele
 	incomplete, remaining, err := e.incompleteDeletionTargets(ctx, options)
 	if err != nil {
 		return result, err
+	}
+	if len(options.Selection.IncompleteDirs) > 0 && len(incomplete) == 0 && len(remaining.Targets)+len(remaining.Captured)+len(remaining.ContainerNames) == 0 {
+		return result, nil
 	}
 	if len(incomplete) > 0 {
 		// These directories have no ID-keyed lock. Creation and transfers hold
@@ -174,7 +183,7 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result Dele
 		result.RetainedIncompleteDirectories = slices.DeleteFunc(result.RetainedIncompleteDirectories, func(name string) bool { return slices.Contains(result.IncompleteDirectories, name) })
 	}()
 	var targets selectedTargets
-	if len(incomplete) == 0 || len(remaining.Targets)+len(remaining.Captured) > 0 {
+	if len(incomplete) == 0 || len(remaining.Targets)+len(remaining.Captured)+len(remaining.ContainerNames) > 0 {
 		targets, err = e.deletionTargets(ctx, options, cutoff)
 		if err != nil {
 			return result, err
@@ -194,9 +203,13 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result Dele
 	}
 	sessionLocks := []*store.Locked{}
 	for i, lock := range locks {
+		if targets[i].unmatched {
+			result.Targets = append(result.Targets, targets[i])
+			continue
+		}
 		r, err := lock.Load()
 		if errors.Is(err, os.ErrNotExist) {
-			if slices.Contains(containers, lock.Name) {
+			if targets[i].containerID != "" {
 				result.Targets = append(result.Targets, targets[i])
 			}
 			continue
@@ -209,7 +222,7 @@ func (e *Engine) Delete(ctx context.Context, options DeleteOptions) (result Dele
 		}
 		sessionLocks = append(sessionLocks, lock)
 		result.Targets = append(result.Targets, selectedRecord(r))
-		result.Retained = append(result.Retained, r.Directory)
+		result.Retained = append(result.Retained, r.PublicName())
 	}
 	include := options.Scope == DeleteSession
 	if include {

@@ -30,10 +30,10 @@ func interruptedTransfer(t *testing.T, mode string, prepared bool) (*Engine, *do
 	if err := e.SetDefault(ctx, r); err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(e.Store.Home, "sessions", r.Directory, "harnesses/pi/stores/home/history"), "source history")
+	write(t, filepath.Join(e.Store.Home, "sessions", r.Directory, r.StateTree, "harnesses/pi/stores/home/history"), "source history")
 	opts := TransferOptions{Mode: mode, Source: r.ID, Destination: t.TempDir()}
 	d.Fail = func(args []string) error {
-		if (!prepared && args[0] == "build") || (prepared && args[0] == "stop" && args[len(args)-1] != r.Applied.SetupContainer) {
+		if (!prepared && args[0] == "build") || (prepared && args[0] == "stop" && args[len(args)-1] != r.Applied.ContainerID) {
 			return errors.New("interrupted preparation")
 		}
 		return nil
@@ -54,13 +54,13 @@ func TestPreparationRetryUsesCorrectedCurrentConfig(t *testing.T) {
 	ctx := context.Background()
 	write(t, filepath.Join(q.Sources[0].Path, "docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\nRUN true\n")
 	write(t, filepath.Join(q.Sources[0].Path, "setup.sh"), "echo corrected")
-	write(t, filepath.Join(e.Store.Home, "sessions", source.Directory, "harnesses/pi/stores/home/history"), "latest source history")
+	write(t, filepath.Join(e.Store.Home, "sessions", source.Directory, source.StateTree, "harnesses/pi/stores/home/history"), "latest source history")
 	result, err := e.Transfer(ctx, opts)
-	if err != nil || result.Destination != journal.Destination.Name {
+	if err != nil || result.Destination != journal.DestinationName() {
 		t.Fatal("config repair could not retry exact transfer", result, err)
 	}
 	dest := sessionRecord(t, e, result.Destination)
-	if string(getFile(t, filepath.Join(e.Store.Home, "sessions", dest.Directory, "harnesses/pi/stores/home/history"))) != "latest source history" {
+	if string(getFile(t, filepath.Join(e.Store.Home, "sessions", dest.Directory, dest.StateTree, "harnesses/pi/stores/home/history"))) != "latest source history" {
 		t.Fatal("retry reused stale copy")
 	}
 	if len(dest.Applied.Inputs.Container.Setup) != 1 {
@@ -86,7 +86,7 @@ func TestAbortWithDestinationSortingBeforeSource(t *testing.T) {
 				t.Fatal(err)
 			}
 			source := sessionRecord(t, e, made.SessionID)
-			history := filepath.Join(e.Store.Home, "sessions", source.Directory, "harnesses/pi/stores/home/history")
+			history := filepath.Join(e.Store.Home, "sessions", source.Directory, source.StateTree, "harnesses/pi/stores/home/history")
 			write(t, history, "source history")
 			if mode == "relocate" {
 				if _, err := e.Start(ctx, source.Directory, ""); err != nil {
@@ -108,11 +108,11 @@ func TestAbortWithDestinationSortingBeforeSource(t *testing.T) {
 			if err != nil || journal == nil || journal.Phase != "prepare" {
 				t.Fatal(journal, err)
 			}
-			if journal.Destination.Name >= journal.Source.Name {
-				t.Fatal("fixture must put destination before source", journal)
+			if journal.DestinationName() >= journal.SourceName() {
+				t.Fatal("fixture must put public destination before public source", journal)
 			}
 			result, err := e.AbortTransfer(ctx, source.Directory)
-			if err != nil || !result.Aborted || result.SessionID != source.ID || result.Destination != journal.Destination.Name {
+			if err != nil || !result.Aborted || result.SessionID != source.ID || result.Destination != journal.DestinationName() {
 				t.Fatal(result, err)
 			}
 			if pending, err := e.Store.PendingID(source.ID); err != nil || pending != nil {
@@ -142,10 +142,14 @@ func TestAbortRetainsSourceWithoutResolvingBrokenConfig(t *testing.T) {
 			if pending, err := e.Store.PendingID(source.ID); err != nil || pending != nil {
 				t.Fatal("reservation not released", pending, err)
 			}
-			if _, err := os.Stat(filepath.Join(e.Store.Home, "sessions", journal.Destination.Name)); !os.IsNotExist(err) {
+			path := filepath.Join(e.Store.Home, "sessions", journal.DestinationID)
+			if mode == "relocate" {
+				path = filepath.Join(path, journal.DestinationTree)
+			}
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
 				t.Fatal("destination attempt retained", err)
 			}
-			if string(getFile(t, filepath.Join(e.Store.Home, "sessions", source.Directory, "harnesses/pi/stores/home/history"))) != "source history" {
+			if string(getFile(t, filepath.Join(e.Store.Home, "sessions", source.Directory, source.StateTree, "harnesses/pi/stores/home/history"))) != "source history" {
 				t.Fatal("source history lost")
 			}
 			if selected, err := e.Store.ReadDefault(ctx, source.Settings.Workspace); err != nil || selected == nil || selected.ID != source.ID {
@@ -164,12 +168,12 @@ func TestAbortRetainsSourceWithoutResolvingBrokenConfig(t *testing.T) {
 
 func TestAbortKeepsReservationUntilDestinationCleanupSucceeds(t *testing.T) {
 	e, d, _, source, _, journal := interruptedTransfer(t, "clone", true)
-	dest, err := e.Store.Read(context.Background(), journal.Destination.Name)
+	dest, err := e.Store.ReadTransferDestination(context.Background(), journal)
 	if err != nil {
 		t.Fatal(err)
 	}
 	d.Fail = func(args []string) error {
-		if args[0] == "rm" && args[len(args)-1] == dest.Applied.SetupContainer {
+		if args[0] == "rm" && args[len(args)-1] == dest.Applied.ContainerID {
 			return errors.New("remove denied")
 		}
 		return nil
@@ -242,7 +246,7 @@ func TestCorruptTransferIdentifiesTheBlockingJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(e.Store.Home, "state/transfers/broken.json")
+	path := filepath.Join(e.Store.Home, "state/transfers", made.SessionID, "journal.json")
 	write(t, path, "broken")
 	var failure *commanderror.Error
 	if _, err := e.Locate(context.Background(), made.SessionID, ""); !errors.As(err, &failure) || failure.Code != "invalid_transfer_journal" || failure.Target != path {
@@ -259,7 +263,7 @@ func TestCommittedTransferCannotBeAborted(t *testing.T) {
 	}
 	source := sessionRecord(t, e, made.SessionID)
 	d.Fail = func(args []string) error {
-		if args[0] == "rm" && args[len(args)-1] == source.Applied.SetupContainer {
+		if args[0] == "rm" && args[len(args)-1] == source.Applied.ContainerID {
 			return errors.New("source cleanup failed")
 		}
 		return nil

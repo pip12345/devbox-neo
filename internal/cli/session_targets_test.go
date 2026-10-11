@@ -38,8 +38,8 @@ func TestSessionDirectoryTargetsAndBlockerDetails(t *testing.T) {
 			t.Fatal("missing actionable attachment detail", want, text)
 		}
 	}
-	if strings.Contains(text, r.ID) {
-		t.Fatal("human status exposed the internal identity", text)
+	if !strings.Contains(text, r.ID) || !strings.Contains(text, "Storage: "+e.Store.Home+"/sessions/"+r.ID) {
+		t.Fatal("status lost public-name/directory mapping", text)
 	}
 	for _, args := range [][]string{{"logs", target}, {"status", q.Workspace, "--name", q.LocalName}, {"edit", target, "--show"}} {
 		cmd := newRoot(e.Docker)
@@ -56,7 +56,7 @@ func TestSessionDirectoryTargetsAndBlockerDetails(t *testing.T) {
 }
 
 func TestInternalIDsAreNotPublicTargets(t *testing.T) {
-	id := strings.Repeat("a", 32)
+	id := strings.Repeat("a", 12)
 	for _, args := range [][]string{
 		{"open", id}, {"start", id}, {"stop", id}, {"shell", id},
 		{"exec", id, "--", "true"}, {"status", id}, {"logs", id},
@@ -73,7 +73,7 @@ func TestInternalIDsAreNotPublicTargets(t *testing.T) {
 		if err := cmd.ParseFlags(args[len(strings.Fields(cmd.CommandPath()))-1:]); err != nil {
 			t.Fatal(args, err)
 		}
-		if err := cmd.Args(cmd, cmd.Flags().Args()); err == nil || !strings.Contains(err.Error(), "session directory name") {
+		if err := cmd.Args(cmd, cmd.Flags().Args()); err == nil || !strings.Contains(err.Error(), "public session name") {
 			t.Fatal("internal ID remained a public target", args, err)
 		}
 	}
@@ -112,7 +112,7 @@ func TestRecreateForceFlagReplacesWithActiveCommands(t *testing.T) {
 		t.Fatal(err, out.String())
 	}
 	current := sessionRecord(t, e, target)
-	if current.ID != r.ID || current.Applied.SetupContainer == r.Applied.SetupContainer {
+	if current.ID != r.ID || current.Applied.ContainerID == r.Applied.ContainerID {
 		t.Fatal("--force did not perform replacement while preserving identity")
 	}
 	if !strings.Contains(out.String(), "Attached commands will be interrupted") || !strings.Contains(out.String(), "Container-local changes will be lost") {
