@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Integration-test progress and non-interactive opens — implemented, live Docker pending
+
+- Every Docker lifecycle open uses `--version`, avoiding interactive harness startup during pending-config and recreation checks. The integration target uses `-v -p=1`: verbose multi-package output otherwise remains buffered until each package finishes. Lifecycle/SSH stages and command output stream while synchronized capture remains available for assertions and failures.
+- Full `make test-fast` equivalent, five repeated output-capture/concurrency regressions, integration-tag compilation, app vet, formatting, and diff checks pass using `.tools/go` (`make` unavailable). A timed two-package comparison verifies that `-p=1` exposes test-start output before completion rather than after it. The host's actual stalled Docker operation remains unidentified; live Docker is unavailable here, and race checks require an unavailable C compiler/CGO.
+
 ## ID-only locking API — implemented
 
 - Single and bulk session locks accept only IDs. Removed duplicate lock names, directory-to-ID maps and shared-handle wrappers; sorted unique acquisition, cancellation cleanup and external lock paths are unchanged. Saved formats need no migration.

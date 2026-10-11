@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,18 +17,6 @@ import (
 	"devbox/internal/docker"
 	"devbox/internal/store"
 )
-
-type sshTestOutput struct {
-	sync.Mutex
-	data bytes.Buffer
-}
-
-func (b *sshTestOutput) Write(p []byte) (int, error) {
-	b.Lock()
-	defer b.Unlock()
-	return b.data.Write(p)
-}
-func (b *sshTestOutput) String() string { b.Lock(); defer b.Unlock(); return b.data.String() }
 
 // The only SSH server is inside an installation-labelled disposable fixture.
 // Both hops use generated fixture keys and explicit known-host entries; no host
@@ -56,20 +43,23 @@ func TestDockerSSHMastersThroughProxyJump(t *testing.T) {
 	definition := strings.Replace(thirdDefinition, `"shell":""`, `"shell":"sudo apt-get update && sudo apt-get install -y openssh-server && sudo mkdir -p /run/sshd && sudo usermod -p x devuser"`, 1)
 	write(t, filepath.Join(state.Home, "harnesses/third/harness.json"), definition)
 	write(t, filepath.Join(state.Home, "profiles/test/config.json"), `{"version":1,"harness":"third"}`)
-	output := new(sshTestOutput)
+	output := &integrationOutput{logf: t.Logf}
 	e := &Engine{Store: state, Docker: docker.Runtime{Runner: docker.ExecRunner{}}, Streams: docker.Streams{Out: output, Err: output}, UID: os.Getuid(), GID: os.Getgid()}
 	e.OnDiagnostic = func(d Diagnostic) { t.Logf("diagnostic: %+v", d) }
+	t.Log("create: build isolated SSH server fixture")
 	result, err := e.Create(ctx, CreateRequest{Workspace: t.TempDir(), LocalName: "test", Sources: []config.Reference{{Label: "base", Kind: config.ReferenceFixed, Path: filepath.Join(state.Home, "profiles/test")}}})
 	if err != nil {
 		t.Fatalf("create: %v\n%s", err, output.String())
 	}
 	t.Cleanup(func() {
+		t.Log("cleanup: delete isolated SSH session")
 		cleanup, stop := context.WithTimeout(context.Background(), time.Minute)
 		defer stop()
 		if _, err := e.Delete(cleanup, DeleteOptions{Selection: Selection{Targets: []string{result.SessionID}}, Scope: DeleteSession}); err != nil {
 			t.Error(err)
 		}
 	})
+	t.Log("start: prepare SSH server and fixture login")
 	if _, err = e.Start(ctx, result.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +128,7 @@ chmod 600 "$HOME/.ssh/config"`
 	t.Setenv("PATH", wrapper+":"+os.Getenv("PATH"))
 	for _, hostMaster := range []bool{false, true} {
 		t.Run(fmt.Sprintf("host=%v", hostMaster), func(t *testing.T) {
+			t.Log("connect: establish shared master through ProxyJump")
 			connectionCtx, end := context.WithCancel(ctx)
 			ready := make(chan string, 1)
 			done := make(chan error, 1)
@@ -164,12 +155,14 @@ chmod 600 "$HOME/.ssh/config"`
 			}
 			// Exec refreshes /devbox assets while the socket is live: it must not chown
 			// or chmod the socket mount while installing documentation.
+			t.Log("exec: check shared SSH client")
 			if err := e.Exec(ctx, result.SessionID, "", []string{"ssh", "-F", "/devbox/ssh/config", alias, "printf ssh-fixture-ok"}, false); err != nil {
 				t.Fatalf("shared command: %v\n%s", err, output.String())
 			}
 			if !strings.Contains(output.String(), "ssh-fixture-ok") {
 				t.Fatal(output.String())
 			}
+			t.Log("disconnect: check master exits and client cannot reauthenticate")
 			end()
 			select {
 			case <-done:
