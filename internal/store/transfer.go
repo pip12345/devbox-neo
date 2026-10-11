@@ -355,7 +355,25 @@ func (l *Locked) removeTransfer(j Transfer) error {
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(root); err != nil {
+	return releaseTransferDirectory(root, os.RemoveAll)
+}
+
+func releaseTransferDirectory(root string, removeFiles func(string) error) error {
+	directory, err := os.Open(root)
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	// Completion/abort has settled both endpoints. Persist release before
+	// discarding files: a surviving committed journal still needs its
+	// prepared record to retry cleanup after interruption.
+	if err := os.Remove(filepath.Join(root, "journal.json")); err != nil {
+		return err
+	}
+	if err := directory.Sync(); err != nil {
+		return err
+	}
+	if err := removeFiles(root); err != nil {
 		return err
 	}
 	parent, err := os.Open(filepath.Dir(root))

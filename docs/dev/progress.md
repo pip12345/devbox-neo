@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Migration save retention and transfer cleanup — implemented
+
+- Conversion uses the record reloaded under its session lock, retaining saves completed while it waited. Transfer completion/abort durably removes the journal before discarding private retry files; interrupted file cleanup no longer strands a committed session.
+- Full fast-suite equivalent, five repeated regressions, affected-package vet and diff checks pass using `.tools/go`. Tests use temporary homes and fake Docker. Live Docker and real power-loss acceptance remain unrun.
+
 ## ID-backed session model — implemented, live acceptance pending
 
 - One complete 12-character ID identifies each session, directory, lock, lease namespace, default and Docker owner. Public names use the saved workspace hint, that same ID and local name; raw IDs, directory names and Docker names are not public session selectors. Rename/workspace edits leave backing paths untouched.

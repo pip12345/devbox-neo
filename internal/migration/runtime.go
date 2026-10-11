@@ -156,6 +156,9 @@ func Run(ctx context.Context, home string, runtime docker.Runtime, apply bool) (
 		if err != nil || !old || fresh.oldID != item.oldID || fresh.record.ID != item.record.ID {
 			return result, fmt.Errorf("session changed during conversion preflight: %s", item.directory)
 		}
+		// Discovery precedes the operation locks. A save which completed while
+		// we waited must remain the input to conversion, not be overwritten.
+		*item = fresh
 		c, exists, err := runtime.InspectID(ctx, item.record.Applied.ContainerID)
 		if err != nil {
 			return result, err
