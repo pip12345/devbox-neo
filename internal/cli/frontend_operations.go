@@ -118,7 +118,7 @@ func (f *frontend) recreate(target string) error {
 			f.action("Inspect pending changes", "", func() error { return f.status(target) }),
 			f.toggle("Rebuild image without cache", &noCache),
 			f.toggle("Force container replacement", &container),
-			f.toggle("Force: replace even with attached commands", &force),
+			f.toggle("Force replacement even with attached commands", &force),
 			{Label: "Recreate", Shortcut: "r", Description: "Apply current config; replace runtime only as needed or explicitly requested", Run: func() (bool, error) {
 				message := "Apply current config? Runtime may restart; if replaced, container-local changes will be lost."
 				if force {

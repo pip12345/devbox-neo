@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Recreate force-option wording — implemented
+
+- The recreate form now says “Force replacement even with attached commands”, retaining “Force” without the inconsistent colon. Behavior is unchanged.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable), including recreate-label coverage. Manual terminal acceptance remains unrun.
+
 ## Readable Docker instance names — implemented, live Docker pending
 
 - New containers capture the public session name plus an eight-character creation suffix. Image aliases retain their existing ID/full-token format independently of display hints. Metadata edits do not rename live containers; explicit replacement adopts current hints without changing saved identity or storage.

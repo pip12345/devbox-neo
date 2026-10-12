@@ -103,6 +103,11 @@ func TestFrontendRecreateAllIncludesSessionsWithoutContainers(t *testing.T) {
 	if err := f.recreate(""); err != nil {
 		t.Fatal(err, out.String())
 	}
+	for _, label := range []string{"Force container replacement", "Force replacement even with attached commands"} {
+		if !strings.Contains(out.String(), label) {
+			t.Fatal("missing recreate option", label, out.String())
+		}
+	}
 	after := sessionRecord(t, f.e, name)
 	c, exists, err := f.e.Docker.InspectID(context.Background(), after.Applied.ContainerID)
 	if err != nil || !exists || c.State.Running || after.Applied.ContainerID == before.Applied.ContainerID {
