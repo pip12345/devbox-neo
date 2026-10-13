@@ -13,6 +13,12 @@ Local config discovery and CLI/menu rename implemented. Local discovery filters 
 - `dbx ssh --insecure` bypasses destination host-key checks in container and host-master modes, ignoring user/global known-host files without changing saved keys. Default checks, ProxyJump policy, authentication, and shared-master lifetime remain unchanged; no menu setting or saved-state change was added.
 - The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable), including CLI option propagation and subprocess argument coverage. Both new regressions pass five repeated runs; affected-package vet, CLI help/build, and diff checks pass. Tests use temporary homes and fake Docker/SSH; live Docker and manual host-terminal acceptance remain unrun.
 
+## Documentation audience and learning flow — implemented, rendered-site acceptance pending
+
+- The homepage and first-use guide now introduce the benefit, session/config/harness model, build prerequisites, and safety boundary before launching the agent. User references focus on behavior. Architecture sections retain implementation contracts with clearer grouping. Removed redundant menu wording and replaced semicolon-heavy prose in the affected pages with plain sentences.
+- Corrected stale menu labels, clarified when saved config edits apply, and added command notation and a minimal custom-definition example. All 54 local links and heading anchors resolve. The example loads through `dbx config show` in a temporary home without Docker.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable), including embedded-documentation checks. Rendered-site and manual first-use acceptance remain unrun. No CLI behavior or agent-guide changes were made.
+
 ## Recreate force-option wording — implemented
 
 - The recreate form now says “Force replacement even with attached commands”, retaining “Force” without the inconsistent colon. Behavior is unchanged.

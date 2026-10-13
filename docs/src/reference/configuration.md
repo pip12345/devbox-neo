@@ -24,12 +24,12 @@ Built-in defaults apply first, then selected configs in order. An absent field c
 | Field | Default | Rule |
 |---|---|---|
 | `version` | `1` | Schema version |
-| `base_image` | `"debian:bookworm-slim"` | Replace; Debian/Ubuntu-compatible image |
-| `harness` | `""` | Replace; required for Create/Recreate |
+| `base_image` | `"debian:bookworm-slim"` | Replace (Debian/Ubuntu-compatible image) |
+| `harness` | `""` | Replace (required for Create/Recreate) |
 | `shell` | `["bash"]` | Replace complete non-empty argv |
-| `network` | `"default"` | Replace; `default`, `host`, or an existing Docker network |
-| `harness_args` | `[]` | Append only from configs naming the final harness; requires `harness` in that file |
-| `env` | `[]` | Append `KEY=VALUE`; later assignments win |
+| `network` | `"default"` | Replace with `default`, `host`, or an existing Docker network |
+| `harness_args` | `[]` | Append only from configs naming the final harness (requires `harness` in that file) |
+| `env` | `[]` | Append `KEY=VALUE`. Later assignments win |
 | `mounts` | `[]` | Append `SOURCE:/absolute/target[:options]` |
 | `ports` | `[]` | Append numeric Docker port mappings |
 | `docker_args` | `[]` | Append validated Docker options |
@@ -39,7 +39,7 @@ Empty additive lists do not erase earlier values. Conflicting mounts/ports fail.
 
 ## Selection and precedence
 
-All selected configs participate. Later scalar values replace earlier ones; most lists append. Config selection does not rename the session.
+All selected configs participate. Later scalar values replace earlier ones. Most lists append. Config selection does not rename the session.
 
 Create and Recreate require valid configs and a harness selection. Broken configs do not prevent access to an existing session. Saving a config selection requires at least one reference, not runnable settings.
 
@@ -47,23 +47,25 @@ Create and Recreate require valid configs and a harness selection. Broken config
 
 | Task | Command |
 |---|---|
-| Create a config | `config create [name\|path]` |
-| Edit one directory | `config edit <name\|path>` |
-| List named configs | `config list [--json]` |
-| Inspect one config over defaults | `config show <name\|path> [--json]` |
-| List saved-session users | `config users <name\|path> [--json]` |
-| Change a session's selected configs interactively | `edit <folder> --name NAME` |
-| Replace the complete ordered selection | `edit <folder> --name NAME --config REF [--config REF…] [--json]` |
-| Inspect combined values | `edit <folder> --name NAME --show [--json]` |
-| Delete an unused named config | `config delete <name>` |
+| Create a config | `dbx config create [name\|path]` |
+| Edit one directory | `dbx config edit <name\|path>` |
+| List named configs | `dbx config list [--json]` |
+| Inspect one config over defaults | `dbx config show <name\|path> [--json]` |
+| List saved-session users | `dbx config users <name\|path> [--json]` |
+| Change a session's selected configs interactively | `dbx edit <folder> --name NAME` |
+| Replace the complete ordered selection | `dbx edit <folder> --name NAME --config REF [--config REF…] [--json]` |
+| Inspect combined values | `dbx edit <folder> --name NAME --show [--json]` |
+| Delete an unused named config | `dbx config delete <name>` |
 
-Directory edits save immediately and affect every referencing session. Removing a setting removes its local key; list editors change only entries stored in that directory. The directory view shows its values over built-in defaults; combined inspection shows all selected configs and their contributions.
+Directory edits save immediately. Every referencing session uses the changed settings on its next Recreate. Existing containers do not change when you save.
+
+Removing a setting removes its local key. List editors change only entries stored in that directory. The directory view shows its values over built-in defaults. Combined inspection shows all selected configs and their contributions.
 
 Creation keeps Name/location, Harness, and Optional files editable until Create config. An existing `config.json` is never overwritten. Other existing files are preserved. [Setup flags](commands.md#configuration-commands) support automation.
 
 Config deletion accepts named directories only, not symlinks or arbitrary paths. It refuses while saved sessions still select the directory or need its previously applied files. Remove the dependency and recreate affected sessions before retrying. Incomplete usage information blocks deletion.
 
-## Substitution, environment, and creation options
+## Environment and container settings
 
 ### Host substitution
 
@@ -76,9 +78,9 @@ Use host variables in JSON string values:
 }
 ```
 
-Set the variable on the host before running Devbox. Unset variables fail; empty values are allowed. Expansion is single-pass and does not read `.env` files or execute shell commands. Editing preserves expressions.
+Set the variable on the host before running Devbox. Unset variables fail. Empty values are allowed. Expansion is single-pass and does not read `.env` files or execute shell commands. Editing preserves expressions.
 
-**Env/auth values are sensitive; names, paths, argv, and ordinary settings are not.** Do not put credentials in public fields. Environment-value input is masked in terminal editors; ordinary fields remain visible.
+Devbox treats env/auth values as sensitive. Environment-value input is masked in terminal editors, and env values are redacted in inspection output. **Names, paths, command arguments, and ordinary settings are not redacted** and may appear in output or saved records. Never put credentials in those fields.
 
 ### Environment precedence
 
@@ -92,15 +94,15 @@ Open, Shell, and Exec forward current host display variables without saving them
 
 `TERM`, `COLORTERM`, `NO_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE`, `FORCE_COLOR`, `TERM_PROGRAM`, `TERM_PROGRAM_VERSION`, `WT_SESSION`, `WEZTERM_EXECUTABLE`, `KITTY_WINDOW_ID`, `VTE_VERSION`, `KONSOLE_VERSION`, `ITERM_SESSION_ID`.
 
-Present empty values are forwarded; absent ones add no override. Host dotfiles are not imported.
+Present empty values are forwarded. Absent ones add no override. Host dotfiles are not imported.
 
 ### Container settings
 
 | Setting | Constraints |
 |---|---|
-| Mounts | Bind sources must be existing directories, regular files, or Unix sockets. Relative sources use the workspace; bare names denote volumes. Targets cannot overlap managed mounts. |
-| Ports | `1–65535`; mapped ranges must have equal sizes. Host networking cannot publish ports. |
-| Raw Docker options | Value-taking options use `--option=value`; raw bind sources must be absolute. |
+| Mounts | Bind sources must be existing directories, regular files, or Unix sockets. Relative sources use the workspace. Bare names denote volumes. Targets cannot overlap managed mounts. |
+| Ports | `1–65535`. Mapped ranges must have equal sizes. Host networking cannot publish ports. |
+| Raw Docker options | Value-taking options use `--option=value`. Raw bind sources must be absolute. |
 | Protected values | Devbox owns identity/labels, user/workdir, entrypoint, primary network, restart policy, managed mounts/env, IDE metadata, and the host gateway alias. |
 
 Set these in configs, not as overrides to Create/Recreate.
@@ -111,10 +113,10 @@ Artifact paths are relative to the directory containing `config.json`.
 
 | Path | Order | Runs/applies |
 |---|---|---|
-| `docker/Dockerfile` | Each extends the preceding image | Image build; context is `docker/` |
+| `docker/Dockerfile` | Each extends the preceding image | Image build (context is `docker/`) |
 | `setup.sh` | Config order | Container creation/replacement |
 | `before-open.sh` | Config order | Before each Open/Continue |
-| `<harness>/` | Defaults, then configs; later paths win | Managed-file synchronization |
+| `<harness>/` | Defaults, then configs. Later paths win | Managed-file synchronization |
 
 Run `recreate` after changing scripts or harness files. Scripts run as the development user in `/workspace`, with sudo available. They are separate processes. Failure stops the chain without undoing completed effects.
 
@@ -126,19 +128,19 @@ Devbox prepares the base image, builds selected Dockerfiles in order, then insta
 
 | Input | Rule |
 |---|---|
-| Base image | Debian/Ubuntu-compatible; conflicting development accounts are rejected |
+| Base image | Debian/Ubuntu-compatible. Conflicting development accounts are rejected |
 | Dockerfile base | `ARG DEVBOX_BASE` followed by `FROM ${DEVBOX_BASE}` |
 | Initial user/home/workdir | `devuser`, `/home/devuser`, `/workspace` |
 | Dockerfile location | `<config>/docker/Dockerfile` |
-| Build context | Only `<config>/docker/`; `COPY`/`ADD` paths are relative to this directory |
+| Build context | Only `<config>/docker/`. `COPY`/`ADD` paths are relative to this directory |
 | Ignore file | `docker/Dockerfile.dockerignore`, otherwise `docker/.dockerignore` |
-| Context entries | Regular files/directories and permissions; unignored symlinks/special files are rejected |
+| Context entries | Regular files/directories and permissions. Unignored symlinks/special files are rejected |
 | Build arguments | `DEVBOX_BASE`, `DEVBOX_USER`, `DEVBOX_USER_HOME`, `DEVBOX_WORKSPACE`, `DEVBOX_UID`, `DEVBOX_GID` |
-| Cache | Enabled normally; `recreate --image` disables it for controlled stages |
+| Cache | Enabled normally. `recreate --image` disables it for controlled stages |
 
 Only `docker/Dockerfile` contributes an image stage. Other config files, harness files, and lifecycle scripts are not build-context inputs. Resolved image settings such as `base_image` still affect the image. Scripts and harness files retain their separate application rules.
 
-Use sudo for system packages. Custom PATH additions carry forward. Build arguments are not a secret channel; `DEVBOX_WORKSPACE` is the container path. Install executables outside directories hidden by runtime mounts.
+Use sudo for system packages. Custom PATH additions carry forward. Build arguments are not a secret channel. `DEVBOX_WORKSPACE` is the container path. Install executables outside directories hidden by runtime mounts.
 
 Included tools: Bash, Git, curl, sudo, procps, OpenSSH clients, util-linux, Vim, zip/unzip, jq, net-tools, and ping. Interactive Bash provides `ll='ls -alF'` and `vi='vim'`.
 
@@ -146,8 +148,8 @@ Included tools: Bash, Git, curl, sudo, procps, OpenSSH clients, util-linux, Vim,
 
 | File kind | On synchronization |
 |---|---|
-| Ordinary managed file | Replace live content/mode; remove obsolete managed paths |
-| Shared JSON | Replace/remove declared keys; preserve other keys and permissions |
+| Ordinary managed file | Replace live content/mode and remove obsolete managed paths |
+| Shared JSON | Replace/remove declared keys, preserving other keys and permissions |
 | Unmanaged file/history | Leave untouched |
 
 Managed configs and defaults copy regular files, excluding `.git` files and directories at every depth. Skipped symlinks/special entries produce warnings. Invalid shared JSON blocks synchronization. See [harness-owned keys](harnesses.md#built-in-harnesses).

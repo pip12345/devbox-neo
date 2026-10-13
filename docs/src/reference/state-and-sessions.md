@@ -1,14 +1,14 @@
 # State and sessions
 
-A session saves an environment's identity and harness state. Its container can be replaced. The default home is `~/.devbox-neo`; select another with `--home` or `DEVBOX_HOME`.
+A session saves an environment's identity and harness state. Its container can be replaced. The default home is `~/.devbox-neo`. Select another with `--home` or `DEVBOX_HOME`.
 
 ## What survives
 
 | Data | Stop/start | Recreate | Copy/move |
 |---|---|---|---|
 | Project files | Retained on host | Retained on host | Not copied |
-| Declared session harness stores | Retained | Retained | Copied |
-| Managed auth and shared caches | Retained separately | Retained separately | Not copied; destination uses managed auth/caches |
+| Saved harness state, including history | Retained | Retained | Copied |
+| Managed auth and shared caches | Retained separately | Retained separately | Not copied. Destination uses managed auth/caches |
 | Container-local files/tools | Retained | Lost only if container is replaced | Not copied |
 | Live SSH connections | End when controller/container stops | Not retained | Not copied |
 
@@ -24,17 +24,10 @@ Paths below are relative to the selected home. Use Devbox commands to manage ses
 | `harnesses/<name>/` | User definitions and defaults |
 | `auth/<harness>/` | Managed authentication |
 | `cache/harnesses/<harness>/<store>/` | Shared caches |
-| `sessions/<session-id>/session.json` | Complete 12-character ID, current `state_tree`, desired `settings`, recorded `applied` runtime, and activity |
-| `state/leases/<session-id>/` | Active command records |
-| `sessions/<session-id>/<state_tree>/harnesses/<harness>/stores/<store>/` | Per-session harness state; initial tree is `data/base` |
-| `sessions/<session-id>/<state_tree>/harnesses/<harness>/managed-config.json` | Managed file/key tracking |
-| `sessions/<session-id>/ssh/` | Temporary shared SSH connections |
-| `state/installation-id` | Installation identity |
-| `state/folder-defaults.json` | Folder-to-default-session selections |
-| `state/transfers/<source-id>/` | Pending journal and private prepared destination record |
-| `state/locks/` | Installation, config, folder, and session locks |
+| `sessions/<session-id>/` | Saved settings, harness state, and temporary SSH-sharing files for one session |
+| `state/` | Internal default selections, active-command tracking, locks, and pending transfers |
 
-Finish or abort pending transfers with the [transfer commands](commands.md#transfers), rather than deleting their files.
+Use `dbx list --wide` to find a session's storage path. Finish or abort pending transfers with the [transfer commands](commands.md#transfers), rather than deleting their files. Contributors can find record and transaction details in [State, locking, and transfers](../architecture/state.md).
 
 ## Built-in storage mappings
 
@@ -73,9 +66,9 @@ These are Devbox-managed runtime paths. Shared SSH data is transient, not a cred
 
 Local names are 1–64 ASCII characters: letters, digits, `_`, and `-`, starting with a letter or digit. Case matters: `work` and `Work` differ.
 
-Public names are `dbx-<workspace-hint>-<session-id>.<local-name>`, shown by `list` and `status`. The ID directly identifies the storage directory; the workspace hint and local name come from JSON. New Docker containers use that public name plus an eight-character creation suffix. Rename or a changed workspace basename updates the public name without moving storage or renaming containers. Existing containers keep their names until explicitly replaced. Old names are not aliases. Docker names and raw IDs cannot be used as session targets.
+Public names are `dbx-<workspace-hint>-<session-id>.<local-name>`, shown by `dbx list` and `dbx status`. The 12-character session ID is stable. The workspace hint and local name reflect the saved project folder and name.
 
-Portable Move prepares another tree under the same ID directory. Commitment switches the recorded tree/runtime before old-state cleanup; it never renames backing paths underneath container mounts.
+Renaming a session or changing its workspace basename changes its public name without moving its storage. Old names are not aliases. Docker containers keep their existing names until replaced. Docker names and raw IDs cannot be used as session targets.
 
 Folder-only commands require a saved default. Devbox checks that Docker resources belong to the selected installation and session before changing them.
 
@@ -83,6 +76,6 @@ Folder-only commands require a saved default. Devbox checks that Docker resource
 
 Recreate uses current configs, not a saved copy of an earlier environment. It cannot restore deleted harness history. Missing saved-data directories cause an error rather than being replaced with empty history. A missing image does not prevent access to an existing container.
 
-Recreation preserves identity, harness state, and keep-running intent. Copy creates a separate session identity; Move preserves the original. [Manage environments](../guides/managing-environments.md) covers those workflows.
+Recreation preserves identity, harness state, and keep-running intent. Copy creates a separate session identity. Move preserves the original. [Manage environments](../guides/managing-environments.md) covers those workflows.
 
 Recorded activity describes Devbox operations, not filesystem changes.

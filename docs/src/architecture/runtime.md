@@ -22,14 +22,16 @@ All paths below are under `internal/`.
 | `assets` | Installed agent guide, documentation, network-data bundle |
 | `commanderror` | Typed failures and suggested next steps |
 
-Commands translate operation-specific requests; they do not implement lifecycle policy. Creation and resolution accept workspace/config inputs; access and recreation accept session targets. A compiler repair target is readable guidance, not an immutable ownership ID. Docker consumes captured plans rather than reloading config. Harness-specific behavior belongs in declarations, not engine branches.
+Commands translate operation-specific requests. They do not implement lifecycle policy. Creation and resolution accept workspace/config inputs. Access and recreation accept session targets. Docker consumes captured plans rather than reloading config. Harness-specific behavior belongs in declarations, not engine branches.
+
+`environment.Request.RepairTarget` supplies a readable target for resolution errors and suggested repair commands. It is not the immutable ID used to authorize session operations.
 
 ## Core invariants
 
-- Names locate resources; labels authorize mutations.
-- Container/image absence does not erase saved session identity, history or its comparison baseline; only explicit recreation rebuilds an existing session from current selected config.
+- Names locate resources. Labels authorize mutations.
+- Container/image absence does not erase saved session identity, history or its comparison baseline. Only explicit recreation rebuilds an existing session from current selected config.
 - Inspection never advances applied state.
-- Ordinary access uses applied state; only creation or explicit recreation applies desired configuration.
+- Ordinary access uses applied state. Only creation or explicit recreation applies desired configuration.
 - Long commands use leases rather than holding operation locks throughout execution.
 - Records and diagnostics do not contain env/auth values.
 - A committed transfer destination must not be overwritten by recopying its source.
@@ -46,9 +48,9 @@ Commands translate operation-specific requests; they do not implement lifecycle 
 
 ## Error ownership and rendering
 
-Owners return `commanderror.Error` with a code, safe message, target, cause, and optional `Step` values. Preserve filesystem absence through wrapping until the owning layer can distinguish it from corrupt state. Use `errors.Is`; never classify failures by display text.
+Owners return `commanderror.Error` with a code, safe message, target, cause, and optional `Step` values. Preserve filesystem absence through wrapping until the owning layer can distinguish it from corrupt state. Use `errors.Is`. Never classify failures by display text.
 
-`cli.Execute` renders errors. Human failures go to stderr; JSON-capable commands emit a structured object on stdout. Child streams pass through, and a child/Docker exit status stays authoritative when cleanup also fails. CLI-owned partial-result errors retain confirmed deletions or incomplete usage scans alongside the cause. JSON includes `partial_result` in the error document.
+`cli.Execute` renders errors. Human failures go to stderr. JSON-capable commands emit a structured object on stdout. Child streams pass through, and a child/Docker exit status stays authoritative when cleanup also fails. CLI-owned partial-result errors retain confirmed deletions or incomplete usage scans alongside the cause. JSON includes `partial_result` in the error document.
 
 `Step.Reason` labels a shell-quoted command. `Then` expresses a sequence and `Or` an alternative. Suggestions are data, never automatic recovery actions or permission to add Force.
 
@@ -61,6 +63,6 @@ Carry an explicit home into suggested commands. Display metadata must not become
 
 ## Validation
 
-Unit tests use temporary homes and a command-boundary Docker fake to verify ordering, ownership, redaction, locks, recovery, and partial failures. `make test-fast` runs the suite; `make check` also formats, race-tests, and builds.
+Unit tests use temporary homes and a command-boundary Docker fake to verify ordering, ownership, redaction, locks, recovery, and partial failures. `make test-fast` runs the suite. `make check` also formats, race-tests, and builds.
 
 Real installer execution, provider login, Docker integration, and host-terminal acceptance are separate checks. Record unpassed gates in `docs/dev/progress.md`, not in user onboarding pages.

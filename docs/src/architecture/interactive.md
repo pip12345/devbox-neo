@@ -1,12 +1,12 @@
 # Interactive frontend
 
-`cli/frontend*.go` owns navigation and operation forms. `cliui` presents them; application/resource/store services retain validation, locking, and persistence. Direct commands and menus call those same services without recursive Cobra execution.
+`cli/frontend*.go` owns navigation and operation forms. `cliui` presents them. Application/resource/store services retain validation, locking, and persistence. Direct commands and menus call those same services without recursive Cobra execution.
 
 ## Synchronous workflows, asynchronous rendering
 
-A command owns one `Runner`. Workflows are ordinary nested functions with local drafts. The runner sends immutable screen snapshots to one Bubble Tea goroutine and receives selections; only the workflow goroutine invokes handlers.
+A command owns one `Runner`. Workflows are ordinary nested functions with local drafts. The runner sends immutable screen snapshots to one Bubble Tea goroutine and receives selections. Only the workflow goroutine invokes handlers.
 
-Collections contain objects with stable keys. Each object carries an action preview; highlighting only renders that immutable preview, and Enter/Right invokes the object's shared workflow. Browser-wide commands are separate under Browser actions and browser-local shortcuts. Fields carry values/status rather than preformatted descriptions. Filtering maps selections back to the displayed snapshot; labels never dispatch behavior. Preview snapshots strip both object and action handlers and copy fields, summaries, and toggle values.
+Collections contain objects with stable keys. Each object carries an action preview. Highlighting only renders that immutable preview, and Enter/Right invokes the object's shared workflow. Browser-wide commands are separate under Browser actions and browser-local shortcuts. Fields carry values/status rather than preformatted descriptions. Filtering maps selections back to the displayed snapshot. Labels never dispatch behavior. Preview snapshots strip both object and action handlers and copy fields, summaries, and toggle values.
 
 Nested workflows share a navigation frame. Foreground operations refresh it after success or failure because partial changes may have occurred. Parent menus retain the updated frame instead of restoring stale inventory. UI snapshots are deep copies and cannot observe that mutation. Restore selection by key, not row index.
 
@@ -14,7 +14,7 @@ Config browsing does not initialize Docker. Session inventory errors remain visi
 
 ## Required migrations
 
-The shared CLI initialization gates state-backed commands and both browsers before opening store/resource services. `internal/migration` detects required updates and owns their explanations/conversion. One generic screen offers Exit (default) or Migrate; no second picker or confirmation is needed. Agreement runs the service, and only success releases the original operation. Decline, cancellation and failure remain blocked. Noninteractive/JSON calls never prompt or migrate; help/version and read-only completion remain available.
+The shared CLI initialization gates state-backed commands and both browsers before opening store/resource services. `internal/migration` detects required updates and owns their explanations/conversion. One generic screen offers Exit (default) or Migrate. No second picker or confirmation is needed. Agreement runs the service, and only success releases the original operation. Decline, cancellation and failure remain blocked. Noninteractive/JSON calls never prompt or migrate. Help/version and read-only completion remain available.
 
 The gate uses the existing command-scoped runner before the normal frontend starts. It pauses terminal reading during conversion, finishes the runner before handoff and writes its presentation to stderr rather than command data. Initialization remembers a successful check for this command/home so lazy engine loading cannot open a second reader inside an existing menu.
 
@@ -22,13 +22,13 @@ The gate uses the existing command-scoped runner before the normal frontend star
 
 Session creation and source editing share config-chain controls with different save callbacks. Both nested and standalone config creation use `cli.createConfig` and `resource.CreateConfig`.
 
-The shared source picker orders suggestions as named configs, workspace configs, then invoking-directory configs. Canonical directory identity deduplicates both search roots and candidates; the first candidate wins, retaining its named/fixed or discovered/relative reference semantics. Each discovered row retains its search root so selecting a workspace-relative name cannot accidentally choose a same-named config under the invoking directory. Typed paths still use the invoking directory, and all relative selections are captured against the session workspace. Workspace/current-directory discovery failures are reported without removing candidates from other roots; discovery never saves a selection. The standalone config browser has no workspace target and keeps its separate current-directory inventory.
+The shared source picker orders suggestions as named configs, workspace configs, then invoking-directory configs. Canonical directory identity deduplicates both search roots and candidates. The first candidate wins, retaining its named/fixed or discovered/relative reference semantics. Each discovered row retains its search root so selecting a workspace-relative name cannot accidentally choose a same-named config under the invoking directory. Typed paths still use the invoking directory, and all relative selections are captured against the session workspace. Workspace/current-directory discovery failures are reported without removing candidates from other roots. Discovery never saves a selection. The standalone config browser has no workspace target and keeps its separate current-directory inventory.
 
-Drafts remain local until explicit submission. Optional-file drafts copy slices so cancellation cannot mutate the accepted selection. A successfully created config is independently saved; cancellation of its parent session draft does not remove it.
+Drafts remain local until explicit submission. Optional-file drafts copy slices so cancellation cannot mutate the accepted selection. A successfully created config is independently saved. Cancellation of its parent session draft does not remove it.
 
-Browser creation supplies a materialization callback so build errors return to the populated form. Its unchecked Make folder default toggle corresponds to CLI `create --default`; the form shows any selection it would replace and does not save that choice before submission. A committed creation whose final stop or default selection failed opens the saved session for repair rather than retrying Create. Other successful one-shot forms close; failures retain inputs. Recreate exposes container/image options and explicit permission to interrupt attachments while the shared engine chooses and reports minimal required work. Pending preparation exposes Abort without requiring a successful config preview; committed transfers only offer cleanup.
+Browser creation supplies a materialization callback so build errors return to the populated form. Its unchecked Make folder default toggle corresponds to CLI `create --default`. The form shows any selection it would replace and does not save that choice before submission. A committed creation whose final stop or default selection failed opens the saved session for repair rather than retrying Create. Other successful one-shot forms close. Failures retain inputs. Recreate exposes container/image options and explicit permission to interrupt attachments while the shared engine chooses and reports minimal required work. Pending preparation exposes Abort without requiring a successful config preview. Committed transfers only offer cleanup.
 
-`cliui.TextRequest` supplies initial source values, validation, and sensitivity. Pending text belongs to the workflow. Control characters use JSON-string input because the single-line widget sanitizes them. Sensitive input is masked; plain prompts suppress echo and restore termios.
+`cliui.TextRequest` supplies initial source values, validation, and sensitivity. Pending text belongs to the workflow. Control characters use JSON-string input because the single-line widget sanitizes them. Sensitive input is masked. Plain prompts suppress echo and restore termios.
 
 Saved edits are not rolled back by Back/Exit. Session-config receipts point to exact Status targets without implying container settings were applied. Provenance comes from the resolver, not comparisons of displayed values.
 
@@ -51,24 +51,32 @@ sequenceDiagram
 
 `Pause` uses Bubble Tea's blocking handoff. The UI must not read or redraw while a harness, shell, logs, SSH, or result acknowledgement owns the terminal. Foreground operations restore termios before acknowledgement: a cancelled Docker client can leave raw mode enabled, preventing Enter from producing a newline.
 
-`Finish` joins the UI goroutine and restores the terminal without cancelling later command work. Command-context cancellation requests graceful Quit rather than Bubble Tea's force-exit path, which skips the input-reader join. Join the cancellation callback too. The pinned Ultraviolet version includes its StreamEvents reader-join fix; `reader_test.go` protects that contract.
+`Finish` joins the UI goroutine and restores the terminal without cancelling later command work. Command-context cancellation requests graceful Quit rather than Bubble Tea's force-exit path, which skips the input-reader join. The cancellation callback must also be joined before returning.
 
-`SignalContext` routes foreground SIGINT to the current operation; menu Ctrl-C, SIGTERM, and terminal hangup (SIGHUP) cancel the command. Hangup uses normal attachment cleanup rather than terminating the process before leases are released. Confirmation defaults to No and leaves an audit line in the normal terminal. Redirected/dumb-terminal interaction keeps plain prompts.
+The pinned Ultraviolet version includes its StreamEvents reader-join fix. `reader_test.go` protects that contract.
+
+`SignalContext` routes foreground SIGINT to the current operation. Menu Ctrl-C, SIGTERM, and terminal hangup (SIGHUP) cancel the command. Hangup uses normal attachment cleanup rather than terminating the process before leases are released. Confirmation defaults to No and leaves an audit line in the normal terminal. Redirected/dumb-terminal interaction keeps plain prompts.
 
 ## Presentation boundaries
 
-Keep object-scoped menus separate from browser-wide commands. Session previews and menus share one action builder, with compact target/lifetime context and Use, Inspect, Container, and Manage groups in a gutter, separated by one blank row. Forms collect actual inputs, not another category choice. Relative activity uses existing recorded timestamps, not new session state.
+Keep object-scoped menus separate from browser-wide commands. Session previews and menus share one action builder. Forms collect actual inputs, not another category choice. Relative activity uses existing recorded timestamps, not new session state.
 
-All action labels use the same style regardless of navigation depth; destructive actions retain red warning text. Selection uses a background, and status/warning colors retain their separate meanings. There are no menu-depth colors, font changes, or text markers. Shortcut columns sit beside the action text rather than at the pane edge. Shortcuts are screen-local and go through the same dispatcher, blocked checks, and handlers as Enter. Text/filter input and foreground work cannot dispatch them. Recreate's `r` opens its existing confirmation, not automatic approval. Page keys navigate displayed lists without wrapping or scroll read-only views; Ctrl+Page keys retain independent context/detail scrolling.
+The direct folder editor enters the main browser. Folder defaults are selected or cleared through object actions, not a separate picker. Default changes update markers and receipts. Source-specific settings dashboards and combined inspection remain distinct views. Keep error/partial-result output visible before returning.
 
-Folder rows use the shortest unique path suffix across the complete session inventory, including explicitly opened empty folders. Filtering does not recompute labels. The frontend supplies a separate list label; full paths remain in preview labels and stable keys, preserving search, selection, ordering, and dispatch.
+### Input and navigation
 
-The direct folder editor enters the main browser; folder defaults are selected or cleared through object actions, not a separate picker. Default changes update markers and receipts. Source-specific settings dashboards and combined inspection remain distinct views.
+Shortcuts are screen-local and go through the same dispatcher, blocked checks, and handlers as Enter. Text/filter input and foreground work cannot dispatch them. Recreate's `r` opens its existing confirmation, not automatic approval. Page keys navigate displayed lists without wrapping or scroll read-only views. Ctrl+Page keys retain independent context/detail scrolling.
 
-Keep error/partial-result output visible before returning. Color-independent markers, scrolling, and narrow-layout tests are part of the interaction contract.
+Folder rows use the shortest unique path suffix across the complete session inventory, including explicitly opened empty folders. Filtering does not recompute labels. The frontend supplies a separate list label. Full paths remain in preview labels and stable keys, preserving search, selection, ordering, and dispatch.
+
+### Visual presentation
+
+Session screens show compact target/lifetime context. Use, Inspect, Container, and Manage group labels appear in a gutter, with one blank row between groups. Shortcut columns sit beside the action text rather than at the pane edge.
+
+All action labels use the same style regardless of navigation depth. Destructive actions retain red warning text. Selection uses a background, and status/warning colors retain their separate meanings. There are no menu-depth colors, font changes, or text markers. Color-independent markers, scrolling, and narrow-layout tests are part of the interaction contract.
 
 ## Completion
 
-Completion bypasses store initialization and locking record readers. Config directories provide named suggestions; public session names and folder-local names come from readable saved settings, without requiring valid applied runtime state. Session candidates include escaped workspace/name descriptions for shells that display them; the inserted target is the metadata-derived public name; the directory must match its recorded ID. Harness enumeration uses valid effective definitions. Live container suggestions use bounded installation-filtered inventory and tolerate unavailable Docker.
+Completion bypasses store initialization and locking record readers. Config directories provide named suggestions. Public session names and folder-local names come from readable saved settings, without requiring valid applied runtime state. Session candidates include escaped workspace/name descriptions for shells that display them. The inserted target is the metadata-derived public name. The directory must match its recorded ID. Harness enumeration uses valid effective definitions. Live container suggestions use bounded installation-filtered inventory and tolerate unavailable Docker.
 
 Completion must not seed state, create locks, resolve a full environment, or mutate Docker. Generated scripts register completion for `dbx` only.

@@ -21,43 +21,59 @@ flowchart TD
 
 `app.Locate` selects saved session identity using a metadata-derived public name, an explicit folder/local-name pair, or a folder's saved default. Captured internal operations can address the immutable ID. It never resolves config to find a session. This keeps broken sources from blocking lookup and repair.
 
-`config.Reference` preserves relative/fixed intent. CLI capture resolves relative arguments against the invoking cwd, then records them relative to the canonical workspace. `ResolveReferences` expands the saved chain at the runtime boundary, requires its directories, and rejects duplicate canonical paths. Composition receives absolute `config.Source` inputs. Resolution never discovers sources; there is no global baseline or inheritance cutoff.
+`config.Reference` preserves relative/fixed intent. CLI capture resolves relative arguments against the invoking cwd, then records them relative to the canonical workspace. `ResolveReferences` expands the saved chain at the runtime boundary, requires its directories, and rejects duplicate canonical paths. Composition receives absolute `config.Source` inputs. Resolution never discovers sources. There is no global baseline or inheritance cutoff.
 
-`app.UpdateSources` requires a nonempty chain, validates references, and compares session ID plus the displayed chain under the operation lock. It preserves unrelated latest fields and saves only desired references; runnable settings are not required. Creation drafts and record reads can still be empty. Explicit recreation resolves from the reread locked record, not a pre-lock source snapshot. Ordinary access never resolves desired config.
+`app.UpdateSources` requires a nonempty chain, validates references, and compares session ID plus the displayed chain under the operation lock. It preserves unrelated latest fields and saves only desired references. Runnable settings are not required. Creation drafts and record reads can still be empty. Explicit recreation resolves from the reread locked record, not a pre-lock source snapshot. Ordinary access never resolves desired config.
 
 ### Merging settings and artifacts
 
 The full resolver starts with built-in defaults and expands every explicit source in order. Scalars replace earlier values, declared lists append, and shell argv replaces as a unit. Runnable operations require a nonempty final harness selection.
 
-Harness selection precedes argument merging. A configured `harness_args` list must name its harness in the same file; only lists matching the final harness contribute arguments and provenance. One-off launch arguments are appended later and are not saved.
+Harness selection precedes argument merging. A configured `harness_args` list must name its harness in the same file. Only lists matching the final harness contribute arguments and provenance. One-off launch arguments are appended later and are not saved.
 
 `docker/Dockerfile`, `setup.sh`, and `before-open.sh` form ordered chains. Harness files overlay by relative path: definition defaults followed by the source chain.
 
 ### Provenance is resolution data
 
-`artifact.Trace` records sources, ordered artifact paths, aggregate contributors, and `EntrySources`. Each list contribution adds labels in the same order as values. Duplicate entries remain distinct; shell replacement replaces its sources too. Trace labels are diagnostic, not session identity.
+`artifact.Trace` records sources, ordered artifact paths, aggregate contributors, and `EntrySources`. Each list contribution adds labels in the same order as values. Duplicate entries remain distinct. Shell replacement replaces its sources too. Trace labels are diagnostic, not session identity.
 
-Menus, `config show`, and session `edit --show` consume this trace rather than guessing ownership from matching values or local key presence. Human output uses dotted paths for nested fields; JSON preserves value structure and exposes `entry_sources`. Display rows never feed configuration saves.
+Menus, `config show`, and session `edit --show` consume this trace rather than guessing ownership from matching values or local key presence. Human output uses dotted paths for nested fields. JSON preserves value structure and exposes `entry_sources`. Display rows never feed configuration saves.
 
 ## Host substitution and sensitive values
 
-Resolution captures one host environment snapshot, then expands `${env:NAME}` in decoded string values once. Property names are not expanded. Expansion is non-recursive; unset and present-empty values remain distinct. Source bytes are retained so edits and copies preserve the original expressions.
+Resolution captures one host environment snapshot, then expands `${env:NAME}` in decoded string values once. Property names are not expanded. Expansion is non-recursive. Unset and present-empty values remain distinct. Source bytes are retained so edits and copies preserve the original expressions.
 
-Sensitivity follows the destination field, not the variable name or substitution mechanism. Env/auth values are sensitive; paths, networks, argv, and other settings remain public. This lets diagnostics explain ordinary changes without accidentally treating every host-dependent path as a secret.
+Sensitivity follows the destination field, not the variable name or substitution mechanism. Env/auth values are sensitive. Paths, networks, argv, and other settings remain public. This lets diagnostics explain ordinary changes without accidentally treating every host-dependent path as a secret.
 
-Sensitive env is resolved only for the current operation. Records keep installation-keyed assignment hashes for status comparison, not values or historical expression/source restoration references. Explicit recreation resolves current definition/config env through the normal resolver. Public creation commands accept no configuration overrides; lasting env settings belong in source files.
+Sensitive env is resolved only for the current operation. Records keep installation-keyed assignment hashes for status comparison, not values or historical expression/source restoration references. Explicit recreation resolves current definition/config env through the normal resolver. Public creation commands accept no configuration overrides. Lasting env settings belong in source files.
 
 The Docker adapter renders creation env through a private `0600` temporary file. Neither values nor its temporary path enter the session record. Display redacts env values and never serializes the host snapshot. Terminal display passthrough is a separate invocation-local channel described in [lifecycle](lifecycle.md#invocation-local-terminal-metadata).
 
 ## Source mutation and initialization
 
-`resource` owns directory creation, setting edits, and optional-artifact setup. Its named-config listing scans the selected home's `configs/` directory and parses each source independently so invalid entries remain visible without Docker or session state. Arbitrary path-based configs have no global registry. `resource.DiscoverConfigs` supplies local menu candidates without changing saved selections. Unlike named-config listing, discovery omits candidates that fail `config.ParseLayer`: an unrelated application's `config.json` is not evidence of Devbox ownership. Discovery does not expand host expressions or require runnable settings, so partial layers remain eligible. Canonical directory paths key external configuration-owner locks. Folder defaults belong to `store`, not config files.
+`resource` owns directory creation, setting edits, and optional-artifact setup. Canonical directory paths key external configuration-owner locks. Folder defaults belong to `store`, not config files.
 
-Creation checks for `config.json` before prompts, repeats the check under the owner lock, validates setup, and claims the config file with no-replace publication before adding artifacts. Existing directories are allowed, but an existing config file is never replaced. Optional-file planning/publication is shared with editing and adds only missing files. A generation target may differ from, or exist without, the persistent harness setting.
+### Listing and discovery
 
-Named-config deletion holds that owner lock, scans all saved desired and committed session sources, then removes the directory and syncs its parent. A source at or beneath the directory blocks recursive deletion; both the saved path and its canonical target are checked so deleting an alias cannot break a reference unnoticed. The same usage scan finds selected and committed users, but the directory editor, `config users`, and blocked-deletion error present each saved session once, without exposing that internal distinction. It returns known users alongside any inventory errors; symlink entries, corrupt session state, and pending transfers still block deletion, while an incomplete config directory can be deleted. Session creation and source edits do not take the config lock, so the reference check is a current-state safeguard rather than a concurrency guarantee.
+Named-config listing scans the selected home's `configs/` directory and parses each source independently. Invalid entries remain visible without Docker or session state. Arbitrary path-based configs have no global registry.
 
-Prompts hold no owner locks. Cancellation discards pending text or creation choices, not completed saves. Once creation publishes its config, an artifact failure is reported as partial setup and repaired through `config edit`, not repeated creation.
+`resource.DiscoverConfigs` supplies local menu candidates without changing saved selections. Unlike named-config listing, discovery omits candidates that fail `config.ParseLayer`: an unrelated application's `config.json` is not evidence of Devbox ownership. Discovery does not expand host expressions or require runnable settings, so partial layers remain eligible.
+
+### Creation and partial setup
+
+Creation checks for `config.json` before prompts, repeats the check under the owner lock, validates setup, and claims the config file with no-replace publication before adding artifacts. Existing directories are allowed, but an existing config file is never replaced.
+
+Optional-file planning/publication is shared with editing and adds only missing files. A generation target may differ from, or exist without, the persistent harness setting. Once creation publishes its config, an artifact failure is reported as partial setup and repaired through `config edit`, not repeated creation.
+
+Prompts hold no owner locks. Cancellation discards pending text or creation choices, not completed saves.
+
+### Named-config deletion and usage scans
+
+Deletion holds the owner lock, scans all saved desired and committed session sources, then removes the directory and syncs its parent. A source at or beneath the directory blocks recursive deletion. Both the saved path and its canonical target are checked so deleting an alias cannot break a reference unnoticed.
+
+The usage scan finds selected and committed users. The directory editor, `config users`, and blocked-deletion error present each saved session once, without exposing that internal distinction. The scan returns known users alongside any inventory errors. Symlink entries, corrupt session state, and pending transfers block deletion. An incomplete config directory can still be deleted.
+
+Session creation and source edits do not take the config lock, so the reference check is a current-state safeguard rather than a concurrency guarantee.
 
 ### Immediate field edits
 
@@ -65,33 +81,41 @@ The CLI keeps raw local JSON separate from effective/redacted display data. Each
 
 1. Acquire the owner lock and reread current source.
 2. Compare the edited field against the value the editor loaded.
-3. Reject a same-field conflict; preserve unrelated concurrent changes.
+3. Reject a same-field conflict while preserving unrelated concurrent changes.
 4. Patch only that field, or remove its source key.
 5. Validate source shape/literal constraints and save.
 
-List editors reload before operations. Validation/write failures retain unsaved input for explicit retry; `ErrConfigChanged` instead reloads current state without replay. Effective-resolution failures do not disable local repair; cross-field and runtime-resource constraints remain the resolver/runtime's responsibility.
+List editors reload before operations. Validation/write failures retain unsaved input for explicit retry. `ErrConfigChanged` instead reloads current state without replay. Effective-resolution failures do not disable local repair. Cross-field and runtime-resource constraints remain the resolver/runtime's responsibility.
 
 ## Declarative harnesses
 
-`harness.Load` resolves one selected definition. Registry enumeration separately sorts effective entries and reports invalid overrides. A selected invalid user definition fails; it does not silently become the built-in. Loading one harness does not require unrelated registry entries to validate.
+`harness.Load` resolves one selected definition. Registry enumeration separately sorts effective entries and reports invalid overrides. A selected invalid user definition fails. It does not silently become the built-in. Loading one harness does not require unrelated registry entries to validate.
 
-Definitions declare installation commands/PATH, launch and continuation argv, env, environment/cache stores, config ownership, auth overlays, preparation argv, and transfer capabilities. Pi's fullscreen default is an ordinary launch argument; configured and one-off arguments follow it without a Pi-specific engine branch.
-
-`install.shell` and `install.script` are mutually exclusive. A script selects captured files beneath the harness's `install/` directory. Their bytes and modes enter the definition digest used by image reuse, status and runtime compatibility. The final image stage consumes that capture as `devuser`; runtime synchronization cannot replace installed code independently of its image.
-
-Built-in defaults, installation files, and user defaults share a recursive regular-file reader. Managed defaults/config trees exclude `.git` directories and worktree `.git` files at every depth; installation inputs do not inherit this exclusion. Other dependency/runtime trees remain included. The reader skips symlinks and other special entries, never follows them, and treats root-path/read failures as fatal. Each source tree reports at most ten source-qualified example warnings plus a count of additional skipped entries. Warnings flow through resolution into application stderr and through source-seeding/copy results into text or JSON. A skipped higher-layer entry does not erase a lower-layer regular file.
-
-Claude's built-in definition uses the same declarations: `sessions/<id>/<state_tree>/harnesses/claude/stores/home/` mounts at `/home/devuser/.claude`, where defaults and ordered `<config>/claude/` files supply managed configuration. `auth/claude/.credentials.json` overlays the store's `.credentials.json`; `auth/claude/.claude.json` mounts at `/home/devuser/.claude.json`. Both auth files are shared rather than transferred with session state. Its native executable under `/home/devuser/.local/bin` remains image-local; no Claude cache store is declared. `settings.json` owns only `tui` and `pluginConfigs`.
-
-OpenCode's image-owned wrapper briefly locks shared auth to capture a baseline and compare-and-swap changed credentials at exit. Unchanged clients do not write; conflicting changes are retained privately rather than overwriting a newer snapshot. A per-backing-store lock protects imports into that database, while different stores run concurrently. The persisted baseline makes interrupted write-back follow the same conflict rule on recovery. Native import skips existing IDs, so the wrapper clears cached credentials first. OpenCode retains backend ownership; credential values never enter session records.
+Definitions declare installation commands/PATH, launch and continuation argv, env, environment/cache stores, config ownership, auth overlays, preparation argv, and transfer capabilities. Pi's fullscreen default is an ordinary launch argument. Configured and one-off arguments follow it without a Pi-specific engine branch.
 
 Store/auth declarations constrain targets to clean paths beneath the container user's home. Validation prevents overlapping stores and auth mounts that obscure stores. `Definition.MountParents` derives ancestor ownership rather than scattering harness-specific path fixes through startup.
 
+### Captured installation and configuration files
+
+`install.shell` and `install.script` are mutually exclusive. A script selects captured files beneath the harness's `install/` directory. Their bytes and modes enter the definition digest used by image reuse, status and runtime compatibility. The final image stage consumes that capture as `devuser`. Runtime synchronization cannot replace installed code independently of its image.
+
+Built-in defaults, installation files, and user defaults share a recursive regular-file reader. Managed defaults/config trees exclude `.git` directories and worktree `.git` files at every depth. Installation inputs do not inherit this exclusion. Other dependency/runtime trees remain included.
+
+The reader skips symlinks and other special entries, never follows them, and treats root-path/read failures as fatal. A skipped higher-layer entry does not erase a lower-layer regular file. Each source tree reports at most ten source-qualified example warnings plus a count of additional skipped entries. Warnings flow through resolution into application stderr and through source-seeding/copy results into text or JSON.
+
+### Built-in storage and authentication
+
+Claude's built-in definition uses the same declarations: `sessions/<id>/<state_tree>/harnesses/claude/stores/home/` mounts at `/home/devuser/.claude`, where defaults and ordered `<config>/claude/` files supply managed configuration. `auth/claude/.credentials.json` overlays the store's `.credentials.json`. `auth/claude/.claude.json` mounts at `/home/devuser/.claude.json`. Both auth files are shared rather than transferred with session state. Its native executable under `/home/devuser/.local/bin` remains image-local. No Claude cache store is declared. `settings.json` owns only `tui` and `pluginConfigs`.
+
+OpenCode retains ownership of its authentication backend. Its image-owned wrapper briefly locks shared auth to capture a baseline and compare-and-swap changed credentials at exit. Unchanged clients do not write. Conflicting changes are retained privately rather than overwriting a newer snapshot.
+
+A per-backing-store lock protects imports into that database, while different stores run concurrently. The persisted baseline makes interrupted write-back follow the same conflict rule on recovery. Native import skips existing IDs, so the wrapper clears cached credentials first. Credential values never enter session records.
+
 ## Layered image compilation
 
-`artifact` discovers image stages only at `<config>/docker/Dockerfile`. `artifact.ReadBuildContext` captures that Dockerfile's parent directory (`<config>/docker/`), its effective ignore rules, regular files, directory entries, and permissions. This separates build files from settings, lifecycle scripts, and harness configuration: unrelated edits must not invalidate the image cache. Resolved image settings such as `base_image` and the selected harness definition still contribute to the image plan. `COPY`/`ADD` inputs belong under `docker/`; no files from the config root are implicitly included.
+`artifact` discovers image stages only at `<config>/docker/Dockerfile`. `artifact.ReadBuildContext` captures that Dockerfile's parent directory (`<config>/docker/`), its effective ignore rules, regular files, directory entries, and permissions. This separates build files from settings, lifecycle scripts, and harness configuration: unrelated edits must not invalidate the image cache. Resolved image settings such as `base_image` and the selected harness definition still contribute to the image plan. `COPY`/`ADD` inputs belong under `docker/`. No files from the config root are implicitly included.
 
-Ignored paths are excluded before unsupported entries are rejected. Each captured tree supplies its own build execution and fingerprint inputs; contexts are never overlaid. Resource setup and CLI artifact selection use the same `docker/Dockerfile` path.
+Ignored paths are excluded before unsupported entries are rejected. Each captured tree supplies its own build execution and fingerprint inputs. Contexts are never overlaid. Resource setup and CLI artifact selection use the same `docker/Dockerfile` path.
 
 `environment.ImageBuildPlan` contains the upstream image reference, generated preparation/boundary/finalization layers, and ordered captured user stages:
 
@@ -103,17 +127,27 @@ flowchart TD
     FINAL --> PARENTS[Prepare mount parents and validate]
 ```
 
-Preparation validates a Debian/Ubuntu base, installs runtime tools, and creates the requested development UID/GID. Conflicting accounts fail without being renamed or recursively changing ownership. Boundary layers restore the development USER, HOME, shell, and working directory while retaining user PATH additions. Finalization installs the harness without runtime cache/prefix overrides, prepends its required paths, and verifies binary availability. Pi's managed installer runs as `devuser` under the image-only `/home/devuser/.pi/image/`, because installing into the persistent `/home/devuser/.pi/agent/` store (or the shared `.local` cache mount) would hide its executable when Docker mounts state. The image-owned `.pi` parent is then checked for user write/search access before container creation.
+- Preparation validates a Debian/Ubuntu base, installs runtime tools, and creates the requested development UID/GID. Conflicting accounts fail without being renamed or recursively changing ownership.
+- Boundary layers restore the development USER, HOME, shell, and working directory while retaining user PATH additions.
+- Finalization installs the harness without runtime cache/prefix overrides, prepends its required paths, and verifies binary availability.
 
-Execution supplies `DEVBOX_BASE`, `DEVBOX_USER`, `DEVBOX_USER_HOME`, `DEVBOX_WORKSPACE`, `DEVBOX_UID`, and `DEVBOX_GID`. Each custom stage receives the preceding image's unique temporary tag. Generated boundary/final stages skip only Docker's default-value warning for `DEVBOX_BASE`: the builder always supplies that stage-specific tag, so no static default describes it. Docker image layer ancestry verifies that customization retained the supplied base; this is a runtime contract check, not a security sandbox. Captured stage inputs and generated layer bytes are fingerprinted in order. `--image` disables cache across every controlled stage.
+Pi's managed installer runs as `devuser` under the image-only `/home/devuser/.pi/image/`. Installing into the persistent `/home/devuser/.pi/agent/` store or shared `.local` cache mount would hide its executable when Docker mounts state. The image-owned `.pi` parent is checked for user write/search access before container creation.
 
-Each build stage uses a separate temporary directory. Cleanup verifies image identity and installation ownership before removing all intermediate tags, on success or failure. Source directory permissions are restored in staging and owner access is restored before cleanup. Unchanged image inputs can reuse Docker's build cache across environments; container-only settings do not independently invalidate image installation.
+### Build execution and cleanup
+
+Execution supplies `DEVBOX_BASE`, `DEVBOX_USER`, `DEVBOX_USER_HOME`, `DEVBOX_WORKSPACE`, `DEVBOX_UID`, and `DEVBOX_GID`. Each custom stage receives the preceding image's unique temporary tag. Docker image layer ancestry verifies that customization retained the supplied base. This is a runtime contract check, not a security sandbox.
+
+Generated boundary/final stages skip only Docker's default-value warning for `DEVBOX_BASE`. The builder always supplies that stage-specific tag, so no static default describes it. Captured stage inputs and generated layer bytes are fingerprinted in order. `--image` disables cache across every controlled stage.
+
+Each build stage uses a separate temporary directory. Cleanup verifies image identity and installation ownership before removing all intermediate tags, on success or failure. Source directory permissions are restored in staging and owner access is restored before cleanup. Unchanged image inputs can reuse Docker's build cache across environments. Container-only settings do not independently invalidate image installation.
+
+## Mount planning
 
 ### Extra bind source types
 
-`docker.ParseMount` accepts directories, regular files, and Unix sockets for user bind mounts. It resolves source symlinks and records the canonical path plus mutually exclusive `File`/`Socket` markers; with neither marker, a bind source is a directory. Named volumes have neither marker. Other special files remain unsupported. Raw `--volume` uses the same parser.
+`docker.ParseMount` accepts directories, regular files, and Unix sockets for user bind mounts. It resolves source symlinks and records the canonical path plus mutually exclusive `File`/`Socket` markers. With neither marker, a bind source is a directory. Named volumes have neither marker. Other special files remain unsupported. Raw `--volume` uses the same parser.
 
-These markers travel with current creation plans and applied comparison fingerprints. Explicit recreation resolves current mounts and source types; removed mounts no longer block it. A replacement socket at the same canonical path is allowed; the type, not its inode or service lifetime, participates in configuration identity. Managed workspace, store, auth, and SSH-directory mounts cannot be socket mounts. Socket service startup and access permissions remain the user's responsibility.
+These markers travel with current creation plans and applied comparison fingerprints. Explicit recreation resolves current mounts and source types. Removed mounts no longer block it. A replacement socket at the same canonical path is allowed. The type, not its inode or service lifetime, participates in configuration identity. Managed workspace, store, auth, and SSH-directory mounts cannot be socket mounts. Socket service startup and access permissions remain the user's responsibility.
 
 ### Mount-parent ownership
 
@@ -122,11 +156,11 @@ A parent directory belongs either to the image or to an enclosing bind-backed ha
 - Image-owned ancestors are created as `devuser` after installation and checked for writable/searchable permissions during the runtime build.
 - Ancestors inside another managed mount are prepared in that mount's host backing source before create/start.
 
-This avoids Docker creating root-owned parents for nested mounts. An incompatible custom base fails rather than triggering recursive ownership changes. Host preparation rejects symlink paths and missing backing roots; it never replaces missing durable state with an empty tree. Extra user mounts are outside this preparation contract, and preparing an ancestor does not make unmounted descendants persistent.
+This avoids Docker creating root-owned parents for nested mounts. An incompatible custom base fails rather than triggering recursive ownership changes. Host preparation rejects symlink paths and missing backing roots. It never replaces missing durable state with an empty tree. Extra user mounts are outside this preparation contract, and preparing an ancestor does not make unmounted descendants persistent.
 
 ## Managed configuration ownership
 
-`filesync` owns byte/key reconciliation, not lifecycle safety. The application must hold the operation lock and prove the container is stopped or absent before synchronizing. Creation, explicit runtime application, and transfer destination creation synchronize under that contract. Ordinary access only checks backing roots and uses applied state; it does not synchronize.
+`filesync` owns byte/key reconciliation, not lifecycle safety. The application must hold the operation lock and prove the container is stopped or absent before synchronizing. Creation, explicit runtime application, and transfer destination creation synchronize under that contract. Ordinary access only checks backing roots and uses applied state. It does not synchronize.
 
 ### Ordinary files
 
@@ -136,7 +170,7 @@ The manifest describes applied ownership. Its hashes are not a local-edit protec
 
 ### Shared JSON
 
-A `json-keys` declaration owns only listed top-level keys. Desired values replace those keys; absent desired keys are removed. Other live keys and existing file permissions survive. Pi's `models.json` declaration owns the entire `providers` value rather than merging individual providers.
+A `json-keys` declaration owns only listed top-level keys. Desired values replace those keys. Absent desired keys are removed. Other live keys and existing file permissions survive. Pi's `models.json` declaration owns the entire `providers` value rather than merging individual providers.
 
 Malformed live JSON is a conflict because the synchronizer cannot safely preserve undeclared settings. Writes use same-directory temporary files, and the new manifest commits after non-conflicting writes succeed. The engine advances runtime inputs and launch state only after the preparation stage succeeds.
 

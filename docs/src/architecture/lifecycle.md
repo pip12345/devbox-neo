@@ -15,7 +15,7 @@ The lifecycle code stays in one `app` package, with files organized by responsib
 | `durable_stores.go` | Previously committed harness-store validation |
 | `attach.go` | Attachment leases and last-command cleanup |
 
-Command-specific orchestration remains explicit; sharing preparation does not make creation, ordinary access, recovery, and transfer rollback interchangeable.
+Command-specific orchestration remains explicit. Sharing preparation does not make creation, ordinary access, recovery, and transfer rollback interchangeable.
 
 ## Desired specification versus recorded contract
 
@@ -45,13 +45,13 @@ flowchart TD
 
 Schema `8` validates public settings and aggregate content hashes, never file contents or env values. Managed trees and build contexts contribute one digest each rather than a persisted per-file inventory. Applied source directories retain provenance for config-usage reporting, not authority to reconstruct historical inputs.
 
-`CompareInputs` emits public-setting and category changes in stable order. Action priority is image over container over runtime. The image-to-container hash dependency does not become a duplicate user-facing reason. Dockerfiles/scripts retain specific reasons; build-context and managed-tree reasons deliberately do not enumerate changed filenames.
+`CompareInputs` emits public-setting and category changes in stable order. Action priority is image over container over runtime. The image-to-container hash dependency does not become a duplicate user-facing reason. Dockerfiles/scripts retain specific reasons. Build-context and managed-tree reasons deliberately do not enumerate changed filenames.
 
 Source paths explain changes but do not themselves change fingerprints when effective input bytes are identical. Relative context/config paths remain semantic inputs. Env diagnostics expose names, not values or hashes. The applied container fingerprint includes the actual image ID rather than only a mutable tag.
 
 ## New-session creation
 
-`Engine.Create` checks workspace/name uniqueness under the namespace lock, allocates one complete 12-character session ID and exclusively claims its storage directory, acquires its operation lock, and resolves the explicit sources. Container creation captures the public session name plus eight characters of its creation token as a readable Docker name. Image aliases retain the complete token independently of those hints; later metadata edits rename neither resource. It then enters the shared creation pipeline. `Request.MakeDefault` is an explicit creation-only option; neither the first session nor a transfer destination becomes a default implicitly.
+`Engine.Create` checks workspace/name uniqueness under the namespace lock, allocates one complete 12-character session ID and exclusively claims its storage directory, acquires its operation lock, and resolves the explicit sources. Container creation captures the public session name plus eight characters of its creation token as a readable Docker name. Image aliases retain the complete token independently of those hints. Later metadata edits rename neither resource. It then enters the shared creation pipeline. `Request.MakeDefault` is an explicit creation-only option. Neither the first session nor a transfer destination becomes a default implicitly.
 
 ```mermaid
 flowchart TD
@@ -69,37 +69,56 @@ flowchart TD
 
 The ordered `setup.sh` chain belongs to the per-container contract. Before-open scripts and harness attachment are not part of standalone `create`. Successful creation leaves the environment stopped.
 
-`createAs` prepares resources before passing explicit inputs to the side-effect-free `creationRecord` helper. The caller owns ID allocation and clock reads; the helper assembles fields and applies the existing activity/action/manual-start rules for new sessions, recreation, and prepared destinations. Materialization supplies the setup-container ID before publication.
+`createAs` prepares resources before passing explicit inputs to the side-effect-free `creationRecord` helper. The caller owns ID allocation and clock reads. The helper assembles fields and applies the existing activity/action/manual-start rules for new sessions, recreation, and prepared destinations. Materialization supplies the setup-container ID before publication.
 
-The record commits only after startup, declared preparation, setup, and binary-availability checks succeed. Creation then stops the container and, if requested, selects the saved session as the folder default while retaining its operation lock. A stop failure does not prevent the requested default selection. A default-selection failure retains the created session and returns an exact `edit --default` repair step. Neither failure is presented as an absent session that can be created again. `CreationResult.Saved` confirms successful record publication independently of completion errors; the UI uses that outcome rather than classifying lifecycle error codes. An unconfirmed publication is not proof of absence.
-
-Recreation selects saved identity and rereads it under the operation lock before resolving its current desired references. A later default change cannot retarget the invocation. Source edits do not rename the session; a replaced durable ID fails rather than being adopted.
-
-Explicit application preserves the session ID and stores. Runtime-only changes use the existing container. Changed container inputs or missing runtime require replacement; changed image inputs require a build too. `--container` forces replacement and `--image` forces an uncached build plus replacement. `--force` permits interruption and always replaces the container. The creation owner retires captured attachment leases only after verified old-runtime removal (or confirmed absence); a failure before removal retains their protection. Interrupted automatic sessions finish stopped; manual-start intent is retained. An unchanged available owned image can be reused. Running/stopped intent is retained. Container-local state is lost only when the container is replaced.
+The record commits only after startup, declared preparation, setup, and binary-availability checks succeed. Creation then stops the container and, if requested, selects the saved session as the folder default while retaining its operation lock. A stop failure does not prevent the requested default selection. A default-selection failure retains the created session and returns an exact `edit --default` repair step. Neither failure is presented as an absent session that can be created again. `CreationResult.Saved` confirms successful record publication independently of completion errors. The UI uses that outcome rather than classifying lifecycle error codes. An unconfirmed publication is not proof of absence.
 
 ## Ordinary access
 
-`app.startAccess` is the shared boundary for `open`, `start`, `shell`, `exec`, and `ssh`. It validates ownership and durable stores, starts the recorded container if needed without requiring attachment idleness. It never resolves desired configs or synchronizes managed files. Pending workspace/config edits therefore do not block access to the applied runtime. Missing backing stores remain errors; missing containers require explicit recreation.
+`app.startAccess` is the shared boundary for `open`, `start`, `shell`, `exec`, and `ssh`. It validates ownership and durable stores, starts the recorded container if needed without requiring attachment idleness. It never resolves desired configs or synchronizes managed files. Pending workspace/config edits therefore do not block access to the applied runtime. Missing backing stores remain errors. Missing containers require explicit recreation.
 
 Open and Continue launch the recorded harness and arguments. Before-open scripts are installed under `/devbox/hooks/` during creation/application, keyed by their content hashes. The recorded runtime inputs already retain their order and hashes, so the session record needs no script contents. Staging and atomic file replacement prevent failed publication from truncating previously applied scripts. These copies are disposable container files, not a historical reconstruction archive.
 
-Open checks the complete applied hook chain before running it. Each hook is a separate process; failure blocks harness attachment. Shell/Exec never run before-open hooks or parse live harness JSON, so they remain usable for repair. An older container without installed hook copies gets an exact `recreate` step, never a fallback to current source files.
+Open checks the complete applied hook chain before running it. Each hook is a separate process. Failure blocks harness attachment. Shell/Exec never run before-open hooks or parse live harness JSON, so they remain usable for repair. An older container without installed hook copies gets an exact `recreate` step, never a fallback to current source files.
 
 ## Explicit configuration application
 
-`planRecreate` captures current inputs under the operation lock and uses the existing image/container/runtime comparison. `applyRecreate` reports its chosen work before mutation. Runtime-only application stops an idle container, reconciles managed files, installs captured hooks and runtime assets, and commits launch settings plus the runtime baseline. It restores previous running/stopped intent using bounded cleanup even after cancellation. A failed reconciliation may have changed some files; the error reports partial application rather than promising rollback. Only successful application advances the saved baseline.
+Recreation selects saved identity and rereads it under the operation lock before resolving its current desired references. A later default change cannot retarget the invocation. Source edits do not rename the session. A replaced durable ID fails rather than being adopted.
 
-Container/image changes use the shared creation pipeline. A missing image alone does not replace a healthy container. Bulk application selects saved sessions regardless of container presence, then preflights and captures all selected plans before executing them. Corrupt records and pending transfers block the batch; incomplete allocations have no saved session and remain for explicit cleanup. Both interfaces use the same application owner.
+`planRecreate` captures current inputs under that lock and uses the existing image/container/runtime comparison. `applyRecreate` reports its chosen work before mutation:
 
-Typed plan diagnostics are collected in `Result.Diagnostics` and delivered synchronously through `Engine.OnDiagnostic`. The CLI renders them on stderr before runtime mutation. Callbacks may run under the operation lock and must not reenter session operations. Source-reading warnings and child streams remain separate. Shared resolution returns captured warnings without printing. Creation/application report them explicitly before mutation; status and transfer previews return warning data for the CLI/menu presentation owner, outside JSON command data. Ordinary access does not resolve config merely to produce drift warnings; Status owns that inspection.
+- Runtime-only changes use the existing container.
+- Changed container inputs or a missing container require replacement.
+- Changed image inputs require a build and replacement.
+- A missing image alone does not replace a healthy container.
+
+`--container` forces replacement. `--image` forces an uncached build plus replacement. `--force` permits interruption and always replaces the container. Container-local state is lost only when the container is replaced.
+
+### Runtime-only application
+
+The engine stops an idle container, reconciles managed files, installs captured hooks and runtime assets, and commits launch settings plus the runtime baseline. It restores previous running/stopped intent using bounded cleanup even after cancellation.
+
+A failed reconciliation may have changed some files. The error reports partial application rather than promising rollback. Only successful application advances the saved baseline.
+
+### Container replacement
+
+Replacement uses the shared creation pipeline with the previous record. It preserves session ID, directory, current data tree, creation time, history, defaults, and manual-start intent. It reuses a matching available installation-owned image or builds a new one. It does not reconstruct historical configuration or adopt unowned images.
+
+The creation owner retires captured attachment leases only after verified old-runtime removal or confirmed absence. A failure before removal retains their protection. Running/stopped intent is retained, except that interrupted automatic sessions finish stopped. Manually started sessions keep their running intent.
+
+### Bulk application and diagnostics
+
+Bulk application selects saved sessions regardless of container presence, then preflights and captures all selected plans before executing them. Corrupt records and pending transfers block the batch. Incomplete allocations have no saved session and remain for explicit cleanup. Both interfaces use the same application owner.
+
+Typed plan diagnostics are collected in `Result.Diagnostics` and delivered synchronously through `Engine.OnDiagnostic`. The CLI renders them on stderr before runtime mutation. Callbacks may run under the operation lock and must not reenter session operations.
+
+Source-reading warnings and child streams remain separate. Shared resolution returns captured warnings without printing. Creation/application report them explicitly before mutation. Status and transfer previews return warning data for the CLI/menu presentation owner, outside JSON command data. Ordinary access does not resolve config merely to produce drift warnings. Status owns that inspection.
 
 ## Missing runtime and explicit recreation
 
 Containers and images are disposable, but their absence does not authorize replacement. Open, Start, Shell, Exec and SSH return `container_missing` with an exact `dbx recreate <public-session-name>` step. They leave saved identity, applied state and history unchanged. Logs/status never build runtime. A healthy container remains usable when its image has been pruned.
 
-Only explicit recreation replaces an existing session's runtime. When replacement is needed, it resolves current selected sources under the operation lock and calls the creation pipeline with the previous record. It preserves session ID, directory, current data tree, creation time, history, defaults and manual-start intent. It reuses a matching available installation-owned image or builds a new one; it does not reconstruct historical configuration or adopt unowned images.
-
-The creation path checks previously committed harness-store roots before creating directories; missing durable stores are errors, not empty replacements. Still-requested previously mounted named volumes must exist. A new runtime association commits only after materialization succeeds.
+The creation path checks previously committed harness-store roots before creating directories. Missing durable stores are errors, not empty replacements. Still-requested previously mounted named volumes must exist. A new runtime association commits only after materialization succeeds.
 
 Committed transfer retries finish source cleanup even when destination runtime is missing. They verify any existing association but do not rebuild, resolve destination config or recopy committed stores. Once cleanup releases the endpoints, the user can explicitly recreate the destination.
 
@@ -135,10 +154,10 @@ Leases contain Linux process start ticks and boot identity to distinguish PID re
 | Operation | Effect on `manual_start` |
 |---|---|
 | Explicit `start` | Set, even when already running |
-| Successful `stop` | Clear; a rejected stop leaves it unchanged |
+| Successful `stop` | Clear. A rejected stop leaves it unchanged |
 | Attach or detach a command | No change |
 
-The value survives recreation and reboot. Docker enforces it through `unless-stopped` when set and `no` otherwise; raw Docker options cannot override this policy.
+The value survives recreation and reboot. Docker enforces it through `unless-stopped` when set and `no` otherwise. Raw Docker options cannot override this policy.
 
 `saveManual` updates Docker's policy and saves the record under the operation lock. If saving fails, it attempts to restore the previous policy so a failed command does not silently change reboot behavior.
 
@@ -148,7 +167,7 @@ At boot, Docker starts the existing container without CLI preparation. It does n
 
 The CLI captures the `app.TerminalEnv` allowlist once into the engine. During materialization it prepends those values to a temporary env plan, before harness and configured values. Terminal values do not participate in the saved comparison baseline, including during rebuilding.
 
-Attached harness, shell, and exec commands receive current terminal variables through Docker exec overrides, with or without TTY allocation. Present empty host values are forwarded; absent keys do not clear container values. Internal hooks/preparation inherit creation env rather than attachment overrides.
+Attached harness, shell, and exec commands receive current terminal variables through Docker exec overrides, with or without TTY allocation. Present empty host values are forwarded. Absent keys do not clear container values. Internal hooks/preparation inherit creation env rather than attachment overrides.
 
 This separates display capabilities from environment configuration: changing terminals does not cause drift or require recreation, and no host dotfiles need importing.
 
@@ -156,8 +175,8 @@ This separates display capabilities from environment configuration: changing ter
 
 `assets` embeds the human docs, development notes, and container agent guidance. The engine stages that bundle with inspected network facts in a private `.runtime-*` directory, then copies it into a verified running container's `/devbox` directory.
 
-The adapter applies root-owned read-only permissions for `devuser`, excluding the live `/devbox/ssh` mount from recursive ownership/permission changes. Host staging is removed on success or failure. Creation/application installs the documentation bundle; ordinary access and network changes refresh only live network facts. Neither operation resolves desired config to refresh those facts.
+The adapter applies root-owned read-only permissions for `devuser`, excluding the live `/devbox/ssh` mount from recursive ownership/permission changes. Host staging is removed on success or failure. Creation/application installs the documentation bundle. Ordinary access and network changes refresh only live network facts. Neither operation resolves desired config to refresh those facts.
 
-Network commands inspect actual attachments under the operation lock. Secondary-network changes cannot detach the configured primary and do not change creation fingerprints. Managed changes refresh in-container facts while running; external Docker changes appear on the next refresh.
+Network commands inspect actual attachments under the operation lock. Secondary-network changes cannot detach the configured primary and do not change creation fingerprints. Managed changes refresh in-container facts while running. External Docker changes appear on the next refresh.
 
-Pi/OpenCode inherit the `devbox` skill through harness defaults. Artifact setup leaves it inherited, while explicit config-directory overrides use normal tree resolution. Claude inherits a `CLAUDE.md` that imports `/devbox/AGENTS.md`; its optional harness-file setup includes that import. The asset content hash is a runtime input, not an image input, so updated guidance does not itself require an image rebuild.
+Pi/OpenCode inherit the `devbox` skill through harness defaults. Artifact setup leaves it inherited, while explicit config-directory overrides use normal tree resolution. Claude inherits a `CLAUDE.md` that imports `/devbox/AGENTS.md`. Its optional harness-file setup includes that import. The asset content hash is a runtime input, not an image input, so updated guidance does not itself require an image rebuild.

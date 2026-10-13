@@ -1,17 +1,21 @@
 # Commands
 
-Prefix commands below with `dbx`. Use `<command> --help` for options. For a walkthrough, start with [Getting started](../guides/getting-started.md).
+Prefix commands in the tables with `dbx`. For example, `open <target>` means `dbx open <target>`. Use `dbx <command> --help` for options. For a walkthrough, start with [Getting started](../guides/getting-started.md).
+
+Notation: replace `<placeholders>` and uppercase values such as `NAME` with your own values. `[brackets]` mark optional parts, `|` separates alternatives, and `…` or `...` means an input can repeat. Do not type the notation itself.
 
 ## Global options and targets
 
 | Input | Meaning |
 |---|---|
-| `--home PATH` | Devbox home; overrides `DEVBOX_HOME`, then `~/.devbox-neo` |
+| `--home PATH` | Devbox home (overrides `DEVBOX_HOME`, then `~/.devbox-neo`) |
 | `<target>` | A project folder or exact public session name from `list` |
 | `--name NAME` | Select a folder-local session instead of the folder default |
 | `.` | Current folder |
 
-A folder alone requires a saved default, even if it has only one session. A public session name, such as `dbx-api-123456abcdef.work`, works from any directory. Its 12-character ID names the directory under `sessions/`; its readable parts come from saved workspace/name metadata. Docker names and raw IDs are not session targets. A local name alone is not a target. Use `./` or an absolute path for a project folder whose basename starts with `dbx-`.
+- A folder alone requires a saved default, even if it has only one session. Use `--name NAME` to select another session in that folder.
+- An exact public session name from `dbx list`, such as `dbx-api-123456abcdef.work`, works from any directory. A local name alone, a raw ID, or a Docker name is not a session target.
+- Use `./` or an absolute path for a project folder whose basename starts with `dbx-`.
 
 ## Interactive frontend
 
@@ -20,7 +24,7 @@ A folder alone requires a saved default, even if it has only one session. A publ
 | No subcommand | Session browser |
 | `config` | Local and named-config browser |
 
-Enter opens the selected object's menu; it does not launch a harness. Sessions expose lifecycle, config, network, transfer, rename, SSH, and deletion operations directly. See [keyboard controls](output.md#interactive-menus).
+Enter opens the selected object's menu. It does not launch a harness. Sessions expose lifecycle, config, network, transfer, rename, SSH, and deletion operations directly. See [keyboard controls](output.md#interactive-menus).
 
 These browsers require terminal input/output. Otherwise, including `TERM=dumb`, they show help. Explicit commands remain available for scripts.
 
@@ -28,31 +32,38 @@ These browsers require terminal input/output. Otherwise, including `TERM=dumb`, 
 
 | Command | Effect |
 |---|---|
-| `create <folder> --name NAME --config REF [--default]` | Create a stopped session; repeat `--config` for an ordered list |
+| `create <folder> --name NAME --config REF [--default]` | Create a stopped session. Repeat `--config` for an ordered list |
 | `open <target> [-- args...]` | Launch the harness |
 | `start <target>` | Keep running until Stop, including after Docker restarts |
 | `stop <target> [--force]` | Stop and clear keep-running intent |
 | `shell <target>` | Open a shell in `/workspace` |
 | `exec <target> -- <argv...>` | Run a command without implicit shell parsing |
-| `logs <target> [-f] [--tail N\|all]` | Docker logs; default tail `100` |
-| `recreate <target> [--container] [--image] [--force]` | Apply current config; replace container/image only as needed |
+| `logs <target> [-f] [--tail N\|all]` | Docker logs (default tail `100`) |
+| `recreate <target> [--container] [--image] [--force]` | Apply current config, replacing the container/image only as needed |
 | `recreate --all [--container] [--image] [--force]` | Apply current config to all saved sessions, including missing containers |
 
-Creation selects a folder default only when requested and never launches the harness. In a terminal, missing name/config inputs open the creation form; scripts must supply both. Container settings belong in configs, not `create` flags.
+Creation selects a folder default only when requested and never launches the harness. In a terminal, missing name/config inputs open the creation form. Scripts must supply both. Container settings belong in configs, not `create` flags.
 
-Only `recreate` replaces a missing container; `open`, `start`, `shell`, `exec`, and `ssh` do not.
+Only `recreate` replaces a missing container. `open`, `start`, `shell`, `exec`, and `ssh` do not.
 
-Recreate keeps saved history and the previous running/stopped state, but may briefly restart the container. **Container replacement loses local files and tools.** `--container` forces replacement; `--image` also forces an uncached image build. Neither interrupts attached commands. `--force` explicitly permits interruption and always replaces the container. After interruption, an automatic session is stopped; an explicitly started session keeps running. Open and stop/start do not apply config edits. Docker logs are not harness conversation transcripts.
+Recreate keeps saved history and the previous running/stopped state, but may briefly restart the container. **Container replacement loses local files and tools.**
+
+- `--container` forces container replacement.
+- `--image` forces an uncached image build and container replacement.
+- Neither option permits interruption of attached commands.
+- `--force` permits interruption and always replaces the container. After interruption, an automatic session is stopped. An explicitly started session keeps running.
+
+Open and stop/start do not apply config edits. Docker logs are not harness conversation transcripts.
 
 ### Creation and launch options
 
 | Option | Applies to | Meaning |
 |---|---|---|
-| `--name NAME` | create | Required local name; prompted when omitted in a terminal |
-| `--config REF` | create | Config name/path; repeat in application order |
+| `--name NAME` | create | Required local name (prompted when omitted in a terminal) |
+| `--config REF` | create | Config name/path. Repeat in application order |
 | `--default` | create | Make the new session the folder default, replacing any existing selection |
 | `--continue`, `-c` | open | Resume the previous harness conversation |
-| `--harness-arg ARG` | open | One-off argument; repeatable |
+| `--harness-arg ARG` | open | One-off argument (repeatable) |
 | `-- args...` | open | One-off arguments appended last |
 
 Configured arguments precede continuation and one-off arguments. One-off arguments are not saved. Without manual Start, the last attached command stops the container. Open, Shell, and Exec allow concurrent attachments, including when the recorded container needs starting.
@@ -61,7 +72,7 @@ Configured arguments precede continuation and one-off arguments. One-off argumen
 
 | Command | Output |
 |---|---|
-| `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Sessions, including missing containers; public session names are always shown; `--wide` adds IDs, storage paths, container names and exact activity details |
+| `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Sessions, including missing containers. Public session names are always shown. `--wide` adds IDs, storage paths, container names and exact activity details |
 | `status [--json]` | Configuration health for all sessions |
 | `status <target> [--json]` | One session's state, active commands, and pending changes |
 
@@ -71,7 +82,7 @@ Checks compare local inputs, not upstream releases. See [output formats](output.
 
 | Command | Effect |
 |---|---|
-| `config create [name\|path]` | Create a config through the overview; supplied destination prefills it |
+| `config create [name\|path]` | Create a config through the overview. A supplied destination prefills it |
 | `config edit <name\|path>` | Edit settings or add optional files |
 | `config list [--json]` | Named configs under the selected home, including invalid entries |
 | `config show <name\|path> [--json]` | One config over built-in defaults, with provenance and redaction |
@@ -80,26 +91,28 @@ Checks compare local inputs, not upstream releases. See [output formats](output.
 | `edit <folder>` | Choose a session's configs or change the folder default |
 | `edit <folder> --name NAME` | Edit a folder-local session's selected configs |
 | `edit <session>` | Edit an exact session's selected configs |
-| `edit <target> --workspace PATH [--json]` | Save a new workspace reference; requires explicit recreation and clears a matching old-folder default |
-| `edit <target> --show [--json]` | Combined settings; folder targets require `--name` |
-| `edit <target> --config REF [--config REF…] [--json]` | Replace the entire ordered config selection; folder targets require `--name` |
+| `edit <target> --workspace PATH [--json]` | Save a new workspace reference. Requires explicit recreation and clears a matching old-folder default |
+| `edit <target> --show [--json]` | Combined settings (folder targets require `--name`) |
+| `edit <target> --config REF [--config REF…] [--json]` | Replace the entire ordered config selection (folder targets require `--name`) |
 
-`--config` requires at least one reference and replaces the list in flag order. Config, workspace, inspection, and default operations cannot be combined. `--workspace` requires a public session name or explicit `--name`. It changes the readable workspace hint, not the ID or storage location.
+`--config` requires at least one reference and replaces the list in flag order. Config selection, workspace changes, inspection, and default selection are separate operations. They cannot be combined in one invocation.
 
-Settings edits save immediately. Nested config creation adds its result to the session draft; that config remains saved if the draft is cancelled. [Config reference](configuration.md) covers paths and merge rules.
+`--workspace` requires a public session name or explicit `--name`. It changes the referenced project folder, not the session ID or storage location. Recreate is required to mount the new folder.
 
-`config create` rejects an existing `config.json`. Optional-file creation preserves existing files. `config delete` accepts direct named directories only, not symlinks or arbitrary paths; it refuses configs still needed by saved sessions. Its `--force` skips confirmation, not usage checks, and is required with `--json`.
+Settings edits save immediately. Nested config creation adds its result to the session draft. That config remains saved if the draft is cancelled. [Config reference](configuration.md) covers paths and merge rules.
 
-Create/edit support these setup flags:
+`config create` rejects an existing `config.json`. Optional-file creation preserves existing files. `config delete` accepts direct named directories only, not symlinks or arbitrary paths. It refuses configs still needed by saved sessions. Its `--force` skips confirmation, not usage checks, and is required with `--json`.
+
+`config create` and `config edit` support these setup flags:
 
 | Flag | Meaning |
 |---|---|
 | `--harness NAME` | Set the config's harness |
-| `--artifact NAME` | Add `harness-config`, `setup.sh`, `before-open.sh`, or `docker/Dockerfile`; repeatable/comma-separated |
-| `--artifact-harness NAME` | Harness whose files to generate; requires `harness-config` |
-| `--json` | Structured result; never prompt |
+| `--artifact NAME` | Add `harness-config`, `setup.sh`, `before-open.sh`, or `docker/Dockerfile` (repeatable/comma-separated) |
+| `--artifact-harness NAME` | Harness whose files to generate (requires `harness-config`) |
+| `--json` | Structured result without prompts |
 
-Supplying setup flags runs directly. A destination is required outside interactive creation. Harness-file generation uses `--artifact-harness`, then the config's harness; it fails if neither selects one. Non-interactive edit requires an explicit operation.
+Supplying setup flags runs directly. A destination is required outside interactive creation. Harness-file generation uses `--artifact-harness`, then the config's harness. It fails if neither selects one. Non-interactive edit requires an explicit operation.
 
 ## Folder defaults
 
@@ -118,7 +131,7 @@ When **Migration required** appears, **Migrate** updates the selected home and c
 
 Review the screen's listed effects before agreeing. **Some migrations move saved data, change session IDs/target names, and remove containers and their local files/tools.** The screen explains what is kept and any required next steps.
 
-Follow the screen's prerequisites and close other Devbox commands before migrating. Do not use older builds with the updated home. If migration fails, fix the reported problem and retry. Scripts and `--json` calls cannot approve migration; run `dbx` in a terminal with the same home. Help, version and completion remain available. Migration does not import old Devbox data.
+Follow the screen's prerequisites and close other Devbox commands before migrating. Do not use older builds with the updated home. If migration fails, fix the reported problem and retry. Scripts and `--json` calls cannot approve migration. Run `dbx` in a terminal with the same home. Help, version and completion remain available. Migration does not import old Devbox data.
 
 ## SSH sharing
 
@@ -130,14 +143,14 @@ dbx ssh <target> <destination> [--host-master] [--insecure]
 |---|---|
 | Destination | Hostname, SSH alias, IP address, or `user@host` |
 | Default mode | SSH runs inside the container |
-| `--host-master` | Use the host's SSH configuration and network; invocation-only |
-| `--insecure` | Disable destination host-key verification for this invocation; ignore and do not save known-host keys |
-| Client config | `/devbox/ssh/config`; exact client command printed after authentication |
+| `--host-master` | Use the host's SSH configuration and network for this invocation |
+| `--insecure` | Disable destination host-key verification for this invocation without reading or saving known-host keys |
+| Client config | `/devbox/ssh/config` (exact client command printed after authentication) |
 | End sharing | Ctrl-C in the host terminal |
 
-Requires a foreground host terminal for authentication. Multiple destinations may be shared; active duplicates are refused. Normal OpenSSH settings control keys, ports, ProxyJump, agent forwarding, and X11 forwarding. Client forwarding requests require support from the master.
+Requires a foreground host terminal for authentication. Multiple destinations may be shared. Active duplicates are refused. Normal OpenSSH settings control keys, ports, ProxyJump, agent forwarding, and X11 forwarding. Client forwarding requests require support from the master.
 
-**`--insecure` permits server impersonation.** Use it only when you accept that risk, such as for disposable VMs. It works in either master mode; ProxyJump hosts retain their own SSH checks.
+**`--insecure` permits server impersonation.** Use it only when you accept that risk, such as for disposable VMs. It works in either master mode. ProxyJump hosts retain their own SSH checks.
 
 **Host mode grants the container broader host/network access.** Connections are not transferred or automatically reconnected. See the [SSH guide](../guides/ssh.md).
 
@@ -165,21 +178,21 @@ dbx rename <target> --to NAME [--dry-run] [--json]
 | Option | Meaning |
 |---|---|
 | `--name NAME` | Source session within a folder target |
-| `--as NAME` | Destination local name; otherwise retain the source name |
+| `--as NAME` | Destination local name (defaults to the source name) |
 | `--move` | Remove the source after the destination is ready |
 | `--abort` | Discard an incomplete copy and keep the source |
 | `--dry-run` | Preview without transferring |
 | `--json` | Structured result |
 
-Omitting the destination keeps the source workspace. Starting a transfer requires an unused destination, no active commands in either session, and valid destination configs. Copy requires a stopped/absent source and leaves the destination stopped; Move preserves its running/stopped state.
+Omitting the destination keeps the source workspace. Starting a transfer requires an unused destination, no active commands in either session, and valid destination configs. Copy requires a stopped/absent source and leaves the destination stopped. Move preserves its running/stopped state.
 
-Only declared harness state transfers. Project/config files, container-local tools, auth, caches, and live connections do not. Relative config references follow the destination; fixed ones keep their paths. Neither operation selects a destination default.
+Only declared harness state transfers. Project/config files, container-local tools, auth, caches, and live connections do not. Relative config references follow the destination. Fixed ones keep their paths. Neither operation selects a destination default.
 
 `--abort` is available only before the destination is ready. It requires the exact public source session name and cannot combine with a destination, `--as`, `--move`, `--name`, or `--dry-run`. Otherwise, fix the error and retry the original transfer command.
 
-JSON uses `clone` for Copy and `relocate` for Move; successful abort adds `aborted: true`.
+JSON uses `clone` for Copy and `relocate` for Move. Successful abort adds `aborted: true`.
 
-`rename --to NAME` changes the local and public session name; its ID, storage, container, history, and default are unchanged. The old public name is not retained as an alias. It accepts `--name` for source selection, `--dry-run`, and `--json`, and runs without prompting.
+`rename --to NAME` changes the local and public session name. Its ID, storage, container, history, and default are unchanged. The old public name is not retained as an alias. It accepts `--name` for source selection, `--dry-run`, and `--json`, and runs without prompting.
 
 ## Deletion
 
@@ -192,9 +205,9 @@ dbx delete --incomplete-dir DIRECTORY --session
 
 | Flag | Meaning |
 |---|---|
-| `--container-name NAME` | Select an unmatched managed Docker instance; requires `--container` |
-| `--incomplete-dir DIRECTORY` | Select files under `sessions/` without a record; requires `--session` |
-| `--container` | Remove containers; retain saved session data and images |
+| `--container-name NAME` | Select an unmatched managed Docker instance (requires `--container`) |
+| `--incomplete-dir DIRECTORY` | Select files under `sessions/` without a record (requires `--session`) |
+| `--container` | Remove containers, retaining saved session data and images |
 | `--session` | Remove containers, saved data/history, and session image tags |
 | `--force` | Allow interruption of attached container commands |
 | `--dry-run` | Preview |
@@ -208,7 +221,12 @@ dbx delete --incomplete-dir DIRECTORY --session
 
 The browser instead displays the chosen scope and confirms its applicable phases. Container only never removes saved data.
 
-Scopes are mutually exclusive. Exact targets cannot combine with filters; filters intersect. `--name` requires an explicit target. Force does not expand scope or bypass saved-data idle checks. Project files, configs, auth, and caches are outside both deletion scopes.
+- Choose one scope: `--container` or `--session`, not both.
+- Exact targets cannot combine with filters. When several filters are supplied, a target must match all of them.
+- `--name` requires an explicit target.
+- Force does not expand scope or bypass saved-data idle checks.
+
+Project files, configs, auth, and caches are outside both deletion scopes.
 
 ## Completion
 

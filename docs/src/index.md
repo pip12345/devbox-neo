@@ -1,23 +1,28 @@
 # Devbox Neo
 
-Run your coding tool and development tools in Docker, with your project mounted inside. A saved **session** lets you return to that environment and keep its harness history when you rebuild the container.
+Devbox Neo gives your project a Docker environment for Pi, OpenCode, or Claude Code. Your agent can install development tools inside the container without installing them on your host.
 
-## Learn
+Devbox handles the Docker setup and saves environments as named **sessions**. Return to a session later, or rebuild its container while keeping saved conversation history. Your project folder is mounted directly: **edits inside the container change your real files**.
 
-Follow the basics, then choose what you need:
+Use the terminal menu or direct commands. Devbox is a convenience tool, **not a security sandbox**. Give the agent only the files, credentials, and network access you trust it to use.
 
-1. [Getting started](guides/getting-started.md) — create and open your first session.
-2. [Everyday use](guides/everyday-use.md) — resume work, use a shell, and select a default.
-3. [Configs](guides/configuration.md) — reuse and change settings.
-4. [Customization](guides/customization.md) — install tools and add scripts.
-5. [Networking](guides/networking.md) — reach your dev server and other services.
-6. [SSH sharing](guides/ssh.md) — let the agent use a connection you authenticate.
-7. [Manage environments](guides/managing-environments.md) — recreate, copy, recover, and delete.
+## Get started
+
+Follow [Getting started](guides/getting-started.md) to build Devbox, choose a coding tool, and open your first session on a Linux host.
+
+## Choose your next task
+
+- [Everyday use](guides/everyday-use.md) — resume work, use a shell, and select a default.
+- [Configs](guides/configuration.md) — reuse and change settings.
+- [Customization](guides/customization.md) — install tools and add scripts.
+- [Networking](guides/networking.md) — reach your dev server and other services.
+- [SSH sharing](guides/ssh.md) — let the agent use a connection you authenticate.
+- [Manage environments](guides/managing-environments.md) — recreate, copy, recover, and delete.
 
 ## Look up
 
 [Commands](reference/commands.md) · [Configuration](reference/configuration.md) · [Harnesses](reference/harnesses.md) · [Persistence](reference/state-and-sessions.md) · [Output and errors](reference/output.md)
 
-## Contribute
+## Architecture
 
-[Architecture](architecture/runtime.md) explains the implementation. User workflows start in the guides above.
+[Architecture overview](architecture/runtime.md).

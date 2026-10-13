@@ -19,7 +19,7 @@ RUN sudo apt-get update \
 
 Keep `FROM ${DEVBOX_BASE}` so your image extends Devbox's prepared environment. Use `sudo` for system packages and normal user permissions for user tools.
 
-Put files needed by `COPY` or `ADD` inside the same `docker/` directory. For example, `COPY tools /opt/tools` reads `<config>/docker/tools`. Nothing outside `docker/` enters the build context, so editing Pi settings or setup scripts does not invalidate the image cache.
+Put files needed by `COPY` or `ADD` inside the same `docker/` directory. For example, `COPY tools /opt/tools` reads the `docker/tools` path in your config directory. Local files supplied to the build must be under `docker/`.
 
 Choose **Recreate** in the session menu to apply the Dockerfile. **Container-local changes will be lost.**
 
