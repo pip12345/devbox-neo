@@ -14,6 +14,7 @@ import (
 
 type SSHOptions struct {
 	HostMaster bool
+	Insecure   bool
 	// Connected is called only after authentication and client-config publication.
 	Connected func(environment, alias string)
 }
@@ -90,9 +91,9 @@ func (e *Engine) runSSH(ctx context.Context, c docker.Container, r store.Record,
 	done := make(chan error, 1)
 	go func() {
 		if options.HostMaster {
-			done <- sshshare.RunHost(runCtx, connection, e.Streams.In, e.Streams.Out, e.Streams.Err)
+			done <- sshshare.RunHost(runCtx, connection, options.Insecure, e.Streams.In, e.Streams.Out, e.Streams.Err)
 		} else {
-			argv := []string{"bash", "-c", sshshare.Supervisor, "devbox-ssh", connection.ContainerDirectory(), connection.Destination}
+			argv := connection.MasterCommand(connection.ContainerDirectory(), options.Insecure)
 			done <- e.Docker.Exec(runCtx, c, e.owner(r), argv, e.TerminalEnv, e.Streams)
 		}
 	}()

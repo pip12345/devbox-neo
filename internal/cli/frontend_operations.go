@@ -258,7 +258,7 @@ func (f *frontend) ssh(target string) error {
 				if err != nil {
 					return err
 				}
-				return sshInteraction(ctx, input, f.cmd.ErrOrStderr(), f.e, target, "", destination, host)
+				return sshInteraction(ctx, input, f.cmd.ErrOrStderr(), f.e, target, "", destination, app.SSHOptions{HostMaster: host})
 			})
 		})
 		if destination == "" {

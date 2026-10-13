@@ -2,13 +2,17 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"devbox/internal/app"
 	"devbox/internal/docker"
+	"devbox/internal/docker/dockertest"
 	"devbox/internal/sshshare"
 	"github.com/spf13/cobra"
 )
@@ -37,6 +41,45 @@ func TestSSHHostWarningBeforeEngineAndOnlyForHostMaster(t *testing.T) {
 		if err := cmd.Execute(); !errors.Is(err, sentinel) {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestSSHInsecureFlagReachesContainerMaster(t *testing.T) {
+	for _, insecure := range []bool{false, true} {
+		t.Run(strconv.FormatBool(insecure), func(t *testing.T) {
+			e, _, target := namedCLIFixture(t)
+			_, terminal := testTerminal(t)
+			failure := errors.New("fixture authentication failure")
+			var captured []string
+			e.Docker.Runner.(*dockertest.Daemon).Attached = func(_ context.Context, command docker.Command) error {
+				i := slices.Index(command.Args, sshshare.Supervisor)
+				if i < 0 {
+					return nil
+				}
+				captured = command.Args[i+3:]
+				return failure
+			}
+			profile := ""
+			cmd := sshCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &profile)
+			cmd.SilenceUsage, cmd.SilenceErrors = true, true
+			cmd.SetIn(terminal)
+			cmd.SetErr(new(bytes.Buffer))
+			args := []string{target, "staging"}
+			if insecure {
+				args = append(args, "--insecure")
+			}
+			cmd.SetArgs(args)
+			if err := cmd.Execute(); !errors.Is(err, failure) {
+				t.Fatal(err)
+			}
+			want := []string{"staging"}
+			if insecure {
+				want = append(want, "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "GlobalKnownHostsFile=/dev/null")
+			}
+			if !slices.Equal(captured, want) {
+				t.Fatalf("master options: got %v, want %v", captured, want)
+			}
+		})
 	}
 }
 

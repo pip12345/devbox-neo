@@ -2,6 +2,7 @@ package sshshare
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -112,6 +113,10 @@ func TestSSHHelper(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(filepath.Dir(socket), "cwd"), []byte(cwd), 0600); err != nil {
 		os.Exit(95)
 	}
+	encoded, err := json.Marshal(args)
+	if err != nil || os.WriteFile(filepath.Join(filepath.Dir(socket), "args"), encoded, 0600) != nil {
+		os.Exit(96)
+	}
 	if os.Getenv("DEVBOX_SSH_AUTH_FAILURE") == "1" {
 		os.Exit(255)
 	}
@@ -174,7 +179,7 @@ func TestSupervisorClosesActualMasterOnControllerLoss(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			done := make(chan error, 1)
-			go func() { done <- RunHost(ctx, c, nil, io.Discard, io.Discard) }()
+			go func() { done <- RunHost(ctx, c, false, nil, io.Discard, io.Discard) }()
 			var pid int
 			eventually(t, func() bool {
 				b, err := os.ReadFile(filepath.Join(c.Root, c.Relative, "pid"))
@@ -216,10 +221,49 @@ func TestHostSSHExitStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	err = RunHost(context.Background(), c, nil, io.Discard, io.Discard)
+	err = RunHost(context.Background(), c, false, nil, io.Discard, io.Discard)
 	var exit *ExitError
 	if !errors.As(err, &exit) || exit.Code != 255 {
 		t.Fatal(err)
+	}
+}
+
+func TestHostSSHInsecureOptions(t *testing.T) {
+	fakeSSH(t)
+	t.Setenv("DEVBOX_SSH_AUTH_FAILURE", "1")
+	for _, insecure := range []bool{false, true} {
+		t.Run(strconv.FormatBool(insecure), func(t *testing.T) {
+			c, err := Prepare(t.TempDir(), "staging")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			if err := RunHost(context.Background(), c, insecure, nil, io.Discard, io.Discard); err == nil {
+				t.Fatal("expected fixture authentication failure")
+			}
+			encoded, err := os.ReadFile(filepath.Join(c.Root, c.Relative, "args"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var args []string
+			if err := json.Unmarshal(encoded, &args); err != nil {
+				t.Fatal(err)
+			}
+			if args[len(args)-1] != "staging" {
+				t.Fatal("options must precede destination", args)
+			}
+			for _, option := range []string{"StrictHostKeyChecking=no", "UserKnownHostsFile=/dev/null", "GlobalKnownHostsFile=/dev/null"} {
+				found := false
+				for i, arg := range args {
+					if arg == option {
+						found = i > 0 && args[i-1] == "-o"
+					}
+				}
+				if found != insecure {
+					t.Fatalf("insecure=%v: option %s in %v", insecure, option, args)
+				}
+			}
+		})
 	}
 }
 
@@ -236,7 +280,7 @@ func TestLongHomeAndDeadSocket(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- RunHost(ctx, c, nil, io.Discard, io.Discard) }()
+	go func() { done <- RunHost(ctx, c, false, nil, io.Discard, io.Discard) }()
 	eventually(t, c.Ready)
 	cwd, _ := os.Getwd()
 	actual, err := os.ReadFile(filepath.Join(c.Root, c.Relative, "cwd"))

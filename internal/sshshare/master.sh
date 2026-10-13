@@ -4,6 +4,7 @@
 set -eu
 dir=$1
 destination=$2
+shift 2
 exec 9<"$dir/owner.lock"
 exec 8<"$dir/master.lock"
 flock -x 8
@@ -23,7 +24,7 @@ trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-ssh -M -N -S "$dir/socket" -o ControlPersist=no -o ForkAfterAuthentication=no "$destination" <&0 &
+ssh -M -N -S "$dir/socket" -o ControlPersist=no -o ForkAfterAuthentication=no "$@" "$destination" <&0 &
 master=$!
 (
     trap - HUP INT TERM EXIT

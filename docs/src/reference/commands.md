@@ -123,7 +123,7 @@ Follow the screen's prerequisites and close other Devbox commands before migrati
 ## SSH sharing
 
 ```sh
-dbx ssh <target> <destination> [--host-master]
+dbx ssh <target> <destination> [--host-master] [--insecure]
 ```
 
 | Option / input | Meaning |
@@ -131,10 +131,13 @@ dbx ssh <target> <destination> [--host-master]
 | Destination | Hostname, SSH alias, IP address, or `user@host` |
 | Default mode | SSH runs inside the container |
 | `--host-master` | Use the host's SSH configuration and network; invocation-only |
+| `--insecure` | Disable destination host-key verification for this invocation; ignore and do not save known-host keys |
 | Client config | `/devbox/ssh/config`; exact client command printed after authentication |
 | End sharing | Ctrl-C in the host terminal |
 
 Requires a foreground host terminal for authentication. Multiple destinations may be shared; active duplicates are refused. Normal OpenSSH settings control keys, ports, ProxyJump, agent forwarding, and X11 forwarding. Client forwarding requests require support from the master.
+
+**`--insecure` permits server impersonation.** Use it only when you accept that risk, such as for disposable VMs. It works in either master mode; ProxyJump hosts retain their own SSH checks.
 
 **Host mode grants the container broader host/network access.** Connections are not transferred or automatically reconnected. See the [SSH guide](../guides/ssh.md).
 

@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Invocation-only insecure SSH — implemented, live acceptance pending
+
+- `dbx ssh --insecure` bypasses destination host-key checks in container and host-master modes, ignoring user/global known-host files without changing saved keys. Default checks, ProxyJump policy, authentication, and shared-master lifetime remain unchanged; no menu setting or saved-state change was added.
+- The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable), including CLI option propagation and subprocess argument coverage. Both new regressions pass five repeated runs; affected-package vet, CLI help/build, and diff checks pass. Tests use temporary homes and fake Docker/SSH; live Docker and manual host-terminal acceptance remain unrun.
+
 ## Recreate force-option wording — implemented
 
 - The recreate form now says “Force replacement even with attached commands”, retaining “Force” without the inconsistent colon. Behavior is unchanged.
