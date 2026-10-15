@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Saved secondary networks — implemented, live acceptance pending
+
+- dbx connections now survive container replacement. Connections added directly through Docker are not saved.
+- Full fast-suite equivalent, repeated regressions, vet, and build pass. Live Docker and manual acceptance remain unrun.
+
 ## Invocation-only insecure SSH — implemented, live acceptance pending
 
 - `dbx ssh --insecure` bypasses destination host-key checks in container and host-master modes, ignoring user/global known-host files without changing saved keys. Default checks, ProxyJump policy, authentication, and shared-master lifetime remain unchanged; no menu setting or saved-state change was added.

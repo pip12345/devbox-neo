@@ -35,6 +35,7 @@ func creationRecord(s environment.Spec, imageID, imageTag string, mounts []docke
 	}
 	if previous != nil {
 		r.Settings.ManualStart = previous.Settings.ManualStart
+		r.Settings.SecondaryNetworks = append([]string(nil), previous.Settings.SecondaryNetworks...)
 		r.Activity, r.Action = previous.Activity, "recreate"
 	}
 	return r

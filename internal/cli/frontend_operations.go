@@ -190,13 +190,13 @@ func (f *frontend) networks(target string) error {
 				}
 				return f.form("Network environment", func() []cliui.Action { return actions })
 			}),
-			{Label: "Connect network", Description: "Attach an existing secondary network", Run: func() (bool, error) { return f.networkChange(target, true) }},
-			{Label: "Disconnect network", Description: "The primary network cannot be removed", Run: func() (bool, error) { return f.networkChange(target, false) }},
+			{Label: "Connect network", Description: "Attach and remember a secondary network across recreation", Run: func() (bool, error) { return f.networkChange(target, true) }},
+			{Label: "Disconnect network", Description: "Detach and forget a secondary network; the primary is protected", Run: func() (bool, error) { return f.networkChange(target, false) }},
 		}
 	})
 }
 func (f *frontend) networkChange(target string, connect bool) (bool, error) {
-	name, ok, err := f.m.Text(cliui.TextRequest{Prompt: "Existing Docker network: ", Validate: func(value string) error {
+	name, ok, err := f.m.Text(cliui.TextRequest{Prompt: "Docker network name: ", Validate: func(value string) error {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("enter a network name")
 		}

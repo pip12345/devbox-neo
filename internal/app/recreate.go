@@ -46,6 +46,11 @@ func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.R
 	}
 	p.change = environment.CompareInputs(r.Applied.Inputs, p.spec.Inputs).Change
 	p.replace = !exists || image || q.ForceContainer || q.Force || p.change == environment.Recreate || p.change == environment.RebuildAndRecreate
+	if p.replace {
+		if err := e.preflightSecondaryNetworks(ctx, r, p.spec.Settings.Network); err != nil {
+			return p, err
+		}
+	}
 	p.running = r.Settings.ManualStart || (exists && p.container.State.Running)
 	if q.Force {
 		p.running = r.Settings.ManualStart

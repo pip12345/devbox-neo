@@ -29,8 +29,9 @@ type DefinitionInput struct {
 }
 type Settings struct {
 	environment.Binding
-	Sources     []config.Reference `json:"sources"`
-	ManualStart bool               `json:"manual_start"`
+	Sources           []config.Reference `json:"sources"`
+	ManualStart       bool               `json:"manual_start"`
+	SecondaryNetworks []string           `json:"secondary_networks,omitempty"`
 }
 
 type Record struct {
@@ -93,6 +94,13 @@ var hashPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 func (s Settings) Validate() error {
 	if err := s.Binding.Validate(); err != nil {
 		return err
+	}
+	seen := map[string]bool{}
+	for _, name := range s.SecondaryNetworks {
+		if !config.NetworkName.MatchString(name) || name == "default" || name == "host" || seen[name] {
+			return fmt.Errorf("invalid saved secondary network")
+		}
+		seen[name] = true
 	}
 	for _, source := range s.Sources {
 		if err := source.Validate(); err != nil {

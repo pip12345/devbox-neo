@@ -160,10 +160,10 @@ Requires a foreground host terminal for authentication. Multiple destinations ma
 |---|---|
 | `network inspect <target>` | Networks, addresses, and gateways as JSON |
 | `network env <target> [--get NAME]` | Shell exports, or one raw value |
-| `network connect <network> <target>` | Attach an existing secondary network |
-| `network disconnect <network> <target>` | Detach a secondary network |
+| `network connect <network> <target>` | Attach and save an existing secondary network |
+| `network disconnect <network> <target>` | Detach and forget a secondary network |
 
-Attachments survive stop/start, but not container replacement. The primary network cannot be detached. Host networking rejects port publishing and secondary attachments. Devbox does not create user networks.
+Connections made through dbx survive stop/start and container replacement. Connections added directly through Docker are not saved. The primary network cannot be detached. Host networking rejects port publishing and secondary attachments. Devbox does not create user networks.
 
 Exports include `DEVBOX_HOST`, `DEVBOX_NETWORK`, `DEVBOX_PRIMARY_NETWORK`, and `DEVBOX_DEFAULT_GATEWAY_IP`. Container copies live under `/devbox/network/` and refresh during Devbox access/preparation and network changes.
 

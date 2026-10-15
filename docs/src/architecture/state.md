@@ -19,7 +19,7 @@ Images carry installation ownership and final session tags. Removing a tag requi
 `sessions/<id>/session.json` holds:
 
 - immutable `id`, validated relative `state_tree`, and activity metadata.
-- `settings`: workspace, local name, ordered config references, and `manual_start`.
+- `settings`: workspace, local name, ordered config references, `manual_start`, and optional `secondary_networks` explicitly saved by dbx.
 - `applied`: current creation/launch settings, image/container association, harness layout, compact comparison inputs and fingerprints.
 
 Schema `8` validates settings and applied state independently. Differences between desired and applied settings are pending changes, not corruption. Managed store sources must agree with the ID and current state tree. Applied mounts must agree with applied inputs, not desired settings. `applied.inputs.sources` retains applied provenance for config usage, not historical recovery authority. No directory name is persisted. Per-tree content digests replace per-file input inventories. Setup bytes and env restoration references are not persisted.

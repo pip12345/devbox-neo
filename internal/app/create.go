@@ -194,6 +194,11 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 	if err = e.Docker.Network(ctx, s.Settings.Network); err != nil {
 		return record, c, err
 	}
+	if previous != nil {
+		if err = e.preflightSecondaryNetworks(ctx, *previous, s.Settings.Network); err != nil {
+			return record, c, err
+		}
+	}
 	if created.IsZero() {
 		created = time.Now().UTC()
 	}
@@ -367,6 +372,14 @@ func (e *Engine) materialize(ctx context.Context, record store.Record) (c docker
 			}
 		}
 	}()
+	for _, name := range record.Settings.SecondaryNetworks {
+		if _, attached := c.NetworkSettings.Networks[name]; attached {
+			continue
+		}
+		if err = e.Docker.AttachNetwork(ctx, c, e.owner(record), name, true); err != nil {
+			return c, err
+		}
+	}
 	if err = e.start(ctx, c, record); err != nil {
 		return c, err
 	}
