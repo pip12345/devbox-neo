@@ -305,6 +305,11 @@ func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 	if nameIndex < 0 || pickerIndex < nameIndex || !strings.Contains(text, "[1]  Change session name") {
 		t.Fatal("creation overview did not keep pending inputs editable", text)
 	}
+	for _, label := range []string{"\nName\n" + menuPrefix(1) + "Change session name", "\nConfigs\n" + menuPrefix(2) + "Add existing config", "\nFolder\n" + menuPrefix(6) + "Change folder", "\nCreate\n" + menuPrefix(8) + "Create session"} {
+		if !strings.Contains(text, label) {
+			t.Fatal("creation actions lost their group headers or ordering", label, text)
+		}
+	}
 	for _, label := range []string{"Configs, in order:", "[2]  Add existing config", "[3]  Create config", "[4]  Replace config", "[5]  Remove config", "[6]  Change folder", "[8]  Create session"} {
 		if !strings.Contains(text, label) {
 			t.Fatal("creation menu mixed config and source labels", label, text)

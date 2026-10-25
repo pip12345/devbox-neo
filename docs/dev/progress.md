@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Session creation menu headers — implemented, host acceptance pending
+
+- The creation form uses the existing gutter groups: Name, Configs, Folder, and Create. Action order, draft behavior, and submission are unchanged.
+- Group-header, action-order, and existing native-terminal creation tests pass, along with the full fast-suite equivalent using `.tools/go` (`make` is unavailable). Manual host-terminal acceptance remains unrun.
+
 ## Saved secondary networks — implemented, live acceptance pending
 
 - dbx connections now survive container replacement. Connections added directly through Docker are not saved.

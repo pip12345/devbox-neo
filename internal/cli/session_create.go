@@ -116,7 +116,7 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 		if draft.name != "" {
 			nameAction = "Change session name"
 		}
-		createAction := cliui.Action{Label: "Create session", BreakBefore: true, Blocked: draft.missing(), Run: func() (bool, error) {
+		createAction := cliui.Action{Label: "Create session", Group: "Create", Blocked: draft.missing(), Run: func() (bool, error) {
 			if err := p.Pause(); err != nil {
 				return false, err
 			}
@@ -134,7 +134,7 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 			return proceed, err
 		}}
 		actions := []cliui.Action{
-			{Label: nameAction, BreakBefore: true, Run: func() (bool, error) {
+			{Label: nameAction, Group: "Name", Run: func() (bool, error) {
 				name, changed, err := editSessionCreationName(p, draft.name)
 				if changed {
 					draft.name = name
@@ -142,8 +142,12 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 				return false, err
 			}},
 		}
-		actions = append(actions, p.chainActions(draft.sources, false, func(updated []config.Reference) error { draft.sources = updated; return nil })...)
-		actions = append(actions, cliui.Action{Label: "Change folder", Run: func() (bool, error) {
+		configActions := p.chainActions(draft.sources, false, func(updated []config.Reference) error { draft.sources = updated; return nil })
+		for _, action := range configActions {
+			action.Group = "Configs"
+			actions = append(actions, action)
+		}
+		actions = append(actions, cliui.Action{Label: "Change folder", Group: "Folder", Run: func() (bool, error) {
 			folder, ok, err := p.Text(cliui.TextRequest{Prompt: "Workspace folder: ", Initial: draft.workspace, Validate: func(value string) error { _, err := environment.CanonicalWorkspace(value); return err }})
 			if err == nil && ok {
 				draft.workspace, err = environment.CanonicalWorkspace(folder)
@@ -161,7 +165,7 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 			}
 			defaultDescription = "Replaces " + displayCell(label)
 		}
-		actions = append(actions, cliui.Action{Label: "Make folder default", Value: defaultDescription, Description: "Select this session after creation; unchecked keeps the current selection", Checked: &draft.makeDefault, Run: func() (bool, error) {
+		actions = append(actions, cliui.Action{Label: "Make folder default", Group: "Folder", Value: defaultDescription, Description: "Select this session after creation; unchecked keeps the current selection", Checked: &draft.makeDefault, Run: func() (bool, error) {
 			draft.makeDefault = !draft.makeDefault
 			return false, nil
 		}}, createAction)
