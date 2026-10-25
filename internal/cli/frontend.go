@@ -114,14 +114,15 @@ func (f *frontend) browse(configs bool) error {
 			}
 			create := f.action("Create config", "", f.createConfig)
 			create.Shortcut = "n"
-			create.BreakBefore = true
-			page.Actions = append(page.Actions, create, f.action("Edit a directory by path", "", func() error {
+			create.Group = "Create"
+			page.Actions = append(page.Actions, create)
+			page.Actions = append(page.Actions, actionGroup("Navigate", f.action("Edit a directory by path", "", func() error {
 				path, ok, err := f.m.Text(cliui.TextRequest{Prompt: "Config name or directory: "})
 				if err != nil || !ok {
 					return err
 				}
 				return f.editConfig(path)
-			}))
+			}))...)
 		} else {
 			var report app.InventoryReport
 			err := f.loadEngine()
@@ -144,10 +145,11 @@ func (f *frontend) browse(configs bool) error {
 			}
 			create := f.action("Create session", "", f.createSession)
 			create.Shortcut = "n"
-			create.BreakBefore = true
+			create.Group = "Create"
 			all := f.action("All-session operations", "Status, recreate and filtered deletion", f.allSessions)
 			all.Shortcut = "a"
-			page.Actions = append(page.Actions, create, all, f.action("Open folder by path", "", func() error {
+			page.Actions = append(page.Actions, create)
+			page.Actions = append(page.Actions, actionGroup("Navigate", all, f.action("Open folder by path", "", func() error {
 				folder, ok, err := f.m.Text(cliui.TextRequest{Prompt: "Workspace folder: "})
 				if err != nil || !ok {
 					return err
@@ -160,11 +162,11 @@ func (f *frontend) browse(configs bool) error {
 					f.sortBy = values[i]
 				}
 				return err
-			}))
+			}))...)
 		}
 		refresh := f.action("Refresh", "Reload the current inventory", func() error { return nil })
 		refresh.Shortcut = "r"
-		page.Actions = append(page.Actions, refresh, f.action("Help and shell integration", "Commands, version and completion scripts", f.help))
+		page.Actions = append(page.Actions, actionGroup("Manage", refresh, f.action("Help and shell integration", "Commands, version and completion scripts", f.help))...)
 		browserActions := page.Actions
 		page.Actions = append(page.Actions, cliui.Action{Label: "Browser actions", Shortcut: "b", Run: func() (bool, error) {
 			choice, err := f.m.Choose(cliui.Screen{Title: "Browser actions", Back: "Back", Actions: browserActions})

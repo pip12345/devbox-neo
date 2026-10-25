@@ -114,34 +114,34 @@ func (f *frontend) stop(target string) error {
 func (f *frontend) recreate(target string) error {
 	noCache, container, force := false, false, false
 	return f.form("Recreate", func() []cliui.Action {
-		return []cliui.Action{
-			f.action("Inspect pending changes", "", func() error { return f.status(target) }),
+		actions := actionGroup("Inspect", f.action("Inspect pending changes", "", func() error { return f.status(target) }))
+		actions = append(actions, actionGroup("Options",
 			f.toggle("Rebuild image without cache", &noCache),
 			f.toggle("Force container replacement", &container),
 			f.toggle("Force replacement even with attached commands", &force),
-			{Label: "Recreate", Shortcut: "r", Description: "Apply current config; replace runtime only as needed or explicitly requested", Run: func() (bool, error) {
-				message := "Apply current config? Runtime may restart; if replaced, container-local changes will be lost."
-				if force {
-					message = "Replace the container and interrupt attached commands? Container-local changes will be lost."
-				}
-				yes, err := f.m.Confirm(message + " [y/N] ")
-				if err != nil || !yes {
-					return false, err
-				}
-				err = f.foreground("Recreate", func(ctx context.Context) error {
-					if target == "" {
-						_, err := f.e.RecreateAll(ctx, noCache, app.RecreateOptions{ForceContainer: container, Force: force})
-						return err
-					}
-					_, err := f.e.Recreate(ctx, app.RecreateRequest{Target: target, Options: app.RecreateOptions{ForceContainer: container, Force: force}}, noCache)
+		)...)
+		return append(actions, cliui.Action{Label: "Recreate", Group: "Apply", Shortcut: "r", Description: "Apply current config; replace runtime only as needed or explicitly requested", Run: func() (bool, error) {
+			message := "Apply current config? Runtime may restart; if replaced, container-local changes will be lost."
+			if force {
+				message = "Replace the container and interrupt attached commands? Container-local changes will be lost."
+			}
+			yes, err := f.m.Confirm(message + " [y/N] ")
+			if err != nil || !yes {
+				return false, err
+			}
+			err = f.foreground("Recreate", func(ctx context.Context) error {
+				if target == "" {
+					_, err := f.e.RecreateAll(ctx, noCache, app.RecreateOptions{ForceContainer: container, Force: force})
 					return err
-				})
-				if err != nil {
-					return false, f.m.report(err)
 				}
-				return true, nil
-			}},
-		}
+				_, err := f.e.Recreate(ctx, app.RecreateRequest{Target: target, Options: app.RecreateOptions{ForceContainer: container, Force: force}}, noCache)
+				return err
+			})
+			if err != nil {
+				return false, f.m.report(err)
+			}
+			return true, nil
+		}})
 	})
 }
 func (f *frontend) logs(target string) error {
@@ -295,17 +295,17 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 		if move {
 			options.Mode = "relocate"
 		}
-		fields := []cliui.Action{
+		fields := actionGroup("Destination",
 			f.text("Destination folder (empty keeps source folder)", &options.Destination, nil),
 			f.text("Destination local name (empty preserves name)", &options.As, nil),
 			f.toggle("Move: remove source after destination is ready", &move),
-		}
+		)
 		if pending != nil {
 			for i := range fields {
 				fields[i].Blocked = "Pending transfer: recorded endpoints and mode are pinned."
 			}
 		}
-		actions := append(fields,
+		actions := append(fields, actionGroup("Preview",
 			f.action("Preview", "Rebased config references and destination identity", func() error {
 				preview := options
 				preview.DryRun = true
@@ -316,7 +316,9 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 				}
 				return f.jsonView("Transfer preview", result)
 			}),
-			cliui.Action{Label: "Transfer", Description: "Preview exact endpoints, then confirm", Run: func() (bool, error) {
+		)...)
+		actions = append(actions,
+			cliui.Action{Label: "Transfer", Group: "Transfer", Description: "Preview exact endpoints, then confirm", Run: func() (bool, error) {
 				q := options
 				q.DryRun = true
 				preview, err := f.e.Transfer(f.m.Context, q)
@@ -344,7 +346,7 @@ func (f *frontend) transfer(target string) (moved bool, err error) {
 			}},
 		)
 		if pending != nil && pending.Phase == "prepare" {
-			actions = append(actions, cliui.Action{Label: "Abort pending transfer", Description: "Discard the uncommitted destination attempt; retain the source", Danger: true, Run: func() (bool, error) {
+			actions = append(actions, cliui.Action{Label: "Abort pending transfer", Group: "Transfer", Description: "Discard the uncommitted destination attempt; retain the source", Danger: true, Run: func() (bool, error) {
 				yes, err := f.m.Confirm("Discard this uncommitted destination attempt and retain the source session? [y/N] ")
 				if err != nil || !yes {
 					return false, err
@@ -467,6 +469,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 				}))
 			}
 		}
+		actions = actionGroup("Targets", actions...)
 		scopes := []string{"Container only", "Container and saved data/history"}
 		selected := 0
 		if options.Scope == app.DeleteSession {
@@ -491,7 +494,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 		}
 		force := f.value("Force", forceValue, func() error { options.Force = !options.Force; return nil })
 		force.Description = "Allow interrupting attached commands; saved data still requires idle sessions"
-		actions = append(actions, choice, force)
+		actions = append(actions, actionGroup("Options", choice, force)...)
 		blocked := ""
 		if len(options.Selection.Targets)+len(options.Selection.Captured)+len(options.Selection.ContainerNames)+len(options.Selection.IncompleteDirs) == 0 && !options.Selection.All && !options.Selection.Stopped && !options.Orphaned && options.OlderThan == 0 {
 			blocked = "Select exact targets or at least one filter."
@@ -526,7 +529,6 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 		}}
 		execute.Danger = true
 		execute.Blocked = blocked
-		preview.BreakBefore = true
-		return cliui.Screen{Title: title, Fields: fields, Back: "Back", Actions: append(actions, preview, execute)}, nil
+		return cliui.Screen{Title: title, Fields: fields, Back: "Back", Actions: append(actions, actionGroup("Delete", preview, execute)...)}, nil
 	})
 }

@@ -157,8 +157,8 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 		if configErr == nil {
 			configErr = resolved.Settings.Validate()
 		}
-		actions := picker.chainActions(r.Settings.Sources, true, apply)
-		actions = append(actions, cliui.Action{Label: "Show combined configuration", Run: func() (bool, error) {
+		actions := actionGroup("Configs", picker.chainActions(r.Settings.Sources, true, apply)...)
+		actions = append(actions, cliui.Action{Label: "Show combined configuration", Group: "Inspect", Run: func() (bool, error) {
 			view, err := combinedView(e, r)
 			if err != nil {
 				return false, m.report(err)

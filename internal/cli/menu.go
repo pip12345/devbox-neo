@@ -38,6 +38,13 @@ func writeMenuTitle(out io.Writer, title string) error { return cliui.Title(out,
 func writeMenuHint(out io.Writer, text string) error   { return cliui.Hint(out, text) }
 func menuPrefix(n int) string                          { return cliui.Prefix(n) }
 
+func actionGroup(label string, actions ...cliui.Action) []cliui.Action {
+	for i := range actions {
+		actions[i].Group = label
+	}
+	return actions
+}
+
 func (m menu) warnings(warnings []string) {
 	for _, warning := range warnings {
 		m.Notice("Warning: " + displayCell(warning))

@@ -251,6 +251,11 @@ func writeConfigValue(out io.Writer, prefix, text, origin, continuation string, 
 
 func printConfigActions(out io.Writer, rows []configDisplayRow, actions []cliui.Action) error {
 	fmt.Fprintln(out)
+	if len(rows) > 0 && actions[0].Group != "" {
+		if err := writeMenuHint(out, actions[0].Group); err != nil {
+			return err
+		}
+	}
 	numbered := make([]configDisplayRow, len(rows))
 	for i, row := range rows {
 		numbered[i] = row
@@ -262,6 +267,14 @@ func printConfigActions(out io.Writer, rows []configDisplayRow, actions []cliui.
 	if len(actions) > len(rows) {
 		fmt.Fprintln(out)
 		for i := len(rows); i < len(actions); i++ {
+			if actions[i].Group != "" && (i == 0 || actions[i].Group != actions[i-1].Group) {
+				if i > len(rows) {
+					fmt.Fprintln(out)
+				}
+				if err := writeMenuHint(out, actions[i].Group); err != nil {
+					return err
+				}
+			}
 			prefix := menuPrefix(i + 1)
 			if err := writeConfigLine(out, prefix, actions[i].Label, strings.Repeat(" ", len(prefix)), configDisplayWidth(out)); err != nil {
 				return err

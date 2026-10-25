@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Remaining mixed-action menu headers — implemented, host acceptance pending
+
+- Recreate, Copy or move, deletion, Manage configs, the config editor, and browser actions use the existing action-group headers. The plain-text config table retains its values and source columns while showing the same groups.
+- Action order, numbering, shortcuts, confirmations, and persistence behavior are unchanged. The full fast-suite equivalent passes using `.tools/go` (`make` is unavailable), including group-order, unreadable-config, and existing native-terminal workflow regressions. Manual host-terminal acceptance remains unrun.
+
 ## Session creation menu headers — implemented, host acceptance pending
 
 - The creation form uses the existing gutter groups: Name, Configs, Folder, and Create. Action order, draft behavior, and submission are unchanged.
