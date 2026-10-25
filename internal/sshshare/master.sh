@@ -24,7 +24,9 @@ trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-ssh -M -N -S "$dir/socket" -o ControlPersist=no -o ForkAfterAuthentication=no "$@" "$destination" <&0 &
+# Keep idle network mappings alive and stop sharing when the peer stops responding.
+ssh -M -N -S "$dir/socket" -o ControlPersist=no -o ForkAfterAuthentication=no \
+    -o ServerAliveInterval=30 -o ServerAliveCountMax=3 "$@" "$destination" <&0 &
 master=$!
 (
     trap - HUP INT TERM EXIT

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -228,7 +229,7 @@ func TestHostSSHExitStatus(t *testing.T) {
 	}
 }
 
-func TestHostSSHInsecureOptions(t *testing.T) {
+func TestHostSSHMasterOptions(t *testing.T) {
 	fakeSSH(t)
 	t.Setenv("DEVBOX_SSH_AUTH_FAILURE", "1")
 	for _, insecure := range []bool{false, true} {
@@ -251,6 +252,11 @@ func TestHostSSHInsecureOptions(t *testing.T) {
 			}
 			if args[len(args)-1] != "staging" {
 				t.Fatal("options must precede destination", args)
+			}
+			for _, option := range []string{"ServerAliveInterval=30", "ServerAliveCountMax=3"} {
+				if i := slices.Index(args, option); i < 1 || args[i-1] != "-o" {
+					t.Fatalf("missing keepalive option %s in %v", option, args)
+				}
 			}
 			for _, option := range []string{"StrictHostKeyChecking=no", "UserKnownHostsFile=/dev/null", "GlobalKnownHostsFile=/dev/null"} {
 				found := false

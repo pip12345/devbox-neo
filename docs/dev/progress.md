@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Shared SSH keepalives — implemented, live acceptance pending
+
+- Container and host SSH masters send keepalives after 30 seconds without server traffic and disconnect after 3 unanswered probes. These invocation options override SSH config values; authentication, shared-master ownership, and reconnect behavior are unchanged.
+- The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable). Subprocess argument coverage checks both keepalive options with and without `--insecure` and passes five repeated runs; affected-package vet, shell syntax, formatting, and diff checks pass. Live Docker and remote-network acceptance remain unrun.
+
 ## Remaining mixed-action menu headers — implemented, host acceptance pending
 
 - Recreate, Copy or move, deletion, Manage configs, the config editor, and browser actions use the existing action-group headers. The plain-text config table retains its values and source columns while showing the same groups.

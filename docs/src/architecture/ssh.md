@@ -11,7 +11,7 @@ SSH sharing separates authentication from connection use. A foreground Devbox co
 | Default | Inside the container | Container user's OpenSSH config and network namespace |
 | `--host-master` | On the host | Host user's OpenSSH config, keys/agent, display, and reachable networks |
 
-Both modes create a dedicated master. Devbox does not adopt a personal master or copy credentials/configuration. By default it overrides only the control-master, persistence, and backgrounding options needed for foreground ownership. Normal OpenSSH behavior supplies authentication, known-host checks, ProxyJump, agent forwarding, and X11 forwarding.
+Both modes create a dedicated master. Devbox does not adopt a personal master or copy credentials/configuration. It overrides the control-master, persistence, and backgrounding options needed for foreground ownership, and sets `ServerAliveInterval=30` and `ServerAliveCountMax=3` in both modes to keep idle connections active and detect unresponsive peers. Normal OpenSSH behavior supplies authentication, known-host checks, ProxyJump, agent forwarding, and X11 forwarding.
 
 Invocation-only `--insecure` disables destination host-key checking in either mode and points both user and global known-host files at `/dev/null`. Ignoring stored keys also avoids OpenSSH's authentication/forwarding restrictions for changed keys. `sshshare` builds the master arguments for both launch paths. The supervisor forwards options before the destination. Generated clients still reuse only the authenticated master and fail closed without it. ProxyJump hosts keep their own SSH policy.
 
