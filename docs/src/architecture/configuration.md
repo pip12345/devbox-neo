@@ -107,9 +107,9 @@ The reader skips symlinks and other special entries, never follows them, and tre
 
 Claude's built-in definition uses the same declarations: `sessions/<id>/<state_tree>/harnesses/claude/stores/home/` mounts at `/home/devuser/.claude`, where defaults and ordered `<config>/claude/` files supply managed configuration. `auth/claude/.credentials.json` overlays the store's `.credentials.json`. `auth/claude/.claude.json` mounts at `/home/devuser/.claude.json`. Both auth files are shared rather than transferred with session state. Its native executable under `/home/devuser/.local/bin` remains image-local. No Claude cache store is declared. `settings.json` owns only `tui` and `pluginConfigs`.
 
-OpenCode retains ownership of its authentication backend. Its image-owned wrapper briefly locks shared auth to capture a baseline and compare-and-swap changed credentials at exit. Unchanged clients do not write. Conflicting changes are retained privately rather than overwriting a newer snapshot.
+OpenCode retains ownership of its authentication backend. Its image-owned wrapper imports shared credentials when the first client opens a backing store. Overlapping clients use that backend without reimporting. The last client compares changed credentials against the first client's baseline before publishing them under the shared-auth lock. Unchanged groups do not write. Conflicting changes are retained privately rather than overwriting a newer snapshot.
 
-A per-backing-store lock protects imports into that database, while different stores run concurrently. The persisted baseline makes interrupted write-back follow the same conflict rule on recovery. Native import skips existing IDs, so the wrapper clears cached credentials first. Credential values never enter session records.
+A per-store gate serializes startup and cleanup. Clients and their foreground children hold shared store locks; import, recovery, and write-back require exclusive access. Closing a wrapper's lock descriptor rather than unlocking it preserves an orphaned child's protection. Different stores remain concurrent. The persisted baseline makes interrupted groups follow the same conflict rule on recovery. Native import skips existing IDs, so the wrapper clears cached credentials first. Credential values never enter session records.
 
 ## Layered image compilation
 

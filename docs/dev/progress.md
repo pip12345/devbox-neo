@@ -13,6 +13,11 @@ Local config discovery and CLI/menu rename implemented. Local discovery filters 
 - Implemented notices that describe what dbx is doing instead of giving instructions to the user. Replacement notices keep the plain-language data-loss warning on the same line. Runtime-only notices clearly say the existing container is kept. Lifecycle behavior is unchanged.
 - Regression coverage checks every notice variant, warning layout, and delivery before Docker changes and child output. Manual host-terminal acceptance remains unrun.
 
+## Concurrent OpenCode clients — implemented, live acceptance pending
+
+- Multiple clients can use one Devbox session. A per-store gate serializes first/last-client transitions; shared locks protect active clients and orphaned foreground children. Only the first client imports shared credentials, and only the last client publishes changes against that original baseline. Separate stores remain concurrent, and conflicts and interrupted write-back retain their existing recovery rules.
+- Added regressions for overlapping clients in either exit order, concurrent startup/exit, startup during final publication, terminal signals, killed groups, orphaned clients, write-back failure, and cross-store conflicts. The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable); all OpenCode auth regressions pass ten repeated runs. Affected-package vet, shell syntax, formatting, and diff checks pass. Existing images require explicit image recreation to adopt the wrapper. Native OpenCode, live Docker, real OAuth refresh, and manual host-terminal acceptance remain unrun.
+
 ## Shared SSH keepalives — implemented, live acceptance pending
 
 - Container and host SSH masters send keepalives after 30 seconds without server traffic and disconnect after 3 unanswered probes. These invocation options override SSH config values; authentication, shared-master ownership, and reconnect behavior are unchanged.
