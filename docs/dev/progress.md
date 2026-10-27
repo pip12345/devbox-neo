@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Recreation progress wording
+
+- Implemented notices that describe what dbx is doing instead of giving instructions to the user. Replacement notices keep the plain-language data-loss warning on the same line. Runtime-only notices clearly say the existing container is kept. Lifecycle behavior is unchanged.
+- Regression coverage checks every notice variant, warning layout, and delivery before Docker changes and child output. Manual host-terminal acceptance remains unrun.
+
 ## Shared SSH keepalives — implemented, live acceptance pending
 
 - Container and host SSH masters send keepalives after 30 seconds without server traffic and disconnect after 3 unanswered probes. These invocation options override SSH config values; authentication, shared-master ownership, and reconnect behavior are unchanged.

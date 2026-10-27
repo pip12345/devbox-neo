@@ -60,14 +60,15 @@ func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.R
 
 func (e *Engine) applyRecreate(ctx context.Context, p recreatePlan) (result Result, err error) {
 	result.Session, result.SessionID = p.record.PublicName(), p.record.ID
-	message := "Apply runtime configuration without replacing the container. It may be briefly started or restarted."
+	message := "Updating configuration without replacing the container. It may briefly start or restart."
 	if p.replace {
-		message = "Replace the container with current configuration; reuse a compatible available image or build one. Container-local changes will be lost."
+		message = "Replacing the container."
 		if p.image {
-			message = "Build the image without cache and replace the container. Container-local changes will be lost."
+			message = "Building a new image without cache and replacing the container."
 		} else if p.change == environment.RebuildAndRecreate {
-			message = "Build changed image inputs and replace the container. Container-local changes will be lost."
+			message = "Rebuilding the image and replacing the container."
 		}
+		message += " Files and tools stored only inside the old container will be lost."
 	}
 	if p.force {
 		message += " Attached commands will be interrupted."

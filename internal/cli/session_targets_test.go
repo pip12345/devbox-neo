@@ -115,7 +115,7 @@ func TestRecreateForceFlagReplacesWithActiveCommands(t *testing.T) {
 	if current.ID != r.ID || current.Applied.ContainerID == r.Applied.ContainerID {
 		t.Fatal("--force did not perform replacement while preserving identity")
 	}
-	if !strings.Contains(out.String(), "Attached commands will be interrupted") || !strings.Contains(out.String(), "Container-local changes will be lost") {
+	if !strings.Contains(out.String(), "Attached commands will be interrupted") || !strings.Contains(out.String(), " Files and tools stored only inside the old container will be lost.") {
 		t.Fatal("forced replacement did not disclose its effects", out.String())
 	}
 	if _, exists := e.Docker.Runner.(*dockertest.Daemon).Snapshot(r.Applied.Creation.Name); exists {
