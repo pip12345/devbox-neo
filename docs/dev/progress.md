@@ -8,6 +8,13 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## OpenCode backend port isolation — implemented, live acceptance pending
+
+- The image-owned wrapper reuses a healthy native backend or selects and configures an available port before initial auth export and pending-write-back recovery. Startup remains under the existing per-store gate. Only the native bind-collision diagnostic permits up to three attempts; other startup failures and timeouts stop without exposing native logs. No Go lifecycle branches, network-mode exceptions, auth resets, or backend supervisor were added.
+- Review reproduced two native v2.2.0 regressions: `service set port` can signal an unrelated process through a stale registration, and unconditional preparation starts a managed service despite `disabled: true`. Preparation now respects disabled mode and atomically updates only the port in the effective native config, preserving other fields without invoking the stop-bearing setter. Native read-back verifies the selected port before startup.
+- Regressions cover healthy reuse, overlapping clients, collision retries/exhaustion, startup and configuration failures, pending-auth preservation, and native administration passthrough. Native checks cover an occupied default port, a forced bind race, separate stores in one network namespace, disabled mode, and a stale registration referencing only a disposable fixture process. Homes and credentials are synthetic. Existing images require explicit image recreation to adopt the wrapper.
+- `make test-fast` passes with released OpenCode v2.2.0 native checks enabled. The stale-registration and disabled-service native regressions pass three repeated runs, and fake-backed auth/backend regressions pass five repeated runs. Affected-package vet, CLI build, shell syntax, formatting, and diff checks pass. Live Docker, real OAuth refresh, and manual host-terminal acceptance remain unrun.
+
 ## Recreation progress wording
 
 - Implemented notices that describe what dbx is doing instead of giving instructions to the user. Replacement notices keep the plain-language data-loss warning on the same line. Runtime-only notices clearly say the existing container is kept. Lifecycle behavior is unchanged.

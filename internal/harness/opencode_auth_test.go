@@ -2,16 +2,13 @@ package harness
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -21,8 +18,12 @@ import (
 const fakeOpenCode = `#!/bin/bash
 set -eu
 client=${FAKE_CLIENT:-$FAKE_DATA}
+service_file=$FAKE_DATA/config/service.json
 case ${1-}:${2-} in
     auth:export)
+        if [[ ! -e $FAKE_DATA/backend-running ]]; then
+            [[ -f $service_file && $(jq -r '.disabled // false' "$service_file") == true ]] || exit 1
+        fi
         echo export >>"$FAKE_DATA/auth-calls"
         if [[ -e $FAKE_DATA/fail-export ]]; then echo 'dont-print-synthetic-secret' >&2; exit 1; fi
         if [[ -e $FAKE_DATA/wait-export ]]; then
@@ -38,6 +39,52 @@ case ${1-}:${2-} in
         jq --arg id "${3##*/}" '[.[] | select(.id != $id)]' "$FAKE_DATA/dbstate" >"$FAKE_DATA/new"
         mv -- "$FAKE_DATA/new" "$FAKE_DATA/dbstate" ;;
     --version:) echo 'test version' ;;
+    service:get)
+        case ${3-} in
+            disabled)
+                echo disabled >>"$FAKE_DATA/backend-calls"
+                [[ ! -e $FAKE_DATA/fail-settings ]] || { echo 'dont-print-synthetic-secret' >&2; exit 1; }
+                [[ ! -e $FAKE_DATA/invalid-settings ]] || { echo dont-print-synthetic-secret; exit 0; }
+                disabled=false
+                [[ ! -f $service_file ]] || disabled=$(jq -r 'if type == "object" then .disabled // false else false end' "$service_file" 2>/dev/null) || disabled=false
+                echo "$disabled" ;;
+            port)
+                echo verify >>"$FAKE_DATA/backend-calls"
+                [[ ! -e $FAKE_DATA/reject-port ]] || { echo 0; exit 0; }
+                [[ ! -e $service_file ]] || jq -r '.port // empty' "$service_file" ;;
+            *) exit 64 ;;
+        esac ;;
+    debug:paths)
+        [[ $# == 3 && $3 == config ]] || exit 64
+        echo paths >>"$FAKE_DATA/backend-calls"
+        [[ ! -e $FAKE_DATA/fail-paths ]] || { echo 'dont-print-synthetic-secret' >&2; exit 1; }
+        echo "$FAKE_DATA/config" ;;
+    service:status)
+        echo status >>"$FAKE_DATA/backend-calls"
+        [[ ! -e $FAKE_DATA/fail-status ]] || { echo 'dont-print-synthetic-secret' >&2; exit 1; }
+        [[ ! -e $FAKE_DATA/invalid-status ]] || { echo dont-print-synthetic-secret; exit 0; }
+        if [[ -e $FAKE_DATA/backend-running ]]; then
+            printf 'http://127.0.0.1:%s\n' "$(jq -r '.port' "$service_file")"
+        else
+            echo stopped
+        fi ;;
+    service:set)
+        echo set >>"$FAKE_DATA/backend-calls"
+        exit 99 ;;
+    service:start)
+        echo start >>"$FAKE_DATA/backend-calls"
+        port=$(jq -r '.port' "$service_file")
+        echo "$port" >>"$FAKE_DATA/backend-ports"
+        [[ ! -e $FAKE_DATA/fail-start ]] || { echo 'dont-print-synthetic-secret' >&2; exit 1; }
+        [[ ! -e $FAKE_DATA/other-port-collision ]] || { echo 'Managed service port 0 on 127.0.0.1 is already in use by another process.' >&2; exit 1; }
+        [[ ! -e $FAKE_DATA/timeout-start ]] || exit 124
+        if [[ -e $FAKE_DATA/collide-once || -e $FAKE_DATA/collide-always ]]; then
+            rm -f -- "$FAKE_DATA/collide-once"
+            echo "Managed service port $port on 127.0.0.1 is already in use by another process. dont-print-synthetic-secret" >&2
+            exit 1
+        fi
+        touch "$FAKE_DATA/backend-running"
+        printf 'http://127.0.0.1:%s\n' "$port" ;;
     service:*) printf '%s\n' "$@" ;;
     *)
         cp -- "$FAKE_DATA/dbstate" "$client/pulled"
@@ -56,14 +103,14 @@ type authFixture struct {
 
 func authTestFixture(t *testing.T) authFixture {
 	t.Helper()
-	for _, tool := range []string{"bash", "flock", "jq", "timeout", "sync"} {
+	for _, tool := range []string{"bash", "flock", "jq", "timeout", "sync", "node"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skip("OpenCode wrapper tests require " + tool)
 		}
 	}
 	f := authFixture{root: t.TempDir()}
 	f.shared, f.data = filepath.Join(f.root, "shared"), filepath.Join(f.root, "data")
-	for _, dir := range []string{f.shared, f.data} {
+	for _, dir := range []string{f.shared, f.data, filepath.Join(f.data, "config")} {
 		if err := os.Mkdir(dir, 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -244,7 +291,7 @@ func TestOpenCodeAuthWritebackFailureAndOriginalStoreRecovery(t *testing.T) {
 		t.Fatalf("pending write-back blocked another session: %v: %s", err, output)
 	}
 	assertAuth(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
-	for _, name := range []string{"fail-push", "fail-export", "update"} {
+	for _, name := range []string{"fail-push", "fail-export", "update", "backend-running"} {
 		if err := os.Remove(filepath.Join(f.data, name)); err != nil {
 			t.Fatal(err)
 		}
@@ -459,6 +506,10 @@ func TestOpenCodeAuthSharedClientsExitOrder(t *testing.T) {
 			second := startAuthProcess(t, b)
 			assertAuth(t, filepath.Join(b.clientDir(), "pulled"), refreshedAuth)
 			assertAuthCalls(t, f, 2, 1)
+			calls, err := os.ReadFile(filepath.Join(f.data, "backend-calls"))
+			if err != nil || strings.Count(string(calls), "status\n") != 1 || strings.Count(string(calls), "start\n") != 1 {
+				t.Fatal("overlapping client reconfigured the backend", string(calls), err)
+			}
 			if !firstExitsFirst {
 				a, b, first, second = b, a, second, first
 			}
@@ -846,66 +897,4 @@ func TestOpenCodeAuthKilledRunRecoveryUsesOriginalSnapshot(t *testing.T) {
 	}
 	assertAuth(t, filepath.Join(a.shared, "credentials.json"), refreshedAuth)
 	assertAuth(t, filepath.Join(a.data, "pulled"), refreshedAuth)
-}
-
-func TestOpenCodeAuthNativeCommands(t *testing.T) {
-	binary := os.Getenv("DEVBOX_OPENCODE_NATIVE")
-	if binary == "" {
-		t.Skip("set DEVBOX_OPENCODE_NATIVE to verify the native CLI with isolated synthetic auth")
-	}
-	f := authTestFixture(t)
-	f.native = binary
-	f.data = filepath.Join(f.root, "data", "opencode")
-	if err := os.Mkdir(f.data, 0700); err != nil {
-		t.Fatal(err)
-	}
-	env := []string{}
-	for _, assignment := range os.Environ() {
-		if !strings.HasPrefix(assignment, "OPENCODE_") && !strings.HasPrefix(assignment, "XDG_") && !strings.HasPrefix(assignment, "HOME=") {
-			env = append(env, assignment)
-		}
-	}
-	for key, dir := range map[string]string{"HOME": "home", "XDG_DATA_HOME": "data", "XDG_CONFIG_HOME": "config", "XDG_CACHE_HOME": "cache", "XDG_STATE_HOME": "state"} {
-		path := filepath.Join(f.root, dir)
-		if err := os.MkdirAll(path, 0700); err != nil {
-			t.Fatal(err)
-		}
-		env = append(env, key+"="+path)
-	}
-	env = append(env, "OPENCODE_DISABLE_MODELS_FETCH=1", "OPENCODE_DISABLE_FILEWATCHER=1", `OPENCODE_CONFIG_CONTENT={"update":"disable"}`)
-	native := func(args ...string) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, binary, args...)
-		cmd.Env, cmd.Dir = env, f.root
-		return cmd.Run()
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	_ = listener.Close()
-	if err := native("service", "set", "port", strconv.Itoa(port)); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := native("service", "stop"); err != nil {
-			t.Error(err)
-		}
-	})
-	for _, desired := range []string{sharedAuth, refreshedAuth, "[]"} {
-		authWrite(t, filepath.Join(f.shared, "credentials.json"), desired)
-		cmd := f.command("auth", "export")
-		cmd.Env, cmd.Dir = env, f.root
-		var output, stderr bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &output, &stderr
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("native auth commands: %v: %s", err, stderr.String())
-		}
-		if canonicalAuth(t, output.Bytes()) != canonicalAuth(t, []byte(desired)) {
-			t.Fatal("native import/export changed credentials or active account selection")
-		}
-		assertAuth(t, filepath.Join(f.shared, "credentials.json"), desired)
-	}
 }

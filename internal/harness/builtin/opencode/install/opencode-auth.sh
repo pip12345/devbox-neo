@@ -33,10 +33,74 @@ exec 9>"$shared/lock"
 snapshot=$shared/credentials.json
 pending=$store/pending
 work=
+config_temp=
 write_back=false
 keep=false
 
 canonical() { jq -S 'sort_by(.id)' "$1" >"$2" 2>"$work/log"; }
+
+configure_backend_port() {
+    local file=$1 port=$2
+    [[ ! -L $file && ( ! -e $file || -f $file ) ]] || return 1
+    config_temp=$(mktemp "${file%/*}/.devbox-service.XXXXXX") || return 1
+    if [[ -e $file ]]; then
+        jq -e --argjson port "$port" 'if type == "object" then .port = $port else error("Invalid service configuration") end' "$file" >"$config_temp" || return 1
+    else
+        printf '{"port":%s}\n' "$port" >"$config_temp" || return 1
+    fi
+    mv -fT -- "$config_temp" "$file" || return 1
+    config_temp=
+}
+
+prepare_backend() {
+    local disabled endpoint config_dir service_config port configured attempt status
+    disabled=$(timeout --foreground 30s "$binary" service get disabled 2>"$work/log") || fail 'Could not inspect local backend settings.'
+    case $disabled in
+        true) return ;;
+        false) ;;
+        *) fail 'Invalid local backend settings.' ;;
+    esac
+    endpoint=$(timeout --foreground 30s "$binary" service status 2>"$work/log") || fail 'Could not inspect the local backend.'
+    case $endpoint in
+        http://*|https://*) return ;;
+        stopped) ;;
+        *) fail 'Invalid local backend status.' ;;
+    esac
+    config_dir=$(timeout --foreground 30s "$binary" debug paths config 2>"$work/log") || fail 'Could not locate local backend settings.'
+    [[ $config_dir == /* && -d $config_dir ]] || fail 'Invalid local backend settings directory.'
+    service_config=$config_dir/service.json
+    # Separate containers cannot share the native default port with host networking.
+    # Keep native service configuration/discovery, but select a port at each cold start.
+    for attempt in 1 2 3; do
+        port=$(timeout --foreground 5s node -e '
+const server = require("node:net").createServer();
+server.once("error", () => process.exit(1));
+server.listen(0, "127.0.0.1", () => {
+    console.log(server.address().port);
+    server.close();
+});
+' 2>"$work/log") || fail 'Could not select a local backend port.'
+        [[ $port =~ ^[1-9][0-9]{0,4}$ && $port -le 65535 ]] || fail 'Invalid local backend port.'
+        # The native setter stops the registered PID even when its registration is
+        # stale. Update only the config field, never registration or process state.
+        configure_backend_port "$service_config" "$port" 2>"$work/log" || fail 'Could not configure the local backend port.'
+        configured=$(timeout --foreground 30s "$binary" service get port 2>"$work/log") || fail 'Could not verify the local backend port.'
+        [[ $configured == "$port" ]] || fail 'Native backend settings rejected the selected port.'
+        if timeout --foreground 30s "$binary" service start >"$work/log" 2>&1; then
+            return
+        else
+            status=$?
+        fi
+        [[ $status != 124 ]] || fail 'Local backend startup timed out.'
+        # Releasing the probe socket leaves a bind race. Only OpenCode's specific
+        # bind-collision diagnostic permits retry, never arbitrary startup failures.
+        if [[ $status != 1 ]] || ! grep -Eq "Managed service port $port on .* is already in use by " "$work/log"; then
+            fail "Could not start the local backend (exit $status)."
+        fi
+    done
+    fail 'Could not start the local backend after three port collisions.'
+}
+
 # Keep auth subprocesses in the terminal's process group so hangup reaches them;
 # the wrapper cannot run its signal trap until its foreground child exits.
 export_local() {
@@ -112,6 +176,10 @@ finish() {
             [[ $status != 0 ]] || status=1
         fi
     fi
+    if [[ -n $config_temp ]] && ! rm -f -- "$config_temp"; then
+        printf 'OpenCode backend settings temporary-file cleanup failed.\n' >&2
+        [[ $status != 0 ]] || status=1
+    fi
     if ! $keep && [[ -n $work ]] && ! rm -rf -- "$work"; then
         printf 'OpenCode auth temporary-file cleanup failed.\n' >&2
         [[ $status != 0 ]] || status=1
@@ -129,6 +197,7 @@ valid_pending() {
 
 initialize() {
     work=$(mktemp -d "$store/.sync.XXXXXX")
+    prepare_backend
     # An interrupted group keeps its baseline with this backing store. Recovery
     # follows the same conflict rule, and only runs once no client holds the store.
     if [[ -e $pending || -L $pending ]]; then
