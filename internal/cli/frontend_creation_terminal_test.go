@@ -37,7 +37,7 @@ func TestNativeFirstCreationAndSessionDefaultMenu(t *testing.T) {
 	})
 	p.wait("No sessions yet.")
 	p.send("\r")
-	p.wait("Set session name")
+	p.wait("✓ Make folder default")
 	p.send("\r")
 	p.send("First\r")
 	p.send("\x1b[B\x1b[B\r")
@@ -63,24 +63,24 @@ func TestNativeFirstCreationAndSessionDefaultMenu(t *testing.T) {
 	}
 	name := created.PublicName()
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected != nil {
-		t.Fatal("creation selected a default", selected, err)
+	if err != nil || selected == nil || selected.ID != created.ID {
+		t.Fatal("first creation did not select its checked default", selected, err)
 	}
 	report, err := e.List(context.Background(), "")
 	if err != nil || len(report.Sessions) != 1 || report.Sessions[0].Target != name || report.Sessions[0].Running {
 		t.Fatal(report, err)
 	}
-	p.send("/Make folder\r\r")
-	p.wait("Clear folder default")
-	selected, err = e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected == nil || selected.ID != created.ID {
-		t.Fatal("session menu did not set default", selected, err)
-	}
-	p.send("\r")
+	p.send("/Clear folder\r\r")
 	p.wait("Make folder default")
 	selected, err = e.Store.ReadDefault(context.Background(), q.Workspace)
 	if err != nil || selected != nil {
-		t.Fatal("same menu did not clear default", selected, err)
+		t.Fatal("session menu did not clear default", selected, err)
+	}
+	p.send("\r")
+	p.wait("Clear folder default")
+	selected, err = e.Store.ReadDefault(context.Background(), q.Workspace)
+	if err != nil || selected == nil || selected.ID != created.ID {
+		t.Fatal("same menu did not set default", selected, err)
 	}
 	p.send("q")
 	p.wait("Browser actions")

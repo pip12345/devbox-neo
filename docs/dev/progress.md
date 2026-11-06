@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## First-session default checkbox — implemented, host acceptance pending
+
+- The creation form preselects Make folder default when saved inventory confirms the workspace has no sessions. Folder changes update the suggestion until an explicit checkbox or CLI flag choice takes priority. Cancellation and build retries retain their existing behavior. Direct CLI creation still requires `--default` to select a default.
+- Regression coverage includes empty/existing workspaces, explicit choices, unreadable inventory, folder changes, retry preservation, and first creation through the native terminal UI. The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable). Live Docker and manual host-terminal acceptance remain unrun.
+
 ## OpenCode backend port isolation — implemented, live acceptance pending
 
 - The image-owned wrapper reuses a healthy native backend or selects and configures an available port before initial auth export and pending-write-back recovery. Startup remains under the existing per-store gate. Only the native bind-collision diagnostic permits up to three attempts; other startup failures and timeouts stop without exposing native logs. No Go lifecycle branches, network-mode exceptions, auth resets, or backend supervisor were added.

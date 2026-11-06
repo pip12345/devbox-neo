@@ -42,7 +42,7 @@ With no sessions yet, **Create session** is selected. Press **Enter**.
 4. Set **Name/location** to `base`. Under **Harness**, choose Pi, OpenCode, or Claude Code.
 5. Leave **Optional files** at **None**, then choose **Create config**.
 
-Devbox adds the new config to your session draft automatically. Optionally check **Make folder default** to select this session for commands such as `dbx open .`. This replaces any existing default. Choose **Create session** to build the environment. The first build can take a while.
+Devbox adds the new config to your session draft automatically. **Make folder default** starts checked when the folder has no sessions yet. Leave it checked to select this session for commands such as `dbx open .`, or uncheck it to leave the default unchanged. Selecting a default replaces any existing choice. Choose **Create session** to build the environment. The first build can take a while.
 
 ## Open it
 
