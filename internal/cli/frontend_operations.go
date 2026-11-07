@@ -116,7 +116,7 @@ func (f *frontend) recreate(target string) error {
 	return f.form("Recreate", func() []cliui.Action {
 		actions := actionGroup("Inspect", f.action("Inspect pending changes", "", func() error { return f.status(target) }))
 		actions = append(actions, actionGroup("Options",
-			f.toggle("Refresh harness (replace container)", &harness),
+			f.toggle("Rebuild image harness layer", &harness),
 			f.toggle("Rebuild image without cache", &noCache),
 			f.toggle("Force container replacement", &container),
 			f.toggle("Force replacement even with attached commands", &force),

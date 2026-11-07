@@ -877,7 +877,7 @@ Rename session
 Recreate
 --------------------------------------------------
 > Inspect pending changes
-  [ ] Refresh harness (replace container)
+  [ ] Rebuild image harness layer
   [ ] Rebuild image without cache
   [ ] Force container replacement
   [ ] Force replacement even with attached commands

@@ -103,7 +103,7 @@ func TestFrontendRecreateAllIncludesSessionsWithoutContainers(t *testing.T) {
 	if err := f.recreate(""); err != nil {
 		t.Fatal(err, out.String())
 	}
-	for _, label := range []string{"Refresh harness (replace container)", "Force container replacement", "Force replacement even with attached commands"} {
+	for _, label := range []string{"Rebuild image harness layer", "Force container replacement", "Force replacement even with attached commands"} {
 		if !strings.Contains(out.String(), label) {
 			t.Fatal("missing recreate option", label, out.String())
 		}

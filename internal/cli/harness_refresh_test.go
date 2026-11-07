@@ -70,7 +70,7 @@ func TestFrontendRefreshHarness(t *testing.T) {
 			if after := sessionRecord(t, f.e, name); after.Applied.ContainerID == before.Applied.ContainerID {
 				t.Fatal("menu harness refresh kept the old container")
 			}
-			for _, text := range []string{"✓ Refresh harness (replace container)", "Earlier image stages may use cache.", "Container-local changes will be lost."} {
+			for _, text := range []string{"✓ Rebuild image harness layer", "Earlier image stages may use cache.", "Container-local changes will be lost."} {
 				if !strings.Contains(out.String(), text) {
 					t.Fatal("menu did not explain refresh consequences", text, out.String())
 				}

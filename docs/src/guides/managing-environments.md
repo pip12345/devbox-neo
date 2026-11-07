@@ -22,7 +22,7 @@ If you need to interrupt attached commands, choose **Force replacement even with
 
 ## Update the harness
 
-Choose **Recreate → Refresh harness (replace container)** to rerun the harness installer while allowing earlier image stages to use cache. From the host CLI, run `dbx recreate <target> --harness`.
+Choose **Recreate → Rebuild image harness layer** to rerun the harness installer while allowing earlier image stages to use cache. From the host CLI, run `dbx recreate <target> --harness`.
 
 For every saved session, use **All-session operations → Recreate all** with the same option, or run `dbx recreate --all --harness`.
 
