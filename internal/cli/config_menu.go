@@ -77,11 +77,11 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner, changed *bool
 				rows[i].origin = "unknown"
 			}
 			valueText := configFieldText(rows[i].value)
-			actions = append(actions, cliui.Action{Label: configLabel(field.Key), Value: strings.ReplaceAll(valueText, "\n", ", "), Fields: configActionFields(rows[i]), Run: func() (bool, error) {
+			actions = append(actions, cliui.Action{Label: configLabel(field.Key), Group: "Settings", Value: strings.ReplaceAll(valueText, "\n", ", "), Fields: configActionFields(rows[i]), Run: func() (bool, error) {
 				return false, editConfigField(m, s, owner, field, source, changed)
 			}})
 		}
-		actions = append(actions, cliui.Action{Label: "Add optional files", Hidden: readErr != nil, BreakBefore: true, Run: func() (bool, error) {
+		actions = append(actions, cliui.Action{Label: "Add optional files", Group: "Files", Hidden: readErr != nil, Run: func() (bool, error) {
 			var configured *string
 			if raw := source["harness"]; raw != nil {
 				_ = json.Unmarshal(raw, &configured)
@@ -104,7 +104,7 @@ func configMenu(m menu, s *resource.Service, owner resource.Owner, changed *bool
 			return false, m.report(err)
 		}})
 		if isNamedConfig(owner.Name) {
-			actions = append(actions, cliui.Action{Label: "Delete config", Description: "Remove this named directory and all files; refuses saved-session users", Danger: true, Run: func() (bool, error) {
+			actions = append(actions, cliui.Action{Label: "Delete config", Group: "Manage", Description: "Remove this named directory and all files; refuses saved-session users", Danger: true, Run: func() (bool, error) {
 				result, cancelled, err := deleteConfigWorkflow(m, s, owner.Name, false)
 				if err != nil {
 					return false, m.report(err)

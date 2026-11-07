@@ -102,7 +102,7 @@ func completionSessions(cmd *cobra.Command) []completionSession {
 		var record completionSession
 		if json.Unmarshal(data, &record) == nil && environment.IsSessionID(record.ID) && record.Settings.Validate() == nil {
 			record.Directory = entry.Name()
-			if !environment.IsSessionTarget(record.Directory) {
+			if record.Directory != record.ID {
 				continue
 			}
 			records = append(records, record)
@@ -114,7 +114,7 @@ func completionSessions(cmd *cobra.Command) []completionSession {
 func completeSessions(cmd *cobra.Command) []string {
 	var targets []string
 	for _, record := range completionSessions(cmd) {
-		targets = append(targets, record.Directory+"\t"+displayCell(record.Settings.Workspace)+" / "+displayCell(record.Settings.LocalName))
+		targets = append(targets, environment.PublicName(record.Settings, record.ID)+"\t"+displayCell(record.Settings.Workspace)+" / "+displayCell(record.Settings.LocalName))
 	}
 	return targets
 }
@@ -230,9 +230,7 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 		case "open", "start", "recreate", "status", "ssh", "shell", "exec", "stop", "logs", "edit", "rename":
 			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, false)
 		case "delete":
-			cmd.ValidArgsFunction = completeTarget(func(cmd *cobra.Command) []string {
-				return append(completeSessions(cmd), containers(cmd)...)
-			}, 0, true)
+			cmd.ValidArgsFunction = completeTarget(completeSessions, 0, true)
 		case "copy":
 			cmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, prefix string) ([]string, cobra.ShellCompDirective) {
 				if len(args) == 1 {
@@ -258,6 +256,27 @@ func bindCompletions(root *cobra.Command, runtime docker.Runtime) {
 				}
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
+		}
+		if cmd.Flags().Lookup("container-name") != nil {
+			_ = cmd.RegisterFlagCompletionFunc("container-name", completeFlag(containers))
+		}
+		if cmd.Flags().Lookup("incomplete-dir") != nil {
+			_ = cmd.RegisterFlagCompletionFunc("incomplete-dir", func(cmd *cobra.Command, _ []string, prefix string) ([]string, cobra.ShellCompDirective) {
+				root, err := fsutil.Path(completionHome(cmd), "sessions")
+				if err != nil {
+					return nil, cobra.ShellCompDirectiveNoFileComp
+				}
+				entries, _ := os.ReadDir(root)
+				var names []string
+				for _, entry := range entries {
+					if entry.IsDir() {
+						if _, err := os.Lstat(filepath.Join(root, entry.Name(), "session.json")); os.IsNotExist(err) {
+							names = append(names, entry.Name())
+						}
+					}
+				}
+				return completionMatches(names, nil, prefix), cobra.ShellCompDirectiveNoFileComp
+			})
 		}
 		if cmd.Flags().Lookup("workspace") != nil {
 			_ = cmd.MarkFlagDirname("workspace")

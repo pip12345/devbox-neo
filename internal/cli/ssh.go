@@ -36,20 +36,21 @@ func prepareSSH(in io.Reader, out io.Writer, destination string, hostMaster bool
 	return input, nil
 }
 
-func sshInteraction(ctx context.Context, input *os.File, out io.Writer, e *app.Engine, target, localName, destination string, hostMaster bool) error {
+func sshInteraction(ctx context.Context, input *os.File, out io.Writer, e *app.Engine, target, localName, destination string, options app.SSHOptions) error {
 	fmt.Fprintf(out, "Connecting to %s…\n", destination)
 	mode := "CONTAINER MASTER"
-	if hostMaster {
+	if options.HostMaster {
 		mode = "HOST MASTER"
 	}
+	options.Connected = func(environment, alias string) {
+		sshTerminalMessage(out, fmt.Sprintf("\nConnected: %s — %s\nShared with: %s\n\nInside the container:\n  ssh -F /devbox/ssh/config %s\n\nKeep this terminal open. Ctrl-C ends the shared connection\nand its active SSH sessions.\n", destination, mode, environment, alias))
+	}
 	return runSSHInTerminal(input, out, func() error {
-		return e.SSH(ctx, target, localName, destination, app.SSHOptions{HostMaster: hostMaster, Connected: func(environment, alias string) {
-			sshTerminalMessage(out, fmt.Sprintf("\nConnected: %s — %s\nShared with: %s\n\nInside the container:\n  ssh -F /devbox/ssh/config %s\n\nKeep this terminal open. Ctrl-C ends the shared connection\nand its active SSH sessions.\n", destination, mode, environment, alias))
-		}})
+		return e.SSH(ctx, target, localName, destination, options)
 	})
 }
 func sshCommand(factory engineFactory, localName *string) *cobra.Command {
-	var hostMaster bool
+	var hostMaster, insecure bool
 	cmd := &cobra.Command{Use: "ssh <folder|session> <destination>", Short: "Share a user-authenticated SSH connection with an environment", Long: "Run a foreground SSH master inside the environment. Authenticate in this terminal, then let container processes reuse /devbox/ssh/config. Keep the terminal open; Ctrl-C disconnects. SSH configuration, including keys, ProxyJump, agent forwarding and X11 forwarding, comes from where the master runs. No keys or host SSH configuration are copied.", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		input, err := prepareSSH(cmd.InOrStdin(), cmd.ErrOrStderr(), args[1], hostMaster)
 		if err != nil {
@@ -59,8 +60,9 @@ func sshCommand(factory engineFactory, localName *string) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return sshInteraction(cmd.Context(), input, cmd.ErrOrStderr(), e, args[0], *localName, args[1], hostMaster)
+		return sshInteraction(cmd.Context(), input, cmd.ErrOrStderr(), e, args[0], *localName, args[1], app.SSHOptions{HostMaster: hostMaster, Insecure: insecure})
 	}}
 	cmd.Flags().BoolVar(&hostMaster, "host-master", false, "Run SSH on the host using host config and credentials; permits host-side forwarding through the shared control socket")
+	cmd.Flags().BoolVar(&insecure, "insecure", false, "Disable destination host-key verification for this invocation (permits server impersonation); do not read or save known-host keys")
 	return sessionNameFlag(cmd, localName)
 }

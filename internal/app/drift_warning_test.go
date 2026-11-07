@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"devbox/internal/environment"
 )
 
 func runtimeMutations(d interface{ History() [][]string }) int {
@@ -39,7 +41,7 @@ func TestApplicationPlanPrecedesRuntimeMutations(t *testing.T) {
 				write(t, filepath.Join(source, "docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 			}
 			r := sessionRecord(t, e, made.SessionID)
-			live := filepath.Join(e.Store.Home, "sessions", r.Directory, "harnesses/pi/stores/home/new-file")
+			live := filepath.Join(e.Store.Home, "sessions", r.Directory, r.StateTree, "harnesses/pi/stores/home/new-file")
 			before, plans := runtimeMutations(d), 0
 			e.OnDiagnostic = func(diagnostic Diagnostic) {
 				if diagnostic.Code != "apply_plan" {
@@ -51,7 +53,7 @@ func TestApplicationPlanPrecedesRuntimeMutations(t *testing.T) {
 				if _, err := os.Stat(live); !os.IsNotExist(err) {
 					t.Fatal("synced before explanation", err)
 				}
-				if change != "runtime" && !strings.Contains(diagnostic.Message, "Container-local changes will be lost") {
+				if change != "runtime" && !strings.Contains(diagnostic.Message, " Files and tools stored only inside the old container will be lost.") {
 					t.Fatal("missing replacement warning")
 				}
 				plans++
@@ -59,6 +61,34 @@ func TestApplicationPlanPrecedesRuntimeMutations(t *testing.T) {
 			result, err := e.Recreate(ctx, recreateRequest(q), false)
 			if err != nil || plans != 1 || len(result.Diagnostics) != 1 {
 				t.Fatal(result, err)
+			}
+		})
+	}
+}
+
+func TestApplicationProgressWording(t *testing.T) {
+	warning := " Files and tools stored only inside the old container will be lost."
+	for _, tc := range []struct {
+		name string
+		plan recreatePlan
+		want string
+	}{
+		{"runtime", recreatePlan{}, "Updating configuration without replacing the container. It may briefly start or restart."},
+		{"container", recreatePlan{replace: true}, "Replacing the container." + warning},
+		{"image", recreatePlan{replace: true, image: true}, "Building a new image without cache and replacing the container." + warning},
+		{"changed-image", recreatePlan{replace: true, change: environment.RebuildAndRecreate}, "Rebuilding the image and replacing the container." + warning},
+		{"force", recreatePlan{replace: true, force: true}, "Replacing the container." + warning + " Attached commands will be interrupted."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := &Engine{}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			result, err := e.applyRecreate(ctx, tc.plan)
+			if !errors.Is(err, context.Canceled) || len(result.Diagnostics) != 1 {
+				t.Fatal(result, err)
+			}
+			if got := result.Diagnostics[0].Message; got != tc.want {
+				t.Fatalf("progress message: got %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -85,7 +115,7 @@ func TestCancelledApplicationPlanDoesNotMutate(t *testing.T) {
 	}
 	lockCtx, stop := context.WithTimeout(context.Background(), time.Second)
 	defer stop()
-	lock, err := e.Store.Lock(lockCtx, r.Directory, r.ID)
+	lock, err := e.Store.Lock(lockCtx, r.ID)
 	if err != nil {
 		t.Fatal("apply leaked lock", err)
 	}

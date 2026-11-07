@@ -67,7 +67,8 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 			input += "y\n"
 		}
 		f, out, q, name := frontendFixture(t, strings.NewReader(input))
-		containerName := sessionRecord(t, f.e, name).Applied.Creation.Name
+		record := sessionRecord(t, f.e, name)
+		containerName := record.Applied.Creation.Name
 		if err := f.delete([]string{name}); err != nil {
 			t.Fatal(err, out.String())
 		}
@@ -84,7 +85,7 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 		if strings.Contains(text, "Preview scope") || strings.Contains(text, "Delete saved data and history?") != whole || strings.Contains(text, "Would delete session "+name) != whole {
 			t.Fatal("preview and execution disagree", text)
 		}
-		_, err := f.e.Store.Read(context.Background(), name)
+		_, err := f.e.Store.Read(context.Background(), record.ID)
 		if os.IsNotExist(err) != whole {
 			t.Fatal("wrong saved-state outcome", whole, err, text)
 		}
@@ -92,6 +93,25 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 		if err != nil || (!whole && report.Sessions[0].Exists) {
 			t.Fatal(report, err)
 		}
+	}
+}
+
+func TestFrontendRecreateAllIncludesSessionsWithoutContainers(t *testing.T) {
+	f, out, _, name := frontendFixture(t, strings.NewReader("5\ny\n"))
+	before := sessionRecord(t, f.e, name)
+	forgetSession(t, f.e, name)
+	if err := f.recreate(""); err != nil {
+		t.Fatal(err, out.String())
+	}
+	for _, label := range []string{"Force container replacement", "Force replacement even with attached commands"} {
+		if !strings.Contains(out.String(), label) {
+			t.Fatal("missing recreate option", label, out.String())
+		}
+	}
+	after := sessionRecord(t, f.e, name)
+	c, exists, err := f.e.Docker.InspectID(context.Background(), after.Applied.ContainerID)
+	if err != nil || !exists || c.State.Running || after.Applied.ContainerID == before.Applied.ContainerID {
+		t.Fatal("menu bulk recreation skipped missing runtime", c, exists, err, out.String())
 	}
 }
 
@@ -126,7 +146,7 @@ func TestNativeRecreateRefreshesNavigationAndRetainsFailedForm(t *testing.T) {
 				f := &frontend{m: m, cmd: cmd, e: e, s: &resource.Service{Home: e.Store.Home}}
 				return f.session(app.View{Target: name})
 			})
-			p.wait("Session · Main")
+			p.wait("Main ·")
 			p.send("/Recreate\r\r")
 			p.wait("Inspect pending changes")
 			if fail {
@@ -146,7 +166,7 @@ func TestNativeRecreateRefreshesNavigationAndRetainsFailedForm(t *testing.T) {
 				}
 				p.send("q")
 			} else {
-				p.wait("Session · Main")
+				p.wait("Main ·")
 				if !strings.Contains(ansi.Strip(p.output()[mark:]), "stopped") {
 					t.Fatal("successful recreate kept missing state", p.output()[mark:])
 				}

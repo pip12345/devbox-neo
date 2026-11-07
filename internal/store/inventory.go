@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"devbox/internal/fsutil"
 )
@@ -32,83 +31,64 @@ func (s *Store) Inventory(ctx context.Context) ([]Entry, error) {
 	seen := map[string]bool{}
 	for _, entry := range entries {
 		seen[entry.Name()] = true
-		record, err := s.Read(ctx, entry.Name())
-		pending, pendingErr := s.Pending(entry.Name())
-		if pendingErr != nil {
-			err = pendingErr
-		}
-		if pending != nil && os.IsNotExist(err) {
-			journal, journalErr := s.ReadTransfer(pending.Source)
-			if journalErr != nil {
-				err = journalErr
-			} else if journal != nil {
-				record.Directory, record.ID = entry.Name(), journal.SourceID
-				record.Settings.Binding = journal.Source.Binding
-				if entry.Name() == journal.Destination.Name {
-					record.Settings.Binding, record.ID = journal.Destination.Binding, journal.DestinationID
-				}
-				err = nil
-			}
-		}
-		result = append(result, Entry{Name: entry.Name(), Record: record, Err: err, Pending: pending})
+		record, readErr := s.Read(ctx, entry.Name())
+		result = append(result, Entry{Name: entry.Name(), Record: record, Err: readErr})
 	}
 	journals, err := s.Transfers()
 	if err != nil {
 		return nil, err
 	}
 	for _, j := range journals {
-		for _, name := range []string{j.Source.Name, j.Destination.Name} {
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-			pending, err := s.Pending(name)
-			if err != nil {
-				return nil, err
-			}
-			if pending != nil {
-				record := Record{ID: j.SourceID, Directory: name, Settings: Settings{Binding: j.Source.Binding}}
-				if name == j.Destination.Name {
-					record.Settings.Binding, record.ID = j.Destination.Binding, j.DestinationID
+		ids := []string{j.SourceID}
+		if j.DestinationID != j.SourceID {
+			ids = append(ids, j.DestinationID)
+		}
+		for _, id := range ids {
+			var r Record
+			var readErr error
+			if id == j.DestinationID && (id != j.SourceID || j.Phase == "committed") {
+				r, readErr = s.ReadTransferDestination(ctx, j)
+				if os.IsNotExist(readErr) {
+					r = Record{ID: id, Directory: id, StateTree: j.DestinationTree, Settings: Settings{Binding: j.Destination}}
+					readErr = nil
 				}
-				result = append(result, Entry{Name: name, Record: record, Pending: pending})
+			} else {
+				r, readErr = s.Read(ctx, id)
+			}
+			entry := Entry{Name: id, Record: r, Err: readErr, Pending: j.Reservation()}
+			if seen[id] {
+				for i := range result {
+					if result[i].Name == id {
+						result[i] = entry
+					}
+				}
+			} else {
+				seen[id] = true
+				result = append(result, entry)
 			}
 		}
 	}
 	return result, nil
 }
 
-// LockAll returns handles in directory order while acquiring unique session IDs
-// in ID order. Move's two storage endpoints share one identity and one lock.
-func (s *Store) LockAll(ctx context.Context, names []string, ids map[string]string) ([]*Locked, error) {
-	byID := map[string]*Locked{}
-	order := []string{}
-	for i, name := range names {
-		if (i > 0 && names[i-1] >= name) || !validName(name) || !idPattern.MatchString(ids[name]) {
+// LockAll requires sorted, unique session IDs so overlapping operations acquire
+// locks in the same order. Failure releases every lock acquired by this call.
+func (s *Store) LockAll(ctx context.Context, ids []string) ([]*Locked, error) {
+	for i, id := range ids {
+		if !idPattern.MatchString(id) || (i > 0 && ids[i-1] >= id) {
 			return nil, fmt.Errorf("invalid session lock set")
 		}
-		if _, seen := byID[ids[name]]; !seen {
-			byID[ids[name]] = nil
-			order = append(order, ids[name])
-		}
 	}
-	sort.Strings(order)
-	acquired := []*Locked{}
-	for _, id := range order {
-		operation, err := s.lockID(ctx, id)
+	locks := make([]*Locked, 0, len(ids))
+	for _, id := range ids {
+		lock, err := s.Lock(ctx, id)
 		if err != nil {
-			CloseAll(acquired)
+			CloseAll(locks)
 			return nil, err
 		}
-		lock := &Locked{ctx: ctx, store: s, ID: id, operation: operation}
-		byID[id] = lock
-		acquired = append(acquired, lock)
+		locks = append(locks, lock)
 	}
-	result := make([]*Locked, 0, len(names))
-	for _, name := range names {
-		result = append(result, &Locked{ctx: ctx, store: s, Name: name, ID: ids[name], operation: byID[ids[name]].operation})
-	}
-	return result, nil
+	return locks, nil
 }
 func CloseAll(locks []*Locked) {
 	for i := len(locks) - 1; i >= 0; i-- {

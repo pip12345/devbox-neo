@@ -74,7 +74,7 @@ func TestNamedSessionsRequireExplicitDefaultsAndPinSources(t *testing.T) {
 		t.Fatal(list, err)
 	}
 	for _, view := range list.Sessions {
-		if view.Default != (view.Target == b.Directory) {
+		if view.Default != (view.Target == b.PublicName()) {
 			t.Fatal("incorrect default marker", view)
 		}
 	}
@@ -90,7 +90,7 @@ func TestDirectLookupIgnoresUnrelatedCorruptionAndRejectsConflictingSelectors(t 
 	if err := e.SetDefault(ctx, sessionRecord(t, e, made.SessionID)); err != nil {
 		t.Fatal(err)
 	}
-	unrelated := environment.ResourceName("/banana", "other", "broken")
+	unrelated := strings.Repeat("f", 12)
 	write(t, filepath.Join(e.Store.Home, "sessions", unrelated, "session.json"), "broken")
 	r, err := e.Locate(ctx, q.Workspace, "")
 	if err != nil || r.ID != made.SessionID {
@@ -123,7 +123,7 @@ func TestFolderLookupOnlyReadsSelectedSession(t *testing.T) {
 			if err := e.SetDefault(ctx, sessionRecord(t, e, made.SessionID)); err != nil {
 				t.Fatal(err)
 			}
-			broken := environment.ResourceName(q.Workspace, name, "broken")
+			broken := strings.Repeat("f", 12)
 			if name == q.LocalName {
 				broken = sessionRecord(t, e, made.SessionID).Directory
 			}

@@ -2,11 +2,128 @@
 
 The approved scope is [rewrite-plan.md](rewrite-plan.md), with the [environment-model changes](environment-model-plan.md) and the replacement [folder-local sessions and explicit configs](generic-config-alternative.md). Legacy chats remain in old Devbox; the legacy Devbox import tool has been removed. Earlier milestone entries below are historical delivery records, not current build instructions.
 
-The executable and completion target are `dbx`; the home remains `~/.devbox-neo`. New session/container allocations include workspace hints, and image tags/ownership labels use the `dbx` namespace. Schema-6 development state requires agreement through the blocking migration gate described below; there is no automatic adoption or legacy Devbox importer.
+The executable and completion target are `dbx`; the home remains `~/.devbox-neo`. Schema 8 uses complete 12-character session IDs, metadata-derived public names, and ID-backed data trees. Preceding schemas 6/7 require explicit agreement through the migration gate; there is no automatic adoption or legacy Devbox importer.
 
 The initial session-structure refactor delivered schema 6 with ID-based lookup/locks/leases, independent resource names, metadata-only rename and explicit workspace edits. Its validation passed without a migration/reset path at that stage. The current schema-7 cutover and validation are recorded below.
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
+
+## Formatted menu Status screens: implemented, host acceptance pending
+
+- Single-session Status shows grouped changes and all reasons first, then the next command and session/runtime details. All-session Status uses per-session sections instead of a wide text table. Results use green, amber, and red, while reasons remain normal text. Direct CLI text and JSON output are unchanged.
+- Shared field rendering supports section headings and success styling. Next-command eligibility remains shared with direct Status output. Session pane focus keeps the same title and context, and folder menus retain their session count. Inactive browser controls retain their header space without advertising unavailable shortcuts.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable), along with affected-package vet and diff checks. Focus-layout and native pane-navigation regressions pass three repeated runs, confirming stable rows and no additional Docker calls during left/right navigation. Coverage also checks grouped reasons, scrolling, no-color output, stale-default repair, and direct CLI/JSON contracts. Live Docker and manual host-terminal acceptance remain unrun.
+
+## Menu pending-change indicators — implemented, host acceptance pending
+
+- Session lists show a compact amber `↻` for unapplied config changes. The preview and session menu distinguish runtime updates, container recreation, and image rebuilds, with a normal-text reason and full details in Status. Running/stopped and folder-default indicators stay independent.
+- One invocation-local snapshot uses the shared status comparison on first display, explicit Refresh, and after operations. Saved edits invalidate it. Session/folder pane navigation reuses the captured result, with no Docker or config comparison on left/right transitions. Failed refreshes retain the displayed inventory without retrying on navigation. Changes are never applied automatically, and config/status failures leave access and repair actions available.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable), along with affected-package vet and diff checks. New regressions pass three repeated runs, covering amber/normal text, narrow/no-color layouts, unchanged default/runtime markers, failure handling, read-only browsing, refreshes, and clearing indicators after explicit recreation, including native-terminal coverage. Live Docker and manual host-terminal acceptance remain unrun.
+
+## First-session default checkbox — implemented, host acceptance pending
+
+- The creation form preselects Make folder default when saved inventory confirms the workspace has no sessions. Folder changes update the suggestion until an explicit checkbox or CLI flag choice takes priority. Cancellation and build retries retain their existing behavior. Direct CLI creation still requires `--default` to select a default.
+- Regression coverage includes empty/existing workspaces, explicit choices, unreadable inventory, folder changes, retry preservation, and first creation through the native terminal UI. The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable). Live Docker and manual host-terminal acceptance remain unrun.
+
+## OpenCode backend port isolation — implemented, live acceptance pending
+
+- The image-owned wrapper reuses a healthy native backend or selects and configures an available port before initial auth export and pending-write-back recovery. Startup remains under the existing per-store gate. Only the native bind-collision diagnostic permits up to three attempts; other startup failures and timeouts stop without exposing native logs. No Go lifecycle branches, network-mode exceptions, auth resets, or backend supervisor were added.
+- Review reproduced two native v2.2.0 regressions: `service set port` can signal an unrelated process through a stale registration, and unconditional preparation starts a managed service despite `disabled: true`. Preparation now respects disabled mode and atomically updates only the port in the effective native config, preserving other fields without invoking the stop-bearing setter. Native read-back verifies the selected port before startup.
+- Regressions cover healthy reuse, overlapping clients, collision retries/exhaustion, startup and configuration failures, pending-auth preservation, and native administration passthrough. Native checks cover an occupied default port, a forced bind race, separate stores in one network namespace, disabled mode, and a stale registration referencing only a disposable fixture process. Homes and credentials are synthetic. Existing images require explicit image recreation to adopt the wrapper.
+- `make test-fast` passes with released OpenCode v2.2.0 native checks enabled. The stale-registration and disabled-service native regressions pass three repeated runs, and fake-backed auth/backend regressions pass five repeated runs. Affected-package vet, CLI build, shell syntax, formatting, and diff checks pass. Live Docker, real OAuth refresh, and manual host-terminal acceptance remain unrun.
+
+## Recreation progress wording
+
+- Implemented notices that describe what dbx is doing instead of giving instructions to the user. Replacement notices keep the plain-language data-loss warning on the same line. Runtime-only notices clearly say the existing container is kept. Lifecycle behavior is unchanged.
+- Regression coverage checks every notice variant, warning layout, and delivery before Docker changes and child output. Manual host-terminal acceptance remains unrun.
+
+## Concurrent OpenCode clients — implemented, live acceptance pending
+
+- Multiple clients can use one Devbox session. A per-store gate serializes first/last-client transitions; shared locks protect active clients and orphaned foreground children. Only the first client imports shared credentials, and only the last client publishes changes against that original baseline. Separate stores remain concurrent, and conflicts and interrupted write-back retain their existing recovery rules.
+- Added regressions for overlapping clients in either exit order, concurrent startup/exit, startup during final publication, terminal signals, killed groups, orphaned clients, write-back failure, and cross-store conflicts. The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable); all OpenCode auth regressions pass ten repeated runs. Affected-package vet, shell syntax, formatting, and diff checks pass. Existing images require explicit image recreation to adopt the wrapper. Native OpenCode, live Docker, real OAuth refresh, and manual host-terminal acceptance remain unrun.
+
+## Shared SSH keepalives — implemented, live acceptance pending
+
+- Container and host SSH masters send keepalives after 30 seconds without server traffic and disconnect after 3 unanswered probes. These invocation options override SSH config values; authentication, shared-master ownership, and reconnect behavior are unchanged.
+- The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable). Subprocess argument coverage checks both keepalive options with and without `--insecure` and passes five repeated runs; affected-package vet, shell syntax, formatting, and diff checks pass. Live Docker and remote-network acceptance remain unrun.
+
+## Remaining mixed-action menu headers — implemented, host acceptance pending
+
+- Recreate, Copy or move, deletion, Manage configs, the config editor, and browser actions use the existing action-group headers. The plain-text config table retains its values and source columns while showing the same groups.
+- Action order, numbering, shortcuts, confirmations, and persistence behavior are unchanged. The full fast-suite equivalent passes using `.tools/go` (`make` is unavailable), including group-order, unreadable-config, and existing native-terminal workflow regressions. Manual host-terminal acceptance remains unrun.
+
+## Session creation menu headers — implemented, host acceptance pending
+
+- The creation form uses the existing gutter groups: Name, Configs, Folder, and Create. Action order, draft behavior, and submission are unchanged.
+- Group-header, action-order, and existing native-terminal creation tests pass, along with the full fast-suite equivalent using `.tools/go` (`make` is unavailable). Manual host-terminal acceptance remains unrun.
+
+## Saved secondary networks — implemented, live acceptance pending
+
+- dbx connections now survive container replacement. Connections added directly through Docker are not saved.
+- Full fast-suite equivalent, repeated regressions, vet, and build pass. Live Docker and manual acceptance remain unrun.
+
+## Invocation-only insecure SSH — implemented, live acceptance pending
+
+- `dbx ssh --insecure` bypasses destination host-key checks in container and host-master modes, ignoring user/global known-host files without changing saved keys. Default checks, ProxyJump policy, authentication, and shared-master lifetime remain unchanged; no menu setting or saved-state change was added.
+- The exact `make test-fast` Go command passes using `.tools/go` (`make` is unavailable), including CLI option propagation and subprocess argument coverage. Both new regressions pass five repeated runs; affected-package vet, CLI help/build, and diff checks pass. Tests use temporary homes and fake Docker/SSH; live Docker and manual host-terminal acceptance remain unrun.
+
+## Documentation audience and learning flow — implemented, rendered-site acceptance pending
+
+- The homepage and first-use guide now introduce the benefit, session/config/harness model, build prerequisites, and safety boundary before launching the agent. User references focus on behavior. Architecture sections retain implementation contracts with clearer grouping. Removed redundant menu wording and replaced semicolon-heavy prose in the affected pages with plain sentences.
+- Corrected stale menu labels, clarified when saved config edits apply, and added command notation and a minimal custom-definition example. All 54 local links and heading anchors resolve. The example loads through `dbx config show` in a temporary home without Docker.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable), including embedded-documentation checks. Rendered-site and manual first-use acceptance remain unrun. No CLI behavior or agent-guide changes were made.
+
+## Recreate force-option wording — implemented
+
+- The recreate form now says “Force replacement even with attached commands”, retaining “Force” without the inconsistent colon. Behavior is unchanged.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable), including recreate-label coverage. Manual terminal acceptance remains unrun.
+
+## Readable Docker instance names — implemented, live Docker pending
+
+- New containers capture the public session name plus an eight-character creation suffix. Image aliases retain their existing ID/full-token format independently of display hints. Metadata edits do not rename live containers; explicit replacement adopts current hints without changing saved identity or storage.
+- Finish or abort pending Copy/Move operations with the preceding build before updating: their pinned names use its generation rule. No session-data migration, automatic replacement, or old-name compatibility path was added.
+- Full fast-suite equivalent, five repeated naming/creation/transfer regressions, affected-package vet, CLI build and diff checks pass using `.tools/go`. Existing opaque-name access and occupied-name failures are covered with fake Docker. Live Docker and race checks remain unrun.
+
+## Integration-test progress and non-interactive opens — implemented, live Docker pending
+
+- Every Docker lifecycle open uses `--version`, avoiding interactive harness startup during pending-config and recreation checks. The integration target uses `-v -p=1`: verbose multi-package output otherwise remains buffered until each package finishes. Lifecycle/SSH stages and command output stream while synchronized capture remains available for assertions and failures.
+- Full `make test-fast` equivalent, five repeated output-capture/concurrency regressions, integration-tag compilation, app vet, formatting, and diff checks pass using `.tools/go` (`make` unavailable). A timed two-package comparison verifies that `-p=1` exposes test-start output before completion rather than after it. The host's actual stalled Docker operation remains unidentified; live Docker is unavailable here, and race checks require an unavailable C compiler/CGO.
+
+## ID-only locking API — implemented
+
+- Single and bulk session locks accept only IDs. Removed duplicate lock names, directory-to-ID maps and shared-handle wrappers; sorted unique acquisition, cancellation cleanup and external lock paths are unchanged. Saved formats need no migration.
+- Full fast-suite equivalent, five repeated lock regressions, affected-package vet, CLI build and diff checks pass using `.tools/go`. Tests use temporary homes and fake Docker; live Docker and race checks remain unrun.
+
+## Migration save retention and transfer cleanup — implemented
+
+- Conversion uses the record reloaded under its session lock, retaining saves completed while it waited. Transfer completion/abort durably removes the journal before discarding private retry files; interrupted file cleanup no longer strands a committed session.
+- Full fast-suite equivalent, five repeated regressions, affected-package vet and diff checks pass using `.tools/go`. Tests use temporary homes and fake Docker. Live Docker and real power-loss acceptance remain unrun.
+
+## ID-backed session model — implemented, live acceptance pending
+
+- One complete 12-character ID identifies each session, directory, lock, lease namespace, default and Docker owner. Public names use the saved workspace hint, that same ID and local name; raw IDs, directory names and Docker names are not public session selectors. Rename/workspace edits leave backing paths untouched.
+- Schema 8 stores a validated current data-tree pointer alongside desired settings and applied runtime. Portable Move prepares another tree under the same root and publishes journal authority before its canonical record; committed retries only publish/clean up, never recopy. Copy allocates a new ID. No backing-directory swaps or extra public naming keys were added.
+- Listings, completion, receipts and repair suggestions use metadata names. Status exposes the storage mapping and pending applied workspace. Separate `--container-name` and `--incomplete-dir` selectors retain cleanup ownership, scopes, locks and checks.
+- Explicit conversion shortens old identities/references, relocates stores/SSH paths, removes linked old-path runtimes, and retains applied comparison baselines and current-namespace owned images where possible. It refuses active commands, unfinished transfers, occupied destinations and unrelated bind users. Default mappings publish before identity/path changes so interrupted conversion cannot lose their original association. No user state or live Docker has been touched.
+- Full fast-suite equivalent, five repeated model/transfer/conversion/CLI/PTY regressions, package vet, CLI build/help and diff checks pass using `.tools/go` (`make` is unavailable). No conversion has run against user state. Live Docker and manual host acceptance remain unrun; race checks require CGO/a C compiler, unavailable here.
+
+## Consistent missing-runtime and bind-path guidance — implemented, live acceptance pending
+
+- Missing-container network inspection and connect/disconnect errors now point to Recreate, not Start. Network commands still perform no automatic recovery.
+- Relative raw bind errors for both `--volume` and `--mount` point to the config's `mounts` field. Absolute raw binds remain supported; no rename, mount-policy, or storage-layout changes were made.
+- Full `make test-fast` equivalent, affected-package vet, and CLI build pass using `.tools/go` (`make` is unavailable). Guidance and no-mutation regressions pass five repeated runs. Live Docker and manual acceptance remain unrun.
+
+## Session-based bulk recreation — implemented, live acceptance pending
+
+- `recreate --all` and the shared menu operation select saved sessions, including missing containers, rather than starting from Docker inventory. The existing locked preflight/application owner still chooses minimal work and retains history, defaults, identity, and running intent.
+- Corrupt records, duplicate identities, pending transfers, and invalid/busy session plans block the batch before runtime application. Unmatched containers and incomplete allocations are not saved sessions and remain untouched.
+- Updated CLI/menu scope text and the command reference. Full `make test-fast` equivalent, affected-package vet, and CLI build pass using `.tools/go` (`make` is unavailable). Mixed-runtime, preflight, CLI/menu, and post-migration regressions pass five repeated runs. Live Docker and manual acceptance remain unrun. Rename and other audit findings are proposals, not implemented changes.
+
+## Current-folder default focus and installer checksum verification — implemented, live acceptance pending
+
+- Bare `dbx` initially highlights the canonical invoking folder's saved default when it is present in inventory; without an available default it retains first-session focus. This neither launches the harness nor changes saved defaults, and returning to the browser keeps the user's latest selection.
+- Added migration/application regression coverage for harness installer edits. Installation bytes continue to contribute to the image definition digest and appear in Status as a harness-definition change; no checksum or migration behavior was changed.
+- Full `make test-fast` equivalent and affected-package vet pass using `.tools/go` (`make` is unavailable). Default-focus unit/PTY and migrated-installer regressions pass five repeated runs. Live Docker and manual host-terminal acceptance remain unrun.
 
 ## Transfer abort ordering and manifest validation — implemented
 

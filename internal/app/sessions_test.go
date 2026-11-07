@@ -46,7 +46,7 @@ func TestSessionDeletionPreservesExternalLocksAuthCacheAndWorkspace(t *testing.T
 			t.Fatal("unrelated data removed", p)
 		}
 	}
-	lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	lock, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		t.Fatal("external operation lock was broken", err)
 	}
@@ -62,7 +62,7 @@ func TestSessionDeletionDoesNotFollowStoreSymlinks(t *testing.T) {
 	}
 	external := filepath.Join(t.TempDir(), "data")
 	write(t, external, "keep")
-	link := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, "harnesses/pi/stores/home/link")
+	link := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).StateTree, "harnesses/pi/stores/home/link")
 	if err := os.Symlink(external, link); err != nil {
 		t.Fatal(err)
 	}

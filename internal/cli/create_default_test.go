@@ -35,8 +35,109 @@ func TestCreateDefaultFlagSelectsCreatedSession(t *testing.T) {
 	if err != nil || created.Settings.LocalName != "New" {
 		t.Fatal(created, err)
 	}
-	if !strings.Contains(out.String(), "Folder default: New") || !strings.Contains(out.String(), "dbx open "+created.Directory) || strings.Contains(out.String(), "Select it as") {
+	if !strings.Contains(out.String(), "Folder default: New") || !strings.Contains(out.String(), "dbx open "+created.PublicName()) || strings.Contains(out.String(), "Select it as") {
 		t.Fatal("misleading creation receipt", out.String())
+	}
+}
+
+func TestCreationDefaultPreselection(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		existing   bool
+		unreadable bool
+		explicit   bool
+		checked    bool
+		want       bool
+	}{
+		{name: "first in workspace with sessions elsewhere", want: true},
+		{name: "existing session without default", existing: true},
+		{name: "explicitly unchecked", explicit: true},
+		{name: "explicitly checked", existing: true, explicit: true, checked: true, want: true},
+		{name: "unreadable inventory", unreadable: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f, out, q, original := frontendFixture(t, strings.NewReader("0\n"))
+			workspace := t.TempDir()
+			if tt.existing {
+				workspace = q.Workspace
+			}
+			if tt.unreadable {
+				path, err := f.e.Store.RecordPath(sessionRecord(t, f.e, original).ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("broken"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p, err := newSourcePicker(f.m, f.s.Home, workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			draft, proceed, err := sessionCreationMenu(p, f.e, sessionCreationDraft{workspace: workspace, makeDefault: tt.checked, defaultExplicit: tt.explicit}, func(sessionCreationDraft) (bool, error) {
+				t.Fatal("cancel submitted creation")
+				return false, nil
+			})
+			if err != nil || proceed || draft.makeDefault != tt.want {
+				t.Fatal(draft, proceed, err, out.String())
+			}
+			if !strings.Contains(out.String(), "Make folder default") || strings.Contains(out.String(), "✓ Make folder default") != tt.want {
+				t.Fatal("wrong initial checkbox", out.String())
+			}
+			if selected, err := f.e.Store.ReadDefault(context.Background(), workspace); err != nil || selected != nil {
+				t.Fatal("cancel changed saved default", selected, err)
+			}
+		})
+	}
+}
+
+func TestCreationDefaultSuggestionFollowsFolderUntilToggled(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		input func(existing, empty string) string
+		want  bool
+	}{
+		{"empty folder", func(existing, empty string) string { return "6\n" + empty + "\n0\n" }, true},
+		{"back to existing folder", func(existing, empty string) string { return "6\n" + empty + "\n6\n" + existing + "\n0\n" }, false},
+		{"keep checked choice", func(existing, empty string) string { return "7\n6\n" + empty + "\n6\n" + existing + "\n0\n" }, true},
+		{"keep unchecked choice", func(existing, empty string) string { return "6\n" + empty + "\n7\n6\n" + empty + "\n0\n" }, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f, out, q, _ := frontendFixture(t, strings.NewReader(""))
+			input := strings.NewReader(tt.input(q.Workspace, t.TempDir()))
+			f.m = testMenuCommand(context.Background(), input, out, f.cmd)
+			p, err := newSourcePicker(f.m, f.s.Home, q.Workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			draft, proceed, err := sessionCreationMenu(p, f.e, sessionCreationDraft{workspace: q.Workspace, sources: q.Sources}, func(sessionCreationDraft) (bool, error) {
+				t.Fatal("cancel submitted creation")
+				return false, nil
+			})
+			if err != nil || proceed || draft.makeDefault != tt.want {
+				t.Fatal(draft, proceed, err, out.String())
+			}
+		})
+	}
+}
+
+func TestFirstCreationDefaultCanBeUncheckedAndRetainedOnRetry(t *testing.T) {
+	f, out, q, _ := frontendFixture(t, strings.NewReader("7\n8\n8\n"))
+	workspace := t.TempDir()
+	p, err := newSourcePicker(f.m, f.s.Home, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempts := 0
+	draft, proceed, err := sessionCreationMenu(p, f.e, sessionCreationDraft{workspace: workspace, name: "First", sources: q.Sources}, func(draft sessionCreationDraft) (bool, error) {
+		attempts++
+		if draft.makeDefault {
+			t.Fatal("unchecked choice was reset")
+		}
+		return attempts == 2, nil
+	})
+	if err != nil || !proceed || attempts != 2 || draft.makeDefault {
+		t.Fatal(draft, proceed, attempts, err, out.String())
 	}
 }
 
@@ -77,7 +178,7 @@ func TestCreationDefaultFailureOpensSavedSessionInsteadOfRetryingCreate(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "Session · New") || !strings.Contains(out.String(), "dbx edit "+created.Directory+" --default") {
+	if !strings.Contains(out.String(), "\nNew\n") || !strings.Contains(out.String(), "dbx edit "+created.PublicName()+" --default") {
 		t.Fatal("post-creation failure lost saved session or repair guidance", out.String())
 	}
 }
@@ -111,7 +212,7 @@ func TestNativeCreationDefaultCheckbox(t *testing.T) {
 	p.send("\x1b[F\r")
 	p.wait("Press Enter")
 	p.send("\r")
-	p.wait("Session · New")
+	p.wait("New ·")
 	selected, err := e.Locate(context.Background(), q.Workspace, "")
 	if err != nil || selected.Settings.LocalName != "New" {
 		t.Fatal("checked creation did not select new session", selected, err)

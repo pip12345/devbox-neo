@@ -42,7 +42,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			if asJSON {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(r)
 			}
-			cmd.Printf("Workspace saved: %s\nRecreate to apply it. A matching old-folder default was cleared.\n%s", displayCell(r.Settings.Workspace), stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.Directory)}, e.Store.Home)))
+			cmd.Printf("Workspace saved: %s\nRecreate to apply it. A matching old-folder default was cleared.\n%s", displayCell(r.Settings.Workspace), stepsText(scopedSteps(cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.PublicName())}, e.Store.Home)))
 			return nil
 		case editConfigs:
 			return replaceSessionConfigs(cmd, e, args[0], *name, references, asJSON)
@@ -82,7 +82,7 @@ func editCommand(factory engineFactory, name *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			target = r.Directory
+			target = r.PublicName()
 		} else {
 			target, err = environment.CanonicalWorkspace(args[0])
 			if err != nil {
@@ -157,8 +157,8 @@ func sourceChainMenu(m menu, e *app.Engine, r store.Record, back string) (saved 
 		if configErr == nil {
 			configErr = resolved.Settings.Validate()
 		}
-		actions := picker.chainActions(r.Settings.Sources, true, apply)
-		actions = append(actions, cliui.Action{Label: "Show combined configuration", Run: func() (bool, error) {
+		actions := actionGroup("Configs", picker.chainActions(r.Settings.Sources, true, apply)...)
+		actions = append(actions, cliui.Action{Label: "Show combined configuration", Group: "Inspect", Run: func() (bool, error) {
 			view, err := combinedView(e, r)
 			if err != nil {
 				return false, m.report(err)

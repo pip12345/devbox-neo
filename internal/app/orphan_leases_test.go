@@ -17,7 +17,7 @@ func TestMissingRecordCannotBypassSessionIDLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := sessionRecord(t, e, made.SessionID)
-	lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	lock, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,8 +33,8 @@ func TestMissingRecordCannotBypassSessionIDLease(t *testing.T) {
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	for _, target := range []string{r.ID, r.Applied.Creation.Name} {
-		_, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{target}}, Scope: DeleteContainer})
+	for _, target := range []string{r.Applied.Creation.Name} {
+		_, err := e.Delete(ctx, DeleteOptions{Selection: Selection{ContainerNames: []string{target}}, Scope: DeleteContainer})
 		var busy *commanderror.Error
 		if !errors.As(err, &busy) || busy.Code != "session_busy" {
 			t.Fatal("missing record bypassed active command protection", target, err)
@@ -43,7 +43,7 @@ func TestMissingRecordCannotBypassSessionIDLease(t *testing.T) {
 	if _, exists := d.Snapshot(r.Applied.Creation.Name); !exists {
 		t.Fatal("removed a busy container")
 	}
-	lock, err = e.Store.Lock(ctx, r.Directory, r.ID)
+	lock, err = e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestMissingRecordCannotBypassSessionIDLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	lock.Close()
-	if _, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{r.ID}}, Scope: DeleteContainer}); err != nil {
+	if _, err := e.Delete(ctx, DeleteOptions{Selection: Selection{ContainerNames: []string{r.Applied.Creation.Name}}, Scope: DeleteContainer}); err != nil {
 		t.Fatal(err)
 	}
 	if _, exists := d.Snapshot(r.Applied.Creation.Name); exists {

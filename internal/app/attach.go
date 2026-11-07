@@ -42,7 +42,7 @@ func (e *Engine) attachRun(l *store.Locked, r store.Record, action string, run f
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		lock, cleanupErr := e.Store.Lock(cleanup, r.Directory, r.ID)
+		lock, cleanupErr := e.Store.Lock(cleanup, r.ID)
 		if cleanupErr == nil {
 			defer lock.Close()
 			var released bool

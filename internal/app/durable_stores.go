@@ -15,7 +15,7 @@ func checkDurableStores(l *store.Locked, r store.Record) error {
 		if s.Scope != "environment" {
 			continue
 		}
-		root, err := l.Path(filepath.Join("harnesses", r.Applied.Definition.Name, "stores", s.Name))
+		root, err := l.TreePath(r.StateTree, filepath.Join("harnesses", r.Applied.Definition.Name, "stores", s.Name))
 		if err != nil {
 			return err
 		}

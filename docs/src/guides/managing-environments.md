@@ -16,9 +16,9 @@ Choose **Status** in the session menu after changing configuration. Open/Continu
 
 Finish attached commands first. Recreate may briefly start or restart the container. **Container replacement loses local files and tools**, but preserves harness history and project files. Put repeatable tool installation in a [Dockerfile](customization.md#add-tools).
 
-Use **Force container replacement** to replace an otherwise unchanged container. **Rebuild image without cache** also replaces it and reruns the build; it does not guarantee a newer upstream base image.
+Use **Force container replacement** to replace an otherwise unchanged container. **Rebuild image without cache** also replaces it and reruns the build. It does not guarantee a newer upstream base image.
 
-If you need to interrupt attached commands, choose **Force: replace even with attached commands**, or run `dbx recreate . --force` from the session's default folder. This always replaces the container and loses its local files and tools. Saved history remains. Automatic sessions stop after replacement; explicitly started sessions keep running.
+If you need to interrupt attached commands, choose **Force replacement even with attached commands**, or run `dbx recreate . --force` from the session's default folder. This always replaces the container and loses its local files and tools. Saved history remains. Automatic sessions stop after replacement. Explicitly started sessions keep running.
 
 ## Restore a missing container
 
@@ -43,7 +43,11 @@ The destination name must be unused. Neither copy nor move selects a destination
 
 If interrupted, fix the error and retry the same command. **Abort pending transfer**, when offered, discards the incomplete copy and keeps the source. Do not delete transfer files by hand.
 
-Choose **Rename session** to change its label without rebuilding or moving history. To point the same session at a moved project, choose **Change workspace**, then **Recreate**. The workspace edit clears a matching old-folder default. It does not move project files. See [CLI syntax](../reference/commands.md).
+## Rename a session or change its project folder
+
+Choose **Rename session** to change its name without rebuilding or moving history.
+
+If you have moved the project yourself, choose **Change workspace** to save its new location, then **Recreate** to mount that folder. Devbox does not move project files. Changing the workspace clears the old folder's default if it selected this session. See [CLI syntax](../reference/commands.md).
 
 ## Delete
 

@@ -58,13 +58,33 @@ func TestRecreateUsesRecordedExplicitSources(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{before.Directory})
+	cmd.SetArgs([]string{before.PublicName()})
 	if err = cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(out.String(), err)
 	}
 	after, err := state.Find(ctx, made.SessionID, nil)
 	if err != nil || after.ID != before.ID || after.Settings.Binding != before.Settings.Binding || after.Settings.Sources[1].Path != projectDir || len(after.Applied.Creation.Ports) != 1 || after.Applied.Creation.Ports[0] != "8080:80" {
 		t.Fatal(after.Settings.Binding, after.Settings.Sources, err)
+	}
+}
+
+func TestRecreateAllIncludesSessionsWithoutContainers(t *testing.T) {
+	e, _, name := namedCLIFixture(t)
+	ctx := context.Background()
+	before := sessionRecord(t, e, name)
+	forgetSession(t, e, name)
+	localName := ""
+	cmd := recreateCommand(func(*cobra.Command) (*app.Engine, error) { return e, nil }, &localName)
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"--all"})
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	after := sessionRecord(t, e, name)
+	c, exists, err := e.Docker.InspectID(ctx, after.Applied.ContainerID)
+	if err != nil || !exists || c.State.Running || after.Applied.ContainerID == before.Applied.ContainerID {
+		t.Fatal("CLI bulk recreation skipped missing runtime", c, exists, err)
 	}
 }
 

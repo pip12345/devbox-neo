@@ -53,15 +53,25 @@ func workspaceHint(workspace string) string {
 	return folder
 }
 
-func ResourceName(workspace, localName, allocation string) string {
-	// Hints can become stale after metadata edits. Only the allocation suffix
-	// distinguishes resource instances; ownership never depends on these names.
-	sum := sha256.Sum256([]byte(allocation))
-	return ContainerPrefix + workspaceHint(workspace) + "-" + hex.EncodeToString(sum[:6]) + "." + localName
+// PublicName is a metadata-derived handle. Its ID component directly locates
+// storage; the complete name must still match the saved settings before use.
+func PublicName(binding Binding, sessionID string) string {
+	if !IsSessionID(sessionID) || binding.Validate() != nil {
+		return ""
+	}
+	return ContainerPrefix + workspaceHint(binding.Workspace) + "-" + sessionID + "." + binding.LocalName
 }
 
-func ImageTag(workspace, localName, sessionID string) string {
-	return docker.Namespace + "/session:" + workspaceHint(workspace) + "-" + localName + "-" + sessionID
+// ResourceName captures readable settings at creation. The complete allocation
+// token supplies an eight-character suffix for concurrently existing instances;
+// the suffix is not session identity.
+func ResourceName(binding Binding, sessionID, allocation string) string {
+	return PublicName(binding, sessionID) + "-" + allocation[:8]
+}
+
+// Image aliases use the complete creation token, independently of display hints.
+func ImageTag(sessionID, allocation string) string {
+	return docker.Namespace + "/session:" + sessionID + "-" + allocation
 }
 
 type Fingerprints struct {

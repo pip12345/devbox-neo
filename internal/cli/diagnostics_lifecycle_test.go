@@ -31,7 +31,7 @@ func TestApplicationDiagnosticPrecedesMutationAndChildOutput(t *testing.T) {
 	d.Fail = func(args []string) error {
 		switch args[0] {
 		case "stop", "create", "start", "rm":
-			if !strings.Contains(combined.String(), "Container-local changes will be lost") {
+			if !strings.Contains(combined.String(), " Files and tools stored only inside the old container will be lost.") {
 				t.Fatal("mutation preceded explanation", combined.String())
 			}
 		}
@@ -65,7 +65,7 @@ func TestRootWiresImmediateApplicationDiagnostic(t *testing.T) {
 	root := newRoot(e.Docker)
 	root.SetOut(&stdout)
 	root.SetErr(diagnosticWriter(func(p []byte) (int, error) {
-		if strings.Contains(string(p), "Apply runtime configuration") {
+		if strings.Contains(string(p), "Updating configuration") {
 			cancel()
 		}
 		return stderr.Write(p)
@@ -74,7 +74,7 @@ func TestRootWiresImmediateApplicationDiagnostic(t *testing.T) {
 	if err := root.ExecuteContext(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal("root did not deliver plan synchronously", err)
 	}
-	if !strings.Contains(stderr.String(), id+": Apply runtime configuration") || stdout.Len() != 0 {
+	if !strings.Contains(stderr.String(), id+": Updating configuration") || stdout.Len() != 0 {
 		t.Fatal(stdout.String(), stderr.String())
 	}
 }

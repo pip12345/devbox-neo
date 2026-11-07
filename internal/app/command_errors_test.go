@@ -36,7 +36,7 @@ func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
+	lock, err := e.Store.Lock(ctx, opened.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,14 +49,14 @@ func TestActionableLeaseConflictAndCorruptStateStayFailClosed(t *testing.T) {
 	if err := e.Stop(ctx, opened.SessionID, "", false); !errors.As(err, &busy) || busy.Code != "session_busy" || len(busy.Next) != 1 || strings.Contains(strings.Join(busy.Next[0].Command, " "), "--force") {
 		t.Fatal(err)
 	}
-	lock, _ = e.Store.Lock(ctx, sessionRecord(t, e, opened.SessionID).Directory, sessionRecord(t, e, opened.SessionID).ID)
+	lock, _ = e.Store.Lock(ctx, opened.SessionID)
 	lock.Release(lease.ID)
 	lock.Close()
 	path, _ := e.Store.RecordPath(sessionRecord(t, e, opened.SessionID).Directory)
 	write(t, path, "broken")
 	before := len(d.History())
 	var invalid *commanderror.Error
-	if _, err := e.Start(ctx, opened.SessionID, ""); !errors.As(err, &invalid) || invalid.Code != "inventory_incomplete" || errors.Is(err, os.ErrNotExist) {
+	if _, err := e.Start(ctx, opened.SessionID, ""); !errors.As(err, &invalid) || invalid.Code != "invalid_session_record" || errors.Is(err, os.ErrNotExist) {
 		t.Fatal(err)
 	}
 	if len(d.History()) != before {

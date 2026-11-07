@@ -21,7 +21,7 @@ func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
 		t.Fatal(err)
 	}
 	shown := sessionRecord(t, e, made.SessionID)
-	lock, err := e.Store.Lock(ctx, sessionRecord(t, e, made.SessionID).Directory, sessionRecord(t, e, made.SessionID).ID)
+	lock, err := e.Store.Lock(ctx, made.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestSourceEditingAllowsRepairAndRejectsStaleChains(t *testing.T) {
 	}
 	// Existing empty records remain readable and repairable. The nonempty rule
 	// belongs to saved edits, not record decoding or creation drafts.
-	lock, err = e.Store.Lock(ctx, sessionRecord(t, e, made.SessionID).Directory, sessionRecord(t, e, made.SessionID).ID)
+	lock, err = e.Store.Lock(ctx, made.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,9 +87,9 @@ func TestStaleDefaultDoesNotSelectAReusedLocalName(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, localName := range []string{"", q.LocalName} {
-		name, id, err := e.transferSource(ctx, TransferOptions{Source: q.Workspace, LocalName: localName})
-		if err != nil || name != original.Directory || id != original.ID {
-			t.Fatal("transfer source selection lost its durable-ID snapshot", name, id, err)
+		id, err := e.transferSource(ctx, TransferOptions{Source: q.Workspace, LocalName: localName})
+		if err != nil || id != original.ID {
+			t.Fatal("transfer source selection lost its durable-ID snapshot", id, err)
 		}
 	}
 	path := filepath.Join(e.Store.Home, "state/folder-defaults.json")

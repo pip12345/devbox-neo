@@ -65,7 +65,7 @@ func (f *frontend) rename(target string) (renamed bool, err error) {
 					return err
 				}
 				renamed = true
-				f.focusItem = result.Session
+				f.focusItem = result.SessionID
 				return printRenameResult(f.cmd.OutOrStdout(), result)
 			})
 		})

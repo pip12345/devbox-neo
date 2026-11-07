@@ -45,7 +45,7 @@ func TestSessionMenuDeclaresLocalShortcuts(t *testing.T) {
 	if len(page.Actions) != 18 || len(seen) != len(wantKeys) {
 		t.Fatal("session capabilities or frequent shortcuts disappeared", len(page.Actions), seen)
 	}
-	if page.Summary[2].Value != "until stop" || len(page.Fields) != 1 || page.Fields[0].Value != q.Workspace {
+	if page.Summary[2].Value != "until stop" || len(page.Fields) != 2 || page.Fields[0].Value != q.Workspace || page.Fields[1].Label != "Last active" {
 		t.Fatal("compact context lost lifetime or target", page)
 	}
 	collection := f.sessionCollection(app.InventoryReport{Sessions: []app.View{v}}, "name")
@@ -76,8 +76,8 @@ func TestNativeSessionHotkeysKeepTargetAndRecreateConfirmation(t *testing.T) {
 	}
 	t.Chdir(q.Workspace)
 	d := e.Docker.Runner.(*dockertest.Daemon)
-	firstContainer := sessionRecord(t, e, first).Applied.SetupContainer
-	secondContainer := sessionRecord(t, e, second.SessionID).Applied.SetupContainer
+	firstContainer := sessionRecord(t, e, first).Applied.ContainerID
+	secondContainer := sessionRecord(t, e, second.SessionID).Applied.ContainerID
 	attached := make(chan docker.Command, 2)
 	d.Attached = func(_ context.Context, c docker.Command) error {
 		if c.Stdin != nil {
@@ -101,7 +101,7 @@ func TestNativeSessionHotkeysKeepTargetAndRecreateConfirmation(t *testing.T) {
 	})
 	p.wait("Browser actions")
 	p.send("\r")
-	p.wait("Session · Main")
+	p.wait("Resume the harness conversation")
 	p.send("r")
 	p.wait("Inspect pending changes")
 	p.send("r")
@@ -109,11 +109,11 @@ func TestNativeSessionHotkeysKeepTargetAndRecreateConfirmation(t *testing.T) {
 	// Neither the action hotkey nor Enter on default No may apply config.
 	p.send("r\r")
 	p.wait("Inspect pending changes")
-	if got := sessionRecord(t, e, first).Applied.SetupContainer; got != firstContainer {
+	if got := sessionRecord(t, e, first).Applied.ContainerID; got != firstContainer {
 		t.Fatal("Recreate shortcut bypassed confirmation", got, firstContainer)
 	}
 	p.send("q")
-	p.wait("Session · Main")
+	p.wait("Main ·")
 	p.send("c")
 	p.wait("Press Enter")
 	check := func(container string) {
@@ -129,16 +129,16 @@ func TestNativeSessionHotkeysKeepTargetAndRecreateConfirmation(t *testing.T) {
 	}
 	check(firstContainer)
 	p.send("\r")
-	p.wait("Session · Main")
+	p.wait("Main ·")
 	p.send("q")
 	p.wait("Browser actions")
 	p.send("\x1b[B\r")
-	p.wait("Session · Second")
+	p.wait("Resume the harness conversation")
 	p.send("c")
 	p.wait("Press Enter")
 	check(secondContainer)
 	p.send("\r")
-	p.wait("Session · Second")
+	p.wait("Second ·")
 	p.send("q")
 	p.wait("Browser actions")
 	p.send("q")

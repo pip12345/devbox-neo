@@ -14,6 +14,7 @@ import (
 
 type SSHOptions struct {
 	HostMaster bool
+	Insecure   bool
 	// Connected is called only after authentication and client-config publication.
 	Connected func(environment, alias string)
 }
@@ -26,7 +27,7 @@ func (e *Engine) SSH(ctx context.Context, target, localName, destination string,
 	if err != nil {
 		return err
 	}
-	l, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	l, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		return err
 	}
@@ -46,7 +47,7 @@ func (e *Engine) SSH(ctx context.Context, target, localName, destination string,
 		}
 	}
 	if !mounted {
-		return commanderror.New("ssh_mount_missing", "This environment needs recreation before SSH sharing is available.", r.Directory, nil, commanderror.Next("Recreate", "recreate", r.Directory))
+		return commanderror.New("ssh_mount_missing", "This environment needs recreation before SSH sharing is available.", r.PublicName(), nil, commanderror.Next("Recreate", "recreate", r.PublicName()))
 	}
 	c, exists, err := e.inspect(ctx, r)
 	if err != nil {
@@ -90,9 +91,9 @@ func (e *Engine) runSSH(ctx context.Context, c docker.Container, r store.Record,
 	done := make(chan error, 1)
 	go func() {
 		if options.HostMaster {
-			done <- sshshare.RunHost(runCtx, connection, e.Streams.In, e.Streams.Out, e.Streams.Err)
+			done <- sshshare.RunHost(runCtx, connection, options.Insecure, e.Streams.In, e.Streams.Out, e.Streams.Err)
 		} else {
-			argv := []string{"bash", "-c", sshshare.Supervisor, "devbox-ssh", connection.ContainerDirectory(), connection.Destination}
+			argv := connection.MasterCommand(connection.ContainerDirectory(), options.Insecure)
 			done <- e.Docker.Exec(runCtx, c, e.owner(r), argv, e.TerminalEnv, e.Streams)
 		}
 	}()
@@ -123,7 +124,7 @@ func (e *Engine) runSSH(ctx context.Context, c docker.Container, r store.Record,
 				}
 				connected = true
 				if options.Connected != nil {
-					options.Connected(r.Directory, connection.Alias)
+					options.Connected(r.PublicName(), connection.Alias)
 				}
 			}
 			if time.Now().Before(nextInspect) {

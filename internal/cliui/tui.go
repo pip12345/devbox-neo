@@ -433,15 +433,30 @@ func fit(s string, w, h, offset int) string {
 }
 func fieldLines(fields []Field, w int) string {
 	labelWidth := 0
-	for _, f := range fields {
-		labelWidth = max(labelWidth, ansi.StringWidth(f.Label))
-	}
-	labelWidth = min(labelWidth, max(8, w/3))
 	var lines []string
-	for _, f := range fields {
+	for i, f := range fields {
+		if i == 0 || f.Group != fields[i-1].Group {
+			labelWidth = 0
+			for j := i; j < len(fields) && fields[j].Group == f.Group; j++ {
+				labelWidth = max(labelWidth, ansi.StringWidth(Safe(fields[j].Label)))
+			}
+			labelWidth = min(labelWidth, max(8, w/3))
+			if f.Group != "" {
+				if len(lines) > 0 {
+					lines = append(lines, "")
+				}
+				lines = append(lines, strong(clip(Safe(f.Group), w), tuiWhite))
+			}
+		}
 		color := tuiWhite
 		if f.Status {
 			color = statusColor(f.Value)
+		}
+		if f.Success {
+			color = tuiMint
+		}
+		if f.Attention {
+			color = tuiAmber
 		}
 		if f.Warning {
 			color = tuiRed
@@ -492,10 +507,12 @@ func heading(title string, w int, focused bool) string {
 }
 func (m *terminalModel) header(w int) string {
 	title := ""
-	if c := m.req.page.Collection; c != nil {
-		title = c.Title
-	} else if n := m.req.page.Navigation; n != nil {
-		title = n.Collection.Title
+	collection := m.req.page.Collection
+	if collection == nil && m.req.page.Navigation != nil {
+		collection = &m.req.page.Navigation.Collection
+	}
+	if collection != nil {
+		title = collection.Title
 	}
 	brand := strong("Devbox Neo", tuiMint)
 	if title != "" {
@@ -507,7 +524,8 @@ func (m *terminalModel) header(w int) string {
 				tabs = append(tabs, tint("  "+label+"  ", tuiMuted))
 			}
 		}
-		hint := ""
+		// Reserve inactive controls so pane focus cannot change header height.
+		hint := strings.Repeat(" ", ansi.StringWidth("   Tab ↔"))
 		if m.req.canTab {
 			hint = tint("   Tab ↔", tuiMuted)
 		}
@@ -516,8 +534,11 @@ func (m *terminalModel) header(w int) string {
 		if ansi.StringWidth(brand+"    "+tabsLine) <= w {
 			header = brand + "    " + tabsLine
 		}
-		if m.req.page.Collection != nil && len(m.req.page.Collection.Items) > 0 {
-			header += "\n" + m.browserBar(w)
+		if collection != nil && len(collection.Items) > 0 {
+			header += "\n"
+			if m.req.page.Collection != nil {
+				header += m.browserBar(w)
+			}
 		}
 		return header + "\n"
 	}
@@ -631,7 +652,12 @@ func (m *terminalModel) objectList(c Collection, key, query string, w, h int, ac
 				trailing = rowText(Safe(item.Status), statusColor(item.Status), focused, false)
 			}
 		}
-		text := rowText(prefix, tuiMint, focused, false) + rowText(clip(label, max(4, w-ansi.StringWidth(trailing)-len(marker)-3)), color, focused, true) + rowText(marker, tuiMint, focused, true)
+		changeMarker := ""
+		if item.PendingChanges {
+			changeMarker = " ↻"
+		}
+		markerWidth := ansi.StringWidth(marker + changeMarker)
+		text := rowText(prefix, tuiMint, focused, false) + rowText(clip(label, max(4, w-ansi.StringWidth(trailing)-markerWidth-3)), color, focused, true) + rowText(marker, tuiMint, focused, true) + rowText(changeMarker, tuiAmber, focused, true)
 		if trailing != "" {
 			text += rowText(strings.Repeat(" ", max(1, w-ansi.StringWidth(text)-ansi.StringWidth(trailing))), tuiWhite, focused, false) + trailing
 		}

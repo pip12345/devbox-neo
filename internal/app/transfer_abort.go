@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"devbox/internal/commanderror"
 	"devbox/internal/environment"
@@ -11,13 +10,12 @@ import (
 	"devbox/internal/store"
 )
 
-// AbortTransfer abandons only source-authoritative preparation. It never reads
-// desired configuration: an unbuildable destination is a reason to abort, not a
-// prerequisite for doing so. The journal stays until every cleanup step succeeds.
-func (e *Engine) AbortTransfer(ctx context.Context, sourceID string) (TransferResult, error) {
+// Abort abandons source-authoritative preparation without resolving configs.
+// The journal is released only after candidate cleanup and source restoration.
+func (e *Engine) AbortTransfer(ctx context.Context, target string) (TransferResult, error) {
 	var result TransferResult
-	if !environment.IsSessionTarget(sourceID) && !environment.IsSessionID(sourceID) {
-		return result, fmt.Errorf("--abort requires the exact source session directory name")
+	if !environment.IsSessionTarget(target) && !environment.IsSessionID(target) {
+		return result, fmt.Errorf("--abort requires the exact public source session name")
 	}
 	names, err := e.Store.LockNames(ctx)
 	if err != nil {
@@ -29,34 +27,29 @@ func (e *Engine) AbortTransfer(ctx context.Context, sourceID string) (TransferRe
 		return result, err
 	}
 	var selected *store.Transfer
-	for _, j := range journals {
-		if j.Source.Name != sourceID && j.SourceID != sourceID {
+	for i := range journals {
+		j := &journals[i]
+		if j.SourceName() != target && j.SourceID != target {
 			continue
 		}
 		if selected != nil {
 			return result, fmt.Errorf("conflicting transfer journals for source session")
 		}
-		selected = &j
+		selected = j
 	}
 	if selected == nil {
-		return result, commanderror.New("transfer_missing", "No pending transfer for this source session.", sourceID, nil)
+		return result, commanderror.New("transfer_missing", "No pending transfer for this source session.", target, nil)
 	}
 	j := *selected
 	if j.Phase != "prepare" {
-		return result, commanderror.New("transfer_committed", "The destination is already committed; finish cleanup instead of aborting.", j.Source.Name, nil, j.RetryStep())
+		return result, commanderror.New("transfer_committed", "The destination is already committed; finish cleanup instead of aborting.", j.SourceName(), nil, j.RetryStep())
 	}
-	directories := []string{j.Source.Name, j.Destination.Name}
-	sort.Strings(directories)
-	locks, err := e.Store.LockAll(ctx, directories, map[string]string{j.Source.Name: j.SourceID, j.Destination.Name: j.DestinationID})
+	locks, source, destination, err := e.lockTransfer(ctx, j.SourceID, j.DestinationID)
 	if err != nil {
 		return result, err
 	}
 	defer store.CloseAll(locks)
-	source, destination := locks[0], locks[1]
-	if source.Name != j.Source.Name {
-		source, destination = destination, source
-	}
-	current, err := e.Store.ReadTransfer(j.Source.Name)
+	current, err := e.Store.ReadTransfer(j.SourceID)
 	if err != nil {
 		return result, err
 	}
@@ -72,7 +65,7 @@ func (e *Engine) AbortTransfer(ctx context.Context, sourceID string) (TransferRe
 	if err != nil {
 		return result, err
 	}
-	if r.ID != j.SourceID || r.Settings.Binding != j.Source.Binding || r.Applied.SetupContainer != j.SourceContainerID {
+	if r.ID != j.SourceID || r.Settings.Binding != j.Source || r.StateTree != j.SourceTree || r.Applied.ContainerID != j.SourceContainerID {
 		return result, fmt.Errorf("source identity differs from the pending transfer")
 	}
 	if err := checkDurableStores(source, r); err != nil {
@@ -85,15 +78,9 @@ func (e *Engine) AbortTransfer(ctx context.Context, sourceID string) (TransferRe
 	if err := e.clearTransferAttempt(ctx, destination, j); err != nil {
 		return result, transferFailure(j, err)
 	}
-	if j.Mode == "relocate" {
-		available, err := e.Docker.ImageAvailable(ctx, r.Applied.ImageID)
-		if err != nil {
+	if j.Mode == "clone" {
+		if err := destination.DeleteContext(ctx); err != nil {
 			return result, transferFailure(j, err)
-		}
-		if available {
-			if err := e.Docker.Tag(ctx, r.Applied.ImageID, r.Applied.ImageTag, e.Store.Installation); err != nil {
-				return result, transferFailure(j, err)
-			}
 		}
 	}
 	if j.Running && exists && !c.State.Running {

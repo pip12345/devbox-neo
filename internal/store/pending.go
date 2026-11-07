@@ -15,7 +15,7 @@ func (s *Store) PendingID(id string) (*Reservation, error) {
 		if found != nil {
 			return nil, fmt.Errorf("conflicting transfer journals")
 		}
-		found = &Reservation{ID: j.ID, Source: j.Source.Name, Destination: j.Destination.Name, Mode: j.Mode, Phase: j.Phase, retry: j.RetryStep()}
+		found = j.Reservation()
 	}
 	return found, nil
 }

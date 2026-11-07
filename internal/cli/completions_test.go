@@ -99,10 +99,10 @@ func TestCompletionUsesSelectedHomeWithoutInitialization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := strings.Repeat("a", 32)
-	target := "dbx-api-111111111111.Main"
+	id := strings.Repeat("a", 12)
+	target := environment.PublicName(identity.Binding, id)
 	metadata, _ := json.Marshal(map[string]any{"id": id, "settings": identity.Binding})
-	completionFile(t, explicit, filepath.Join("sessions", target, "session.json"), string(metadata))
+	completionFile(t, explicit, filepath.Join("sessions", id, "session.json"), string(metadata))
 	completionFile(t, explicit, "harnesses/pi/harness.json", `invalid override`)
 	custom, err := harness.Load(explicit, "opencode")
 	if err != nil {

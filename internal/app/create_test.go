@@ -66,7 +66,7 @@ func TestCreatePreparesWithoutOpeningAndLeavesStopped(t *testing.T) {
 	}
 	r := sessionRecord(t, e, result.SessionID)
 	c, exists := sessionSnapshot(t, e, result.SessionID)
-	if !exists || c.State.Running || r.Action != "create" || r.Applied.SetupContainer != c.ID {
+	if !exists || c.State.Running || r.Action != "create" || r.Applied.ContainerID != c.ID {
 		t.Fatal("create did not commit a prepared stopped environment", r, c)
 	}
 	launch := append([]string{r.Applied.Launch.Binary}, r.Applied.Launch.Args...)

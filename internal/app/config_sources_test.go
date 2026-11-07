@@ -31,7 +31,7 @@ func TestSelectedSourcesAreAppliedExplicitlyNotDuringAccess(t *testing.T) {
 	if got, err := e.Open(ctx, openRequest(q)); err != nil || got.SessionID != made.SessionID {
 		t.Fatal(got, err)
 	}
-	if status, err := e.Status(ctx, q.Workspace, q.LocalName); err != nil || status.ConfigError != "" || status.Target != r.Directory {
+	if status, err := e.Status(ctx, q.Workspace, q.LocalName); err != nil || status.ConfigError != "" || status.Target != r.PublicName() {
 		t.Fatal(status, err)
 	}
 	s := resource.Service{Home: e.Store.Home}

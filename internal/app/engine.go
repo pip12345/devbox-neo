@@ -95,15 +95,15 @@ func (e *Engine) inspect(ctx context.Context, r store.Record) (docker.Container,
 	var c docker.Container
 	var exists bool
 	var err error
-	if r.Applied.SetupContainer != "" {
-		c, exists, err = e.Docker.InspectID(ctx, r.Applied.SetupContainer)
+	if r.Applied.ContainerID != "" {
+		c, exists, err = e.Docker.InspectID(ctx, r.Applied.ContainerID)
 	} else {
 		c, exists, err = e.Docker.Inspect(ctx, r.Applied.Creation.Name)
 	}
 	if err == nil && exists {
 		err = c.Verify(e.owner(r))
-		if err == nil && (c.Image != r.Applied.ImageID || (r.Applied.SetupContainer != "" && c.ID != r.Applied.SetupContainer)) {
-			err = commanderror.New("container_mismatch", "Container identity does not match this session.", r.Directory, nil)
+		if err == nil && (c.Image != r.Applied.ImageID || (r.Applied.ContainerID != "" && c.ID != r.Applied.ContainerID)) {
+			err = commanderror.New("container_mismatch", "Container identity does not match this session.", r.PublicName(), nil)
 		}
 	}
 	return c, exists, err

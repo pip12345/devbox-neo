@@ -47,7 +47,7 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 			}
 			sources = append(sources, reference)
 		}
-		draft := sessionCreationDraft{workspace: workspace, name: *name, sources: sources, makeDefault: makeDefault}
+		draft := sessionCreationDraft{workspace: workspace, name: *name, sources: sources, makeDefault: makeDefault, defaultExplicit: cmd.Flags().Changed("default")}
 		if draft.name != "" {
 			if err := environment.ValidateLocalName(draft.name); err != nil {
 				return err
@@ -88,10 +88,11 @@ func createCommand(factory engineFactory, name *string) *cobra.Command {
 }
 
 type sessionCreationDraft struct {
-	workspace   string
-	name        string
-	sources     []config.Reference
-	makeDefault bool
+	workspace       string
+	name            string
+	sources         []config.Reference
+	makeDefault     bool
+	defaultExplicit bool
 }
 
 func (d sessionCreationDraft) missing() string {
@@ -110,13 +111,32 @@ func (d sessionCreationDraft) missing() string {
 // Submission runs inside the form so a failed build retains the draft for retry.
 func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDraft, create func(sessionCreationDraft) (bool, error)) (sessionCreationDraft, bool, error) {
 	proceed := false
+	defaultChosen := draft.defaultExplicit || draft.makeDefault
+	suggestDefault := func() {
+		if defaultChosen {
+			return
+		}
+		draft.makeDefault = false
+		entries, err := e.Store.Inventory(p.Context)
+		if err != nil {
+			return
+		}
+		for _, entry := range entries {
+			// Unreadable state cannot establish that this is the first session.
+			if entry.Err != nil || entry.Record.Settings.Workspace == draft.workspace {
+				return
+			}
+		}
+		draft.makeDefault = true
+	}
+	suggestDefault()
 	err := p.Run(func() (cliui.Screen, error) {
 		p.workspace = draft.workspace
 		nameAction := "Set session name"
 		if draft.name != "" {
 			nameAction = "Change session name"
 		}
-		createAction := cliui.Action{Label: "Create session", BreakBefore: true, Blocked: draft.missing(), Run: func() (bool, error) {
+		createAction := cliui.Action{Label: "Create session", Group: "Create", Blocked: draft.missing(), Run: func() (bool, error) {
 			if err := p.Pause(); err != nil {
 				return false, err
 			}
@@ -134,7 +154,7 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 			return proceed, err
 		}}
 		actions := []cliui.Action{
-			{Label: nameAction, BreakBefore: true, Run: func() (bool, error) {
+			{Label: nameAction, Group: "Name", Run: func() (bool, error) {
 				name, changed, err := editSessionCreationName(p, draft.name)
 				if changed {
 					draft.name = name
@@ -142,11 +162,18 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 				return false, err
 			}},
 		}
-		actions = append(actions, p.chainActions(draft.sources, false, func(updated []config.Reference) error { draft.sources = updated; return nil })...)
-		actions = append(actions, cliui.Action{Label: "Change folder", Run: func() (bool, error) {
+		configActions := p.chainActions(draft.sources, false, func(updated []config.Reference) error { draft.sources = updated; return nil })
+		for _, action := range configActions {
+			action.Group = "Configs"
+			actions = append(actions, action)
+		}
+		actions = append(actions, cliui.Action{Label: "Change folder", Group: "Folder", Run: func() (bool, error) {
 			folder, ok, err := p.Text(cliui.TextRequest{Prompt: "Workspace folder: ", Initial: draft.workspace, Validate: func(value string) error { _, err := environment.CanonicalWorkspace(value); return err }})
 			if err == nil && ok {
 				draft.workspace, err = environment.CanonicalWorkspace(folder)
+				if err == nil {
+					suggestDefault()
+				}
 			}
 			return false, err
 		}})
@@ -161,8 +188,9 @@ func sessionCreationMenu(p sourcePicker, e *app.Engine, draft sessionCreationDra
 			}
 			defaultDescription = "Replaces " + displayCell(label)
 		}
-		actions = append(actions, cliui.Action{Label: "Make folder default", Value: defaultDescription, Description: "Select this session after creation; unchecked keeps the current selection", Checked: &draft.makeDefault, Run: func() (bool, error) {
+		actions = append(actions, cliui.Action{Label: "Make folder default", Group: "Folder", Value: defaultDescription, Description: "Select this session after creation; unchecked keeps the current selection", Checked: &draft.makeDefault, Run: func() (bool, error) {
 			draft.makeDefault = !draft.makeDefault
+			defaultChosen = true
 			return false, nil
 		}}, createAction)
 		page := cliui.Screen{Title: "Create session", Actions: actions, Back: "Cancel", Body: func(out io.Writer) error {

@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"devbox/internal/environment"
 )
 
 func TestCapturedDeletionKeepsSessionAfterDefaultChanges(t *testing.T) {
@@ -27,7 +25,7 @@ func TestCapturedDeletionKeepsSessionAfterDefaultChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	preview, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{q.Workspace}}, Scope: DeleteContainer, DryRun: true})
-	if err != nil || len(preview.Targets) != 1 || preview.Targets[0].Name() != chosen.Directory {
+	if err != nil || len(preview.Targets) != 1 || preview.Targets[0].Name() != chosen.PublicName() {
 		t.Fatal(preview, err)
 	}
 	if err := e.SetDefault(ctx, sessionRecord(t, e, second.SessionID)); err != nil {
@@ -79,11 +77,11 @@ func TestCapturedOrphanRejectsReplacementRuntime(t *testing.T) {
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	preview, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{r.Applied.Creation.Name}}, Scope: DeleteContainer, DryRun: true})
+	preview, err := e.Delete(ctx, DeleteOptions{Selection: Selection{ContainerNames: []string{r.Applied.Creation.Name}}, Scope: DeleteContainer, DryRun: true})
 	if err != nil || len(preview.Targets) != 1 {
 		t.Fatal(preview, err)
 	}
-	if preview.Targets[0].sessionID != r.ID || preview.Targets[0].record != recordAbsent {
+	if preview.Targets[0].sessionID != r.ID || !preview.Targets[0].unmatched {
 		t.Fatal("orphan lost its lock owner", preview.Targets)
 	}
 	c, _ := d.Snapshot(r.Applied.Creation.Name)
@@ -100,10 +98,10 @@ func TestCapturedOrphanRejectsReplacementRuntime(t *testing.T) {
 func TestCapturedIncompleteDeletionRetainsDirectoryIdentity(t *testing.T) {
 	e, _, _ := fixture(t)
 	ctx := context.Background()
-	name := environment.ResourceName(t.TempDir(), "incomplete", "allocation")
+	name := strings.Repeat("f", 12)
 	root := filepath.Join(e.Store.Home, "sessions", name)
 	write(t, filepath.Join(root, "marker"), "original")
-	preview, err := e.Delete(ctx, DeleteOptions{Selection: Selection{Targets: []string{name}}, Scope: DeleteSession, DryRun: true})
+	preview, err := e.Delete(ctx, DeleteOptions{Selection: Selection{IncompleteDirs: []string{name}}, Scope: DeleteSession, DryRun: true})
 	if err != nil || len(preview.Targets) != 1 {
 		t.Fatal(preview, err)
 	}

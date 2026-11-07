@@ -73,10 +73,25 @@ func ValidResourceName(name string) bool {
 	return strings.HasPrefix(name, ContainerPrefix) && filepath.Base(name) == name && !strings.ContainsAny(name, "/\\\x00\r\n")
 }
 
-var sessionIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
+var sessionIDPattern = regexp.MustCompile(`^[a-f0-9]{12}$`)
 
 func IsSessionID(id string) bool { return sessionIDPattern.MatchString(id) }
 
-// A bare resource name addresses saved session storage. Prefix a workspace
-// with ./ or use an absolute path when its basename has the same convention.
+// A bare dbx- name is a public session target. Use ./ or an absolute path for
+// workspace basenames with this convention; storage names are never targets.
 func IsSessionTarget(target string) bool { return ValidResourceName(target) }
+
+func SessionIDFromName(name string) (string, bool) {
+	if !IsSessionTarget(name) {
+		return "", false
+	}
+	dot := strings.LastIndexByte(name, '.')
+	if dot < 0 || ValidateLocalName(name[dot+1:]) != nil {
+		return "", false
+	}
+	dash := strings.LastIndexByte(name[:dot], '-')
+	if dash < len(ContainerPrefix) || !IsSessionID(name[dash+1:dot]) {
+		return "", false
+	}
+	return name[dash+1 : dot], true
+}

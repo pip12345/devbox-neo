@@ -22,7 +22,7 @@ func TestCancellationStopsHostMasterBeforeReturning(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- RunHost(ctx, c, nil, io.Discard, io.Discard) }()
+	go func() { done <- RunHost(ctx, c, false, nil, io.Discard, io.Discard) }()
 	eventually(t, c.Ready)
 	b, err := os.ReadFile(filepath.Join(c.Root, c.Relative, "pid"))
 	if err != nil {

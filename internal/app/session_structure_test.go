@@ -22,7 +22,7 @@ func TestWorkspaceEditLeavesAppliedStateAndHistoryIntactUntilRecreation(t *testi
 	if err := e.SetDefault(ctx, before); err != nil {
 		t.Fatal(err)
 	}
-	history := filepath.Join(e.Store.Home, "sessions", before.Directory, "harnesses/pi/stores/home/sessions/history.json")
+	history := filepath.Join(e.Store.Home, "sessions", before.Directory, before.StateTree, "harnesses/pi/stores/home/sessions/history.json")
 	write(t, history, "history")
 	next := t.TempDir()
 	calls := len(d.History())
@@ -59,7 +59,7 @@ func TestWorkspaceEditLeavesAppliedStateAndHistoryIntactUntilRecreation(t *testi
 		t.Fatal(err)
 	}
 	final := sessionRecord(t, e, before.ID)
-	if final.Directory != before.Directory || final.Applied.SetupContainer == before.Applied.SetupContainer || final.Applied.Inputs.Container.Workspace != next {
+	if final.Directory != before.Directory || final.Applied.ContainerID == before.Applied.ContainerID || final.Applied.Inputs.Container.Workspace != next {
 		t.Fatal(final)
 	}
 	if data, err := os.ReadFile(history); err != nil || string(data) != "history" {
@@ -118,14 +118,6 @@ func TestStorageDirectoryAndDockerNameAreNotIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := sessionRecord(t, e, made.SessionID)
-	old := filepath.Join(e.Store.Home, "sessions", r.Directory)
-	if err := os.Rename(old, filepath.Join(e.Store.Home, "sessions", "arbitrary-folder")); err != nil {
-		t.Fatal(err)
-	}
-	r, err = e.Locate(ctx, r.ID, "")
-	if err != nil || r.Directory != "arbitrary-folder" {
-		t.Fatal(r, err)
-	}
 	// A Docker rename must not retarget the session to a different instance.
 	c, ok := d.Snapshot(r.Applied.Creation.Name)
 	if !ok {

@@ -3,37 +3,72 @@ package environment
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
+	"testing"
 
 	"devbox/internal/config"
-	"testing"
 )
 
-func TestResourceNamesUseCompactReadableHintsAndAnAllocationSuffix(t *testing.T) {
-	a := ResourceName("/work/api", "Main", "allocation-one")
-	if a != ResourceName("/moved/api", "Main", "allocation-one") {
-		t.Fatal("workspace path became resource identity")
+func TestPublicNameUsesSessionIDAndSavedSettings(t *testing.T) {
+	id := "a7e281de4b19"
+	binding := Binding{Workspace: "/projects/hazeron", LocalName: "main"}
+	name := PublicName(binding, id)
+	if name != "dbx-hazeron-a7e281de4b19.main" {
+		t.Fatal(name)
 	}
-	if a == ResourceName("/work/api", "Main", "allocation-two") {
-		t.Fatal("reused settings collided with an old resource")
+	if got, ok := SessionIDFromName(name); !ok || got != id {
+		t.Fatal(got, ok)
 	}
-	if !regexp.MustCompile(`^dbx-api-[a-f0-9]{12}\.Main$`).MatchString(a) {
-		t.Fatal(a)
+	binding.Workspace = "/elsewhere/hazeron"
+	if PublicName(binding, id) != name {
+		t.Fatal("parent path became public identity")
+	}
+	binding.LocalName = "work"
+	if PublicName(binding, id) != "dbx-hazeron-a7e281de4b19.work" {
+		t.Fatal("label did not update public name")
+	}
+	binding.Workspace = "/projects/nova"
+	if PublicName(binding, id) != "dbx-nova-a7e281de4b19.work" {
+		t.Fatal("workspace hint did not update")
+	}
+	for _, bad := range []string{id, "dbx-hazeron-723b46117d2c", "dbx-hazeron-not-an-id.main", name + "/"} {
+		if _, ok := SessionIDFromName(bad); ok {
+			t.Fatal("invalid public name", bad)
+		}
 	}
 }
 
-func TestResourceHintsAndImageTagsAreBounded(t *testing.T) {
-	id := strings.Repeat("a", 32)
-	local := strings.Repeat("N", 64)
+func TestRuntimeNamesCaptureReadableHintsAndShortAttemptSuffix(t *testing.T) {
+	id := "9833cab43e72"
+	allocation := "2c7d3144cfe4f289cc8d3899b46ab700"
+	binding := Binding{Workspace: "/projects/hazeron", LocalName: "main"}
+	name := ResourceName(binding, id, allocation)
+	if name != "dbx-hazeron-9833cab43e72.main-2c7d3144" {
+		t.Fatal(name)
+	}
+	if name == ResourceName(binding, id, strings.Repeat("f", 32)) || name == ResourceName(binding, strings.Repeat("b", 12), allocation) {
+		t.Fatal("runtime instances collided")
+	}
+	changed := Binding{Workspace: "/projects/other", LocalName: "work"}
+	if name == ResourceName(changed, id, allocation) {
+		t.Fatal("creation hints did not follow captured settings")
+	}
+	if name == PublicName(binding, id) {
+		t.Fatal("runtime name lacks an instance suffix")
+	}
+	// Docker hints and their shortened suffix cannot alter the image alias.
+	tag := ImageTag(id, allocation)
+	if tag != "dbx/session:"+id+"-"+allocation || !config.ImageReference.MatchString(tag) {
+		t.Fatal(tag)
+	}
 	for _, workspace := range []string{"/work/My Folder!", "/work/💥", "/work/" + strings.Repeat("x", 200)} {
-		name := ResourceName(workspace, local, id)
-		if !regexp.MustCompile(`^dbx-[a-z0-9_.-]+-[a-f0-9]{12}\.[A-Za-z0-9_-]+$`).MatchString(name) {
-			t.Fatal(name)
+		binding := Binding{Workspace: workspace, LocalName: strings.Repeat("N", 64)}
+		name := PublicName(binding, id)
+		if len(name) > 106 || len(ResourceName(binding, id, allocation)) > 115 {
+			t.Fatal("unbounded readable hint", name)
 		}
-		tag := ImageTag(workspace, local, id)
-		if !config.ImageReference.MatchString(tag) || len(strings.SplitN(tag, ":", 2)[1]) > 128 {
-			t.Fatal(tag)
+		if key, ok := SessionIDFromName(name); !ok || key != id {
+			t.Fatal(name)
 		}
 	}
 }
@@ -52,8 +87,7 @@ func TestWorkspaceSelectionCanonicalizesSymlinksWithoutAllocatingNames(t *testin
 	if err != nil || a.Binding != b.Binding || a.Name != "" || b.Name != "" {
 		t.Fatal(a, b, err)
 	}
-	// A recorded resource name need not describe its current binding.
-	a.Name = ResourceName("/old/elsewhere", "old", "allocation")
+	a.Name = ResourceName(a.Binding, strings.Repeat("a", 12), strings.Repeat("b", 32))
 	if err := a.Validate(); err != nil {
 		t.Fatal(err)
 	}

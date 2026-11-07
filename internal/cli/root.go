@@ -21,7 +21,7 @@ func sessionNameFlag(cmd *cobra.Command, name *string) *cobra.Command {
 		if cmd.Long == "" {
 			cmd.Long = cmd.Short
 		}
-		cmd.Long += "\n\nTargets are workspace folders or exact session directory names shown by dbx list.\nSession directory names are independent of Docker container names."
+		cmd.Long += "\n\nTargets are workspace folders or exact public session names shown by dbx list.\nPublic names come from saved metadata, not storage directory or Docker names."
 		validate := cmd.Args
 		cmd.Args = func(cmd *cobra.Command, args []string) error {
 			if validate != nil {
@@ -39,7 +39,7 @@ func sessionNameFlag(cmd *cobra.Command, name *string) *cobra.Command {
 			}
 			for i := index; i < end && i < len(args); i++ {
 				if environment.IsSessionID(args[i]) {
-					return fmt.Errorf("use a folder or session directory name, not an internal session ID")
+					return fmt.Errorf("use a folder or public session name, not an internal session ID")
 				}
 			}
 			return nil

@@ -2,16 +2,13 @@ package harness
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -20,46 +17,100 @@ import (
 
 const fakeOpenCode = `#!/bin/bash
 set -eu
+client=${FAKE_CLIENT:-$FAKE_DATA}
+service_file=$FAKE_DATA/config/service.json
 case ${1-}:${2-} in
     auth:export)
+        if [[ ! -e $FAKE_DATA/backend-running ]]; then
+            [[ -f $service_file && $(jq -r '.disabled // false' "$service_file") == true ]] || exit 1
+        fi
+        echo export >>"$FAKE_DATA/auth-calls"
         if [[ -e $FAKE_DATA/fail-export ]]; then echo 'dont-print-synthetic-secret' >&2; exit 1; fi
         if [[ -e $FAKE_DATA/wait-export ]]; then
             touch "$FAKE_DATA/exporting"
             while [[ -e $FAKE_DATA/wait-export ]]; do sleep 0.05; done
         fi
         jq . "$FAKE_DATA/dbstate" ;;
-    auth:import) cp -- "$3" "$FAKE_DATA/dbstate" ;;
+    auth:import)
+        echo import >>"$FAKE_DATA/auth-calls"
+        cp -- "$3" "$FAKE_DATA/dbstate" ;;
     api:DELETE)
         if [[ -e $FAKE_DATA/fail-delete ]]; then echo 'dont-print-synthetic-secret' >&2; exit 1; fi
         jq --arg id "${3##*/}" '[.[] | select(.id != $id)]' "$FAKE_DATA/dbstate" >"$FAKE_DATA/new"
         mv -- "$FAKE_DATA/new" "$FAKE_DATA/dbstate" ;;
     --version:) echo 'test version' ;;
+    service:get)
+        case ${3-} in
+            disabled)
+                echo disabled >>"$FAKE_DATA/backend-calls"
+                [[ ! -e $FAKE_DATA/fail-settings ]] || { echo 'dont-print-synthetic-secret' >&2; exit 1; }
+                [[ ! -e $FAKE_DATA/invalid-settings ]] || { echo dont-print-synthetic-secret; exit 0; }
+                disabled=false
+                [[ ! -f $service_file ]] || disabled=$(jq -r 'if type == "object" then .disabled // false else false end' "$service_file" 2>/dev/null) || disabled=false
+                echo "$disabled" ;;
+            port)
+                echo verify >>"$FAKE_DATA/backend-calls"
+                [[ ! -e $FAKE_DATA/reject-port ]] || { echo 0; exit 0; }
+                [[ ! -e $service_file ]] || jq -r '.port // empty' "$service_file" ;;
+            *) exit 64 ;;
+        esac ;;
+    debug:paths)
+        [[ $# == 3 && $3 == config ]] || exit 64
+        echo paths >>"$FAKE_DATA/backend-calls"
+        [[ ! -e $FAKE_DATA/fail-paths ]] || { echo 'dont-print-synthetic-secret' >&2; exit 1; }
+        echo "$FAKE_DATA/config" ;;
+    service:status)
+        echo status >>"$FAKE_DATA/backend-calls"
+        [[ ! -e $FAKE_DATA/fail-status ]] || { echo 'dont-print-synthetic-secret' >&2; exit 1; }
+        [[ ! -e $FAKE_DATA/invalid-status ]] || { echo dont-print-synthetic-secret; exit 0; }
+        if [[ -e $FAKE_DATA/backend-running ]]; then
+            printf 'http://127.0.0.1:%s\n' "$(jq -r '.port' "$service_file")"
+        else
+            echo stopped
+        fi ;;
+    service:set)
+        echo set >>"$FAKE_DATA/backend-calls"
+        exit 99 ;;
+    service:start)
+        echo start >>"$FAKE_DATA/backend-calls"
+        port=$(jq -r '.port' "$service_file")
+        echo "$port" >>"$FAKE_DATA/backend-ports"
+        [[ ! -e $FAKE_DATA/fail-start ]] || { echo 'dont-print-synthetic-secret' >&2; exit 1; }
+        [[ ! -e $FAKE_DATA/other-port-collision ]] || { echo 'Managed service port 0 on 127.0.0.1 is already in use by another process.' >&2; exit 1; }
+        [[ ! -e $FAKE_DATA/timeout-start ]] || exit 124
+        if [[ -e $FAKE_DATA/collide-once || -e $FAKE_DATA/collide-always ]]; then
+            rm -f -- "$FAKE_DATA/collide-once"
+            echo "Managed service port $port on 127.0.0.1 is already in use by another process. dont-print-synthetic-secret" >&2
+            exit 1
+        fi
+        touch "$FAKE_DATA/backend-running"
+        printf 'http://127.0.0.1:%s\n' "$port" ;;
     service:*) printf '%s\n' "$@" ;;
     *)
-        cp -- "$FAKE_DATA/dbstate" "$FAKE_DATA/pulled"
-        printf '%s\n' "$@" >"$FAKE_DATA/argv"
-        [[ ! -e $FAKE_DATA/update ]] || cp -- "$FAKE_DATA/update" "$FAKE_DATA/dbstate"
-        [[ ! -e $FAKE_DATA/fail-push ]] || touch "$FAKE_DATA/fail-export"
-        touch "$FAKE_DATA/started"
-        while [[ -e $FAKE_DATA/wait ]]; do sleep 0.05; done
+        cp -- "$FAKE_DATA/dbstate" "$client/pulled"
+        printf '%s\n' "$@" >"$client/argv"
+        [[ ! -e $client/update ]] || cp -- "$client/update" "$FAKE_DATA/dbstate"
+        [[ ! -e $client/fail-push ]] || touch "$FAKE_DATA/fail-export"
+        touch "$client/started"
+        while [[ -e $client/wait ]]; do sleep 0.05; done
         exit "${FAKE_EXIT:-0}" ;;
 esac
 `
 
 type authFixture struct {
-	root, shared, data, script, native string
+	root, shared, data, script, native, control string
 }
 
 func authTestFixture(t *testing.T) authFixture {
 	t.Helper()
-	for _, tool := range []string{"bash", "flock", "jq", "timeout", "sync"} {
+	for _, tool := range []string{"bash", "flock", "jq", "timeout", "sync", "node"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skip("OpenCode wrapper tests require " + tool)
 		}
 	}
 	f := authFixture{root: t.TempDir()}
 	f.shared, f.data = filepath.Join(f.root, "shared"), filepath.Join(f.root, "data")
-	for _, dir := range []string{f.shared, f.data} {
+	for _, dir := range []string{f.shared, f.data, filepath.Join(f.data, "config")} {
 		if err := os.Mkdir(dir, 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -95,9 +146,25 @@ func (f authFixture) store(t *testing.T) string {
 	return filepath.Join(f.shared, fmt.Sprintf("store-%d-%d", stat.Dev, stat.Ino))
 }
 
+func (f authFixture) withClient(t *testing.T, name string) authFixture {
+	t.Helper()
+	f.control = filepath.Join(f.root, name)
+	if err := os.Mkdir(f.control, 0700); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func (f authFixture) clientDir() string {
+	if f.control != "" {
+		return f.control
+	}
+	return f.data
+}
+
 func (f authFixture) command(args ...string) *exec.Cmd {
 	cmd := exec.Command("bash", append([]string{f.script, f.native, f.shared, f.data}, args...)...)
-	cmd.Env = append(os.Environ(), "FAKE_DATA="+f.data)
+	cmd.Env = append(os.Environ(), "FAKE_DATA="+f.data, "FAKE_CLIENT="+f.clientDir())
 	return cmd
 }
 
@@ -224,7 +291,7 @@ func TestOpenCodeAuthWritebackFailureAndOriginalStoreRecovery(t *testing.T) {
 		t.Fatalf("pending write-back blocked another session: %v: %s", err, output)
 	}
 	assertAuth(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
-	for _, name := range []string{"fail-push", "fail-export", "update"} {
+	for _, name := range []string{"fail-push", "fail-export", "update", "backend-running"} {
 		if err := os.Remove(filepath.Join(f.data, name)); err != nil {
 			t.Fatal(err)
 		}
@@ -236,7 +303,7 @@ func TestOpenCodeAuthWritebackFailureAndOriginalStoreRecovery(t *testing.T) {
 	assertAuth(t, filepath.Join(f.shared, "credentials.json"), refreshedAuth)
 }
 
-func TestOpenCodeAuthSameStoreLockAndTerminalSignals(t *testing.T) {
+func TestOpenCodeAuthSharedClientsAndTerminalSignals(t *testing.T) {
 	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP} {
 		t.Run(sig.String(), func(t *testing.T) {
 			f := authTestFixture(t)
@@ -267,9 +334,12 @@ func TestOpenCodeAuthSameStoreLockAndTerminalSignals(t *testing.T) {
 				}
 				time.Sleep(10 * time.Millisecond)
 			}
-			if output, err := f.command().CombinedOutput(); err == nil || !bytes.Contains(output, []byte("Already in use")) {
-				t.Fatal("concurrent import into the same database was not rejected", err)
+			other := f.withClient(t, "second")
+			if output, err := other.command().CombinedOutput(); err != nil {
+				t.Fatalf("second client: %v: %s", err, output)
 			}
+			assertAuth(t, filepath.Join(other.clientDir(), "pulled"), refreshedAuth)
+			assertAuth(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
 			if err := syscall.Kill(-cmd.Process.Pid, sig); err != nil {
 				t.Fatal(err)
 			}
@@ -344,7 +414,7 @@ func TestOpenCodeAuthHangupDuringInitialSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, entry := range entries {
-		if entry.Name() != "lock" {
+		if entry.Name() != "lock" && entry.Name() != "gate" {
 			t.Fatal("interrupted sync left temporary auth state", entry.Name())
 		}
 	}
@@ -365,7 +435,14 @@ type authProcess struct {
 
 func startAuthProcess(t *testing.T, f authFixture) *authProcess {
 	t.Helper()
-	authWrite(t, filepath.Join(f.data, "wait"), "")
+	p := launchAuthProcess(t, f)
+	waitAuthFile(t, filepath.Join(f.clientDir(), "started"))
+	return p
+}
+
+func launchAuthProcess(t *testing.T, f authFixture) *authProcess {
+	t.Helper()
+	authWrite(t, filepath.Join(f.clientDir(), "wait"), "")
 	p := &authProcess{cmd: f.command()}
 	p.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	p.cmd.Stdout, p.cmd.Stderr = &p.output, &p.output
@@ -378,13 +455,18 @@ func startAuthProcess(t *testing.T, f authFixture) *authProcess {
 			_ = p.cmd.Wait()
 		}
 	})
+	return p
+}
+
+func waitAuthFile(t *testing.T, path string) {
+	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, err := os.Stat(filepath.Join(f.data, "started")); err == nil {
-			return p
+		if _, err := os.Stat(path); err == nil {
+			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("parallel auth client did not start")
+			t.Fatal("timed out waiting for", path)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -392,13 +474,276 @@ func startAuthProcess(t *testing.T, f authFixture) *authProcess {
 
 func finishAuthProcess(t *testing.T, f authFixture, p *authProcess, code int) {
 	t.Helper()
-	if err := os.Remove(filepath.Join(f.data, "wait")); err != nil {
+	if err := os.Remove(filepath.Join(f.clientDir(), "wait")); err != nil {
 		t.Fatal(err)
 	}
 	err := p.cmd.Wait()
 	p.waited = true
 	if p.cmd.ProcessState.ExitCode() != code {
 		t.Fatalf("auth client exit: %v: %s", err, p.output.String())
+	}
+}
+
+func assertAuthCalls(t *testing.T, f authFixture, exports, imports int) {
+	t.Helper()
+	calls, err := os.ReadFile(filepath.Join(f.data, "auth-calls"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(calls), "export\n") != exports || strings.Count(string(calls), "import\n") != imports {
+		t.Fatalf("auth calls: got %q, want %d exports and %d imports", calls, exports, imports)
+	}
+}
+
+func TestOpenCodeAuthSharedClientsExitOrder(t *testing.T) {
+	for _, firstExitsFirst := range []bool{true, false} {
+		t.Run(fmt.Sprint(firstExitsFirst), func(t *testing.T) {
+			f := authTestFixture(t)
+			a, b := f.withClient(t, "first"), f.withClient(t, "second")
+			authWrite(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+			authWrite(t, filepath.Join(a.clientDir(), "update"), refreshedAuth)
+			first := startAuthProcess(t, a)
+			second := startAuthProcess(t, b)
+			assertAuth(t, filepath.Join(b.clientDir(), "pulled"), refreshedAuth)
+			assertAuthCalls(t, f, 2, 1)
+			calls, err := os.ReadFile(filepath.Join(f.data, "backend-calls"))
+			if err != nil || strings.Count(string(calls), "status\n") != 1 || strings.Count(string(calls), "start\n") != 1 {
+				t.Fatal("overlapping client reconfigured the backend", string(calls), err)
+			}
+			if !firstExitsFirst {
+				a, b, first, second = b, a, second, first
+			}
+			finishAuthProcess(t, a, first, 0)
+			assertAuth(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+			assertAuthCalls(t, f, 2, 1)
+			if _, err := os.Stat(filepath.Join(f.store(t), "pending", "baseline.sorted")); err != nil {
+				t.Fatal("non-last client removed the shared baseline", err)
+			}
+			finishAuthProcess(t, b, second, 0)
+			assertAuth(t, filepath.Join(f.shared, "credentials.json"), refreshedAuth)
+			assertAuthCalls(t, f, 3, 1)
+			if _, err := os.Stat(filepath.Join(f.store(t), "pending")); !os.IsNotExist(err) {
+				t.Fatal("last client left pending auth state", err)
+			}
+		})
+	}
+}
+
+func TestOpenCodeAuthSharedClientSignalLeavesPeers(t *testing.T) {
+	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP} {
+		t.Run(sig.String(), func(t *testing.T) {
+			f := authTestFixture(t)
+			a, b := f.withClient(t, "first"), f.withClient(t, "second")
+			authWrite(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+			authWrite(t, filepath.Join(a.clientDir(), "update"), refreshedAuth)
+			first := startAuthProcess(t, a)
+			second := startAuthProcess(t, b)
+			if err := syscall.Kill(-first.cmd.Process.Pid, sig); err != nil {
+				t.Fatal(err)
+			}
+			_ = first.cmd.Wait()
+			first.waited = true
+			if first.cmd.ProcessState.ExitCode() != 128+int(sig) {
+				t.Fatalf("signal status: %s", first.output.String())
+			}
+			assertAuth(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+			assertAuthCalls(t, f, 2, 1)
+			finishAuthProcess(t, b, second, 0)
+			assertAuth(t, filepath.Join(f.shared, "credentials.json"), refreshedAuth)
+		})
+	}
+}
+
+func TestOpenCodeAuthConcurrentStartupImportsOnce(t *testing.T) {
+	f := authTestFixture(t)
+	a, b := f.withClient(t, "first"), f.withClient(t, "second")
+	authWrite(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+	authWrite(t, filepath.Join(f.data, "wait-export"), "")
+	first := launchAuthProcess(t, a)
+	waitAuthFile(t, filepath.Join(f.data, "exporting"))
+	second := launchAuthProcess(t, b)
+	if _, err := os.Stat(filepath.Join(b.clientDir(), "started")); !os.IsNotExist(err) {
+		t.Fatal("client launched before initial import completed", err)
+	}
+	if err := os.Remove(filepath.Join(f.data, "wait-export")); err != nil {
+		t.Fatal(err)
+	}
+	waitAuthFile(t, filepath.Join(a.clientDir(), "started"))
+	waitAuthFile(t, filepath.Join(b.clientDir(), "started"))
+	assertAuthCalls(t, f, 2, 1)
+	assertAuth(t, filepath.Join(a.clientDir(), "pulled"), sharedAuth)
+	assertAuth(t, filepath.Join(b.clientDir(), "pulled"), sharedAuth)
+	finishAuthProcess(t, a, first, 0)
+	finishAuthProcess(t, b, second, 0)
+	assertAuthCalls(t, f, 3, 1)
+}
+
+func TestOpenCodeAuthStartupDuringLastWriteback(t *testing.T) {
+	f := authTestFixture(t)
+	a, b := f.withClient(t, "first"), f.withClient(t, "second")
+	authWrite(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+	authWrite(t, filepath.Join(a.clientDir(), "update"), refreshedAuth)
+	first := startAuthProcess(t, a)
+	authWrite(t, filepath.Join(f.data, "wait-export"), "")
+	if err := os.Remove(filepath.Join(a.clientDir(), "wait")); err != nil {
+		t.Fatal(err)
+	}
+	waitAuthFile(t, filepath.Join(f.data, "exporting"))
+	second := launchAuthProcess(t, b)
+	if err := os.Remove(filepath.Join(f.data, "wait-export")); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.cmd.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	first.waited = true
+	waitAuthFile(t, filepath.Join(b.clientDir(), "started"))
+	assertAuth(t, filepath.Join(f.shared, "credentials.json"), refreshedAuth)
+	assertAuth(t, filepath.Join(b.clientDir(), "pulled"), refreshedAuth)
+	// The new group exports once during initialization; no reimport is needed.
+	assertAuthCalls(t, f, 4, 1)
+	finishAuthProcess(t, b, second, 0)
+}
+
+func TestOpenCodeAuthKilledSharedClients(t *testing.T) {
+	for _, killAll := range []bool{false, true} {
+		t.Run(fmt.Sprint(killAll), func(t *testing.T) {
+			f := authTestFixture(t)
+			a, b := f.withClient(t, "first"), f.withClient(t, "second")
+			authWrite(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+			authWrite(t, filepath.Join(a.clientDir(), "update"), refreshedAuth)
+			first := startAuthProcess(t, a)
+			second := startAuthProcess(t, b)
+			if err := syscall.Kill(-first.cmd.Process.Pid, syscall.SIGKILL); err != nil {
+				t.Fatal(err)
+			}
+			_ = first.cmd.Wait()
+			first.waited = true
+			if killAll {
+				if err := syscall.Kill(-second.cmd.Process.Pid, syscall.SIGKILL); err != nil {
+					t.Fatal(err)
+				}
+				_ = second.cmd.Wait()
+				second.waited = true
+				assertAuth(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+				if output, err := f.command().CombinedOutput(); err != nil {
+					t.Fatalf("group recovery: %v: %s", err, output)
+				}
+			} else {
+				finishAuthProcess(t, b, second, 0)
+			}
+			assertAuth(t, filepath.Join(f.shared, "credentials.json"), refreshedAuth)
+		})
+	}
+}
+
+func TestOpenCodeAuthOrphanedClientRetainsStoreLock(t *testing.T) {
+	f := authTestFixture(t)
+	a := f.withClient(t, "first")
+	b := f.withClient(t, "second")
+	authWrite(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+	authWrite(t, filepath.Join(a.clientDir(), "update"), refreshedAuth)
+	first := startAuthProcess(t, a)
+	// Kill only the wrapper, leaving its foreground client and shared lock alive.
+	// Wait must not wait for the orphan to close the captured output pipes.
+	first.cmd.WaitDelay = 100 * time.Millisecond
+	t.Cleanup(func() { _ = syscall.Kill(-first.cmd.Process.Pid, syscall.SIGKILL) })
+	if err := first.cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	_ = first.cmd.Wait()
+	first.waited = true
+	second := startAuthProcess(t, b)
+	assertAuth(t, filepath.Join(b.clientDir(), "pulled"), refreshedAuth)
+	finishAuthProcess(t, b, second, 0)
+	assertAuthCalls(t, f, 2, 1)
+	assertAuth(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+	// Let the orphan finish naturally. Its inherited lock protects the database
+	// until it exits, but no wrapper remains to publish, so the next group recovers.
+	if err := os.Remove(filepath.Join(a.clientDir(), "wait")); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("flock", "-w", "5", filepath.Join(f.store(t), "lock"), "true")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("orphan did not release its lock: %v: %s", err, output)
+	}
+	if output, err := b.command().CombinedOutput(); err != nil {
+		t.Fatalf("orphan recovery: %v: %s", err, output)
+	}
+	assertAuth(t, filepath.Join(f.shared, "credentials.json"), refreshedAuth)
+}
+
+func TestOpenCodeAuthSharedClientsConcurrentExit(t *testing.T) {
+	f := authTestFixture(t)
+	a, b := f.withClient(t, "first"), f.withClient(t, "second")
+	authWrite(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+	authWrite(t, filepath.Join(a.clientDir(), "update"), refreshedAuth)
+	first := startAuthProcess(t, a)
+	second := startAuthProcess(t, b)
+	for _, client := range []authFixture{a, b} {
+		if err := os.Remove(filepath.Join(client.clientDir(), "wait")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, p := range []*authProcess{first, second} {
+		err := p.cmd.Wait()
+		p.waited = true
+		if err != nil {
+			t.Fatalf("concurrent exit: %v: %s", err, p.output.String())
+		}
+	}
+	assertAuth(t, filepath.Join(f.shared, "credentials.json"), refreshedAuth)
+	assertAuthCalls(t, f, 3, 1)
+}
+
+func TestOpenCodeAuthSharedClientsWritebackRecovery(t *testing.T) {
+	f := authTestFixture(t)
+	a, b := f.withClient(t, "first"), f.withClient(t, "second")
+	authWrite(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+	authWrite(t, filepath.Join(a.clientDir(), "update"), refreshedAuth)
+	first := startAuthProcess(t, a)
+	second := startAuthProcess(t, b)
+	authWrite(t, filepath.Join(f.data, "fail-export"), "")
+	finishAuthProcess(t, a, first, 0)
+	finishAuthProcess(t, b, second, 1)
+	assertAuth(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+	if !strings.Contains(second.output.String(), "write-back failed") {
+		t.Fatal("last client did not report failed write-back")
+	}
+	if err := os.Remove(filepath.Join(f.data, "fail-export")); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := f.command().CombinedOutput(); err != nil {
+		t.Fatalf("group write-back recovery: %v: %s", err, output)
+	}
+	assertAuth(t, filepath.Join(f.shared, "credentials.json"), refreshedAuth)
+	assertAuth(t, filepath.Join(f.data, "pulled"), refreshedAuth)
+}
+
+func TestOpenCodeAuthSharedClientsConflictUsesFirstBaseline(t *testing.T) {
+	f := authTestFixture(t)
+	a, b := f.withClient(t, "first"), f.withClient(t, "second")
+	authWrite(t, filepath.Join(f.shared, "credentials.json"), sharedAuth)
+	authWrite(t, filepath.Join(a.clientDir(), "update"), refreshedAuth)
+	first := startAuthProcess(t, a)
+	second := startAuthProcess(t, b)
+	other := authTestFixture(t)
+	other.shared = f.shared
+	otherAuth := strings.ReplaceAll(sharedAuth, "synthetic-current", "synthetic-second")
+	authWrite(t, filepath.Join(other.data, "update"), otherAuth)
+	if output, err := other.command().CombinedOutput(); err != nil {
+		t.Fatalf("other store could not publish: %v: %s", err, output)
+	}
+	finishAuthProcess(t, a, first, 0)
+	finishAuthProcess(t, b, second, 1)
+	assertAuth(t, filepath.Join(f.shared, "credentials.json"), otherAuth)
+	conflicts, err := filepath.Glob(filepath.Join(f.store(t), "conflict.*"))
+	if err != nil || len(conflicts) != 1 {
+		t.Fatal("group conflict was not retained", conflicts, err)
+	}
+	assertAuth(t, conflicts[0], refreshedAuth)
+	if !strings.Contains(second.output.String(), "shared auth was not overwritten") {
+		t.Fatal("last client did not report the group conflict")
 	}
 }
 
@@ -552,66 +897,4 @@ func TestOpenCodeAuthKilledRunRecoveryUsesOriginalSnapshot(t *testing.T) {
 	}
 	assertAuth(t, filepath.Join(a.shared, "credentials.json"), refreshedAuth)
 	assertAuth(t, filepath.Join(a.data, "pulled"), refreshedAuth)
-}
-
-func TestOpenCodeAuthNativeCommands(t *testing.T) {
-	binary := os.Getenv("DEVBOX_OPENCODE_NATIVE")
-	if binary == "" {
-		t.Skip("set DEVBOX_OPENCODE_NATIVE to verify the native CLI with isolated synthetic auth")
-	}
-	f := authTestFixture(t)
-	f.native = binary
-	f.data = filepath.Join(f.root, "data", "opencode")
-	if err := os.Mkdir(f.data, 0700); err != nil {
-		t.Fatal(err)
-	}
-	env := []string{}
-	for _, assignment := range os.Environ() {
-		if !strings.HasPrefix(assignment, "OPENCODE_") && !strings.HasPrefix(assignment, "XDG_") && !strings.HasPrefix(assignment, "HOME=") {
-			env = append(env, assignment)
-		}
-	}
-	for key, dir := range map[string]string{"HOME": "home", "XDG_DATA_HOME": "data", "XDG_CONFIG_HOME": "config", "XDG_CACHE_HOME": "cache", "XDG_STATE_HOME": "state"} {
-		path := filepath.Join(f.root, dir)
-		if err := os.MkdirAll(path, 0700); err != nil {
-			t.Fatal(err)
-		}
-		env = append(env, key+"="+path)
-	}
-	env = append(env, "OPENCODE_DISABLE_MODELS_FETCH=1", "OPENCODE_DISABLE_FILEWATCHER=1", `OPENCODE_CONFIG_CONTENT={"update":"disable"}`)
-	native := func(args ...string) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, binary, args...)
-		cmd.Env, cmd.Dir = env, f.root
-		return cmd.Run()
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	_ = listener.Close()
-	if err := native("service", "set", "port", strconv.Itoa(port)); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := native("service", "stop"); err != nil {
-			t.Error(err)
-		}
-	})
-	for _, desired := range []string{sharedAuth, refreshedAuth, "[]"} {
-		authWrite(t, filepath.Join(f.shared, "credentials.json"), desired)
-		cmd := f.command("auth", "export")
-		cmd.Env, cmd.Dir = env, f.root
-		var output, stderr bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &output, &stderr
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("native auth commands: %v: %s", err, stderr.String())
-		}
-		if canonicalAuth(t, output.Bytes()) != canonicalAuth(t, []byte(desired)) {
-			t.Fatal("native import/export changed credentials or active account selection")
-		}
-		assertAuth(t, filepath.Join(f.shared, "credentials.json"), desired)
-	}
 }

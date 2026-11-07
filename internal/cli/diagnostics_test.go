@@ -11,9 +11,19 @@ import (
 
 func TestApplicationDiagnosticRendering(t *testing.T) {
 	var out bytes.Buffer
-	diagnosticRenderer(&out)(app.Diagnostic{Code: "apply_plan", Target: "session", Message: "Apply runtime configuration."})
-	if out.String() != "session: Apply runtime configuration.\n" {
+	message := "Replacing the container. Files and tools stored only inside the old container will be lost."
+	diagnosticRenderer(&out)(app.Diagnostic{Code: "apply_plan", Target: "session", Message: message})
+	if out.String() != "session: "+message+"\n" {
 		t.Fatal(out.String())
+	}
+}
+
+func TestApplicationDiagnosticEscapesControls(t *testing.T) {
+	var out bytes.Buffer
+	diagnosticRenderer(&out)(app.Diagnostic{Target: "session\nname", Message: "Updating\x1b[2J\nWarning:\rtext"})
+	want := "\"session\\nname\": \"Updating\\x1b[2J\\nWarning:\\rtext\"\n"
+	if got := out.String(); got != want {
+		t.Fatalf("diagnostic controls: got %q, want %q", got, want)
 	}
 }
 

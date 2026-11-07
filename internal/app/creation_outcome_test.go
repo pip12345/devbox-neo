@@ -32,7 +32,7 @@ func TestCreationReportsConfirmedSaveIndependentlyOfCompletionErrors(t *testing.
 				t.Fatal(stage, result, err)
 			}
 			if result.Saved {
-				r, readErr := e.Store.Read(context.Background(), result.Session)
+				r, readErr := e.Store.Read(context.Background(), result.SessionID)
 				if readErr != nil || r.ID != result.SessionID {
 					t.Fatal("confirmed save has no matching session", r, readErr)
 				}

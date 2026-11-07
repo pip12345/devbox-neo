@@ -12,6 +12,8 @@ dbx ssh . user@server
 
 Answer password, passphrase, MFA, and host-key prompts yourself. SSH runs inside the container by default, using its SSH configuration and network.
 
+For a frequently rebuilt VM, add `--insecure` to skip destination host-key checks without changing saved known-host keys. **This permits server impersonation.** Verification remains enabled without the flag.
+
 After authentication, Devbox prints the exact command the agent should use. Give it that exact command because some destinations receive a generated alias.
 
 ## Use the shared connection

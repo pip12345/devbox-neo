@@ -35,10 +35,10 @@ func TestRenameCommandPreviewAndJSON(t *testing.T) {
 	}
 	out, err = run(id, "--to", "Second", "--json")
 	var result app.RenameResult
-	if err != nil || json.Unmarshal([]byte(out), &result) != nil || result.SessionID != before.ID || result.Session != id || result.LocalName != "Second" {
+	if err != nil || json.Unmarshal([]byte(out), &result) != nil || result.SessionID != before.ID || result.Session != strings.TrimSuffix(id, "."+q.LocalName)+".Second" || result.LocalName != "Second" {
 		t.Fatal(out, err)
 	}
-	if after := sessionRecord(t, e, id); !reflect.DeepEqual(before.Applied, after.Applied) || before.Directory != after.Directory {
+	if after := sessionRecord(t, e, before.ID); !reflect.DeepEqual(before.Applied, after.Applied) || before.Directory != after.Directory {
 		t.Fatal("rename changed runtime/storage")
 	}
 }
@@ -69,8 +69,8 @@ func TestRenameMenuEditsLabelWithoutRebuilding(t *testing.T) {
 	if err := f.session(app.View{Target: id}); err != nil {
 		t.Fatal(err, out.String())
 	}
-	after := sessionRecord(t, f.e, id)
-	if after.Settings.LocalName != "Second" || !reflect.DeepEqual(before.Applied, after.Applied) || f.focusItem != id {
+	after := sessionRecord(t, f.e, before.ID)
+	if after.Settings.LocalName != "Second" || !reflect.DeepEqual(before.Applied, after.Applied) || f.focusItem != before.ID {
 		t.Fatal(after, out.String())
 	}
 	if strings.Contains(out.String(), "Proceed?") {

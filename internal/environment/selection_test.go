@@ -20,16 +20,16 @@ func TestLocalNamesAreExactAndBounded(t *testing.T) {
 	}
 }
 
-func TestSessionTargetsAreBareDirectoryNames(t *testing.T) {
+func TestPublicNameConventionAndCompleteSessionIDs(t *testing.T) {
 	if !IsSessionTarget("dbx-api-abc.work") {
-		t.Fatal("rejected session directory name")
+		t.Fatal("rejected public-name convention")
 	}
 	for _, target := range []string{strings.Repeat("a", 32), "work", "/work/api", "./dbx-api-abc.work", "dbx-../work", "dbx-bad\nname"} {
 		if IsSessionTarget(target) {
 			t.Fatal("accepted non-session target", target)
 		}
 	}
-	if !IsSessionID(strings.Repeat("a", 32)) || IsSessionID("dbx-api-abc.work") {
+	if !IsSessionID(strings.Repeat("a", 12)) || IsSessionID("dbx-api-abc.work") {
 		t.Fatal("internal ID validation changed")
 	}
 }

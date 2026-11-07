@@ -93,7 +93,7 @@ func networkCommands(factory engineFactory, localName *string) *cobra.Command {
 	group.AddCommand(sessionNameFlag(inspect, localName), sessionNameFlag(env, localName))
 	for _, action := range []string{"connect", "disconnect"} {
 		action := action
-		group.AddCommand(sessionNameFlag(&cobra.Command{Use: action + " <network> <folder|session>", Short: action + " an existing Docker network without changing saved configuration", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		group.AddCommand(sessionNameFlag(&cobra.Command{Use: action + " <network> <folder|session>", Short: action + " a secondary Docker network and update the session's saved connections", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := factory(cmd)
 			if err != nil {
 				return err

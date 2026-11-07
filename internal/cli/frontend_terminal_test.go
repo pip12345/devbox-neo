@@ -21,7 +21,7 @@ import (
 
 func TestFrontendResumesPinnedTransferWithoutChangingEndpoints(t *testing.T) {
 	f, out, q, name := frontendFixture(t, strings.NewReader("1\n2\n3\n5\ny\n"))
-	c, _, err := f.e.Docker.InspectID(context.Background(), sessionRecord(t, f.e, name).Applied.SetupContainer)
+	c, _, err := f.e.Docker.InspectID(context.Background(), sessionRecord(t, f.e, name).Applied.ContainerID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,15 @@ func TestFrontendResumesPinnedTransferWithoutChangingEndpoints(t *testing.T) {
 	}
 }
 
-func TestNativeBrowserEnterResumesFirstCurrentFolderSession(t *testing.T) {
+func TestNativeBrowserEnterResumesCurrentFolderSelection(t *testing.T) {
+	for _, hasDefault := range []bool{false, true} {
+		t.Run(fmt.Sprintf("default=%t", hasDefault), func(t *testing.T) {
+			testNativeBrowserCurrentFolderSelection(t, hasDefault)
+		})
+	}
+}
+
+func testNativeBrowserCurrentFolderSelection(t *testing.T, hasDefault bool) {
 	e, q, _ := namedCLIFixture(t)
 	// The existing Main session's parent folder sorts before this workspace;
 	// neither its position nor its ancestry should make it the initial target.
@@ -63,7 +71,8 @@ func TestNativeBrowserEnterResumesFirstCurrentFolderSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	q.LocalName = "Zulu"
-	if _, err := e.Create(context.Background(), q); err != nil {
+	zulu, err := e.Create(context.Background(), q)
+	if err != nil {
 		t.Fatal(err)
 	}
 	q.LocalName = "Alpha"
@@ -71,7 +80,19 @@ func TestNativeBrowserEnterResumesFirstCurrentFolderSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	targetContainer := sessionRecord(t, e, created.SessionID).Applied.SetupContainer
+	initial, other, navigation := "Alpha", "Zulu", "\x1b[B\r"
+	if hasDefault {
+		if err := e.SetDefault(context.Background(), sessionRecord(t, e, zulu.SessionID)); err != nil {
+			t.Fatal(err)
+		}
+		created = zulu
+		initial, other, navigation = "Zulu", "Alpha", "\x1b[A\r"
+	}
+	targetContainer := sessionRecord(t, e, created.SessionID).Applied.ContainerID
+	otherRecord, err := e.Locate(context.Background(), q.Workspace, other)
+	if err != nil {
+		t.Fatal(err)
+	}
 	attached := make(chan docker.Command, 1)
 	e.Docker.Runner.(*dockertest.Daemon).Attached = func(_ context.Context, c docker.Command) error {
 		if c.Stdin != nil {
@@ -95,35 +116,48 @@ func TestNativeBrowserEnterResumesFirstCurrentFolderSession(t *testing.T) {
 	})
 	p.wait("Sessions")
 	p.send("\r")
-	p.wait("Session · Alpha")
-	p.send("\r")
-	p.wait("Press Enter")
-	select {
-	case c := <-attached:
-		if !slices.Contains(c.Args, targetContainer) || c.Args[len(c.Args)-1] != "-c" {
-			t.Fatal("first action did not continue the selected session's harness", c.Args)
+	p.wait("Resume the harness conversation")
+	continueSession := func(container, name string) {
+		t.Helper()
+		p.send("\r")
+		p.wait("Press Enter")
+		select {
+		case c := <-attached:
+			if !slices.Contains(c.Args, container) || c.Args[len(c.Args)-1] != "-c" {
+				t.Fatal("first action did not continue the selected session's harness", name, c.Args)
+			}
+		default:
+			t.Fatal("Enter did not launch the harness")
 		}
-	default:
-		t.Fatal("Enter did not launch the harness")
+		p.send("\r")
+		p.wait(name + " ·")
 	}
-	p.send("\r")
-	p.wait("Session · Alpha")
+	continueSession(targetContainer, initial)
 	p.send("q")
 	p.wait("Browser actions")
 	// Returning from a different session must not reapply the startup highlight.
-	p.send("\x1b[B\r")
-	p.wait("Session · Zulu")
+	p.send(navigation)
+	p.wait("Resume the harness conversation")
+	continueSession(otherRecord.Applied.ContainerID, other)
 	p.send("q")
 	p.wait("Browser actions")
 	p.send("\r")
-	p.wait("Session · Zulu")
+	p.wait("Resume the harness conversation")
+	continueSession(otherRecord.Applied.ContainerID, other)
 	p.send("q")
 	p.wait("Browser actions")
 	p.send("q")
 	p.finish(done)
 	selected, err := e.Store.ReadDefault(context.Background(), q.Workspace)
-	if err != nil || selected != nil {
-		t.Fatal("browser navigation selected a folder default", selected, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasDefault {
+		if selected == nil || selected.ID != zulu.SessionID {
+			t.Fatal("browser navigation changed the saved default", selected)
+		}
+	} else if selected != nil {
+		t.Fatal("browser navigation selected a folder default", selected)
 	}
 }
 

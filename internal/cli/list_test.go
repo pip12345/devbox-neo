@@ -149,7 +149,7 @@ func TestListUsesLocalNamesAndWideIncludesFullNames(t *testing.T) {
 			}
 			for i, view := range rows {
 				fields := strings.Fields(lines[i+1])
-				if fields[nameColumn] != view.LocalName || !strings.Contains(lines[i+1], view.Target) || strings.Contains(lines[i+1], view.SessionID) {
+				if fields[nameColumn] != view.LocalName || !strings.Contains(lines[i+1], view.Target) || strings.Contains(lines[i+1], view.SessionID) != wide {
 					t.Fatal("full name replaced the local name or leaked into the compact row", out.String())
 				}
 				if !local && fields[0] != view.Workspace {
@@ -207,7 +207,7 @@ func TestListNamePresentationDoesNotChangeJSONOrStatus(t *testing.T) {
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out.String(), q.Workspace+" / "+q.LocalName+"  ") || !strings.Contains(out.String(), "Session: "+fullName) || !strings.Contains(out.String(), "Container: ") {
+	if !strings.HasPrefix(out.String(), fullName+"  ") || !strings.Contains(out.String(), "Session: "+fullName) || !strings.Contains(out.String(), "Container: ") {
 		t.Fatal("status must identify the session and retain exact details", out.String())
 	}
 }

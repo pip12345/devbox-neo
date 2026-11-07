@@ -77,7 +77,7 @@ func TestSessionCollectionContainsOnlyFolderAndSessionObjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := f.sessionCollection(report, "folder")
-	if len(c.Items) != 2 || c.Items[0].Key != q.Workspace || c.Items[1].Key != name || c.Items[1].Depth != 1 {
+	if len(c.Items) != 2 || c.Items[0].Key != q.Workspace || c.Items[1].Key != sessionRecord(t, f.e, name).ID || c.Items[1].Depth != 1 {
 		t.Fatal(c)
 	}
 	if c.Items[0].Open == nil || c.Items[1].Open == nil {
@@ -149,22 +149,30 @@ func TestSessionFolderListLabels(t *testing.T) {
 	}
 }
 
-func TestFirstSessionInFolderUsesDisplayedOrder(t *testing.T) {
+func TestInitialSessionInFolderUsesDefaultThenDisplayedOrder(t *testing.T) {
 	f := frontend{}
 	c := f.sessionCollection(app.InventoryReport{Sessions: []app.View{
 		{Workspace: "/work/z", Target: "z-last", LocalName: "zulu"},
-		{Workspace: "/work/a", Target: "a-first", LocalName: "alpha"},
+		{Workspace: "/work/a", Target: "a-first", LocalName: "alpha", Default: true},
 		{Workspace: "/work/z", Target: "z-first", LocalName: "alpha"},
 	}}, "name")
 	for _, tt := range []struct{ folder, want string }{
 		{"/work/z", "z-first"}, {"/work/a", "a-first"}, {"/work/missing", ""},
 	} {
-		if got := firstSessionInFolder(c, tt.folder); got != tt.want {
-			t.Fatalf("first session in %s = %q, want %q", tt.folder, got, tt.want)
+		if got := initialSessionInFolder(c, tt.folder); got != tt.want {
+			t.Fatalf("initial session in %s = %q, want %q", tt.folder, got, tt.want)
 		}
 	}
+	for i := range c.Items {
+		if c.Items[i].Key == "z-last" {
+			c.Items[i].Selected = true
+		}
+	}
+	if got := initialSessionInFolder(c, "/work/z"); got != "z-last" {
+		t.Fatal("default did not take priority over displayed order", got)
+	}
 	f.knownFolder = "/work/empty"
-	if got := firstSessionInFolder(f.sessionCollection(app.InventoryReport{}, "name"), "/work/empty"); got != "" {
+	if got := initialSessionInFolder(f.sessionCollection(app.InventoryReport{}, "name"), "/work/empty"); got != "" {
 		t.Fatal("empty folder selected a session", got)
 	}
 }
@@ -233,7 +241,7 @@ func TestFrontendCreationReturnsToStoppedSessionMenu(t *testing.T) {
 	if err != nil || selected != nil {
 		t.Fatal(selected, err)
 	}
-	if !strings.Contains(out.String(), "Session · Second") || !strings.Contains(out.String(), "Make folder default") {
+	if !strings.Contains(out.String(), "\nSecond\n") || !strings.Contains(out.String(), "Make folder default") {
 		t.Fatal("creation did not land on session menu", out.String())
 	}
 	if f.focusItem != name {

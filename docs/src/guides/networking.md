@@ -35,9 +35,9 @@ Join an existing shared Docker network from the host. Here `.` selects your proj
 dbx network connect backend .
 ```
 
-Use the other container's network name and service port. The attachment survives stop/start, but not container replacement. Set **Network** in your config if `backend` should be the primary network instead.
+Use the other container's network name and service port. Devbox remembers this connection across stop/start and container replacement. Set **Network** in your config if `backend` should be the primary network instead.
 
-To detach, use `dbx network disconnect backend .`.
+To detach and forget the connection, use `dbx network disconnect backend .`.
 
 ## Check the addresses
 

@@ -46,7 +46,7 @@ func TestOnlyExplicitRecreateSynchronizesConfiguration(t *testing.T) {
 					}
 				}
 				before := sessionRecord(t, e, created.SessionID)
-				root := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, "harnesses/pi/stores/home")
+				root := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).StateTree, "harnesses/pi/stores/home")
 				write(t, filepath.Join(root, "managed.txt"), "local edit")
 				write(t, filepath.Join(root, "obsolete.txt"), "local obsolete edit")
 				write(t, filepath.Join(root, "settings.json"), `{"packages":["local"],"theme":"personal"}`)
@@ -117,7 +117,7 @@ func TestInvalidConfigAndLiveJSONDoNotBlockAccess(t *testing.T) {
 				}
 				before := sessionRecord(t, e, created.SessionID)
 				if invalidLive {
-					write(t, filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, "harnesses/pi/stores/home/settings.json"), `[]`)
+					write(t, filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).StateTree, "harnesses/pi/stores/home/settings.json"), `[]`)
 				} else {
 					write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
 				}
@@ -141,7 +141,7 @@ func TestExplicitApplyRestoresManagedFilesEvenWithoutSourceChanges(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	live := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, "harnesses/pi/stores/home/managed.txt")
+	live := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).StateTree, "harnesses/pi/stores/home/managed.txt")
 	write(t, live, "temporary edit")
 	if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
@@ -162,7 +162,7 @@ func TestInspectionStopAndDeletionDoNotSynchronize(t *testing.T) {
 	if _, err := e.Start(ctx, created.SessionID, ""); err != nil {
 		t.Fatal(err)
 	}
-	live := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, "harnesses/pi/stores/home/managed.txt")
+	live := filepath.Join(e.Store.Home, "sessions", sessionRecord(t, e, created.SessionID).Directory, sessionRecord(t, e, created.SessionID).StateTree, "harnesses/pi/stores/home/managed.txt")
 	write(t, live, "local")
 	write(t, filepath.Join(e.Store.Home, "profiles/test/config.json"), "broken")
 	checks := []func() error{

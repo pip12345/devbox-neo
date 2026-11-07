@@ -230,7 +230,7 @@ func ValidateRaw(args []string, protected []string, workspace, userHome string) 
 				return err
 			}
 			if mount.Kind == "bind" && !strings.HasPrefix(value, "/") {
-				return fmt.Errorf("raw bind sources must be absolute.\nUse --volume for workspace-relative paths.")
+				return fmt.Errorf("raw bind sources must be absolute; use the config's mounts field for workspace-relative paths")
 			}
 			if err = ValidateExtraTargets([]Mount{mount}, protected); err != nil {
 				return err
@@ -268,7 +268,7 @@ func ValidateRaw(args []string, protected []string, workspace, userHome string) 
 			}
 			if kind == "bind" {
 				if !filepath.IsAbs(source) {
-					return fmt.Errorf("raw bind source must be absolute")
+					return fmt.Errorf("raw bind sources must be absolute; use the config's mounts field for workspace-relative paths")
 				}
 				if _, err = os.Stat(source); err != nil {
 					return fmt.Errorf("raw bind source is unavailable")

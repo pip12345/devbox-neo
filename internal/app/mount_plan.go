@@ -15,20 +15,20 @@ import (
 	"devbox/internal/store"
 )
 
-func (e *Engine) sync(l *store.Locked, s environment.Spec) error {
+func (e *Engine) sync(l *store.Locked, s environment.Spec, tree string) error {
 	d := s.Harness.Definition
 	base := filepath.Join("harnesses", d.Name)
-	root, err := l.Dir(filepath.Join(base, "stores", d.Config.Store, d.Config.Path))
+	root, err := l.TreeDir(tree, filepath.Join(base, "stores", d.Config.Store, d.Config.Path))
 	if err != nil {
 		return err
 	}
-	manifest, err := l.Path(filepath.Join(base, "managed-config.json"))
+	manifest, err := l.TreePath(tree, filepath.Join(base, "managed-config.json"))
 	if err != nil {
 		return err
 	}
 	return filesync.Sync(root, manifest, d.Config.Store, s.Files, d.Merge)
 }
-func (e *Engine) mountPlan(l *store.Locked, s environment.Spec) ([]docker.Mount, error) {
+func (e *Engine) mountPlan(l *store.Locked, s environment.Spec, tree string) ([]docker.Mount, error) {
 	sshRoot, err := l.Dir(sshshare.RelativeRoot)
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func (e *Engine) mountPlan(l *store.Locked, s environment.Spec) ([]docker.Mount,
 		var source string
 		var err error
 		if storeDef.Scope == "environment" {
-			source, err = l.Dir(filepath.Join("harnesses", d.Name, "stores", storeDef.Name))
+			source, err = l.TreeDir(tree, filepath.Join("harnesses", d.Name, "stores", storeDef.Name))
 		} else {
 			source, err = fsutil.Dir(e.Store.Home, filepath.Join("cache/harnesses", d.Name, storeDef.Name), 0700)
 		}

@@ -37,24 +37,25 @@ func (e *Engine) sessionInventory(ctx context.Context, entries []store.Entry, li
 	report := InventoryReport{Sessions: []View{}, UnmatchedContainers: []View{}, DefaultErrors: map[string]string{}}
 	known := map[string]bool{}
 	for _, entry := range entries {
-		if entry.Record.Applied.SetupContainer != "" {
-			known[entry.Record.Applied.SetupContainer] = true
+		if entry.Record.Applied.ContainerID != "" {
+			known[entry.Record.Applied.ContainerID] = true
 		}
 	}
-	displayEntries := []store.Entry{}
-	for _, entry := range entries {
-		if p := entry.Pending; p != nil && p.Mode == "relocate" {
-			authority := p.Source
-			if p.Phase == "committed" {
-				authority = p.Destination
-			}
-			if entry.Name != authority {
+	// A pending journal owns both runtime roles even though Move has only one
+	// canonical session row. Neither staged nor retired instances are orphans.
+	journals, _ := e.Store.Transfers() // inventory already checked journal integrity
+	for _, j := range journals {
+		for _, c := range live {
+			owner := docker.Owner{Installation: e.Store.Installation, Session: j.DestinationID}
+			if c.Verify(owner) != nil {
 				continue
 			}
+			if c.ID == j.SourceContainerID && c.Image == j.SourceImageID || strings.TrimPrefix(c.Name, "/") == j.ContainerName && c.ID != j.SourceContainerID {
+				known[c.ID] = true
+			}
 		}
-		displayEntries = append(displayEntries, entry)
 	}
-	for _, view := range e.inventoryViews(displayEntries, live, true) {
+	for _, view := range e.inventoryViews(entries, live, true) {
 		if workspace == "" || view.Workspace == workspace {
 			report.Sessions = append(report.Sessions, view)
 		}

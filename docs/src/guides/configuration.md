@@ -12,7 +12,7 @@ dbx config edit base
 
 Choose a setting to edit it. Changes save immediately. Leaving the editor does not undo them. **Remove this setting** removes the value from this config, allowing an earlier config or the built-in default to supply it.
 
-Editing `base` affects every session using it. The editor lists those sessions.
+Editing `base` changes the settings every session using it will apply on its next Recreate. Running containers do not change immediately. The editor lists the affected sessions.
 
 ## Add settings for one project
 
@@ -32,9 +32,9 @@ The directory only takes effect after you select it in a session.
 
 ## Select the configs to use
 
-Open the session's menu in `dbx`, then **Edit selected configs**. Choose **Add existing config** and select `./devconfig` under **Workspace configs**. Use **Enter a directory path** if it is elsewhere.
+Open the session's menu in `dbx`, then choose **Selected configs**. Choose **Add existing config** and select `./devconfig` under **Workspace configs**. Use **Enter a directory path** if it is elsewhere.
 
-Keep `base` first and `./devconfig` second. Later scalar settings replace earlier ones. Most lists append. For example, the project config can change the shared network setting without choosing another harness.
+Keep `base` first and `./devconfig` second. For settings with one value, such as the network, the later config wins. Most lists combine entries from both configs. The project config can therefore change the network without choosing another harness.
 
 Use the same menu to replace, remove, or reorder configs. Use **Replace config** when changing the only selected config. **Show combined configuration** shows the final values and where they came from.
 

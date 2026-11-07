@@ -85,7 +85,7 @@ func TestSSHContainerCtrlCBeforeAuthenticationCleansUpNormally(t *testing.T) {
 		if len(files) != 0 {
 			t.Fatal("still published", files)
 		}
-		l, err := e.Store.Lock(ctx, sessionRecord(t, e, result.SessionID).Directory, sessionRecord(t, e, result.SessionID).ID)
+		l, err := e.Store.Lock(ctx, result.SessionID)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -12,8 +12,8 @@ import (
 // repair shells must remain available when selected configs or live JSON break.
 func (e *Engine) startAccess(ctx context.Context, lock *store.Locked, c docker.Container, exists bool, r store.Record) (docker.Container, bool, error) {
 	if !exists {
-		return c, false, commanderror.New("container_missing", "Container not found; recreate the session before accessing it.", r.Directory, nil,
-			commanderror.Next("Recreate from current configuration", "recreate", r.Directory))
+		return c, false, commanderror.New("container_missing", "Container not found; recreate the session before accessing it.", r.PublicName(), nil,
+			commanderror.Next("Recreate from current configuration", "recreate", r.PublicName()))
 	}
 	if err := checkDurableStores(lock, r); err != nil {
 		return c, false, err

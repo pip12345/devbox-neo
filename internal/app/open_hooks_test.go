@@ -38,7 +38,7 @@ func TestContinueUsesAppliedHooksWithoutSourceDirectories(t *testing.T) {
 			found = true
 		}
 	}
-	if !found || string(d.Hooks[old.Applied.SetupContainer][path]) != "echo original" {
+	if !found || string(d.Hooks[old.Applied.ContainerID][path]) != "echo original" {
 		t.Fatal("applied hook was not executed")
 	}
 	current := sessionRecord(t, e, made.SessionID)
@@ -57,7 +57,7 @@ func TestOlderContainerRequiresExplicitHookApplicationButAllowsRepair(t *testing
 		t.Fatal(err)
 	}
 	old := sessionRecord(t, e, made.SessionID)
-	delete(d.Hooks, old.Applied.SetupContainer)
+	delete(d.Hooks, old.Applied.ContainerID)
 	write(t, script, "echo current")
 	var failure *commanderror.Error
 	if _, err := e.Open(ctx, openRequest(q)); !errors.As(err, &failure) || failure.Code != "applied_hooks_unavailable" {
@@ -69,7 +69,7 @@ func TestOlderContainerRequiresExplicitHookApplicationButAllowsRepair(t *testing
 	if _, err := e.Recreate(ctx, recreateRequest(q), false); err != nil {
 		t.Fatal(err)
 	}
-	if current := sessionRecord(t, e, made.SessionID); current.Applied.SetupContainer != old.Applied.SetupContainer {
+	if current := sessionRecord(t, e, made.SessionID); current.Applied.ContainerID != old.Applied.ContainerID {
 		t.Fatal("hook application replaced container")
 	}
 	if _, err := e.Open(ctx, openRequest(q)); err != nil {

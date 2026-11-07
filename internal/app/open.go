@@ -29,11 +29,11 @@ func (e *Engine) Open(ctx context.Context, q OpenRequest) (result Result, err er
 	if err != nil {
 		return result, err
 	}
-	result.Session, result.SessionID = r.Directory, r.ID
+	result.Session, result.SessionID = r.PublicName(), r.ID
 	if _, err = store.ProcessIdentity(os.Getpid()); err != nil {
 		return result, err
 	}
-	lock, err := e.Store.Lock(ctx, r.Directory, r.ID)
+	lock, err := e.Store.Lock(ctx, r.ID)
 	if err != nil {
 		return result, err
 	}

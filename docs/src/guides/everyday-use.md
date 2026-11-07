@@ -4,7 +4,7 @@ Run `dbx` on the host. Highlight a session and press **Enter** for its actions.
 
 ## Resume work
 
-Choose **Continue** to resume a conversation, or **Open** for a normal launch. The session list shows **Last active** times. These include recorded operations such as Stop and Exec, not just harness launches.
+Choose **Continue** to resume a conversation, or **Open** for a normal launch.
 
 The harness takes over your terminal. When it exits, acknowledge the result to return. **Ctrl-C** interrupts a foreground operation. In a menu, it exits Devbox. See [keyboard controls](../reference/output.md#interactive-menus) for navigation.
 
@@ -12,7 +12,7 @@ The harness takes over your terminal. When it exits, acknowledge the result to r
 
 Choose **Shell** to work inside the container yourself. It starts in `/workspace`. Type `exit` to return.
 
-Tools installed here survive stop/start, but are lost when the container is recreated. Use a [Dockerfile](customization.md#add-tools) for repeatable installation.
+Tools installed here survive stop/start, but are lost when the container is replaced. Use a [Dockerfile](customization.md#add-tools) for repeatable installation.
 
 ## Select a folder default
 
@@ -41,6 +41,8 @@ dbx exec . -- git status
 ```
 
 The `--` separates Devbox options from the command. Add `--name work` before it to select a named session instead of the default. Use `dbx list` to find sessions and `dbx status .` to inspect one.
+
+**Last active** shows the most recent recorded Devbox operation, including Stop and Exec—not just the last harness launch.
 
 ## Keep services running
 
