@@ -26,9 +26,9 @@ Choose **Recreate → Rebuild image harness layer** to rerun the harness install
 
 For every saved session, use **All-session operations → Recreate all** with the same option, or run `dbx recreate --all --harness`.
 
-This applies current configs and replaces the containers, preserving saved history and project files but losing container-local files and tools. Finish attached commands first. The installer chooses the version, so a custom definition pinned to a version stays pinned.
+Finish attached commands first. This applies current configs and replaces the containers. **Container-local files and tools are lost.** Project files and saved harness history remain.
 
-Native updates inside a session, such as `pi update` or OpenCode's native update command, affect only that container. They survive stop/start but are lost on container replacement. Built-in OpenCode installations keep the shared-auth launcher separate from the native executable so native updates do not replace it.
+Harness updates made inside a container are lost when it is replaced.
 
 ## Restore a missing container
 
