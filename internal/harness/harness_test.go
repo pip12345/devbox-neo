@@ -144,7 +144,7 @@ func TestBuiltinOpenCodeV2(t *testing.T) {
 		t.Fatal("OpenCode must own its installer and wrapper as image files", d.Install)
 	}
 	install := string(h.InstallFiles[d.Install.Script].Data)
-	for _, want := range []string{"curl -fsSL https://opencode.ai/v2/install | bash -s -- --no-modify-path", "opencode-auth.sh", "opencode-native", "nodejs", "setup_22.x"} {
+	for _, want := range []string{"curl -fsSL https://opencode.ai/v2/install | bash -s -- --no-modify-path", "opencode-auth.sh", "$root/bin/opencode", "nodejs", "setup_22.x"} {
 		if !strings.Contains(install, want) {
 			t.Fatal("OpenCode must install stable v2 with Node.js and its shared-auth wrapper", want)
 		}
@@ -155,6 +155,9 @@ func TestBuiltinOpenCodeV2(t *testing.T) {
 		if output, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("invalid OpenCode installation file %s: %v\n%s", name, err, output)
 		}
+	}
+	if !slices.Equal(d.Install.Path, []string{"/home/devuser/.opencode/devbox/bin", "/home/devuser/.opencode/bin", "/home/devuser/.local/bin"}) {
+		t.Fatal("the managed launcher must precede the native installation on PATH", d.Install.Path)
 	}
 	if d.Binary != "opencode" || len(d.Launch.Continue) != 1 || d.Launch.Continue[0] != "-c" {
 		t.Fatal("OpenCode must retain its launch and continuation commands", d)

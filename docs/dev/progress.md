@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Update-safe OpenCode launcher: implemented, live acceptance pending
+
+- OpenCode retains its native executable at `.opencode/bin/opencode`. The image-owned launcher and shared-auth wrapper move to `.opencode/devbox/bin`, ahead of the native directory on PATH, so native installer replacement does not overwrite the launcher. Existing containers adopt this layout through explicit recreation. No persisted format change, compatibility fallback or migration was added.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable). Simulated native upgrade/update and installer replacement regressions preserve the launcher and auth wrapper and select the new native version. These regressions pass three repeated runs. Affected-package vet, CLI build, shell syntax and diff checks pass. Live Docker, real native updates and manual host-terminal acceptance remain unrun.
+
 ## Formatted menu Status screens: implemented, host acceptance pending
 
 - Single-session Status shows grouped changes and all reasons first, then the next command and session/runtime details. All-session Status uses per-session sections instead of a wide text table. Results use green, amber, and red, while reasons remain normal text. Direct CLI text and JSON output are unchanged.

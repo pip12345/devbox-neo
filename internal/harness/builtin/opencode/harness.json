@@ -4,7 +4,7 @@
   "binary": "opencode",
   "install": {
     "script": "install.sh",
-    "path": ["/home/${user}/.opencode/bin", "/home/${user}/.local/bin"]
+    "path": ["/home/${user}/.opencode/devbox/bin", "/home/${user}/.opencode/bin", "/home/${user}/.local/bin"]
   },
   "launch": {"args": [], "continue_args": ["-c"]},
   "env": {"OPENCODE_CONFIG_CONTENT": "{\"update\":\"disable\",\"share\":\"disabled\",\"experimental\":{\"policies\":[{\"action\":\"provider.use\",\"resource\":\"opencode\",\"effect\":\"deny\"}]}}"},

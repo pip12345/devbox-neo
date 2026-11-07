@@ -20,6 +20,10 @@ Use **Force container replacement** to replace an otherwise unchanged container.
 
 If you need to interrupt attached commands, choose **Force replacement even with attached commands**, or run `dbx recreate . --force` from the session's default folder. This always replaces the container and loses its local files and tools. Saved history remains. Automatic sessions stop after replacement. Explicitly started sessions keep running.
 
+## Update the harness
+
+Native updates inside a session, such as `pi update` or OpenCode's native update command, affect only that container. They survive stop/start but are lost on container replacement. Built-in OpenCode installations keep the shared-auth launcher separate from the native executable so native updates do not replace it.
+
 ## Restore a missing container
 
 For a session marked **missing**, choose **Recreate** to build a replacement container from its current configs. Saved harness history is kept. If recreation reports missing files or invalid configs, fix the problem and retry. Then choose **Open** or **Continue**.
