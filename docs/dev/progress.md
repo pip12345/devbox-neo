@@ -8,6 +8,18 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Formatted menu Status screens: implemented, host acceptance pending
+
+- Single-session Status shows grouped changes and all reasons first, then the next command and session/runtime details. All-session Status uses per-session sections instead of a wide text table. Results use green, amber, and red, while reasons remain normal text. Direct CLI text and JSON output are unchanged.
+- Shared field rendering supports section headings and success styling. Next-command eligibility remains shared with direct Status output. Session pane focus keeps the same title and context, and folder menus retain their session count. Inactive browser controls retain their header space without advertising unavailable shortcuts.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable), along with affected-package vet and diff checks. Focus-layout and native pane-navigation regressions pass three repeated runs, confirming stable rows and no additional Docker calls during left/right navigation. Coverage also checks grouped reasons, scrolling, no-color output, stale-default repair, and direct CLI/JSON contracts. Live Docker and manual host-terminal acceptance remain unrun.
+
+## Menu pending-change indicators — implemented, host acceptance pending
+
+- Session lists show a compact amber `↻` for unapplied config changes. The preview and session menu distinguish runtime updates, container recreation, and image rebuilds, with a normal-text reason and full details in Status. Running/stopped and folder-default indicators stay independent.
+- One invocation-local snapshot uses the shared status comparison on first display, explicit Refresh, and after operations. Saved edits invalidate it. Session/folder pane navigation reuses the captured result, with no Docker or config comparison on left/right transitions. Failed refreshes retain the displayed inventory without retrying on navigation. Changes are never applied automatically, and config/status failures leave access and repair actions available.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable), along with affected-package vet and diff checks. New regressions pass three repeated runs, covering amber/normal text, narrow/no-color layouts, unchanged default/runtime markers, failure handling, read-only browsing, refreshes, and clearing indicators after explicit recreation, including native-terminal coverage. Live Docker and manual host-terminal acceptance remain unrun.
+
 ## First-session default checkbox — implemented, host acceptance pending
 
 - The creation form preselects Make folder default when saved inventory confirms the workspace has no sessions. Folder changes update the suggestion until an explicit checkbox or CLI flag choice takes priority. Cancellation and build retries retain their existing behavior. Direct CLI creation still requires `--default` to select a default.

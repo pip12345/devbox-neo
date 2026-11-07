@@ -89,6 +89,10 @@ func testNativeBrowserCurrentFolderSelection(t *testing.T, hasDefault bool) {
 		initial, other, navigation = "Zulu", "Alpha", "\x1b[A\r"
 	}
 	targetContainer := sessionRecord(t, e, created.SessionID).Applied.ContainerID
+	otherRecord, err := e.Locate(context.Background(), q.Workspace, other)
+	if err != nil {
+		t.Fatal(err)
+	}
 	attached := make(chan docker.Command, 1)
 	e.Docker.Runner.(*dockertest.Daemon).Attached = func(_ context.Context, c docker.Command) error {
 		if c.Stdin != nil {
@@ -112,28 +116,34 @@ func testNativeBrowserCurrentFolderSelection(t *testing.T, hasDefault bool) {
 	})
 	p.wait("Sessions")
 	p.send("\r")
-	p.wait("Session · " + initial)
-	p.send("\r")
-	p.wait("Press Enter")
-	select {
-	case c := <-attached:
-		if !slices.Contains(c.Args, targetContainer) || c.Args[len(c.Args)-1] != "-c" {
-			t.Fatal("first action did not continue the selected session's harness", c.Args)
+	p.wait("Resume the harness conversation")
+	continueSession := func(container, name string) {
+		t.Helper()
+		p.send("\r")
+		p.wait("Press Enter")
+		select {
+		case c := <-attached:
+			if !slices.Contains(c.Args, container) || c.Args[len(c.Args)-1] != "-c" {
+				t.Fatal("first action did not continue the selected session's harness", name, c.Args)
+			}
+		default:
+			t.Fatal("Enter did not launch the harness")
 		}
-	default:
-		t.Fatal("Enter did not launch the harness")
+		p.send("\r")
+		p.wait(name + " ·")
 	}
-	p.send("\r")
-	p.wait("Session · " + initial)
+	continueSession(targetContainer, initial)
 	p.send("q")
 	p.wait("Browser actions")
 	// Returning from a different session must not reapply the startup highlight.
 	p.send(navigation)
-	p.wait("Session · " + other)
+	p.wait("Resume the harness conversation")
+	continueSession(otherRecord.Applied.ContainerID, other)
 	p.send("q")
 	p.wait("Browser actions")
 	p.send("\r")
-	p.wait("Session · " + other)
+	p.wait("Resume the harness conversation")
+	continueSession(otherRecord.Applied.ContainerID, other)
 	p.send("q")
 	p.wait("Browser actions")
 	p.send("q")

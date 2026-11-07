@@ -42,6 +42,7 @@ type Item struct {
 	Activity                        string
 	Depth                           int
 	Selected, Folder                bool
+	PendingChanges                  bool
 	Fields                          []Field
 	Summary                         []Field
 	Actions                         []Action // Preview only; Open owns the interactive workflow.
@@ -53,8 +54,11 @@ type Item struct {
 type Field struct {
 	Label, Value string
 	Values       []string
+	Group        string
 	Status       bool
+	Success      bool
 	Warning      bool
+	Attention    bool
 }
 
 type Collection struct {
@@ -229,7 +233,11 @@ func (r *Runner) Run(build func() (Screen, error)) error {
 			if page.Collection != nil {
 				plain = make([]Action, 0, len(page.Collection.Items)+len(actions))
 				for _, object := range page.Collection.Items {
-					plain = append(plain, Action{Label: object.Label, Description: object.Description, Selected: object.Selected})
+					label := object.Label
+					if object.PendingChanges {
+						label += " ↻"
+					}
+					plain = append(plain, Action{Label: label, Description: object.Description, Selected: object.Selected})
 				}
 				plain = append(plain, actions...)
 			}
@@ -316,7 +324,13 @@ func (r *Runner) renderPlainPage(page Screen, actions []Action) error {
 			return err
 		}
 	}
-	for _, field := range append(slices.Clone(page.Summary), page.Fields...) {
+	fields := append(slices.Clone(page.Summary), page.Fields...)
+	for i, field := range fields {
+		if field.Group != "" && (i == 0 || field.Group != fields[i-1].Group) {
+			if err := Title(r.Out, Safe(field.Group)); err != nil {
+				return err
+			}
+		}
 		if field.Values != nil {
 			if _, err := fmt.Fprintf(r.Out, "%s:\n", Safe(field.Label)); err != nil {
 				return err

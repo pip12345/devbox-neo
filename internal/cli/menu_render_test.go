@@ -84,7 +84,7 @@ func TestEditUsesNativeMenuAndSavesDefault(t *testing.T) {
 	})
 	p.wait("Browser actions")
 	p.send("\x1b[B\r")
-	p.wait("Session · Main")
+	p.wait("Resume the harness conversation")
 	p.send("/Make folder\r\r")
 	// The saved-state reload may outlast a fixed inter-key delay. Wait for
 	// the refreshed parent controls before sending its exit key.

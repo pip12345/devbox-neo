@@ -14,6 +14,7 @@ import (
 	"devbox/internal/app"
 	"devbox/internal/docker/dockertest"
 	"devbox/internal/environment"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 )
 
@@ -162,7 +163,7 @@ func TestEditFolderMenuSetsAndClearsDefault(t *testing.T) {
 		t.Fatal(out.String(), err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "Session · Second") || !strings.Contains(text, "Make folder default") || !strings.Contains(text, "Clear folder default") || !strings.Contains(text, "[0]  Exit") || !strings.Contains(text, "Cleared default session for ") || strings.Contains(text, "Select a session to edit") {
+	if !strings.Contains(text, "\nSecond\n") || !strings.Contains(text, "Make folder default") || !strings.Contains(text, "Clear folder default") || !strings.Contains(text, "[0]  Exit") || !strings.Contains(text, "Cleared default session for ") || strings.Contains(text, "Select a session to edit") {
 		t.Fatal("edit did not use the browser's session default actions", text)
 	}
 	if selected, err := e.Store.ReadDefault(ctx, q.Workspace); err != nil || selected != nil {
@@ -298,7 +299,7 @@ func TestInteractiveCreationEditsNameAndSourcesBeforeCreating(t *testing.T) {
 			t.Fatal("session creation entered another workflow or suggested a name", text)
 		}
 	}
-	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "[1]  Set session name") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "Session · Fresh") {
+	if !strings.Contains(text, "Session name: Not set") || !strings.Contains(text, "[1]  Set session name") || !strings.Contains(text, "Session name: Fresh") || !strings.Contains(text, "\nFresh\n") {
 		t.Fatal(text)
 	}
 	nameIndex, pickerIndex := strings.Index(text, "Session name (:back cancels): "), strings.Index(text, "Select an existing config")
@@ -341,11 +342,11 @@ func TestInteractiveCreationRedrawsEditableNameInTerminal(t *testing.T) {
 	p.send("\x1b[F\r")
 	p.wait("Press Enter")
 	p.send("\r")
-	p.wait("Session · Fresh")
+	p.wait("Fresh ·")
 	p.send("q")
 	p.finish(done)
 	text := p.output()
-	if !strings.Contains(text, "\x1b[?1049h") || !strings.Contains(text, "Session · Fresh") {
+	if !strings.Contains(text, "\x1b[?1049h") || !strings.Contains(ansi.Strip(text), "Fresh ·") {
 		t.Fatal("creation did not return to the shared session menu", text)
 	}
 	r, err := e.Locate(context.Background(), q.Workspace, "Fresh")
@@ -403,7 +404,7 @@ func TestInteractiveCreationCanChooseSourcesBeforeNameAndChangeName(t *testing.T
 		t.Fatal(out.String(), err)
 	}
 	text := out.String()
-	if !strings.Contains(text, "Error: session name must be") || !strings.Contains(text, "Session name: First") || !strings.Contains(text, "Current name: First") || !strings.Contains(text, "Session · Renamed") || strings.Contains(text, "Session · First") {
+	if !strings.Contains(text, "Error: session name must be") || !strings.Contains(text, "Session name: First") || !strings.Contains(text, "Current name: First") || !strings.Contains(text, "\nRenamed\n") || strings.Contains(text, "\nFirst\n") {
 		t.Fatal("editing the pending name changed the wrong state", text)
 	}
 	for _, local := range []string{"First", "Renamed"} {
@@ -424,9 +425,10 @@ func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
 		args       []string
 		input      string
 		wantPicker bool
+		localName  string
 	}{
-		{"name", []string{"--name", "OnlyName"}, "2\n1\n8\n0\n", true},
-		{"config", []string{"--config", "base"}, "1\nOnlyConfig\n8\n0\n", false},
+		{"name", []string{"--name", "OnlyName"}, "2\n1\n8\n0\n", true, "OnlyName"},
+		{"config", []string{"--config", "base"}, "1\nOnlyConfig\n8\n0\n", false, "OnlyConfig"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, q, _ := namedCLIFixture(t)
@@ -446,7 +448,7 @@ func TestInteractiveCreationPrefillsProvidedInputs(t *testing.T) {
 			if err := cmd.ExecuteContext(ctx); err != nil {
 				t.Fatal(out.String(), err)
 			}
-			if strings.Contains(out.String(), "Select an existing config") != tc.wantPicker || !strings.Contains(out.String(), "Session · Only") {
+			if strings.Contains(out.String(), "Select an existing config") != tc.wantPicker || !strings.Contains(out.String(), "\n"+tc.localName+"\n") {
 				t.Fatal("provided inputs were not retained in the creation overview", out.String())
 			}
 		})

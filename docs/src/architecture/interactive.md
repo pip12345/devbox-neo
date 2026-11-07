@@ -10,7 +10,7 @@ Collections contain objects with stable keys. Each object carries an action prev
 
 Nested workflows share a navigation frame. Foreground operations refresh it after success or failure because partial changes may have occurred. Parent menus retain the updated frame instead of restoring stale inventory. UI snapshots are deep copies and cannot observe that mutation. Restore selection by key, not row index.
 
-Config browsing does not initialize Docker. Session inventory errors remain visible without removing config navigation. Inventory updates are synchronous, not background polling. Refresh failure is reported separately from the operation outcome.
+Config browsing does not initialize Docker. Session inventory errors remain visible without removing config navigation. One invocation-local session snapshot captures `app.StatusAll` on first display, explicit Refresh, and after operations. Saved config/source/default/workspace edits invalidate that snapshot. Session and folder pane navigation reuse it instead of querying Docker or resolving configs again. Screen-rebuild callbacks are not refresh boundaries. Config comparison failures do not block access or repair actions. Partial status reports retain inventory even when image listing fails. Failed refreshes retain the last displayed inventory and report the error separately. Navigation does not retry a failed check. Inventory updates are synchronous, not background polling.
 
 ## Required migrations
 
@@ -71,7 +71,11 @@ Folder rows use the shortest unique path suffix across the complete session inve
 
 ### Visual presentation
 
-Session screens show compact target/lifetime context. Use, Inspect, Container, and Manage group labels appear in a gutter, with one blank row between groups. Shortcut columns sit beside the action text rather than at the pane edge.
+Session previews and focused menus share their title, summary, and context fields. Folder menus retain their session count when focused, while keeping stale-default repair available even without saved sessions. Changing pane focus reserves the header's inactive browser-control row and Tab-hint width, so headings, context, and actions do not move. Browser-only shortcuts remain hidden when inactive. Use, Inspect, Container, and Manage group labels appear in a gutter, with one blank row between groups. Shortcut columns sit beside the action text rather than at the pane edge.
+
+Read-only Status screens use grouped fields rather than a captured CLI text table. The single-session view puts changes and the next command before identity/runtime details. The all-session view groups facts by session. Result colors are green for matching inputs, amber for pending changes, and red for failed comparisons. Reasons remain normal text. Command guidance uses the same eligibility check as direct status output.
+
+Unapplied changes add an amber `↻` beside the session name, independently of default and runtime-state markers. Preview and session-menu notices share their heading and first comparison reason, with further reasons available through Status. Only the heading is amber. Reasons use ordinary text, while config errors retain red diagnostics. Unknown or failed comparisons never claim that recreation is required.
 
 All action labels use the same style regardless of navigation depth. Destructive actions retain red warning text. Selection uses a background, and status/warning colors retain their separate meanings. There are no menu-depth colors, font changes, or text markers. Color-independent markers, scrolling, and narrow-layout tests are part of the interaction contract.
 

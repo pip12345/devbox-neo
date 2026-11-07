@@ -32,7 +32,7 @@ func TestCompactSessionLayoutsFitAndKeepContextAndShortcuts(t *testing.T) {
 					Action{Label: "Change workspace", Group: "Manage"},
 					Action{Label: "Delete", Group: "Manage", Danger: true},
 				)
-				req.page.Title = "Session · Main"
+				req.page.Title = "Main"
 				req.page.Fields = []Field{{Label: "Folder", Value: "/work/project"}}
 				req.page.Summary = []Field{{Value: "pi"}, {Value: "stopped", Status: true}, {Value: "automatic"}}
 				req.page.Actions[0].Description = "Resume the recorded harness conversation"
@@ -42,7 +42,7 @@ func TestCompactSessionLayoutsFitAndKeepContextAndShortcuts(t *testing.T) {
 				m := newTerminalModel(req, color)
 				m.width, m.height = size[0], size[1]
 				text := ansi.Strip(m.View().Content)
-				for _, want := range []string{"Session · Main", "automatic", "/work/project", "▸ Continue", "[c]", "Ctrl-C"} {
+				for _, want := range []string{"Main · pi", "automatic", "/work/project", "▸ Continue", "[c]", "Ctrl-C"} {
 					if !strings.Contains(text, want) {
 						t.Fatal("session layout lost essential context or controls", want, text)
 					}

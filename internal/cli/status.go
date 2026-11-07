@@ -109,18 +109,29 @@ func printStatusDetails(out io.Writer, details app.StatusDetails, steps []comman
 	for _, change := range view.PendingInputChanges {
 		fmt.Fprintf(out, "  - [%s] %s\n", change.Scope, change)
 	}
-	if view.Error == "" && view.Pending == nil && !view.Exists {
+	if statusNeedsRecreate(view) {
 		_, err := fmt.Fprint(out, stepsText(steps))
 		return err
 	}
-	if view.Error == "" && view.ConfigError == "" && view.Pending == nil {
-		switch view.Desired {
-		case environment.RuntimeSync, environment.Recreate, environment.RebuildAndRecreate:
-			_, err := fmt.Fprint(out, stepsText(steps))
-			return err
-		}
-	}
 	return nil
+}
+
+func statusNeedsRecreate(view app.View) bool {
+	if view.Error != "" || view.Pending != nil {
+		return false
+	}
+	if !view.Exists {
+		return true
+	}
+	if view.ConfigError != "" {
+		return false
+	}
+	switch view.Desired {
+	case environment.RuntimeSync, environment.Recreate, environment.RebuildAndRecreate:
+		return true
+	default:
+		return false
+	}
 }
 
 func statusChange(view app.View) string {
@@ -180,7 +191,7 @@ func printStatusList(cmd *cobra.Command, out io.Writer, views []app.View, home s
 				return err
 			}
 		}
-		if view.Error == "" && view.Pending == nil && (!view.Exists || (view.ConfigError == "" && (view.Desired == environment.RuntimeSync || view.Desired == environment.Recreate || view.Desired == environment.RebuildAndRecreate))) {
+		if statusNeedsRecreate(view) {
 			if _, err := fmt.Fprint(out, stepsText(statusRecreateSteps(cmd, view, home))); err != nil {
 				return err
 			}

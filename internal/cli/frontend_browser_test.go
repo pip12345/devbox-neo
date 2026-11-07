@@ -241,7 +241,7 @@ func TestFrontendCreationReturnsToStoppedSessionMenu(t *testing.T) {
 	if err != nil || selected != nil {
 		t.Fatal(selected, err)
 	}
-	if !strings.Contains(out.String(), "Session · Second") || !strings.Contains(out.String(), "Make folder default") {
+	if !strings.Contains(out.String(), "\nSecond\n") || !strings.Contains(out.String(), "Make folder default") {
 		t.Fatal("creation did not land on session menu", out.String())
 	}
 	if f.focusItem != name {

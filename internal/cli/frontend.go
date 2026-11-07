@@ -30,8 +30,11 @@ type frontend struct {
 	s         *resource.Service
 	focusItem string
 	// Keep an explicitly opened folder visible even before it has sessions.
-	knownFolder string
-	sortBy      string
+	knownFolder          string
+	sortBy               string
+	sessionSnapshot      *app.InventoryReport
+	sessionSnapshotErr   error
+	sessionSnapshotDirty bool
 }
 
 func runFrontend(cmd *cobra.Command, engine engineFactory, resources resourceFactory, configs bool) (err error) {
@@ -124,11 +127,7 @@ func (f *frontend) browse(configs bool) error {
 				return f.editConfig(path)
 			}))...)
 		} else {
-			var report app.InventoryReport
-			err := f.loadEngine()
-			if err == nil {
-				report, err = f.e.List(f.m.Context, "")
-			}
+			report, err := f.sessionReport()
 			if err != nil {
 				f.m.Notice("Inventory unavailable: " + displayCell(err.Error()))
 			}
@@ -164,7 +163,7 @@ func (f *frontend) browse(configs bool) error {
 				return err
 			}))...)
 		}
-		refresh := f.action("Refresh", "Reload the current inventory", func() error { return nil })
+		refresh := f.action("Refresh", "Reload the current inventory", func() error { f.invalidateSessions(); return nil })
 		refresh.Shortcut = "r"
 		page.Actions = append(page.Actions, actionGroup("Manage", refresh, f.action("Help and shell integration", "Commands, version and completion scripts", f.help))...)
 		browserActions := page.Actions
@@ -200,8 +199,41 @@ func initialSessionInFolder(collection *cliui.Collection, folder string) string 
 	return ""
 }
 
+func sessionChangeLabel(v app.View) string {
+	if v.Error != "" || v.ConfigError != "" || v.Pending != nil {
+		return ""
+	}
+	switch v.Desired {
+	case environment.RuntimeSync:
+		return "Update pending"
+	case environment.Recreate, environment.RebuildAndRecreate:
+		return statusChange(v)
+	default:
+		return ""
+	}
+}
+
+func sessionChangeFields(v app.View) []cliui.Field {
+	if v.ConfigError != "" {
+		return []cliui.Field{{Label: "Config error", Value: v.ConfigError, Warning: true}}
+	}
+	label := sessionChangeLabel(v)
+	if label == "" {
+		return nil
+	}
+	fields := []cliui.Field{{Label: "Changes", Value: "↻ " + label, Attention: true}}
+	if len(v.PendingInputChanges) > 0 {
+		reason := v.PendingInputChanges[0].String()
+		if len(v.PendingInputChanges) > 1 {
+			reason += fmt.Sprintf(" (+%d more in Status)", len(v.PendingInputChanges)-1)
+		}
+		fields = append(fields, cliui.Field{Label: "Reason", Value: reason})
+	}
+	return fields
+}
+
 func sessionFields(v app.View) []cliui.Field {
-	fields := []cliui.Field{{Label: "Folder", Value: v.Workspace}, {Label: "Last active", Value: activityAge(v.LastActivity, time.Now())}}
+	fields := append(sessionChangeFields(v), cliui.Field{Label: "Folder", Value: v.Workspace}, cliui.Field{Label: "Last active", Value: activityAge(v.LastActivity, time.Now())})
 	if v.Pending != nil {
 		fields = append(fields, cliui.Field{Label: "Transfer", Value: "Pending — use Copy or move", Warning: true})
 	}
@@ -244,7 +276,7 @@ func (f *frontend) sessionCollection(report app.InventoryReport, sortBy string) 
 			state = "error"
 		}
 		return cliui.Item{Key: sessionItemKey(v), Label: label, Description: v.Workspace + " " + v.Harness, Depth: depth,
-			Status: state, Activity: activityAge(v.LastActivity, time.Now()), Selected: v.Default, Fields: sessionFields(v),
+			Status: state, Activity: activityAge(v.LastActivity, time.Now()), Selected: v.Default, PendingChanges: sessionChangeLabel(v) != "", Fields: sessionFields(v),
 			Summary: sessionSummary(v), Actions: f.sessionActions(v),
 			Open: func() error { return f.m.report(f.session(v)) }}
 	}
@@ -306,10 +338,12 @@ func (f *frontend) session(v app.View) error {
 		return err
 	}
 	return f.m.Run(func() (cliui.Screen, error) {
-		// Refresh visible facts without making desired-config health a prerequisite
-		// for stop/delete or other repair operations.
 		var navigation *cliui.Navigation
-		if report, err := f.e.List(f.m.Context, ""); err == nil {
+		report, err := f.sessionReport()
+		if err != nil {
+			f.m.Notice("Could not refresh session status: " + displayCell(err.Error()))
+		}
+		if report.Sessions != nil {
 			navigation = &cliui.Navigation{Collection: *f.sessionCollection(report, f.sortBy), Key: sessionItemKey(v)}
 			found := false
 			for _, row := range append(report.Sessions, report.UnmatchedContainers...) {
@@ -404,6 +438,7 @@ func (f *frontend) sessionActions(v app.View) []cliui.Action {
 				return err
 			}
 			r, err := f.e.SetWorkspace(f.m.Context, target, "", path)
+			f.invalidateSessions()
 			if err == nil {
 				f.m.Receipt("Workspace saved. Recreate explicitly to apply it.\n" + stepsText(scopedSteps(f.cmd, []commanderror.Step{commanderror.Next("Apply workspace", "recreate", r.PublicName())}, f.s.Home)))
 			}
@@ -446,7 +481,7 @@ func (f *frontend) sessionScreen(v app.View, navigation *cliui.Navigation) cliui
 	if label == "" {
 		label = v.Target
 	}
-	return cliui.Screen{Title: "Session · " + displayCell(label), Back: "Back", Actions: f.sessionActions(v), Summary: sessionSummary(v), Fields: []cliui.Field{{Label: "Folder", Value: v.Workspace}}, Navigation: navigation}
+	return cliui.Screen{Title: displayCell(label), Back: "Back", Actions: f.sessionActions(v), Summary: sessionSummary(v), Fields: sessionFields(v), Navigation: navigation}
 }
 
 func (f *frontend) foreground(title string, operation func(context.Context) error) error {
@@ -473,11 +508,8 @@ func (f *frontend) foreground(title string, operation func(context.Context) erro
 	}
 	reviewErr := f.m.ReviewOutput()
 	if f.e != nil && f.m.Context.Err() == nil {
-		report, refreshErr := f.e.List(f.m.Context, "")
-		if refreshErr != nil {
-			f.m.Notice("Could not refresh session state; displayed inventory may be stale: " + displayCell(refreshErr.Error()))
-		} else {
-			f.m.RefreshNavigation(*f.sessionCollection(report, f.sortBy))
+		if _, refreshErr := f.refreshSessions(); refreshErr != nil {
+			f.m.Notice("Could not refresh session state. Displayed inventory may be stale: " + displayCell(refreshErr.Error()))
 		}
 	}
 	return errors.Join(err, reviewErr)
@@ -494,31 +526,23 @@ func (f *frontend) status(target string) error {
 		return err
 	}
 	if target == "" {
-		report, err := f.e.StatusAll(f.m.Context, "")
+		report, err := f.refreshSessions()
 		for _, view := range report.Sessions {
 			f.m.warnings(view.Warnings)
 		}
 		if err != nil {
 			return err
 		}
-		return f.m.View("Status · all sessions", func(out io.Writer) error {
-			if err := printStatusList(f.cmd, out, report.Sessions, f.s.Home); err != nil {
-				return err
-			}
-			if err := printDefaultErrors(out, report.DefaultErrors); err != nil {
-				return err
-			}
-			return printUnmatchedContainers(out, report.UnmatchedContainers)
-		})
+		page := f.statusOverviewScreen(report)
+		return f.m.Run(func() (cliui.Screen, error) { return page, nil })
 	}
 	details, err := f.e.Status(f.m.Context, target, "")
 	f.m.warnings(details.Warnings)
 	if err != nil {
 		return err
 	}
-	return f.m.View("Status", func(out io.Writer) error {
-		return printStatusDetails(out, details, statusRecreateSteps(f.cmd, details.View, f.s.Home))
-	})
+	page := statusDetailsScreen(details, statusRecreateSteps(f.cmd, details.View, f.s.Home))
+	return f.m.Run(func() (cliui.Screen, error) { return page, nil })
 }
 func (f *frontend) editSession(name string) error {
 	if err := f.loadEngine(); err != nil {
@@ -530,6 +554,7 @@ func (f *frontend) editSession(name string) error {
 	}
 	saved, err := sourceChainMenu(f.m, f.e, record, "Back")
 	if saved {
+		f.invalidateSessions()
 		public := record.PublicName()
 		if latest, readErr := f.e.Store.Read(f.m.Context, record.ID); readErr == nil {
 			public = latest.PublicName()
@@ -564,6 +589,7 @@ func (f *frontend) defaultAction(v app.View) cliui.Action {
 		}
 		record.Settings.Workspace = v.Workspace // require the folder shown by the snapshot
 		err = f.e.SetDefault(f.m.Context, record)
+		f.invalidateSessions()
 		if err == nil {
 			f.m.Receipt("Default session for " + displayCell(v.Workspace) + ": " + displayCell(v.LocalName))
 		}
@@ -575,6 +601,7 @@ func (f *frontend) defaultAction(v app.View) cliui.Action {
 
 func (f *frontend) clearDefault(folder string) error {
 	workspace, err := f.e.ClearDefault(f.m.Context, folder)
+	f.invalidateSessions()
 	if err == nil {
 		f.m.Receipt("Cleared default session for " + displayCell(workspace) + ".")
 	}
@@ -591,25 +618,35 @@ func (f *frontend) folder(folder string) error {
 	}
 	f.knownFolder = workspace
 	return f.m.Run(func() (cliui.Screen, error) {
+		report, err := f.sessionReport()
+		if err != nil {
+			f.m.Notice("Could not refresh session status: " + displayCell(err.Error()))
+		}
+		// A saved default can outlive its last session and be absent from inventory.
+		// Keep its explicit repair action available in an otherwise empty folder.
 		selected, defaultErr := f.e.Store.ReadDefault(f.m.Context, workspace)
 		name := "None"
 		if selected != nil {
 			name = selected.ID
 		}
+		count := 0
 		var navigation *cliui.Navigation
-		if report, err := f.e.List(f.m.Context, ""); err == nil {
+		if report.Sessions != nil {
 			navigation = &cliui.Navigation{Collection: *f.sessionCollection(report, f.sortBy), Key: workspace}
 			for _, v := range report.Sessions {
-				if v.Default && v.Workspace == workspace {
-					name = v.LocalName
+				if v.Workspace == workspace {
+					count++
+					if v.Default {
+						name = v.LocalName
+					}
 				}
 			}
 		}
-		fields := []cliui.Field{{Label: "Default", Value: name}}
+		fields := []cliui.Field{{Label: "Default", Value: name}, {Label: "Sessions", Value: fmt.Sprint(count)}}
 		if defaultErr != nil {
 			fields = append(fields, cliui.Field{Label: "Error", Value: defaultErr.Error(), Warning: true})
 		}
-		return cliui.Screen{Title: workspace, Back: "Back", Fields: fields, Navigation: navigation, Actions: f.folderActions(workspace, selected != nil || defaultErr != nil)}, nil
+		return cliui.Screen{Title: displayCell(workspace), Back: "Back", Fields: fields, Navigation: navigation, Actions: f.folderActions(workspace, selected != nil || defaultErr != nil)}, nil
 	})
 }
 func (f *frontend) folderActions(workspace string, hasDefault bool) []cliui.Action {
@@ -628,6 +665,9 @@ func (f *frontend) createConfig() error {
 		return err
 	}
 	_, result, created, err := createConfig(f.m, f.s, "", cwd, home)
+	if created || len(result.Created) > 0 {
+		f.invalidateSessions()
+	}
 	if err != nil {
 		for _, path := range result.Created {
 			f.m.Notice("Created " + displayCell(path))
@@ -658,6 +698,7 @@ func (f *frontend) editConfig(ref string) error {
 	changed := false
 	err = configMenu(f.m, f.s, owner, &changed, "Back")
 	if changed {
+		f.invalidateSessions()
 		f.m.Receipt(configSaveReceipt(f.cmd, f.s.Home, owner.Name))
 	}
 	return err
@@ -707,6 +748,8 @@ func (f *frontend) createSessionFromDraft(draft sessionCreationDraft) error {
 		return false, f.m.report(err)
 	})
 	if err != nil || !proceed {
+		// A cancelled session draft may still have saved a config.
+		f.invalidateSessions()
 		return err
 	}
 	// Return to the saved session without launching its harness.

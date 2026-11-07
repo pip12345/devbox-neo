@@ -146,7 +146,7 @@ func TestNativeRecreateRefreshesNavigationAndRetainsFailedForm(t *testing.T) {
 				f := &frontend{m: m, cmd: cmd, e: e, s: &resource.Service{Home: e.Store.Home}}
 				return f.session(app.View{Target: name})
 			})
-			p.wait("Session · Main")
+			p.wait("Main ·")
 			p.send("/Recreate\r\r")
 			p.wait("Inspect pending changes")
 			if fail {
@@ -166,7 +166,7 @@ func TestNativeRecreateRefreshesNavigationAndRetainsFailedForm(t *testing.T) {
 				}
 				p.send("q")
 			} else {
-				p.wait("Session · Main")
+				p.wait("Main ·")
 				if !strings.Contains(ansi.Strip(p.output()[mark:]), "stopped") {
 					t.Fatal("successful recreate kept missing state", p.output()[mark:])
 				}

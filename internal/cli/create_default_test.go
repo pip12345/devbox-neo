@@ -178,7 +178,7 @@ func TestCreationDefaultFailureOpensSavedSessionInsteadOfRetryingCreate(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "Session · New") || !strings.Contains(out.String(), "dbx edit "+created.PublicName()+" --default") {
+	if !strings.Contains(out.String(), "\nNew\n") || !strings.Contains(out.String(), "dbx edit "+created.PublicName()+" --default") {
 		t.Fatal("post-creation failure lost saved session or repair guidance", out.String())
 	}
 }
@@ -212,7 +212,7 @@ func TestNativeCreationDefaultCheckbox(t *testing.T) {
 	p.send("\x1b[F\r")
 	p.wait("Press Enter")
 	p.send("\r")
-	p.wait("Session · New")
+	p.wait("New ·")
 	selected, err := e.Locate(context.Background(), q.Workspace, "")
 	if err != nil || selected.Settings.LocalName != "New" {
 		t.Fatal("checked creation did not select new session", selected, err)

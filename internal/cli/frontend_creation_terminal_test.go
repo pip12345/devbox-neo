@@ -53,7 +53,7 @@ func TestNativeFirstCreationAndSessionDefaultMenu(t *testing.T) {
 	p.wait("Press Enter")
 	mark := len(p.output())
 	p.send("\r")
-	p.wait("Session · First")
+	p.wait("First ·")
 	if view := ansi.Strip(p.output()[mark:]); !strings.Contains(view, "▸ Continue") {
 		t.Fatal("new session did not start with Continue selected", view)
 	}
