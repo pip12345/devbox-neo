@@ -29,7 +29,7 @@ Successful operation forms close. Failed forms keep their inputs. Editors start 
 
 Completed edits stay saved when you leave. Configs already created remain saved if you cancel a session draft.
 
-Session rows and previews show relative **Last active**, not exclusively last opened. `*` marks the folder default. A yellow-orange `↻` beside a session name marks unapplied config changes. Its preview and menu show **Update pending**, **Recreate needed**, or **Rebuild + recreate needed**, plus a reason. Use **Status** for all reasons and **Refresh** to check external edits. These notices do not apply changes or prevent Open/Continue. Narrow layouts show the active pane or put activity beneath the name.
+Session rows and previews show relative **Last active**, not exclusively last opened. `*` marks the folder default. `↻` marks unapplied config changes. Use **Status** to inspect them and **Refresh** to check for external edits. Narrow layouts show the active pane or put activity beneath the name.
 
 Without full terminal input/output, bare browsers show help. Other redirected/dumb-terminal prompts use numbered choices: `0`/`q` goes back and `:back` cancels text entry. Plain text prompts show non-sensitive current values as context. Blank input submits an empty replacement.
 
@@ -68,8 +68,6 @@ Status shows the public name, workspace, local name, and storage path. Pending w
 Ordinary setting changes show values. Changes to harness configuration directories and Docker build contexts show the affected category, not exact filenames. Missing runtime and invalid configuration are reported separately. A missing image does not make saved state corrupt or trigger replacement of a healthy container.
 
 Single-session status shows reasons and relevant next commands. Active commands include their action, host PID, and attachment start time.
-
-In the menu, Status groups changes, next steps, and runtime details into sections. No changes is green, pending changes are yellow-orange, and errors are red. Reasons use normal text. The all-session screen groups results by session rather than using a wide table.
 
 ## Inventory and status JSON
 

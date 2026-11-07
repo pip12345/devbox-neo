@@ -12,18 +12,18 @@ import (
 )
 
 type recreatePlan struct {
-	lock                           *store.Locked
-	record                         store.Record
-	spec                           environment.Spec
-	container                      docker.Container
-	change                         environment.Change
-	replace, image, running, force bool
+	lock                                    *store.Locked
+	record                                  store.Record
+	spec                                    environment.Spec
+	container                               docker.Container
+	change                                  environment.Change
+	replace, image, harness, running, force bool
 }
 
 // Planning is read-only under the session lock. Bulk application resolves all
 // selected configs before starting; later Docker failures can still be partial.
 func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.Record, q RecreateOptions, image bool) (recreatePlan, error) {
-	p := recreatePlan{lock: lock, record: r, image: image, force: q.Force}
+	p := recreatePlan{lock: lock, record: r, image: image, harness: q.RefreshHarness, force: q.Force}
 	if q.Force {
 		if _, err := lock.LiveLeases(); err != nil {
 			return p, err
@@ -45,7 +45,7 @@ func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.R
 		return p, err
 	}
 	p.change = environment.CompareInputs(r.Applied.Inputs, p.spec.Inputs).Change
-	p.replace = !exists || image || q.ForceContainer || q.Force || p.change == environment.Recreate || p.change == environment.RebuildAndRecreate
+	p.replace = !exists || image || q.RefreshHarness || q.ForceContainer || q.Force || p.change == environment.Recreate || p.change == environment.RebuildAndRecreate
 	if p.replace {
 		if err := e.preflightSecondaryNetworks(ctx, r, p.spec.Settings.Network); err != nil {
 			return p, err
@@ -65,6 +65,8 @@ func (e *Engine) applyRecreate(ctx context.Context, p recreatePlan) (result Resu
 		message = "Replacing the container."
 		if p.image {
 			message = "Building a new image without cache and replacing the container."
+		} else if p.harness {
+			message = "Refreshing the harness installation without cache and replacing the container. Earlier image stages may use cache."
 		} else if p.change == environment.RebuildAndRecreate {
 			message = "Rebuilding the image and replacing the container."
 		}
@@ -80,7 +82,7 @@ func (e *Engine) applyRecreate(ctx context.Context, p recreatePlan) (result Resu
 	if !p.replace {
 		return result, e.applyRuntime(ctx, p)
 	}
-	r, c, err := e.createAs(ctx, p.lock, p.spec, &p.record, creationOptions{image: p.image, force: p.force}, CreationIdentity{})
+	r, c, err := e.createAs(ctx, p.lock, p.spec, &p.record, creationOptions{image: p.image, harness: p.harness, force: p.force}, CreationIdentity{})
 	if err != nil {
 		return result, err
 	}

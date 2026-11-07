@@ -24,7 +24,7 @@ func runtimeMutations(d interface{ History() [][]string }) int {
 }
 
 func TestApplicationPlanPrecedesRuntimeMutations(t *testing.T) {
-	for _, change := range []string{"runtime", "container", "image"} {
+	for _, change := range []string{"runtime", "container", "image", "harness"} {
 		t.Run(change, func(t *testing.T) {
 			e, d, q := fixture(t)
 			ctx := context.Background()
@@ -58,7 +58,9 @@ func TestApplicationPlanPrecedesRuntimeMutations(t *testing.T) {
 				}
 				plans++
 			}
-			result, err := e.Recreate(ctx, recreateRequest(q), false)
+			request := recreateRequest(q)
+			request.Options.RefreshHarness = change == "harness"
+			result, err := e.Recreate(ctx, request, false)
 			if err != nil || plans != 1 || len(result.Diagnostics) != 1 {
 				t.Fatal(result, err)
 			}
@@ -76,6 +78,8 @@ func TestApplicationProgressWording(t *testing.T) {
 		{"runtime", recreatePlan{}, "Updating configuration without replacing the container. It may briefly start or restart."},
 		{"container", recreatePlan{replace: true}, "Replacing the container." + warning},
 		{"image", recreatePlan{replace: true, image: true}, "Building a new image without cache and replacing the container." + warning},
+		{"harness", recreatePlan{replace: true, harness: true}, "Refreshing the harness installation without cache and replacing the container. Earlier image stages may use cache." + warning},
+		{"image-over-harness", recreatePlan{replace: true, image: true, harness: true}, "Building a new image without cache and replacing the container." + warning},
 		{"changed-image", recreatePlan{replace: true, change: environment.RebuildAndRecreate}, "Rebuilding the image and replacing the container." + warning},
 		{"force", recreatePlan{replace: true, force: true}, "Replacing the container." + warning + " Attached commands will be interrupted."},
 	} {

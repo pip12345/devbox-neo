@@ -15,7 +15,7 @@ import (
 )
 
 func TestRecreateChoosesMinimumRequiredWork(t *testing.T) {
-	for _, kind := range []string{"runtime", "container", "image", "force-container", "force-image", "pruned-image", "missing-container"} {
+	for _, kind := range []string{"runtime", "container", "image", "force-container", "force-image", "refresh-harness", "pruned-image", "missing-container"} {
 		t.Run(kind, func(t *testing.T) {
 			e, d, q := fixture(t)
 			ctx := context.Background()
@@ -35,6 +35,8 @@ func TestRecreateChoosesMinimumRequiredWork(t *testing.T) {
 				write(t, filepath.Join(q.Sources[0].Path, "docker/Dockerfile"), "ARG DEVBOX_BASE\nFROM ${DEVBOX_BASE}\n")
 			case "force-container":
 				recreate.Options.ForceContainer = true
+			case "refresh-harness":
+				recreate.Options.RefreshHarness = true
 			case "pruned-image":
 				delete(d.Images, old.Applied.ImageID)
 				delete(d.Images, old.Applied.ImageTag)
@@ -45,7 +47,7 @@ func TestRecreateChoosesMinimumRequiredWork(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantReplacement := kind != "runtime" && kind != "pruned-image"
-			wantBuild := kind == "image" || kind == "force-image"
+			wantBuild := kind == "image" || kind == "force-image" || kind == "refresh-harness"
 			current := sessionRecord(t, e, made.SessionID)
 			if (count(d, "create") > creates) != wantReplacement || (count(d, "build") > builds) != wantBuild {
 				t.Fatal("wrong application level", d.History())

@@ -97,13 +97,13 @@ func TestDeleteScopeControlsPreviewAndExecution(t *testing.T) {
 }
 
 func TestFrontendRecreateAllIncludesSessionsWithoutContainers(t *testing.T) {
-	f, out, _, name := frontendFixture(t, strings.NewReader("5\ny\n"))
+	f, out, _, name := frontendFixture(t, strings.NewReader("6\ny\n"))
 	before := sessionRecord(t, f.e, name)
 	forgetSession(t, f.e, name)
 	if err := f.recreate(""); err != nil {
 		t.Fatal(err, out.String())
 	}
-	for _, label := range []string{"Force container replacement", "Force replacement even with attached commands"} {
+	for _, label := range []string{"Rebuild image harness layer", "Force container replacement", "Force replacement even with attached commands"} {
 		if !strings.Contains(out.String(), label) {
 			t.Fatal("missing recreate option", label, out.String())
 		}

@@ -131,7 +131,7 @@ func TestSessionPendingChangesClearAfterExplicitRecreate(t *testing.T) {
 		{"image", `{"version":1,"harness":"claude"}`, "Rebuild + recreate needed", true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			input := &workflowInput{lines: []string{"12\n", "5\n", "y\n", "0\n"}}
+			input := &workflowInput{lines: []string{"12\n", "6\n", "y\n", "0\n"}}
 			f, out, _, name := frontendFixture(t, input)
 			before := sessionRecord(t, f.e, name)
 			if err := os.WriteFile(filepath.Join(f.s.Home, "configs/base/config.json"), []byte(tt.config), 0600); err != nil {

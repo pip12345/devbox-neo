@@ -261,7 +261,7 @@ func TestOpenCodeBackendFailurePreservesPendingAuth(t *testing.T) {
 }
 
 func TestOpenCodeBackendAdministrationBypassesSynchronization(t *testing.T) {
-	for _, args := range [][]string{{"--version"}, {"service", "get", "port"}} {
+	for _, args := range [][]string{{"--version"}, {"service", "get", "port"}, {"upgrade"}, {"update"}} {
 		f := authTestFixture(t)
 		if output, err := f.command(args...).CombinedOutput(); err != nil {
 			t.Fatalf("native administration: %v: %s", err, output)

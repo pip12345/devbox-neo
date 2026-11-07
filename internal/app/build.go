@@ -78,7 +78,7 @@ func (e *Engine) buildStage(ctx context.Context, stage environment.ImageStage, t
 	return e.Docker.Build(ctx, docker.BuildPlan{Directory: root, Dockerfile: file, Tag: tag, NoCache: force, Installation: e.Store.Installation, Arguments: args}, e.Streams.Err)
 }
 
-func (e *Engine) build(ctx context.Context, s environment.Spec, imageTag string, force bool) (image docker.Image, err error) {
+func (e *Engine) build(ctx context.Context, s environment.Spec, imageTag string, force, refreshHarness bool) (image docker.Image, err error) {
 	occupant, exists, err := e.Docker.TaggedImage(ctx, imageTag)
 	if err != nil {
 		return image, err
@@ -113,7 +113,8 @@ func (e *Engine) build(ctx context.Context, s environment.Spec, imageTag string,
 		if ref != "" {
 			args["DEVBOX_BASE"] = ref
 		}
-		next, err := e.buildStage(ctx, stage, tag, args, force)
+		// Refresh only the final installation stage so custom tools can stay cached.
+		next, err := e.buildStage(ctx, stage, tag, args, force || (final && refreshHarness))
 		if err != nil {
 			return next, err
 		}

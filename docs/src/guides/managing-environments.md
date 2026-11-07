@@ -20,6 +20,16 @@ Use **Force container replacement** to replace an otherwise unchanged container.
 
 If you need to interrupt attached commands, choose **Force replacement even with attached commands**, or run `dbx recreate . --force` from the session's default folder. This always replaces the container and loses its local files and tools. Saved history remains. Automatic sessions stop after replacement. Explicitly started sessions keep running.
 
+## Update the harness
+
+Choose **Recreate → Rebuild image harness layer** to rerun the harness installer while allowing earlier image stages to use cache. From the host CLI, run `dbx recreate <target> --harness`.
+
+For every saved session, use **All-session operations → Recreate all** with the same option, or run `dbx recreate --all --harness`.
+
+Finish attached commands first. This applies current configs and replaces the containers. **Container-local files and tools are lost.** Project files and saved harness history remain.
+
+Harness updates made inside a container are lost when it is replaced.
+
 ## Restore a missing container
 
 For a session marked **missing**, choose **Recreate** to build a replacement container from its current configs. Saved harness history is kept. If recreation reports missing files or invalid configs, fix the problem and retry. Then choose **Open** or **Continue**.
