@@ -46,6 +46,7 @@ type ResolveRequest struct {
 	Host         config.Host
 }
 type RecreateOptions struct {
+	RefreshHarness bool
 	ForceContainer bool
 	Force          bool
 	Host           config.Host

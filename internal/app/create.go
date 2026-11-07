@@ -108,8 +108,9 @@ func (e *Engine) discardUncommittedCreation(ctx context.Context, lock *store.Loc
 }
 
 type creationOptions struct {
-	image bool
-	force bool
+	image   bool
+	harness bool
+	force   bool
 }
 
 // CreationIdentity supplies identity and creation time for a new destination.
@@ -221,7 +222,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 	}
 	var image docker.Image
 	reused := false
-	if previous != nil && !options.image && previous.Applied.Fingerprints.Image == s.Fingerprints.Image {
+	if previous != nil && !options.image && !options.harness && previous.Applied.Fingerprints.Image == s.Fingerprints.Image {
 		available, inspectErr := e.Docker.ImageAvailable(ctx, previous.Applied.ImageID)
 		if inspectErr != nil {
 			return record, c, inspectErr
@@ -236,10 +237,10 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		// Cache eligibility does not authorize adoption. A missing or unowned
 		// image is replaced by a fresh owned build, never executed or mutated.
 		if !reused {
-			image, err = e.build(ctx, s, imageTag, false)
+			image, err = e.build(ctx, s, imageTag, false, false)
 		}
 	} else {
-		image, err = e.build(ctx, s, imageTag, options.image)
+		image, err = e.build(ctx, s, imageTag, options.image, options.harness)
 	}
 	if err != nil {
 		return record, c, err

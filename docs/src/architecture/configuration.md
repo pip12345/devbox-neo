@@ -141,7 +141,7 @@ Pi's managed installer runs as `devuser` under the image-only `/home/devuser/.pi
 
 Execution supplies `DEVBOX_BASE`, `DEVBOX_USER`, `DEVBOX_USER_HOME`, `DEVBOX_WORKSPACE`, `DEVBOX_UID`, and `DEVBOX_GID`. Each custom stage receives the preceding image's unique temporary tag. Docker image layer ancestry verifies that customization retained the supplied base. This is a runtime contract check, not a security sandbox.
 
-Generated boundary/final stages skip only Docker's default-value warning for `DEVBOX_BASE`. The builder always supplies that stage-specific tag, so no static default describes it. Captured stage inputs and generated layer bytes are fingerprinted in order. `--image` disables cache across every controlled stage.
+Generated boundary/final stages skip only Docker's default-value warning for `DEVBOX_BASE`. The builder always supplies that stage-specific tag, so no static default describes it. Captured stage inputs and generated layer bytes are fingerprinted in order. `--image` disables cache across every controlled stage. `--harness` bypasses saved-image reuse and disables Docker cache only for the final installation stage, leaving preparation, custom stages and intervening boundaries cache-eligible. The final stage also reruns any dependencies installed by the harness definition.
 
 Each build stage uses a separate temporary directory. Cleanup verifies image identity and installation ownership before removing all intermediate tags, on success or failure. Source directory permissions are restored in staging and owner access is restored before cleanup. Unchanged image inputs can reuse Docker's build cache across environments. Container-only settings do not independently invalidate image installation.
 

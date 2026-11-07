@@ -8,6 +8,12 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Harness refresh: implemented, live acceptance pending
+
+- `recreate --harness`, including `--all`, bypasses saved-image reuse and reruns only the final harness-install stage without Docker cache. Earlier controlled stages remain cache-eligible. CLI and menu use the same recreation owner, preserving idle checks, saved history, identity and running intent. Full `--image` rebuilds still take precedence.
+- The single-session and all-session Recreate forms expose Refresh harness (replace container), with cache and data-loss consequences before submission. Refresh applies current desired config and replaces containers, not live harness processes.
+- The full `make test-fast` equivalent passes using `.tools/go` (`make` is unavailable), after updating scripted menu selections for the new option. Coverage checks stage-level cache flags, full-image precedence, replacement/image reuse, build failure retention, idle checks, bulk history/lifetime, CLI/menu wiring and cancellation. New regressions pass three repeated runs. Affected-package vet, CLI build/help and diff checks pass. Live Docker and manual host-terminal acceptance remain unrun.
+
 ## Update-safe OpenCode launcher: implemented, live acceptance pending
 
 - OpenCode retains its native executable at `.opencode/bin/opencode`. The image-owned launcher and shared-auth wrapper move to `.opencode/devbox/bin`, ahead of the native directory on PATH, so native installer replacement does not overwrite the launcher. Existing containers adopt this layout through explicit recreation. No persisted format change, compatibility fallback or migration was added.

@@ -112,16 +112,20 @@ func (f *frontend) stop(target string) error {
 	})
 }
 func (f *frontend) recreate(target string) error {
-	noCache, container, force := false, false, false
+	noCache, harness, container, force := false, false, false, false
 	return f.form("Recreate", func() []cliui.Action {
 		actions := actionGroup("Inspect", f.action("Inspect pending changes", "", func() error { return f.status(target) }))
 		actions = append(actions, actionGroup("Options",
+			f.toggle("Refresh harness (replace container)", &harness),
 			f.toggle("Rebuild image without cache", &noCache),
 			f.toggle("Force container replacement", &container),
 			f.toggle("Force replacement even with attached commands", &force),
 		)...)
 		return append(actions, cliui.Action{Label: "Recreate", Group: "Apply", Shortcut: "r", Description: "Apply current config; replace runtime only as needed or explicitly requested", Run: func() (bool, error) {
 			message := "Apply current config? Runtime may restart; if replaced, container-local changes will be lost."
+			if harness && !noCache {
+				message = "Refresh the harness installation and replace the container? Earlier image stages may use cache. Container-local changes will be lost."
+			}
 			if force {
 				message = "Replace the container and interrupt attached commands? Container-local changes will be lost."
 			}
@@ -131,10 +135,10 @@ func (f *frontend) recreate(target string) error {
 			}
 			err = f.foreground("Recreate", func(ctx context.Context) error {
 				if target == "" {
-					_, err := f.e.RecreateAll(ctx, noCache, app.RecreateOptions{ForceContainer: container, Force: force})
+					_, err := f.e.RecreateAll(ctx, noCache, app.RecreateOptions{RefreshHarness: harness, ForceContainer: container, Force: force})
 					return err
 				}
-				_, err := f.e.Recreate(ctx, app.RecreateRequest{Target: target, Options: app.RecreateOptions{ForceContainer: container, Force: force}}, noCache)
+				_, err := f.e.Recreate(ctx, app.RecreateRequest{Target: target, Options: app.RecreateOptions{RefreshHarness: harness, ForceContainer: container, Force: force}}, noCache)
 				return err
 			})
 			if err != nil {

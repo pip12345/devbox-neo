@@ -92,7 +92,7 @@ Recreation selects saved identity and rereads it under the operation lock before
 - Changed image inputs require a build and replacement.
 - A missing image alone does not replace a healthy container.
 
-`--container` forces replacement. `--image` forces an uncached build plus replacement. `--force` permits interruption and always replaces the container. Container-local state is lost only when the container is replaced.
+`--container` forces replacement. `--harness` forces a build with only the final harness-install stage uncached plus replacement. `--image` forces a fully uncached controlled build plus replacement and takes precedence over `--harness`. `--force` permits interruption and always replaces the container. Container-local state is lost only when the container is replaced.
 
 ### Runtime-only application
 

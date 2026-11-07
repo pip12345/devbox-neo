@@ -39,8 +39,8 @@ These browsers require terminal input/output. Otherwise, including `TERM=dumb`, 
 | `shell <target>` | Open a shell in `/workspace` |
 | `exec <target> -- <argv...>` | Run a command without implicit shell parsing |
 | `logs <target> [-f] [--tail N\|all]` | Docker logs (default tail `100`) |
-| `recreate <target> [--container] [--image] [--force]` | Apply current config, replacing the container/image only as needed |
-| `recreate --all [--container] [--image] [--force]` | Apply current config to all saved sessions, including missing containers |
+| `recreate <target> [--container] [--harness] [--image] [--force]` | Apply current config, replacing the container/image only as needed |
+| `recreate --all [--container] [--harness] [--image] [--force]` | Apply current config to all saved sessions, including missing containers |
 
 Creation selects a folder default only when requested and never launches the harness. In a terminal, missing name/config inputs open the creation form. Scripts must supply both. Container settings belong in configs, not `create` flags.
 
@@ -49,8 +49,9 @@ Only `recreate` replaces a missing container. `open`, `start`, `shell`, `exec`, 
 Recreate keeps saved history and the previous running/stopped state, but may briefly restart the container. **Container replacement loses local files and tools.**
 
 - `--container` forces container replacement.
-- `--image` forces an uncached image build and container replacement.
-- Neither option permits interruption of attached commands.
+- `--harness` reruns the harness installation without cache and replaces the container. Earlier image stages, including custom Dockerfiles, may use cache.
+- `--image` forces an uncached build of every controlled image stage and container replacement. It takes precedence over `--harness`.
+- These options do not permit interruption of attached commands.
 - `--force` permits interruption and always replaces the container. After interruption, an automatic session is stopped. An explicitly started session keeps running.
 
 Open and stop/start do not apply config edits. Docker logs are not harness conversation transcripts.

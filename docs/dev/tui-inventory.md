@@ -877,16 +877,19 @@ Rename session
 Recreate
 --------------------------------------------------
 > Inspect pending changes
+  [ ] Refresh harness (replace container)
   [ ] Rebuild image without cache
   [ ] Force container replacement
+  [ ] Force replacement even with attached commands
   Recreate                                        [r]
 ```
 
-Same title/options for a selected session and Recreate all. Both toggles start
+Same title/options for a selected session and Recreate all. All toggles start
 off. Inspect opens single/all Status according to scope. `r` activates the
 Recreate submit row through its normal dispatcher. Submit asks:
 `Apply current config? Runtime may restart; if replaced, container-local
-changes will be lost.` No keeps the form. Yes runs foreground application;
+changes will be lost.` Harness refresh instead names the installation refresh,
+container replacement and earlier-stage cache reuse. No keeps the form. Yes runs foreground application;
 success closes it, failure keeps the selected toggles and refreshed state.
 
 ### Networks

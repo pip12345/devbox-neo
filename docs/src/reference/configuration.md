@@ -136,7 +136,7 @@ Devbox prepares the base image, builds selected Dockerfiles in order, then insta
 | Ignore file | `docker/Dockerfile.dockerignore`, otherwise `docker/.dockerignore` |
 | Context entries | Regular files/directories and permissions. Unignored symlinks/special files are rejected |
 | Build arguments | `DEVBOX_BASE`, `DEVBOX_USER`, `DEVBOX_USER_HOME`, `DEVBOX_WORKSPACE`, `DEVBOX_UID`, `DEVBOX_GID` |
-| Cache | Enabled normally. `recreate --image` disables it for controlled stages |
+| Cache | Enabled normally. `recreate --harness` disables it for the final harness-install stage. `recreate --image` disables it for every controlled stage |
 
 Only `docker/Dockerfile` contributes an image stage. Other config files, harness files, and lifecycle scripts are not build-context inputs. Resolved image settings such as `base_image` still affect the image. Scripts and harness files retain their separate application rules.
 
