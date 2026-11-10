@@ -108,7 +108,7 @@ The creation owner retires captured attachment leases only after verified old-ru
 
 ### Bulk application and diagnostics
 
-Bulk application selects saved sessions regardless of container presence, then preflights and captures all selected plans before executing them. Corrupt records and pending transfers block the batch. Incomplete allocations have no saved session and remain for explicit cleanup. Both interfaces use the same application owner.
+`batch.go` owns bulk recreation and networking. It captures saved session identities, then holds each session's lock through reload, validation and execution. Per-session failures do not block other sessions or roll back completed work. Cancellation stops further attempts. Inventory-wide errors prevent execution because the targets cannot be established safely. Incomplete allocations remain for explicit cleanup. Bulk deletion retains its separate whole-selection preflight contract.
 
 Typed plan diagnostics are collected in `Result.Diagnostics` and delivered synchronously through `Engine.OnDiagnostic`. The CLI renders them on stderr before runtime mutation. Callbacks may run under the operation lock and must not reenter session operations.
 

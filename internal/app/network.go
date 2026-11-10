@@ -58,9 +58,16 @@ func (e *Engine) NetworkFacts(ctx context.Context, target, localName string) (Ne
 	}
 	return networkFacts(r, c), nil
 }
-func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name string, connect bool) error {
+func validateSecondaryNetwork(name string) error {
 	if !config.NetworkName.MatchString(name) || name == "default" || name == "host" {
 		return fmt.Errorf("select an existing secondary Docker network by name")
+	}
+	return nil
+}
+
+func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name string, connect bool) error {
+	if err := validateSecondaryNetwork(name); err != nil {
+		return err
 	}
 	r, err := e.Locate(ctx, target, localName)
 	if err != nil {
@@ -79,15 +86,20 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 	if err != nil {
 		return err
 	}
+	_, err = e.changeNetwork(ctx, lock, r, c, exists, name, connect)
+	return err
+}
+
+func (e *Engine) changeNetwork(ctx context.Context, lock *store.Locked, r store.Record, c docker.Container, exists bool, name string, connect bool) (BatchStatus, error) {
 	if !exists && !connect && slices.Contains(r.Settings.SecondaryNetworks, name) {
-		return saveSecondaryNetwork(lock, r, name, false)
+		return BatchSucceeded, saveSecondaryNetwork(lock, r, name, false)
 	}
 	if !exists {
-		return commanderror.New("container_missing", "Container not found.", r.PublicName(), nil,
+		return "", commanderror.New("container_missing", "Container not found.", r.PublicName(), nil,
 			commanderror.Next("Recreate from current configuration", "recreate", r.PublicName()))
 	}
 	if r.Applied.Creation.Network == "host" || c.HostConfig.NetworkMode == "host" {
-		return fmt.Errorf("host-network containers cannot attach secondary networks")
+		return "", commanderror.New("network_host_mode", "Host-network containers cannot attach secondary networks.", r.PublicName(), nil)
 	}
 	facts := networkFacts(r, c)
 	actual := name
@@ -98,34 +110,32 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 		}
 	}
 	if !connect && actual == facts.Primary {
-		return commanderror.New("primary_network_protected", "Cannot disconnect the primary network. Change its configuration first.", r.PublicName(), nil,
+		return "", commanderror.New("primary_network_protected", "Cannot disconnect the primary network. Change its configuration first.", r.PublicName(), nil,
 			commanderror.Next("Then recreate to apply the network change", "recreate", r.PublicName()))
 	}
 	if connect && actual == facts.Primary {
-		return nil
+		return BatchUnchanged, nil
 	}
 	_, attached := facts.Networks[actual]
-	if !connect && !attached && !slices.Contains(r.Settings.SecondaryNetworks, actual) {
-		return fmt.Errorf("network is not attached or saved")
-	}
+	changed := attached != connect || slices.Contains(r.Settings.SecondaryNetworks, actual) != connect
 	if attached != connect {
 		if connect {
-			if err = e.Docker.Network(ctx, name); err != nil {
-				return err
+			if err := e.Docker.Network(ctx, name); err != nil {
+				return "", err
 			}
 		}
-		if err = e.Docker.AttachNetwork(ctx, c, e.owner(r), name, connect); err != nil {
-			return err
+		if err := e.Docker.AttachNetwork(ctx, c, e.owner(r), name, connect); err != nil {
+			return "", err
 		}
 		if connect {
 			// Docker accepts network IDs too. Save the actual name so a later
 			// replacement uses the same naming contract as config networks.
 			live, present, inspectErr := e.inspect(ctx, r)
 			if inspectErr != nil {
-				return inspectErr
+				return "", inspectErr
 			}
 			if !present {
-				return fmt.Errorf("container disappeared after attaching network")
+				return "", fmt.Errorf("container disappeared after attaching network")
 			}
 			for candidate, endpoint := range live.NetworkSettings.Networks {
 				if endpoint.NetworkID == name {
@@ -135,21 +145,59 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 			}
 		}
 	}
-	if err = saveSecondaryNetwork(lock, r, actual, connect); err != nil {
+	if err := saveSecondaryNetwork(lock, r, actual, connect); err != nil {
 		verb := "disconnect"
 		if connect {
 			verb = "connect"
 		}
-		return commanderror.New("network_save_failed", "The Docker attachment is updated, but saving the network choice failed. Retry the command.", r.PublicName(), err,
+		return "", commanderror.New("network_save_failed", "The Docker attachment is updated, but saving the network choice failed. Retry the command.", r.PublicName(), err,
 			commanderror.Next("Save network choice", "network", verb, actual, r.PublicName()))
 	}
 	if c.State.Running {
 		if err := e.refreshNetwork(ctx, r); err != nil {
-			return commanderror.New("network_refresh_failed", "The network attachment change is applied and saved, but refreshing network information inside the container failed. Accessing the session will retry the refresh.", r.PublicName(), err,
+			return "", commanderror.New("network_refresh_failed", "The network attachment change is applied and saved, but refreshing network information inside the container failed. Accessing the session will retry the refresh.", r.PublicName(), err,
 				commanderror.Next("Inspect current network attachments", "network", "inspect", r.PublicName()))
 		}
 	}
-	return nil
+	if changed {
+		return BatchSucceeded, nil
+	}
+	return BatchUnchanged, nil
+}
+
+func (e *Engine) NetworkFactsAll(ctx context.Context) (BatchReport[NetworkFacts], error) {
+	return runSessionBatch(ctx, e, func(ctx context.Context, _ *store.Locked, r store.Record) (BatchResult[NetworkFacts], error) {
+		c, exists, err := e.inspect(ctx, r)
+		if err != nil {
+			return BatchResult[NetworkFacts]{}, err
+		}
+		if !exists {
+			return BatchResult[NetworkFacts]{Status: BatchSkipped, Reason: "Container not found."}, nil
+		}
+		facts := networkFacts(r, c)
+		return BatchResult[NetworkFacts]{Result: &facts}, nil
+	})
+}
+
+func (e *Engine) ChangeNetworkAll(ctx context.Context, name string, connect bool) (BatchReport[NetworkFacts], error) {
+	if err := validateSecondaryNetwork(name); err != nil {
+		return BatchReport[NetworkFacts]{}, err
+	}
+	return runSessionBatch(ctx, e, func(ctx context.Context, lock *store.Locked, r store.Record) (BatchResult[NetworkFacts], error) {
+		c, exists, err := e.inspect(ctx, r)
+		if err != nil {
+			return BatchResult[NetworkFacts]{}, err
+		}
+		if !exists {
+			return BatchResult[NetworkFacts]{Status: BatchSkipped, Reason: "Container not found."}, nil
+		}
+		status, err := e.changeNetwork(ctx, lock, r, c, true, name, connect)
+		var restriction *commanderror.Error
+		if errors.As(err, &restriction) && (restriction.Code == "network_host_mode" || restriction.Code == "primary_network_protected") {
+			return BatchResult[NetworkFacts]{Status: BatchSkipped, Reason: restriction.Message}, nil
+		}
+		return BatchResult[NetworkFacts]{Status: status}, err
+	})
 }
 
 // A recreated network can keep its name while Docker's saved endpoint still

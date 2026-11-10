@@ -39,6 +39,8 @@ Use the other container's network name and service port. Devbox remembers this c
 
 To detach and forget the connection, use `dbx network disconnect backend .`.
 
+To connect all current sessions, use `dbx network connect backend --all`.
+
 ## Check the addresses
 
 From the host, use **Networks** in the session menu or:

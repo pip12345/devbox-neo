@@ -20,8 +20,8 @@ type recreatePlan struct {
 	replace, image, harness, running, force bool
 }
 
-// Planning is read-only under the session lock. Bulk application resolves all
-// selected configs before starting; later Docker failures can still be partial.
+// Planning is read-only under this session's lock. Application consumes this
+// capture without rereading sources, whether invoked alone or within a batch.
 func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.Record, q RecreateOptions, image bool) (recreatePlan, error) {
 	p := recreatePlan{lock: lock, record: r, image: image, harness: q.RefreshHarness, force: q.Force}
 	if q.Force {

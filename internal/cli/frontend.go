@@ -145,7 +145,7 @@ func (f *frontend) browse(configs bool) error {
 			create := f.action("Create session", "", f.createSession)
 			create.Shortcut = "n"
 			create.Group = "Create"
-			all := f.action("All-session operations", "Status, recreate and filtered deletion", f.allSessions)
+			all := f.action("All-session operations", "Status, recreate, networks and filtered deletion", f.allSessions)
 			all.Shortcut = "a"
 			page.Actions = append(page.Actions, create)
 			page.Actions = append(page.Actions, actionGroup("Navigate", all, f.action("Open folder by path", "", func() error {

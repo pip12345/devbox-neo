@@ -291,7 +291,7 @@ func TestNetworkSaveFailureCanBeRetried(t *testing.T) {
 	}
 }
 
-func TestBulkRecreatePreflightsSavedNetworksBeforeAnyReplacement(t *testing.T) {
+func TestBulkRecreateChecksEachSessionsNetworksBeforeReplacement(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	first, err := e.Create(ctx, q)
@@ -312,17 +312,20 @@ func TestBulkRecreatePreflightsSavedNetworksBeforeAnyReplacement(t *testing.T) {
 		}
 		return nil
 	}
-	before := runtimeMutations(d)
-	if _, err := e.RecreateAll(ctx, true, RecreateOptions{ForceContainer: true}); err == nil {
-		t.Fatal("bulk preflight ignored missing saved network")
+	beforeFirst := sessionRecord(t, e, first.SessionID)
+	beforeSecond := sessionRecord(t, e, second.SessionID)
+	report, err := e.RecreateAll(ctx, true, RecreateOptions{ForceContainer: true})
+	if err == nil || !slices.Equal(successfulSessions(report), []string{first.Session}) {
+		t.Fatal("missing saved network blocked unrelated recreation or was not reported", report, err)
 	}
-	if runtimeMutations(d) != before {
-		t.Fatal("bulk recreation mutated runtime before all networks passed preflight")
+	if sessionRecord(t, e, first.SessionID).Applied.ContainerID == beforeFirst.Applied.ContainerID {
+		t.Fatal("healthy session was not replaced")
 	}
-	for _, id := range []string{first.SessionID, second.SessionID} {
-		if _, exists := sessionSnapshot(t, e, id); !exists {
-			t.Fatal("preflight removed a container")
-		}
+	if after := sessionRecord(t, e, second.SessionID); after.Applied.ContainerID != beforeSecond.Applied.ContainerID {
+		t.Fatal("failed network preflight changed the session container")
+	}
+	if _, exists := sessionSnapshot(t, e, second.SessionID); !exists {
+		t.Fatal("failed network preflight removed its container")
 	}
 }
 

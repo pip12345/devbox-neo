@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Best-effort session batches and all-session networks: implemented, live acceptance pending
+
+- Shared best-effort execution now serves `recreate --all` and all-session network CLI/UI operations. Individual failures no longer block unrelated sessions. Bulk deletion is unchanged.
+- Full fast-suite equivalent, repeated regressions, vet and CLI build/help checks pass. Race checks were blocked by the missing C compiler. Live Docker and manual host-terminal acceptance remain unrun.
+
 ## Network failure diagnostics: implemented, live acceptance pending
 
 - Failed startup checks actual attached network IDs and reports unavailable endpoints with inspection and explicit container-recreation guidance. Healthy access still skips network preflight, and diagnosis never reconnects or recreates anything.

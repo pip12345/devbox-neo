@@ -163,7 +163,7 @@ func TestHarnessRefreshAllPreservesHistoryAndLifetime(t *testing.T) {
 	}
 	builds := count(d, "build")
 	applied, err := e.RecreateAll(ctx, false, RecreateOptions{RefreshHarness: true})
-	if err != nil || len(applied) != len(records) || count(d, "build") != builds+2*len(records) {
+	if err != nil || len(applied.Results) != len(records) || count(d, "build") != builds+2*len(records) {
 		t.Fatal("bulk refresh did not build for all selected sessions", applied, err)
 	}
 	for _, before := range records {

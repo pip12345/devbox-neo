@@ -54,6 +54,8 @@ Recreate keeps saved history and the previous running/stopped state, but may bri
 - These options do not permit interruption of attached commands.
 - `--force` permits interruption and always replaces the container. After interruption, an automatic session is stopped. An explicitly started session keeps running.
 
+`recreate --all` continues after per-session failures and keeps completed changes. Failures or cancellation return a nonzero exit status. Cancellation stops further attempts.
+
 Open and stop/start do not apply config edits. Docker logs are not harness conversation transcripts.
 
 ### Creation and launch options
@@ -163,8 +165,18 @@ Requires a foreground host terminal for authentication. Multiple destinations ma
 | `network env <target> [--get NAME]` | Shell exports, or one raw value |
 | `network connect <network> <target>` | Attach and save an existing secondary network |
 | `network disconnect <network> <target>` | Detach and forget a secondary network |
+| `network inspect --all` | Per-session network facts, failures and summary as JSON |
+| `network connect <network> --all` | Attach and save the network for all eligible current sessions |
+| `network disconnect <network> --all` | Detach and forget the network for all eligible current sessions |
 
-Connections made through dbx survive stop/start and container replacement. Connections added directly through Docker are not saved. The primary network cannot be detached. Host networking rejects port publishing and secondary attachments. Devbox does not create user networks.
+Connections made through dbx survive stop/start and container replacement. Connections added directly through Docker are not saved unless selected with `network connect`. Repeated requests are unchanged once the attachment and saved choice match. The primary network cannot be detached. Host networking rejects port publishing and secondary attachments. Devbox does not create user networks.
+
+Network `--all`:
+
+- Selects current sessions in the chosen home. Cannot combine with a target or `--name`.
+- Never starts or recreates containers.
+- Skips missing containers. Connect/disconnect also skips host-network containers and primary-network disconnects.
+- Continues after failures and keeps completed changes. Failures or cancellation return a nonzero exit status. Cancellation stops further attempts.
 
 Exports include `DEVBOX_HOST`, `DEVBOX_NETWORK`, `DEVBOX_PRIMARY_NETWORK`, and `DEVBOX_DEFAULT_GATEWAY_IP`. Container copies live under `/devbox/network/` and refresh during Devbox access/preparation and network changes.
 

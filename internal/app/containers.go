@@ -281,39 +281,17 @@ func (e *Engine) orphanOwner(c docker.Container) (docker.Owner, error) {
 	}
 	return owner, c.Verify(owner)
 }
-func (e *Engine) RecreateAll(ctx context.Context, image bool, options RecreateOptions) ([]string, error) {
+func (e *Engine) RecreateAll(ctx context.Context, image bool, options RecreateOptions) (BatchReport[Result], error) {
 	if options.Host == nil {
 		options.Host = config.Snapshot()
 	}
-	targets, err := e.selectSavedSessions(ctx)
-	if err != nil {
-		return nil, err
-	}
-	locks, err := targets.lock(ctx, e.Store)
-	if err != nil {
-		return nil, err
-	}
-	defer store.CloseAll(locks)
-	planned := []recreatePlan{}
-	for _, lock := range locks {
-		r, err := lock.Load()
-		if err != nil {
-			return nil, err
-		}
+	return runSessionBatch(ctx, e, func(ctx context.Context, lock *store.Locked, r store.Record) (BatchResult[Result], error) {
 		plan, err := e.planRecreate(ctx, lock, r, options, image)
 		e.reportWarnings(plan.spec.Warnings)
 		if err != nil {
-			return nil, err
+			return BatchResult[Result]{}, err
 		}
-		planned = append(planned, plan)
-	}
-	applied := []string{}
-	for _, item := range planned {
-		result, err := e.applyRecreate(ctx, item)
-		if err != nil {
-			return applied, err
-		}
-		applied = append(applied, result.Session)
-	}
-	return applied, nil
+		result, err := e.applyRecreate(ctx, plan)
+		return BatchResult[Result]{Result: &result}, err
+	})
 }

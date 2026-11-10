@@ -44,10 +44,11 @@ func TestRecreateAllIncludesMissingRuntimeAndPreservesSessionState(t *testing.T)
 		records = append(records, r)
 	}
 	builds := count(d, "build")
-	applied, err := e.RecreateAll(ctx, false, RecreateOptions{})
+	report, err := e.RecreateAll(ctx, false, RecreateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	applied := successfulSessions(report)
 	sort.Slice(records, func(i, j int) bool { return records[i].Directory < records[j].Directory })
 	var want []string
 	for _, before := range records {
@@ -68,6 +69,7 @@ func TestRecreateAllIncludesMissingRuntimeAndPreservesSessionState(t *testing.T)
 			t.Fatal("bulk recreation changed saved history")
 		}
 	}
+	sort.Strings(want)
 	if !reflect.DeepEqual(applied, want) || count(d, "build") != builds {
 		t.Fatal("bulk recreation missed sessions or rebuilt compatible images", applied, want)
 	}
@@ -77,7 +79,7 @@ func TestRecreateAllIncludesMissingRuntimeAndPreservesSessionState(t *testing.T)
 	}
 }
 
-func TestRecreateAllPreflightsSavedSessionsBeforeMutation(t *testing.T) {
+func TestRecreateAllContinuesAfterPerSessionPreflightFailures(t *testing.T) {
 	for _, issue := range []string{"corrupt", "duplicate identity", "missing store", "active command"} {
 		t.Run(issue, func(t *testing.T) {
 			e, d, q := fixture(t)
@@ -124,18 +126,21 @@ func TestRecreateAllPreflightsSavedSessionsBeforeMutation(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			before := runtimeMutations(d)
-			if _, err := e.RecreateAll(ctx, false, RecreateOptions{}); err == nil {
-				t.Fatal("invalid saved session did not block the batch")
+			report, err := e.RecreateAll(ctx, false, RecreateOptions{})
+			if err == nil || len(report.Results) != 2 || len(successfulSessions(report)) != 1 {
+				t.Fatal("invalid saved session blocked independent work or disappeared from results", report, err)
 			}
-			if runtimeMutations(d) != before {
-				t.Fatal("bulk recreation mutated runtime before full preflight")
+			if _, exists := sessionSnapshot(t, e, records[0].ID); !exists {
+				t.Fatal("healthy session was not recreated")
+			}
+			if _, exists := d.Snapshot(broken.Applied.Creation.Name); exists {
+				t.Fatal("failed session was recreated")
 			}
 		})
 	}
 }
 
-func TestRecreateAllBlocksPendingTransfer(t *testing.T) {
+func TestRecreateAllReportsPendingTransferAndContinues(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	made, err := e.Create(ctx, q)
@@ -152,11 +157,19 @@ func TestRecreateAllBlocksPendingTransfer(t *testing.T) {
 		t.Fatal("transfer failure injection did not leave pending work")
 	}
 	d.Fail = nil
-	before := runtimeMutations(d)
-	_, err = e.RecreateAll(ctx, false, RecreateOptions{})
+	q.LocalName = "independent"
+	independent, err := e.Create(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forgetSession(t, e, independent.SessionID)
+	report, err := e.RecreateAll(ctx, false, RecreateOptions{})
 	var pending *commanderror.Error
-	if !errors.As(err, &pending) || pending.Code != "pending_transfer" || runtimeMutations(d) != before {
-		t.Fatal("pending transfer did not block bulk recreation", err)
+	if !errors.As(err, &pending) || pending.Code != "pending_transfer" || !reflect.DeepEqual(successfulSessions(report), []string{independent.Session}) {
+		t.Fatal("pending transfer blocked unrelated sessions or was not reported", report, err)
+	}
+	if _, exists := sessionSnapshot(t, e, independent.SessionID); !exists {
+		t.Fatal("independent session was not recreated")
 	}
 }
 
@@ -177,7 +190,7 @@ func TestRecreateAllDoesNotAdoptContainersOrIncompleteAllocations(t *testing.T) 
 	marker := filepath.Join(e.Store.Home, "sessions/dbx-incomplete/marker")
 	write(t, marker, "retain")
 	applied, err := e.RecreateAll(ctx, false, RecreateOptions{})
-	if err != nil || len(applied) != 1 || applied[0] != made.Session {
+	if err != nil || !reflect.DeepEqual(successfulSessions(applied), []string{made.Session}) {
 		t.Fatal("bulk recreation selected something other than saved sessions", applied, err)
 	}
 	if got, exists := d.Snapshot("dbx-unmatched"); !exists || !reflect.DeepEqual(got, c) || string(getFile(t, marker)) != "retain" {

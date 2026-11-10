@@ -113,7 +113,7 @@ func getFile(t *testing.T, p string) []byte {
 	}
 	return b
 }
-func TestRecreateAllPreflightsAndPreservesRunningIntent(t *testing.T) {
+func TestRecreateAllPreservesRunningIntent(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
 	a, err := e.Create(ctx, q)
@@ -130,7 +130,7 @@ func TestRecreateAllPreflightsAndPreservesRunningIntent(t *testing.T) {
 	}
 	before := sessionRecord(t, e, a.SessionID).Applied.ContainerID
 	result, err := e.RecreateAll(ctx, true, RecreateOptions{})
-	if err != nil || len(result) != 2 {
+	if err != nil || len(result.Results) != 2 {
 		t.Fatal(result, err)
 	}
 	first, _ := sessionSnapshot(t, e, a.SessionID)

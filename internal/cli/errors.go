@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"devbox/internal/app"
 	"devbox/internal/commanderror"
 	"github.com/spf13/cobra"
 )
@@ -47,16 +48,7 @@ func Execute(ctx context.Context, root *cobra.Command) int {
 
 func RenderError(cmd *cobra.Command, err error) int {
 	report := describeError(err)
-	home, _ := cmd.Flags().GetString("home")
-	var scope func(*errorReport)
-	scope = func(r *errorReport) {
-		r.Operation = cmd.CommandPath()
-		r.Next = scopedSteps(cmd, r.Next, home)
-		for i := range r.Related {
-			scope(&r.Related[i])
-		}
-	}
-	scope(&report)
+	scopeErrorReport(cmd, &report)
 	asJSON, _ := cmd.Flags().GetBool("json")
 	var writeErr error
 	if asJSON {
@@ -73,6 +65,19 @@ func RenderError(cmd *cobra.Command, err error) int {
 		return exit.ExitCode()
 	}
 	return 1
+}
+
+func scopeErrorReport(cmd *cobra.Command, report *errorReport) {
+	home, _ := cmd.Flags().GetString("home")
+	var scope func(*errorReport)
+	scope = func(r *errorReport) {
+		r.Operation = cmd.CommandPath()
+		r.Next = scopedSteps(cmd, r.Next, home)
+		for i := range r.Related {
+			scope(&r.Related[i])
+		}
+	}
+	scope(report)
 }
 
 func humanErrorText(report errorReport) string {
@@ -96,6 +101,9 @@ func humanErrorText(report errorReport) string {
 }
 
 func describeError(err error) errorReport {
+	if batch, ok := err.(*app.BatchError); ok {
+		return errorReport{Code: "batch_failed", Message: batch.Error()}
+	}
 	if partial, ok := err.(*partialResultError); ok {
 		r := describeError(partial.cause)
 		r.Partial = partial.result

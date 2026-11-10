@@ -205,7 +205,7 @@ func TestRuntimeCutoverPreservesStateAndRebuildsNormally(t *testing.T) {
 	// Untagging can retain a dangling image. Explicit recreation builds a new
 	// owned image from current sources rather than adopting the old image.
 	applied, err := e.RecreateAll(ctx, false, app.RecreateOptions{})
-	if err != nil || len(applied) != 1 || applied[0] != environment.PublicName(old.Settings.Binding, old.ID[:12]) {
+	if err != nil || len(applied.Results) != 1 || applied.Results[0].Session != environment.PublicName(old.Settings.Binding, old.ID[:12]) {
 		t.Fatal("bulk recreation skipped the migrated session", applied, err)
 	}
 	if image := d.Images[old.Applied.ImageID]; image.Config.Labels[docker.Namespace+".managed"] != "" {

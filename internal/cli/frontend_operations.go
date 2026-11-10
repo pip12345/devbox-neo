@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -113,7 +114,11 @@ func (f *frontend) stop(target string) error {
 }
 func (f *frontend) recreate(target string) error {
 	noCache, harness, container, force := false, false, false, false
-	return f.form("Recreate", func() []cliui.Action {
+	title := "Recreate"
+	if target == "" {
+		title = "Recreate all sessions"
+	}
+	return f.form(title, func() []cliui.Action {
 		actions := actionGroup("Inspect", f.action("Inspect pending changes", "", func() error { return f.status(target) }))
 		actions = append(actions, actionGroup("Options",
 			f.toggle("Rebuild image harness layer", &harness),
@@ -129,14 +134,17 @@ func (f *frontend) recreate(target string) error {
 			if force {
 				message = "Replace the container and interrupt attached commands? Container-local changes will be lost."
 			}
+			if target == "" {
+				message = "For all saved sessions: " + message + " Each session is attempted independently; successful changes are kept."
+			}
 			yes, err := f.m.Confirm(message + " [y/N] ")
 			if err != nil || !yes {
 				return false, err
 			}
 			err = f.foreground("Recreate", func(ctx context.Context) error {
 				if target == "" {
-					_, err := f.e.RecreateAll(ctx, noCache, app.RecreateOptions{RefreshHarness: harness, ForceContainer: container, Force: force})
-					return err
+					report, err := f.e.RecreateAll(ctx, noCache, app.RecreateOptions{RefreshHarness: harness, ForceContainer: container, Force: force})
+					return presentBatch(f.cmd, report, err, false)
 				}
 				_, err := f.e.Recreate(ctx, app.RecreateRequest{Target: target, Options: app.RecreateOptions{RefreshHarness: harness, ForceContainer: container, Force: force}}, noCache)
 				return err
@@ -161,16 +169,29 @@ func (f *frontend) logs(target string) error {
 	})
 }
 func (f *frontend) networks(target string) error {
-	return f.form("Networks", func() []cliui.Action {
-		return []cliui.Action{
+	title := "Networks"
+	if target == "" {
+		title = "Networks for all current sessions"
+	}
+	return f.form(title, func() []cliui.Action {
+		actions := []cliui.Action{
 			f.action("Inspect networks", "Addresses, gateways and attachment facts", func() error {
+				if target == "" {
+					report, err := f.e.NetworkFactsAll(f.m.Context)
+					if err != nil && len(report.Results) == 0 {
+						return err
+					}
+					return errors.Join(err, f.jsonView("Network facts · all sessions", batchView(f.cmd, report)))
+				}
 				facts, err := f.e.NetworkFacts(f.m.Context, target, "")
 				if err != nil {
 					return err
 				}
 				return f.jsonView("Network facts", facts)
 			}),
-			f.action("Environment exports", "All values or one selected variable", func() error {
+		}
+		if target != "" {
+			actions = append(actions, f.action("Environment exports", "All values or one selected variable", func() error {
 				facts, err := f.e.NetworkFacts(f.m.Context, target, "")
 				if err != nil {
 					return err
@@ -193,14 +214,20 @@ func (f *frontend) networks(target string) error {
 					}))
 				}
 				return f.form("Network environment", func() []cliui.Action { return actions })
-			}),
-			{Label: "Connect network", Description: "Attach and remember a secondary network across recreation", Run: func() (bool, error) { return f.networkChange(target, true) }},
-			{Label: "Disconnect network", Description: "Detach and forget a secondary network; the primary is protected", Run: func() (bool, error) { return f.networkChange(target, false) }},
+			}))
 		}
+		return append(actions,
+			cliui.Action{Label: "Connect network", Description: "Attach and remember a secondary network across recreation; containers stay running or stopped", Run: func() (bool, error) { return f.networkChange(target, true) }},
+			cliui.Action{Label: "Disconnect network", Description: "Detach and forget a secondary network; primary and host networks are protected", Run: func() (bool, error) { return f.networkChange(target, false) }},
+		)
 	})
 }
 func (f *frontend) networkChange(target string, connect bool) (bool, error) {
-	name, ok, err := f.m.Text(cliui.TextRequest{Prompt: "Docker network name: ", Validate: func(value string) error {
+	prompt := "Docker network name: "
+	if target == "" {
+		prompt = "Docker network name for all current sessions (incompatible or missing containers are skipped): "
+	}
+	name, ok, err := f.m.Text(cliui.TextRequest{Prompt: prompt, Validate: func(value string) error {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("enter a network name")
 		}
@@ -209,7 +236,13 @@ func (f *frontend) networkChange(target string, connect bool) (bool, error) {
 	if err != nil || !ok {
 		return false, err
 	}
-	err = f.foreground("Change network attachment", func(ctx context.Context) error { return f.e.ChangeNetwork(ctx, target, "", name, connect) })
+	err = f.foreground("Change network attachment", func(ctx context.Context) error {
+		if target == "" {
+			report, err := f.e.ChangeNetworkAll(ctx, name, connect)
+			return presentBatch(f.cmd, report, err, false)
+		}
+		return f.e.ChangeNetwork(ctx, target, "", name, connect)
+	})
 	return err == nil, f.m.report(err)
 }
 func (f *frontend) openWithOptions(target string) error {
@@ -378,7 +411,8 @@ func (f *frontend) allSessions() error {
 	return f.form("All-session operations", func() []cliui.Action {
 		return []cliui.Action{
 			f.action("Status for all sessions", "", func() error { return f.status("") }),
-			f.action("Recreate all", "Apply current config to every saved session, including missing containers", func() error { return f.recreate("") }),
+			f.action("Recreate all", "Attempt each saved session independently, including missing containers", func() error { return f.recreate("") }),
+			f.action("Networks for all sessions", "Inspect or change secondary networks for current sessions without starting containers", func() error { return f.networks("") }),
 			f.action("Bulk deletion", "Exact targets or intersecting filters", func() error { return f.delete(nil) }),
 		}
 	})

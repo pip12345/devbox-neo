@@ -66,10 +66,18 @@ func containerCommands(factory engineFactory, localName *string) []*cobra.Comman
 
 func networkCommands(factory engineFactory, localName *string) *cobra.Command {
 	group := &cobra.Command{Use: "network", Short: "Show container networking or connect and disconnect additional networks"}
-	inspect := &cobra.Command{Use: "inspect <folder|session>", Short: "Show the container's networks, IP addresses, and gateways as JSON", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	var inspectAll bool
+	inspect := &cobra.Command{Use: "inspect [folder|session]", Short: "Show container networks, IP addresses, and gateways as JSON", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateBatchTarget(args, inspectAll, *localName); err != nil {
+			return err
+		}
 		e, err := factory(cmd)
 		if err != nil {
 			return err
+		}
+		if inspectAll {
+			report, err := e.NetworkFactsAll(cmd.Context())
+			return presentBatch(cmd, report, err, true)
 		}
 		facts, err := e.NetworkFacts(cmd.Context(), args[0], *localName)
 		if err != nil {
@@ -77,6 +85,7 @@ func networkCommands(factory engineFactory, localName *string) *cobra.Command {
 		}
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(facts)
 	}}
+	inspect.Flags().BoolVar(&inspectAll, "all", false, "Inspect each saved session, reporting missing containers and individual failures")
 	var key string
 	env := &cobra.Command{Use: "env <folder|session>", Short: "Print network variables as shell export commands", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := factory(cmd)
@@ -93,13 +102,23 @@ func networkCommands(factory engineFactory, localName *string) *cobra.Command {
 	group.AddCommand(sessionNameFlag(inspect, localName), sessionNameFlag(env, localName))
 	for _, action := range []string{"connect", "disconnect"} {
 		action := action
-		group.AddCommand(sessionNameFlag(&cobra.Command{Use: action + " <network> <folder|session>", Short: action + " a secondary Docker network and update the session's saved connections", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		var all bool
+		cmd := &cobra.Command{Use: action + " <network> [folder|session]", Short: action + " a secondary Docker network and update saved connections", Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateBatchTarget(args[1:], all, *localName); err != nil {
+				return err
+			}
 			e, err := factory(cmd)
 			if err != nil {
 				return err
 			}
+			if all {
+				report, err := e.ChangeNetworkAll(cmd.Context(), args[0], action == "connect")
+				return presentBatch(cmd, report, err, false)
+			}
 			return e.ChangeNetwork(cmd.Context(), args[1], *localName, args[0], action == "connect")
-		}}, localName))
+		}}
+		cmd.Flags().BoolVar(&all, "all", false, "Update all current sessions without starting containers; skip incompatible or missing containers")
+		group.AddCommand(sessionNameFlag(cmd, localName))
 	}
 	return group
 }
