@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -143,10 +144,43 @@ func (e *Engine) ChangeNetwork(ctx context.Context, target, localName, name stri
 			commanderror.Next("Save network choice", "network", verb, actual, r.PublicName()))
 	}
 	if c.State.Running {
-		return e.refreshNetwork(ctx, r)
+		if err := e.refreshNetwork(ctx, r); err != nil {
+			return commanderror.New("network_refresh_failed", "The network attachment change is applied and saved, but refreshing network information inside the container failed. Accessing the session will retry the refresh.", r.PublicName(), err,
+				commanderror.Next("Inspect current network attachments", "network", "inspect", r.PublicName()))
+		}
 	}
 	return nil
 }
+
+// A recreated network can keep its name while Docker's saved endpoint still
+// refers to the removed ID. Diagnose actual endpoints, not desired config or
+// names alone, and only after startup fails so healthy access stays independent.
+func (e *Engine) diagnoseStartNetworks(ctx context.Context, c docker.Container, r store.Record, startErr error) error {
+	if ctx.Err() != nil {
+		return startErr
+	}
+	names := make([]string, 0, len(c.NetworkSettings.Networks))
+	for name := range c.NetworkSettings.Networks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		id := c.NetworkSettings.Networks[name].NetworkID
+		if id == "" {
+			id = name
+		}
+		if err := e.Docker.Network(ctx, id); err != nil {
+			if ctx.Err() != nil {
+				return startErr
+			}
+			return commanderror.New("container_network_unavailable", fmt.Sprintf("Container could not start, and its attached Docker network %q cannot be inspected. If the network was removed or replaced, restore it or update network choices, then recreate the container.", name), r.PublicName(), errors.Join(startErr, err),
+				commanderror.Step{Command: []string{"docker", "network", "inspect", id}, Reason: "Check the attached Docker network"},
+				commanderror.Next("After fixing network choices, recreate the container (container-local files are lost)", "recreate", "--container", r.PublicName()))
+		}
+	}
+	return startErr
+}
+
 func saveSecondaryNetwork(lock *store.Locked, r store.Record, name string, connect bool) error {
 	if slices.Contains(r.Settings.SecondaryNetworks, name) == connect {
 		return nil

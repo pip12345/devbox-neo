@@ -8,6 +8,12 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Network failure diagnostics: implemented, live acceptance pending
+
+- Failed startup checks actual attached network IDs and reports unavailable endpoints with inspection and explicit container-recreation guidance. Healthy access still skips network preflight, and diagnosis never reconnects or recreates anything.
+- A failed in-container facts refresh after a secondary-network change now reports that the attachment change is applied and saved. The next session access retries the refresh without reconciling attachments.
+- The full fast-suite equivalent passes using `.tools/go` (`make` is unavailable). Regressions cover stale primary/secondary IDs across access commands, unrelated failures, cancellation, retained Docker exit status and saved state, and connect/disconnect refresh failures without stopping the container. Live Docker and the reported one-off failure remain unverified.
+
 ## Harness refresh: implemented, live acceptance pending
 
 - `recreate --harness`, including `--all`, bypasses saved-image reuse and reruns only the final harness-install stage without Docker cache. Earlier controlled stages remain cache-eligible. CLI and menu use the same recreation owner, preserving idle checks, saved history, identity and running intent. Full `--image` rebuilds still take precedence.

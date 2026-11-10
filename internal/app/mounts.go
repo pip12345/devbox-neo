@@ -22,7 +22,10 @@ func (e *Engine) start(ctx context.Context, c docker.Container, r store.Record) 
 	if err := e.syncRestart(ctx, c, r); err != nil {
 		return err
 	}
-	return e.Docker.Start(ctx, c, e.owner(r))
+	if err := e.Docker.Start(ctx, c, e.owner(r)); err != nil {
+		return e.diagnoseStartNetworks(ctx, c, r, err)
+	}
+	return nil
 }
 
 // Mounts hide image directories. Nested mount parents must therefore exist in
