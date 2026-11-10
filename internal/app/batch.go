@@ -17,8 +17,6 @@ type BatchResult[T any] struct {
 	Reason  string      `json:"reason,omitempty"`
 	Result  *T          `json:"result,omitempty"`
 	Err     error       `json:"-"`
-	// A successful phase need not finish the target's whole operation.
-	complete bool
 }
 
 type BatchReport[T any] struct {
@@ -34,56 +32,64 @@ func (e *BatchError) Error() string {
 }
 func (e *BatchError) Unwrap() []error { return e.Causes }
 
-// Selection and lock lifetimes belong to operation owners. The executor only
-// tracks outcomes, including partial results across a multi-phase operation.
-type batch[T any] struct {
-	targets selectedTargets
-	report  BatchReport[T]
+type batchEntry[T any] struct {
+	target  SelectedTarget
+	outcome BatchResult[T]
 }
 
-func newBatch[T any](targets selectedTargets) *batch[T] {
-	b := &batch[T]{targets: targets, report: BatchReport[T]{Results: make([]BatchResult[T], len(targets))}}
-	for i, target := range targets {
-		b.report.Results[i] = BatchResult[T]{Session: target.name, Err: target.err}
-		if target.err != nil {
-			b.report.Results[i].Status = BatchFailed
-		}
+func newBatchEntry[T any](selection targetSelection) batchEntry[T] {
+	return batchEntry[T]{target: selection.target, outcome: BatchResult[T]{Session: selection.target.name, Err: selection.err}}
+}
+
+func newBatchEntries[T any](selections selectedTargets) []*batchEntry[T] {
+	items := make([]*batchEntry[T], 0, len(selections))
+	for _, selection := range selections {
+		item := newBatchEntry[T](selection)
+		items = append(items, &item)
 	}
-	return b
+	return items
 }
 
-// Completed, failed or skipped targets never advance into later phases. A callback keeps
-// its result payload even on failure, since earlier effects may have committed.
-func (b *batch[T]) run(ctx context.Context, operation func(context.Context, SelectedTarget, *BatchResult[T]) error) {
-	for i, target := range b.targets {
-		item := &b.report.Results[i]
-		if item.complete || item.Err != nil || item.Status == BatchSkipped {
+func (e *batchEntry[T]) batchOutcome() *BatchResult[T] { return &e.outcome }
+
+type batchItem[T any] interface {
+	batchOutcome() *BatchResult[T]
+}
+
+// Operation owners supply the eligible work for each phase. The executor does
+// not own phase progress or infer completion from a successful callback.
+func runBatch[T any, I batchItem[T]](ctx context.Context, items []I, operation func(context.Context, I) error) {
+	for _, item := range items {
+		outcome := item.batchOutcome()
+		if outcome.Err != nil || outcome.Status == BatchSkipped {
 			continue
 		}
 		if ctx.Err() != nil {
-			item.Status, item.Reason = BatchSkipped, "Not completed: batch cancelled."
+			outcome.Status, outcome.Reason = BatchSkipped, "Not completed: batch cancelled."
 			continue
 		}
-		if err := operation(ctx, target, item); err != nil {
-			item.Status, item.Err = BatchFailed, err
-		} else if item.Status == "" {
-			item.Status = BatchSucceeded
-		}
+		outcome.Err = operation(ctx, item)
 	}
 }
 
-func (b *batch[T]) err(ctx context.Context) error {
+func reportBatch[T any, I batchItem[T]](ctx context.Context, items []I) (BatchReport[T], error) {
+	report := BatchReport[T]{Results: make([]BatchResult[T], 0, len(items))}
 	var failures []error
-	for _, item := range b.report.Results {
-		if item.Err != nil {
-			failures = append(failures, item.Err)
+	for _, item := range items {
+		outcome := *item.batchOutcome()
+		if outcome.Err != nil {
+			outcome.Status = BatchFailed
+			failures = append(failures, outcome.Err)
+		} else if outcome.Status == "" {
+			outcome.Status = BatchSucceeded
 		}
+		report.Results = append(report.Results, outcome)
 	}
 	if ctx.Err() != nil {
 		failures = append(failures, ctx.Err())
 	}
 	if len(failures) > 0 {
-		return &BatchError{Causes: failures}
+		return report, &BatchError{Causes: failures}
 	}
-	return nil
+	return report, nil
 }

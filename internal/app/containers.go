@@ -234,22 +234,22 @@ func (e *Engine) RecreateAll(ctx context.Context, image bool, options RecreateOp
 	if err != nil {
 		return BatchReport[Result]{}, err
 	}
-	b := newBatch[Result](targets)
-	b.run(ctx, func(ctx context.Context, target SelectedTarget, item *BatchResult[Result]) error {
-		lock, r, err := e.lockSelectedSession(ctx, target)
+	items := newBatchEntries[Result](targets)
+	runBatch(ctx, items, func(ctx context.Context, item *batchEntry[Result]) error {
+		lock, r, err := e.lockSelectedSession(ctx, item.target)
 		if err != nil {
 			return err
 		}
 		defer lock.Close()
-		item.Session = r.PublicName()
+		item.outcome.Session = r.PublicName()
 		plan, err := e.planRecreate(ctx, lock, r, options, image)
 		e.reportWarnings(plan.spec.Warnings)
 		if err != nil {
 			return err
 		}
 		result, err := e.applyRecreate(ctx, plan)
-		item.Result = &result
+		item.outcome.Result = &result
 		return err
 	})
-	return b.report, b.err(ctx)
+	return reportBatch(ctx, items)
 }

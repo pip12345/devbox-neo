@@ -23,33 +23,34 @@ func (e *Engine) incompleteDeletionTargets(ctx context.Context, options DeleteOp
 	if len(options.Selection.IncompleteDirs) > 0 && (remaining.All || remaining.Stopped || options.Orphaned || options.OlderThan > 0 || remaining.LocalName != "") {
 		return nil, remaining, fmt.Errorf("--incomplete-dir cannot combine with session filters or --name")
 	}
-	incomplete := map[string]SelectedTarget{}
+	incomplete := map[string]targetSelection{}
 	for _, name := range options.Selection.IncompleteDirs {
 		directory, err := e.Store.InspectIncompleteDirectory(ctx, name)
 		if err != nil {
-			incomplete[name] = SelectedTarget{name: name, err: err}
+			incomplete[name] = targetSelection{target: SelectedTarget{name: name}, err: err}
 			continue
 		}
 		if directory == nil {
 			path, pathErr := e.Store.RecordPath(name)
 			if pathErr != nil {
-				incomplete[name] = SelectedTarget{name: name, err: pathErr}
+				incomplete[name] = targetSelection{target: SelectedTarget{name: name}, err: pathErr}
 			} else if _, statErr := os.Lstat(path); statErr == nil || !os.IsNotExist(statErr) {
-				incomplete[name] = SelectedTarget{name: name, err: fmt.Errorf("directory contains saved session state; --incomplete-dir cannot remove it: %s", name)}
+				incomplete[name] = targetSelection{target: SelectedTarget{name: name}, err: fmt.Errorf("directory contains saved session state; --incomplete-dir cannot remove it: %s", name)}
 			}
 			continue
 		}
-		incomplete[name] = SelectedTarget{name: name, incomplete: directory}
+		incomplete[name] = targetSelection{target: SelectedTarget{name: name, incomplete: directory}}
 	}
 	for _, target := range options.Selection.Captured {
 		if target.incomplete == nil {
 			remaining.Captured = append(remaining.Captured, target)
 			continue
 		}
+		selection := targetSelection{target: target}
 		if target.sessionID != "" || target.incomplete.Path != filepath.Join(e.Store.Home, "sessions", target.name) {
-			target.err = fmt.Errorf("invalid captured incomplete directory")
+			selection.err = fmt.Errorf("invalid captured incomplete directory")
 		}
-		incomplete[target.name] = target
+		incomplete[target.name] = selection
 	}
 	return orderedTargets(incomplete), remaining, nil
 }

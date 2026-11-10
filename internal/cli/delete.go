@@ -115,7 +115,7 @@ func presentDeleteResult(cmd *cobra.Command, result app.DeleteResult, operationE
 		if operationErr != nil {
 			failure := &batchCommandError{cause: operationErr, batch: output.Batch}
 			if !result.DryRun && result.DeletedCount() > 0 {
-				failure.partial = output
+				failure.partial = result
 			}
 			return failure
 		}
@@ -169,6 +169,9 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 				// changing a default while the form is open must not retarget deletion.
 				targets := slices.Clone(result.Targets)
 				if len(targets) == 0 {
+					if err != nil {
+						return err
+					}
 					return printDeleteResult(cmd.OutOrStdout(), result)
 				}
 				options.Selection = app.Selection{Captured: targets}

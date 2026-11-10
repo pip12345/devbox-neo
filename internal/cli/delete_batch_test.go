@@ -65,6 +65,11 @@ func TestDeleteBatchCLIRetainsResultsAndErrors(t *testing.T) {
 					if report.Batch == nil || len(report.Batch.Results) != 2 || report.Batch.Summary.Failed != 1 || report.Batch.Summary.Succeeded != 1 || (report.Partial != nil) != !dryRun {
 						t.Fatal("JSON hid failures or claimed preview changes were committed", report)
 					}
+					if partial, ok := report.Partial.(map[string]any); ok {
+						if _, duplicate := partial["batch"]; duplicate {
+							t.Fatal("partial result duplicated the top-level batch report")
+						}
+					}
 					if err := decoder.Decode(new(any)); err != io.EOF {
 						t.Fatal("more than one JSON document", err)
 					}

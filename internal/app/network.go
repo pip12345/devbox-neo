@@ -170,27 +170,27 @@ func (e *Engine) NetworkFactsAll(ctx context.Context) (BatchReport[NetworkFacts]
 	if err != nil {
 		return BatchReport[NetworkFacts]{}, err
 	}
-	b := newBatch[NetworkFacts](targets)
-	b.run(ctx, func(ctx context.Context, target SelectedTarget, item *BatchResult[NetworkFacts]) error {
-		lock, r, err := e.lockSelectedSession(ctx, target)
+	items := newBatchEntries[NetworkFacts](targets)
+	runBatch(ctx, items, func(ctx context.Context, item *batchEntry[NetworkFacts]) error {
+		lock, r, err := e.lockSelectedSession(ctx, item.target)
 		if err != nil {
 			return err
 		}
 		defer lock.Close()
-		item.Session = r.PublicName()
+		item.outcome.Session = r.PublicName()
 		c, exists, err := e.inspect(ctx, r)
 		if err != nil {
 			return err
 		}
 		if !exists {
-			item.Status, item.Reason = BatchSkipped, "Container not found."
+			item.outcome.Status, item.outcome.Reason = BatchSkipped, "Container not found."
 			return nil
 		}
 		facts := networkFacts(r, c)
-		item.Result = &facts
+		item.outcome.Result = &facts
 		return nil
 	})
-	return b.report, b.err(ctx)
+	return reportBatch(ctx, items)
 }
 
 func (e *Engine) ChangeNetworkAll(ctx context.Context, name string, connect bool) (BatchReport[NetworkFacts], error) {
@@ -201,31 +201,31 @@ func (e *Engine) ChangeNetworkAll(ctx context.Context, name string, connect bool
 	if err != nil {
 		return BatchReport[NetworkFacts]{}, err
 	}
-	b := newBatch[NetworkFacts](targets)
-	b.run(ctx, func(ctx context.Context, target SelectedTarget, item *BatchResult[NetworkFacts]) error {
-		lock, r, err := e.lockSelectedSession(ctx, target)
+	items := newBatchEntries[NetworkFacts](targets)
+	runBatch(ctx, items, func(ctx context.Context, item *batchEntry[NetworkFacts]) error {
+		lock, r, err := e.lockSelectedSession(ctx, item.target)
 		if err != nil {
 			return err
 		}
 		defer lock.Close()
-		item.Session = r.PublicName()
+		item.outcome.Session = r.PublicName()
 		c, exists, err := e.inspect(ctx, r)
 		if err != nil {
 			return err
 		}
 		if !exists {
-			item.Status, item.Reason = BatchSkipped, "Container not found."
+			item.outcome.Status, item.outcome.Reason = BatchSkipped, "Container not found."
 			return nil
 		}
-		item.Status, err = e.changeNetwork(ctx, lock, r, c, true, name, connect)
+		item.outcome.Status, err = e.changeNetwork(ctx, lock, r, c, true, name, connect)
 		var restriction *commanderror.Error
 		if errors.As(err, &restriction) && (restriction.Code == "network_host_mode" || restriction.Code == "primary_network_protected") {
-			item.Status, item.Reason = BatchSkipped, restriction.Message
+			item.outcome.Status, item.outcome.Reason = BatchSkipped, restriction.Message
 			return nil
 		}
 		return err
 	})
-	return b.report, b.err(ctx)
+	return reportBatch(ctx, items)
 }
 
 // A recreated network can keep its name while Docker's saved endpoint still

@@ -82,9 +82,9 @@ func TestSessionBatchCancellationStopsCallbacksAndReleasesLocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := newBatch[Result](targets)
-	b.run(ctx, func(ctx context.Context, target SelectedTarget, _ *BatchResult[Result]) error {
-		lock, r, err := e.lockSelectedSession(ctx, target)
+	items := newBatchEntries[Result](targets)
+	runBatch(ctx, items, func(ctx context.Context, item *batchEntry[Result]) error {
+		lock, r, err := e.lockSelectedSession(ctx, item.target)
 		if err != nil {
 			return err
 		}
@@ -96,7 +96,7 @@ func TestSessionBatchCancellationStopsCallbacksAndReleasesLocks(t *testing.T) {
 		cancel()
 		return nil
 	})
-	report, err := b.report, b.err(ctx)
+	report, err := reportBatch(ctx, items)
 	if !errors.Is(err, context.Canceled) || calls != 1 || len(report.Results) != 3 || len(successfulSessions(report)) != 1 {
 		t.Fatal("cancellation lost completed work or continued processing", report, err, calls)
 	}
@@ -117,42 +117,43 @@ func TestSessionBatchCancellationStopsCallbacksAndReleasesLocks(t *testing.T) {
 	}
 }
 
-func TestBatchPreservesPartialResultsAndStopsCompletedTargets(t *testing.T) {
+func TestBatchRunsSuppliedWorkAndRetainsPartialResults(t *testing.T) {
 	cause := errors.New("phase failed")
 	selectionErr := errors.New("selection failed")
-	b := newBatch[int](selectedTargets{{name: "a"}, {name: "b"}, {name: "c"}, {name: "invalid", err: selectionErr}})
+	items := newBatchEntries[int](selectedTargets{
+		{target: SelectedTarget{name: "a"}}, {target: SelectedTarget{name: "b"}},
+		{target: SelectedTarget{name: "c"}}, {target: SelectedTarget{name: "invalid"}, err: selectionErr},
+	})
 	ctx := context.Background()
-	b.run(ctx, func(_ context.Context, target SelectedTarget, item *BatchResult[int]) error {
-		if target.name == "invalid" {
+	runBatch(ctx, items, func(_ context.Context, item *batchEntry[int]) error {
+		if item.target.name == "invalid" {
 			t.Fatal("executed failed selection")
 		}
-		item.Result = new(int)
-		*item.Result = 1
+		item.outcome.Result = new(int)
+		*item.outcome.Result = 1
 		return nil
 	})
-	b.run(ctx, func(_ context.Context, target SelectedTarget, item *BatchResult[int]) error {
-		*item.Result++
-		if target.name == "a" {
-			item.complete = true
-		}
-		if target.name == "b" {
+	runBatch(ctx, items, func(_ context.Context, item *batchEntry[int]) error {
+		*item.outcome.Result++
+		if item.target.name == "b" {
 			return cause
 		}
 		return nil
 	})
-	b.run(ctx, func(_ context.Context, target SelectedTarget, item *BatchResult[int]) error {
-		if target.name != "c" {
-			t.Fatal("completed or failed target advanced", target.name)
+	// The owner supplies only work still eligible for another phase.
+	runBatch(ctx, items[1:3], func(_ context.Context, item *batchEntry[int]) error {
+		if item.target.name != "c" {
+			t.Fatal("executed omitted or failed work", item.target.name)
 		}
-		*item.Result++
-		item.complete = true
+		*item.outcome.Result++
 		return nil
 	})
-	if !errors.Is(b.err(ctx), cause) || !errors.Is(b.err(ctx), selectionErr) {
-		t.Fatal(b.err(ctx))
+	report, err := reportBatch(ctx, items)
+	if !errors.Is(err, cause) || !errors.Is(err, selectionErr) {
+		t.Fatal(err)
 	}
-	if *b.report.Results[0].Result != 2 || *b.report.Results[1].Result != 2 || *b.report.Results[2].Result != 3 {
-		t.Fatal("phase transition lost partial results", b.report)
+	if *report.Results[0].Result != 2 || *report.Results[1].Result != 2 || *report.Results[2].Result != 3 {
+		t.Fatal("phase transition lost partial results", report)
 	}
 }
 
