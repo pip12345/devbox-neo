@@ -541,10 +541,16 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 			q := options
 			q.DryRun = true
 			result, err := f.e.Delete(f.m.Context, q)
-			if err != nil {
+			if err != nil && len(result.Batch.Results) == 0 {
 				return err
 			}
-			return f.m.View("Deletion preview", func(out io.Writer) error { return printDeleteResult(out, result) })
+			viewErr := f.m.View("Deletion preview", func(out io.Writer) error {
+				if err := printDeleteResult(out, result); err != nil {
+					return err
+				}
+				return writeBatch(out, out, batchView(f.cmd, result.Batch), false)
+			})
+			return errors.Join(err, viewErr)
 		})
 		preview.Blocked = blocked
 		execute := cliui.Action{Label: "Delete", Run: func() (bool, error) {
@@ -555,10 +561,7 @@ func (f *frontend) deleteWithOptions(options app.DeleteOptions) error {
 				q.Confirm = confirmation.confirm
 				var err error
 				result, err = f.e.Delete(ctx, q)
-				if printErr := printDeleteResult(f.cmd.OutOrStdout(), result); err == nil {
-					err = printErr
-				}
-				return err
+				return presentDeleteResult(f.cmd, result, err, false)
 			})
 			if err != nil {
 				return false, f.m.report(err)

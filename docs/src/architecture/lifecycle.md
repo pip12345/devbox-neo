@@ -108,7 +108,7 @@ The creation owner retires captured attachment leases only after verified old-ru
 
 ### Bulk application and diagnostics
 
-`batch.go` owns bulk recreation and networking. It captures saved session identities, then holds each session's lock through reload, validation and execution. Per-session failures do not block other sessions or roll back completed work. Cancellation stops further attempts. Inventory-wide errors prevent execution because the targets cannot be established safely. Incomplete allocations remain for explicit cleanup. Bulk deletion retains its separate whole-selection preflight contract.
+`batch.go` executes captured targets and collects outcomes across operation phases. Selection, validation and lock lifetimes belong to each operation owner. Recreation and networking lock one session at a time. Deletion retains its lock set across confirmations and both phases. Target-local failures do not block unrelated work or roll back completed effects. Cancellation stops further attempts. Inventory-wide errors prevent execution when targets cannot be established safely.
 
 Typed plan diagnostics are collected in `Result.Diagnostics` and delivered synchronously through `Engine.OnDiagnostic`. The CLI renders them on stderr before runtime mutation. Callbacks may run under the operation lock and must not reenter session operations.
 

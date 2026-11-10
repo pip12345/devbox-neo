@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -29,13 +30,13 @@ type recordExpectation uint8
 const (
 	recordUnchecked recordExpectation = iota
 	recordPresent
-	recordAbsent
 )
 
 // SelectedTarget keeps one resource's lock ownership, record expectation and
 // optional exact runtime together. An absent record still has an owner ID: losing
 // session.json must not bypass the same operation lock or attachment leases.
-// Fields stay private so frontends can retain selections, not manufacture them.
+// Failed selections carry an error, not mutation authority. Fields stay private
+// so frontends can retain selections, not manufacture them.
 type SelectedTarget struct {
 	name        string
 	sessionID   string
@@ -43,6 +44,7 @@ type SelectedTarget struct {
 	containerID string
 	incomplete  *store.IncompleteDirectory
 	unmatched   bool
+	err         error
 }
 
 func (t SelectedTarget) Name() string { return t.name }
@@ -66,127 +68,109 @@ func orderedTargets(targets map[string]SelectedTarget) selectedTargets {
 	sort.Slice(result, func(i, j int) bool { return result[i].name < result[j].name })
 	return result
 }
-func (targets selectedTargets) lock(ctx context.Context, state *store.Store) ([]*store.Locked, error) {
-	seen := map[string]bool{}
-	for _, target := range targets {
-		seen[target.sessionID] = true
-	}
-	var ids []string
-	for id := range seen {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	locks, err := state.LockAll(ctx, ids)
+func (e *Engine) selectSavedSessions(ctx context.Context) (selectedTargets, error) {
+	entries, err := e.Store.Inventory(ctx)
 	if err != nil {
 		return nil, err
 	}
-	byID := map[string]*store.Locked{}
-	for _, lock := range locks {
-		byID[lock.ID] = lock
+	targets := map[string]SelectedTarget{}
+	for _, entry := range entries {
+		if entry.Pending == nil && os.IsNotExist(entry.Err) {
+			continue
+		}
+		target := SelectedTarget{name: entry.Name, err: entry.Err}
+		if entry.Err == nil {
+			target = selectedRecord(entry.Record)
+		}
+		if entry.Pending != nil {
+			target.err = commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", target.name, nil, entry.Pending.RetryStep())
+		}
+		targets[entry.Name] = target
 	}
-	result := make([]*store.Locked, 0, len(targets))
-	for _, target := range targets {
-		result = append(result, byID[target.sessionID])
+	return orderedTargets(targets), nil
+}
+
+func (e *Engine) lockSelectedSession(ctx context.Context, target SelectedTarget) (*store.Locked, store.Record, error) {
+	lock, err := e.Store.Lock(ctx, target.sessionID)
+	if err != nil {
+		return nil, store.Record{}, err
 	}
-	return result, nil
+	r, err := lock.Load()
+	if err != nil {
+		lock.Close()
+		return nil, r, err
+	}
+	return lock, r, nil
 }
 
 func (e *Engine) selectContainers(ctx context.Context, selection Selection) (selectedTargets, error) {
 	exact := len(selection.Targets) > 0 || len(selection.Captured) > 0 || len(selection.ContainerNames) > 0
-	if (selection.All && selection.Stopped) || ((selection.All || selection.Stopped) && exact) || (len(selection.Targets) > 0 && len(selection.Captured) > 0) {
-		return nil, fmt.Errorf("use exact targets, --all, or --stopped, not a combination")
+	if len(selection.Targets) > 0 && len(selection.Captured) > 0 {
+		return nil, fmt.Errorf("use requested or captured targets, not both")
 	}
-	if selection.LocalName != "" && (selection.All || selection.Stopped || len(selection.Captured) > 0 || len(selection.ContainerNames) > 0) {
+	if selection.LocalName != "" && (len(selection.Captured) > 0 || len(selection.ContainerNames) > 0) {
 		return nil, fmt.Errorf("--name requires an explicit folder target")
 	}
 	targets := map[string]SelectedTarget{}
-	if selection.All || selection.Stopped {
-		containers, err := e.Docker.Inventory(ctx, e.Store.Installation)
+	add := func(name string, target *SelectedTarget, err error) {
 		if err != nil {
-			return nil, err
-		}
-		entries, err := e.Store.Inventory(ctx)
-		if err != nil {
-			return nil, err
-		}
-		byContainer := map[string]store.Record{}
-		for _, entry := range entries {
-			if entry.Record.Applied.ContainerID != "" {
-				byContainer[entry.Record.Applied.ContainerID] = entry.Record
-			}
-		}
-		for _, c := range containers {
-			if selection.Stopped && c.State.Running {
-				continue
-			}
-			target := SelectedTarget{name: strings.TrimPrefix(c.Name, "/")}
-			if r, ok := byContainer[c.ID]; ok {
-				target = selectedRecord(r)
-			}
-			if target.sessionID == "" {
-				selected, err := e.selectUnmatchedInstance(ctx, c)
-				if err != nil {
-					return nil, err
-				}
-				target = *selected
-			}
-			targets[target.name] = target
-		}
-	} else {
-		if !exact {
-			return nil, fmt.Errorf("provide a target or an explicit selection flag")
-		}
-		for _, input := range selection.Targets {
-			target, err := e.selectContainer(ctx, input, selection.LocalName)
-			if err != nil {
-				return nil, err
-			}
-			if target != nil {
-				targets[target.name] = *target
-			}
-		}
-		for _, name := range selection.ContainerNames {
-			target, err := e.selectUnmatchedContainer(ctx, name)
-			if err != nil {
-				return nil, err
-			}
-			if target != nil {
-				targets[target.name] = *target
-			}
-		}
-		for _, captured := range selection.Captured {
-			var target *SelectedTarget
-			var err error
-			if captured.unmatched {
-				c, exists, inspectErr := e.Docker.InspectID(ctx, captured.containerID)
-				if inspectErr != nil {
-					return nil, inspectErr
-				}
-				if exists {
-					target, err = e.selectUnmatchedInstance(ctx, c)
-				} else {
-					_, occupied, inspectErr := e.Docker.Inspect(ctx, captured.name)
-					if inspectErr != nil {
-						return nil, inspectErr
-					}
-					if occupied {
-						return nil, fmt.Errorf("selected container instance changed; preview deletion again")
-					}
-				}
-			} else {
-				target, err = e.selectContainer(ctx, captured.selector(), "")
-			}
-			if err != nil {
-				return nil, err
-			}
-			if target == nil {
-				continue
-			}
-			if target.sessionID != captured.sessionID || (captured.containerID != "" && target.containerID != captured.containerID) {
-				return nil, fmt.Errorf("selected target changed; preview deletion again")
-			}
+			targets[name] = SelectedTarget{name: name, err: err}
+		} else if target != nil {
 			targets[target.name] = *target
 		}
+	}
+	if !exact {
+		return nil, fmt.Errorf("provide a target or an explicit selection flag")
+	}
+	for _, input := range selection.Targets {
+		target, err := e.selectContainer(ctx, input, selection.LocalName)
+		add(input, target, err)
+	}
+	for _, name := range selection.ContainerNames {
+		target, err := e.selectUnmatchedContainer(ctx, name)
+		add(name, target, err)
+	}
+	for _, captured := range selection.Captured {
+		if captured.err != nil {
+			targets[captured.name] = captured
+			continue
+		}
+		var target *SelectedTarget
+		var err error
+		if captured.unmatched {
+			c, exists, inspectErr := e.Docker.InspectID(ctx, captured.containerID)
+			if inspectErr != nil {
+				add(captured.name, nil, inspectErr)
+				continue
+			}
+			if exists {
+				target, err = e.selectUnmatchedInstance(ctx, c)
+			} else {
+				_, occupied, inspectErr := e.Docker.Inspect(ctx, captured.name)
+				if inspectErr != nil {
+					add(captured.name, nil, inspectErr)
+					continue
+				}
+				if occupied {
+					add(captured.name, nil, fmt.Errorf("selected container instance changed; preview deletion again"))
+					continue
+				}
+			}
+		} else {
+			target, err = e.selectContainer(ctx, captured.selector(), "")
+		}
+		if err != nil {
+			add(captured.name, nil, err)
+			continue
+		}
+		if target == nil {
+			continue
+		}
+		if target.sessionID != captured.sessionID || (captured.containerID != "" && target.containerID != captured.containerID) {
+			add(captured.name, nil, fmt.Errorf("selected target changed; preview deletion again"))
+			continue
+		}
+		targets[target.name] = *target
 	}
 	return orderedTargets(targets), nil
 }

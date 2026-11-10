@@ -21,6 +21,7 @@ type errorReport struct {
 	Next      []commanderror.Step `json:"next_steps,omitempty"`
 	Related   []errorReport       `json:"related_errors,omitempty"`
 	Partial   any                 `json:"partial_result,omitempty"`
+	Batch     *batchOutput        `json:"batch,omitempty"`
 }
 
 // Partial results are presentation data supplied by the command that knows
@@ -101,6 +102,11 @@ func humanErrorText(report errorReport) string {
 }
 
 func describeError(err error) errorReport {
+	if batch, ok := err.(*batchCommandError); ok {
+		r := describeError(batch.cause)
+		r.Batch, r.Partial = &batch.batch, batch.partial
+		return r
+	}
 	if batch, ok := err.(*app.BatchError); ok {
 		return errorReport{Code: "batch_failed", Message: batch.Error()}
 	}

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"devbox/internal/commanderror"
-	"devbox/internal/store"
 )
 
 func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
@@ -32,7 +31,7 @@ func TestLifecycleGuidanceSeparatesActionsFromErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = e.planSessionDeletion(ctx, []*store.Locked{lock}, false)
+	_, err = e.planSessionDeletion(ctx, lock, false)
 	lock.Close()
 	check(err, "container_present", "delete", result.Session, "--container")
 	err = e.ChangeNetwork(ctx, result.SessionID, "", "bridge", false)

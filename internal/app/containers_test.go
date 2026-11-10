@@ -55,7 +55,7 @@ func TestContainerViewsUseBatchedInventoryAndBrokenConfigDoesNotHideState(t *tes
 		t.Fatal(err)
 	}
 }
-func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
+func TestContainerDeletionPreservesRecoveryAndContinuesAfterBusyTargets(t *testing.T) {
 	e, d, q := fixture(t)
 	ctx := context.Background()
 	first, err := e.Create(ctx, q)
@@ -82,14 +82,14 @@ func TestContainerDeletionPreservesRecoveryAndPreflightsWholeSet(t *testing.T) {
 	if _, err = e.DeleteContainers(ctx, Selection{All: true}, false); err == nil {
 		t.Fatal("active bulk target was deleted")
 	}
-	if _, exists := sessionSnapshot(t, e, first.SessionID); !exists {
-		t.Fatal("bulk operation mutated before complete preflight")
+	if _, exists := sessionSnapshot(t, e, first.SessionID); exists {
+		t.Fatal("busy target blocked independent container deletion")
 	}
 	lock, _ = e.Store.Lock(ctx, second.SessionID)
 	lock.Release(lease.ID)
 	lock.Close()
 	removed, err := e.DeleteContainers(ctx, Selection{Stopped: true}, false)
-	if err != nil || len(removed) != 2 {
+	if err != nil || len(removed) != 1 {
 		t.Fatal(removed, err)
 	}
 	if string(getFile(t, marker)) != "keep" {

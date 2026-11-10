@@ -78,14 +78,25 @@ func TestSessionBatchCancellationStopsCallbacksAndReleasesLocks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	calls := 0
-	report, err := runSessionBatch(ctx, e, func(_ context.Context, lock *store.Locked, r store.Record) (BatchResult[Result], error) {
+	targets, err := e.selectSavedSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := newBatch[Result](targets)
+	b.run(ctx, func(ctx context.Context, target SelectedTarget, _ *BatchResult[Result]) error {
+		lock, r, err := e.lockSelectedSession(ctx, target)
+		if err != nil {
+			return err
+		}
+		defer lock.Close()
 		calls++
 		if !lock.Held() || lock.ID != r.ID {
 			t.Fatal("callback did not own the selected session lock")
 		}
 		cancel()
-		return BatchResult[Result]{}, nil
+		return nil
 	})
+	report, err := b.report, b.err(ctx)
 	if !errors.Is(err, context.Canceled) || calls != 1 || len(report.Results) != 3 || len(successfulSessions(report)) != 1 {
 		t.Fatal("cancellation lost completed work or continued processing", report, err, calls)
 	}
@@ -103,6 +114,45 @@ func TestSessionBatchCancellationStopsCallbacksAndReleasesLocks(t *testing.T) {
 		}
 		lock.Close()
 		done()
+	}
+}
+
+func TestBatchPreservesPartialResultsAndStopsCompletedTargets(t *testing.T) {
+	cause := errors.New("phase failed")
+	selectionErr := errors.New("selection failed")
+	b := newBatch[int](selectedTargets{{name: "a"}, {name: "b"}, {name: "c"}, {name: "invalid", err: selectionErr}})
+	ctx := context.Background()
+	b.run(ctx, func(_ context.Context, target SelectedTarget, item *BatchResult[int]) error {
+		if target.name == "invalid" {
+			t.Fatal("executed failed selection")
+		}
+		item.Result = new(int)
+		*item.Result = 1
+		return nil
+	})
+	b.run(ctx, func(_ context.Context, target SelectedTarget, item *BatchResult[int]) error {
+		*item.Result++
+		if target.name == "a" {
+			item.complete = true
+		}
+		if target.name == "b" {
+			return cause
+		}
+		return nil
+	})
+	b.run(ctx, func(_ context.Context, target SelectedTarget, item *BatchResult[int]) error {
+		if target.name != "c" {
+			t.Fatal("completed or failed target advanced", target.name)
+		}
+		*item.Result++
+		item.complete = true
+		return nil
+	})
+	if !errors.Is(b.err(ctx), cause) || !errors.Is(b.err(ctx), selectionErr) {
+		t.Fatal(b.err(ctx))
+	}
+	if *b.report.Results[0].Result != 2 || *b.report.Results[1].Result != 2 || *b.report.Results[2].Result != 3 {
+		t.Fatal("phase transition lost partial results", b.report)
 	}
 }
 

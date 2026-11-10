@@ -239,15 +239,18 @@ func TestDeleteIncompleteCreationMixedPreflight(t *testing.T) {
 	name, root := incompleteFixture(t, e)
 	d.SetContainer(docker.Container{ID: strings.Repeat("c", 64), Name: "/foreign", Mounts: []docker.ContainerMount{{Type: "bind", Source: root}}})
 	result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}, IncompleteDirs: []string{name}}, Scope: DeleteSession})
-	if err == nil || result.DeletedCount() != 0 {
-		t.Fatal(result, err)
+	if err == nil || result.DeletedCount() != 2 || len(result.RetainedIncompleteDirectories) != 1 {
+		t.Fatal("incomplete-directory failure blocked independent session deletion", result, err)
 	}
-	if _, exists := sessionSnapshot(t, e, created.SessionID); !exists {
-		t.Fatal("removed valid container before incomplete preflight")
+	if _, exists := sessionSnapshot(t, e, created.SessionID); exists {
+		t.Fatal("healthy session container was not removed")
+	}
+	if _, err := os.Stat(root); err != nil {
+		t.Fatal("in-use incomplete files were removed", err)
 	}
 	delete(d.Containers, "foreign")
-	result, err = e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}, IncompleteDirs: []string{name}}, Scope: DeleteSession})
-	if err != nil || result.DeletedCount() != 3 || len(result.Retained)+len(result.RetainedIncompleteDirectories) != 0 {
+	result, err = e.Delete(context.Background(), DeleteOptions{Selection: Selection{IncompleteDirs: []string{name}}, Scope: DeleteSession})
+	if err != nil || result.DeletedCount() != 1 || len(result.Retained)+len(result.RetainedIncompleteDirectories) != 0 {
 		t.Fatal(result, err)
 	}
 }
@@ -280,7 +283,7 @@ func TestDeleteIncompleteCreationRejectsAmbiguousContainerName(t *testing.T) {
 	name, root := incompleteFixture(t, e)
 	d.SetContainer(docker.Container{ID: strings.Repeat("d", 64), Name: "/" + name})
 	result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{IncompleteDirs: []string{name}}, Scope: DeleteSession})
-	if err == nil || !strings.Contains(err.Error(), "both an incomplete directory and a container") || result.DeletedCount() != 0 {
+	if err == nil || len(result.Batch.Results) != 1 || result.Batch.Results[0].Err == nil || !strings.Contains(result.Batch.Results[0].Err.Error(), "both an incomplete directory and a container") || result.DeletedCount() != 0 {
 		t.Fatal(result, err)
 	}
 	if _, err := os.Stat(root); err != nil {
@@ -291,7 +294,7 @@ func TestDeleteIncompleteCreationRejectsAmbiguousContainerName(t *testing.T) {
 	}
 }
 
-func TestDeleteIncompleteCreationInspectionFailurePreventsMutation(t *testing.T) {
+func TestDeleteIncompleteCreationInspectionFailureBlocksOnlyItsCleanup(t *testing.T) {
 	e, d, q := fixture(t)
 	created, err := e.Create(context.Background(), q)
 	if err != nil {
@@ -306,14 +309,14 @@ func TestDeleteIncompleteCreationInspectionFailurePreventsMutation(t *testing.T)
 		return nil
 	}
 	result, err := e.Delete(context.Background(), DeleteOptions{Selection: Selection{Targets: []string{created.SessionID}, IncompleteDirs: []string{name}}, Scope: DeleteSession})
-	if !errors.Is(err, failure) || result.DeletedCount() != 0 {
+	if !errors.Is(err, failure) || result.DeletedCount() != 2 || len(result.RetainedIncompleteDirectories) != 1 {
 		t.Fatal(result, err)
 	}
 	if _, err := os.Stat(root); err != nil {
 		t.Fatal(err)
 	}
-	if _, exists := sessionSnapshot(t, e, created.SessionID); !exists {
-		t.Fatal("valid container deleted before inventory check")
+	if _, exists := sessionSnapshot(t, e, created.SessionID); exists {
+		t.Fatal("incomplete-directory inventory check blocked independent session deletion")
 	}
 }
 

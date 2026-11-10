@@ -58,7 +58,7 @@ Session operation locks are keyed by immutable ID under `state/locks/sessions/`,
 | Attached-command lease | Represent a foreground command while its operation lock is released |
 | SSH owner/master flocks | Govern transient SSH process lifetime, independently of session operation locks |
 
-Operations involving several environments acquire the complete session lock set in sorted unique session-ID order (Move shares one ID lock across its two directories). Name-changing operations acquire the namespace lock first. Acquire `state/locks/folder-defaults.lock` after any session locks. Never acquire a session lock while holding the defaults lock. Every folder shares this lock so concurrent updates cannot overwrite each other's entries. Bulk operations retain their complete session lock set through preflight and mutation.
+Operations that hold several session locks acquire them in sorted unique session-ID order (Move shares one ID lock across its two directories). Name-changing operations acquire the namespace lock first. Acquire `state/locks/folder-defaults.lock` after any session locks. Never acquire a session lock while holding the defaults lock. Every folder shares this lock so concurrent updates cannot overwrite each other's entries. Deletion retains its lock set through preflight, confirmations and mutation.
 
 Default selection prompts before locking, then reloads the chosen session under its operation lock and verifies its ID before acquiring the defaults lock. Clearing needs only the defaults lock. Resolving a default releases that lock before acquiring the session lock. The chosen ID is an invocation snapshot, not a reference that can retarget midway through an operation.
 
@@ -95,7 +95,7 @@ Last activity means recorded Devbox operations, not filesystem activity or only 
 ```mermaid
 flowchart TD
     SELECT[Resolve intersecting selection] --> LOCK[Lock complete target set]
-    LOCK --> CHECK[Preflight ownership and scope]
+    LOCK --> CHECK[Preflight each target]
     CHECK --> CONFIRM[Confirm container phase if interactive]
     CONFIRM --> RECHECK[Recheck filters and active commands]
     RECHECK --> REMOVE[Remove selected containers]
@@ -106,7 +106,7 @@ flowchart TD
     SAVE -->|no| KEEP[Retain saved environment]
 ```
 
-Explicit saved-data deletion is preflighted before container removal and rechecked afterward. Container failures do not advance into state deletion. `--force` only relaxes attached-command protection for the runtime phase. It cannot expand scope or bypass pending transfers and saved-state idleness.
+Explicit saved-data deletion is preflighted before container removal and rechecked afterward. Target-local failures do not stop unrelated deletions. A failed selected runtime also protects saved state with the same session owner. `--force` only relaxes attached-command protection for the runtime phase. It cannot expand scope or bypass pending transfers and saved-state idleness.
 
 The complete operation-lock set spans confirmations and both phases. `removeSavedSession` persists a matching-ID default clear before deleting state, while retaining the session operation lock. If deletion then fails, the surviving session may have no default. An old choice is never restored over a newer one. Container-only deletion and dry runs do not clear defaults. External lock files survive deletion. If cancellation or failure occurs after containers have been removed, remaining state is retained rather than pretending the whole operation rolled back.
 

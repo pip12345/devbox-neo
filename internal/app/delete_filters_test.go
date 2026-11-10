@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	"devbox/internal/store"
 )
 
 func TestDeleteFiltersIntersectAndScopeIsIndependent(t *testing.T) {
@@ -124,7 +122,7 @@ func TestOrphanSelectionRechecksContainerAbsence(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	if err = e.recheckDeleteFilters(ctx, []*store.Locked{lock}, DeleteOptions{Orphaned: true}, time.Time{}); err == nil {
+	if err = e.recheckDeleteFilters(ctx, lock, DeleteOptions{Orphaned: true}, time.Time{}); err == nil {
 		t.Fatal("orphan recheck accepted existing container")
 	}
 }

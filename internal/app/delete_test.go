@@ -168,7 +168,7 @@ func TestDeleteForceNeverImpliesSavedDataDeletion(t *testing.T) {
 	lock.Close()
 }
 
-func TestDeleteAllIncludesMissingSessionsAndPreflightsWholeSelection(t *testing.T) {
+func TestDeleteAllIncludesMissingSessionsAndContinuesAfterCorruptTargets(t *testing.T) {
 	e, _, q := fixture(t)
 	ctx := context.Background()
 	first, err := e.Create(ctx, q)
@@ -184,15 +184,16 @@ func TestDeleteAllIncludesMissingSessionsAndPreflightsWholeSelection(t *testing.
 	p, _ := e.Store.RecordPath(sessionRecord(t, e, second.SessionID).Directory)
 	original := getFile(t, p)
 	write(t, p, "broken")
-	if _, err := e.Delete(ctx, DeleteOptions{Selection: Selection{All: true}, Scope: DeleteSession}); err == nil {
-		t.Fatal("ignored corrupt bulk target")
+	result, err := e.Delete(ctx, DeleteOptions{Selection: Selection{All: true}, Scope: DeleteSession})
+	if err == nil || len(result.Containers) != 1 || len(result.Sessions) != 1 {
+		t.Fatal("corrupt target blocked independent deletion or was not reported", result, err)
 	}
-	if _, exists := sessionSnapshot(t, e, first.SessionID); !exists {
-		t.Fatal("partial deletion before full preflight")
+	if _, exists := sessionSnapshot(t, e, first.SessionID); exists {
+		t.Fatal("healthy target was not deleted")
 	}
 	write(t, p, string(original))
-	result, err := e.Delete(ctx, DeleteOptions{Selection: Selection{All: true}, Scope: DeleteSession})
-	if err != nil || len(result.Containers) != 1 || len(result.Sessions) != 2 {
+	result, err = e.Delete(ctx, DeleteOptions{Selection: Selection{All: true}, Scope: DeleteSession})
+	if err != nil || len(result.Containers) != 0 || len(result.Sessions) != 1 {
 		t.Fatal(result, err)
 	}
 }

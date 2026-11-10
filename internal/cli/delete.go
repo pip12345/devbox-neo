@@ -16,9 +16,8 @@ import (
 )
 
 type deletionConfirmation struct {
-	ui                *cliui.Runner
-	singleTarget      bool
-	removedContainers int
+	ui           *cliui.Runner
+	singleTarget bool
 }
 
 func (c *deletionConfirmation) confirm(prompt app.DeletePrompt) (bool, error) {
@@ -35,11 +34,11 @@ func (c *deletionConfirmation) confirm(prompt app.DeletePrompt) (bool, error) {
 			text.WriteString("Remove containers? [y/N] ")
 		}
 	} else if len(prompt.Sessions)+len(prompt.IncompleteDirectories) > 0 {
-		if c.removedContainers > 0 {
-			if c.removedContainers == 1 {
+		if removed := len(prompt.RemovedContainers); removed > 0 {
+			if removed == 1 {
 				text.WriteString("Container removed. ")
 			} else {
-				fmt.Fprintf(&text, "%d containers removed.\n", c.removedContainers)
+				fmt.Fprintf(&text, "%d containers removed.\n", removed)
 			}
 		} else if c.singleTarget && len(prompt.Sessions) > 0 {
 			text.WriteString("No container. ")
@@ -49,7 +48,7 @@ func (c *deletionConfirmation) confirm(prompt app.DeletePrompt) (bool, error) {
 			for _, name := range prompt.Sessions {
 				fmt.Fprintf(&text, "  %s\n", displayCell(name))
 			}
-		} else if len(prompt.Sessions) > 0 && c.removedContainers == 0 {
+		} else if len(prompt.Sessions) > 0 && len(prompt.RemovedContainers) == 0 {
 			fmt.Fprintf(&text, "Saved session: %s\n", displayCell(prompt.Sessions[0]))
 		}
 		for _, name := range prompt.IncompleteDirectories {
@@ -67,10 +66,6 @@ func (c *deletionConfirmation) confirm(prompt app.DeletePrompt) (bool, error) {
 	confirmed, err := c.ui.Confirm(text.String())
 	if err != nil {
 		return false, err
-	}
-	if confirmed && len(prompt.Containers) > 0 {
-		// app.Delete asks about saved state only after this phase succeeds.
-		c.removedContainers = len(prompt.Containers)
 	}
 	return confirmed, nil
 }
@@ -106,6 +101,30 @@ func printDeleteResult(out io.Writer, result app.DeleteResult) error {
 	return err
 }
 
+type deleteOutput struct {
+	app.DeleteResult
+	Batch batchOutput `json:"batch"`
+}
+
+func presentDeleteResult(cmd *cobra.Command, result app.DeleteResult, operationErr error, asJSON bool) error {
+	if len(result.Batch.Results) == 0 && operationErr != nil {
+		return operationErr
+	}
+	if asJSON {
+		output := deleteOutput{DeleteResult: result, Batch: batchView(cmd, result.Batch)}
+		if operationErr != nil {
+			failure := &batchCommandError{cause: operationErr, batch: output.Batch}
+			if !result.DryRun && result.DeletedCount() > 0 {
+				failure.partial = output
+			}
+			return failure
+		}
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(output)
+	}
+	printErr := printDeleteResult(cmd.OutOrStdout(), result)
+	return errors.Join(printErr, presentBatch(cmd, result.Batch, operationErr, false))
+}
+
 func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 	var options app.DeleteOptions
 	var container, session, asJSON bool
@@ -138,7 +157,12 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 			preview.DryRun = true
 			result, err := e.Delete(cmd.Context(), preview)
 			if err != nil {
-				return err
+				if len(result.Batch.Results) == 0 {
+					return err
+				}
+				if printErr := presentDeleteResult(cmd, result, nil, false); printErr != nil {
+					return errors.Join(err, printErr)
+				}
 			}
 			if len(args) > 0 {
 				// Pin folder/default lookups to the targets shown by preflight;
@@ -155,19 +179,7 @@ func deleteCommand(factory engineFactory, localName *string) *cobra.Command {
 			return f.deleteWithOptions(options)
 		}
 		result, err := e.Delete(cmd.Context(), options)
-		if err != nil {
-			if !result.DryRun && result.DeletedCount() > 0 {
-				if !asJSON {
-					err = errors.Join(err, printDeleteResult(cmd.OutOrStdout(), result))
-				}
-				return &partialResultError{cause: err, result: result}
-			}
-			return err
-		}
-		if asJSON {
-			return json.NewEncoder(cmd.OutOrStdout()).Encode(result)
-		}
-		return printDeleteResult(cmd.OutOrStdout(), result)
+		return presentDeleteResult(cmd, result, err, asJSON)
 	}}
 	cmd.Flags().StringArrayVar(&options.Selection.ContainerNames, "container-name", nil, "Select an unmatched managed Docker container by its actual name")
 	cmd.Flags().StringArrayVar(&options.Selection.IncompleteDirs, "incomplete-dir", nil, "Select an incomplete directory under sessions/ with no session.json")

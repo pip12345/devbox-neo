@@ -113,62 +113,54 @@ type sessionRemoval struct {
 	tagged bool
 }
 
-func (e *Engine) planSessionDeletion(ctx context.Context, locks []*store.Locked, removingContainers bool) ([]sessionRemoval, error) {
-	planned := []sessionRemoval{}
-	for _, lock := range locks {
-		r, err := lock.Load()
-		if err != nil {
-			return nil, err
-		}
-		if err = lock.RequireIdle(); err != nil {
-			return nil, err
-		}
-		_, exists, err := e.inspect(ctx, r)
-		if err != nil {
-			return nil, err
-		}
-		if exists && !removingContainers {
-			return nil, commanderror.New("container_present", "Delete the container before deleting its session.", r.PublicName(), nil,
-				commanderror.Next("Delete container", "delete", r.PublicName(), "--container"))
-		}
-		image, tagged, err := e.Docker.TaggedImage(ctx, r.Applied.ImageTag)
-		if err != nil {
-			return nil, err
-		}
-		if tagged {
-			if err = image.Verify(e.Store.Installation); err != nil {
-				return nil, err
-			}
-			if image.ID != r.Applied.ImageID {
-				return nil, fmt.Errorf("session image tag points to another image")
-			}
-		}
-		planned = append(planned, sessionRemoval{r, lock, tagged})
+func (e *Engine) planSessionDeletion(ctx context.Context, lock *store.Locked, removingContainer bool) (sessionRemoval, error) {
+	r, err := lock.Load()
+	if err != nil {
+		return sessionRemoval{}, err
 	}
-	return planned, nil
+	if err := lock.RequireIdle(); err != nil {
+		return sessionRemoval{}, err
+	}
+	_, exists, err := e.inspect(ctx, r)
+	if err != nil {
+		return sessionRemoval{}, err
+	}
+	if exists && !removingContainer {
+		return sessionRemoval{}, commanderror.New("container_present", "Delete the container before deleting its session.", r.PublicName(), nil,
+			commanderror.Next("Delete container", "delete", r.PublicName(), "--container"))
+	}
+	image, tagged, err := e.Docker.TaggedImage(ctx, r.Applied.ImageTag)
+	if err != nil {
+		return sessionRemoval{}, err
+	}
+	if tagged {
+		if err := image.Verify(e.Store.Installation); err != nil {
+			return sessionRemoval{}, err
+		}
+		if image.ID != r.Applied.ImageID {
+			return sessionRemoval{}, fmt.Errorf("session image tag points to another image")
+		}
+	}
+	return sessionRemoval{r, lock, tagged}, nil
 }
 
-func (e *Engine) removeSessionState(ctx context.Context, planned []sessionRemoval, dryRun bool) ([]string, error) {
-	removed := []string{}
-	for _, item := range planned {
-		if !dryRun {
-			if err := ctx.Err(); err != nil {
-				return removed, err
-			}
-			if err := removeSavedSession(ctx, item.lock, item.record.Settings.Workspace, item.record.ID); err != nil {
-				return removed, err
-			}
-			removed = append(removed, item.record.PublicName())
-			if item.tagged {
-				if err := e.Docker.Untag(ctx, item.record.Applied.ImageTag, item.record.Applied.ImageID, e.Store.Installation); err != nil {
-					return removed, fmt.Errorf("session state removed but image-tag cleanup failed: %w", err)
-				}
-			}
-		} else {
-			removed = append(removed, item.record.PublicName())
+func (e *Engine) removeSessionState(ctx context.Context, item sessionRemoval, dryRun bool) (string, error) {
+	name := item.record.PublicName()
+	if dryRun {
+		return name, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := removeSavedSession(ctx, item.lock, item.record.Settings.Workspace, item.record.ID); err != nil {
+		return "", err
+	}
+	if item.tagged {
+		if err := e.Docker.Untag(ctx, item.record.Applied.ImageTag, item.record.Applied.ImageID, e.Store.Installation); err != nil {
+			return name, fmt.Errorf("session state removed but image-tag cleanup failed: %w", err)
 		}
 	}
-	return removed, nil
+	return name, nil
 }
 
 // Both whole-session deletion and committed move cleanup clear the default

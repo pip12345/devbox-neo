@@ -8,6 +8,11 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Shared target execution and best-effort deletion: implemented, live acceptance pending
+
+- Recreation, networking and deletion share target execution and reporting. Deletion keeps its locks and two confirmation phases, retains partial effects, and continues with unrelated targets after failures.
+- Automated regressions, vet and CLI build pass. Live Docker, race and manual terminal acceptance remain unrun.
+
 ## Best-effort session batches and all-session networks: implemented, live acceptance pending
 
 - Shared best-effort execution now serves `recreate --all` and all-session network CLI/UI operations. Individual failures no longer block unrelated sessions. Bulk deletion is unchanged.

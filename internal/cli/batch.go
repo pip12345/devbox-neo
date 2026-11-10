@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 
 	"devbox/internal/app"
 	"github.com/spf13/cobra"
@@ -82,34 +83,41 @@ func presentBatch[T any](cmd *cobra.Command, report app.BatchReport[T], operatio
 	if len(report.Results) == 0 && operationErr != nil {
 		return nil
 	}
-	output := batchView(cmd, report)
+	return writeBatch(cmd.OutOrStdout(), cmd.ErrOrStderr(), batchView(cmd, report), asJSON)
+}
+
+func writeBatch(out, stderr io.Writer, output batchOutput, asJSON bool) error {
 	if asJSON {
-		if err := json.NewEncoder(cmd.OutOrStdout()).Encode(output); err != nil {
+		return json.NewEncoder(out).Encode(output)
+	}
+	for _, row := range output.Results {
+		if _, err := fmt.Fprintf(out, "%s: %s", displayCell(row.Session), row.Status); err != nil {
 			return err
 		}
-	} else {
-		for _, row := range output.Results {
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s: %s", displayCell(row.Session), row.Status); err != nil {
+		if row.Reason != "" {
+			if _, err := fmt.Fprintf(out, " (%s)", displayCell(row.Reason)); err != nil {
 				return err
-			}
-			if row.Reason != "" {
-				if _, err := fmt.Fprintf(cmd.OutOrStdout(), " (%s)", displayCell(row.Reason)); err != nil {
-					return err
-				}
-			}
-			if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
-				return err
-			}
-			if row.Error != nil {
-				if _, err := fmt.Fprint(cmd.ErrOrStderr(), humanErrorText(*row.Error)); err != nil {
-					return err
-				}
 			}
 		}
-		s := output.Summary
-		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Summary: %d succeeded, %d unchanged, %d skipped, %d failed.\n", s.Succeeded, s.Unchanged, s.Skipped, s.Failed); err != nil {
+		if _, err := fmt.Fprintln(out); err != nil {
 			return err
+		}
+		if row.Error != nil {
+			if _, err := fmt.Fprint(stderr, humanErrorText(*row.Error)); err != nil {
+				return err
+			}
 		}
 	}
-	return nil
+	s := output.Summary
+	_, err := fmt.Fprintf(out, "Summary: %d succeeded, %d unchanged, %d skipped, %d failed.\n", s.Succeeded, s.Unchanged, s.Skipped, s.Failed)
+	return err
 }
+
+type batchCommandError struct {
+	cause   error
+	batch   batchOutput
+	partial any
+}
+
+func (e *batchCommandError) Error() string { return e.cause.Error() }
+func (e *batchCommandError) Unwrap() error { return e.cause }

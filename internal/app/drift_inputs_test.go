@@ -127,7 +127,7 @@ func TestFailedRecreationPreservesImageBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = e.planSessionDeletion(ctx, []*store.Locked{lock}, true)
+	_, err = e.planSessionDeletion(ctx, lock, true)
 	lock.Close()
 	if err != nil {
 		t.Fatal("failed build left a wrong image-tag association blocking deletion", err)

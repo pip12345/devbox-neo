@@ -145,129 +145,74 @@ func (e *Engine) Logs(ctx context.Context, target, localName string, follow bool
 	return e.Docker.Logs(ctx, c, e.owner(r), follow, tail, e.Streams.Out, e.Streams.Err)
 }
 func (e *Engine) DeleteContainers(ctx context.Context, selection Selection, force bool) ([]string, error) {
-	targets, err := e.selectContainers(ctx, selection)
-	if err != nil {
-		return nil, err
-	}
-	locks, err := targets.lock(ctx, e.Store)
-	if err != nil {
-		return nil, err
-	}
-	defer store.CloseAll(locks)
-	return e.deleteContainersLocked(ctx, targets, selection, locks, force, false)
+	result, err := e.Delete(ctx, DeleteOptions{Selection: selection, Scope: DeleteContainer, Force: force})
+	return result.Containers, err
 }
-func (e *Engine) deleteContainersLocked(ctx context.Context, targets selectedTargets, selection Selection, locks []*store.Locked, force, dryRun bool) ([]string, error) {
+func (e *Engine) deleteContainerLocked(ctx context.Context, target SelectedTarget, selection Selection, lock *store.Locked, force, dryRun bool) (string, error) {
+	r, loadErr := lock.Load()
+	if loadErr != nil && (!target.unmatched || !os.IsNotExist(loadErr)) {
+		return "", loadErr
+	}
+	if target.record == recordPresent && r.ID != target.sessionID {
+		return "", fmt.Errorf("selected session changed; retry deletion")
+	}
+	if !force {
+		if err := lock.RequireIdle(); err != nil {
+			return "", err
+		}
+	}
+	var c docker.Container
+	var exists bool
+	var owner docker.Owner
 	var err error
-	type removal struct {
-		record    store.Record
-		container docker.Container
-		lock      *store.Locked
-		owner     docker.Owner
+	if target.unmatched {
+		c, exists, err = e.Docker.InspectID(ctx, target.containerID)
+		if err == nil && exists {
+			owner, err = e.orphanOwner(c)
+			if err == nil && owner.Session != target.sessionID {
+				err = fmt.Errorf("selected container ownership changed")
+			}
+			if loadErr == nil && r.Applied.ContainerID == c.ID {
+				return "", fmt.Errorf("container became the recorded runtime; select public session %s", r.PublicName())
+			}
+		}
+	} else {
+		c, exists, err = e.inspect(ctx, r)
+		owner = e.owner(r)
 	}
-	removals := []removal{}
-	for i, lock := range locks {
-		target := targets[i]
-		r, loadErr := lock.Load()
-		if loadErr != nil && !os.IsNotExist(loadErr) {
-			return nil, loadErr
-		}
-		if target.record == recordPresent && r.ID != target.sessionID || target.record == recordAbsent && r.ID != "" {
-			return nil, fmt.Errorf("selected session changed; retry deletion")
-		}
-		if !force {
-			if err = lock.RequireIdle(); err != nil {
-				return nil, err
-			}
-		}
-		var c docker.Container
-		var exists bool
-		var owner docker.Owner
-		if target.unmatched {
-			c, exists, err = e.Docker.InspectID(ctx, target.containerID)
-			if err == nil && exists {
-				owner, err = e.orphanOwner(c)
-				if err == nil && owner.Session != target.sessionID {
-					err = fmt.Errorf("selected container ownership changed")
-				}
-				if loadErr == nil && r.Applied.ContainerID == c.ID {
-					return nil, fmt.Errorf("container became the recorded runtime; select public session %s", r.PublicName())
-				}
-			}
-		} else if loadErr == nil {
-			c, exists, err = e.inspect(ctx, r)
-			owner = e.owner(r)
-		} else {
-			if target.containerID != "" {
-				c, exists, err = e.Docker.InspectID(ctx, target.containerID)
-			} else {
-				c, exists, err = e.Docker.Inspect(ctx, target.name)
-			}
-			if err == nil && exists {
-				owner, err = e.orphanOwner(c)
-				if err == nil {
-					pending, pendingErr := e.Store.PendingID(owner.Session)
-					if pendingErr != nil {
-						return nil, pendingErr
-					}
-					if pending != nil {
-						return nil, commanderror.New("pending_transfer", "Unfinished session transfer. Resume it first.", owner.Session, nil, pending.RetryStep())
-					}
-					// Missing records never authorize bypassing a retained session's lock.
-					_, findErr := e.Store.Find(ctx, owner.Session, nil)
-					if findErr == nil {
-						return nil, fmt.Errorf("container has a saved session; refresh selection and delete by public session name")
-					}
-					if !sessionAbsent(findErr) && !incompleteInventory(findErr) {
-						return nil, findErr
-					}
-				}
-			}
-		}
-		if err != nil {
-			return nil, err
-		}
-		if !exists {
-			continue
-		}
-		if target.containerID != "" && c.ID != target.containerID {
-			return nil, fmt.Errorf("selected container instance changed; retry deletion")
-		}
-		if selection.LocalName != "" && owner.LocalName != selection.LocalName {
-			return nil, fmt.Errorf("local name does not match the selected container")
-		}
-		if selection.Stopped && c.State.Running {
-			return nil, fmt.Errorf("selected container started during preflight")
-		}
-		if target.unmatched {
-			r = store.Record{} // resource cleanup never updates saved-session activity
-		}
-		removals = append(removals, removal{r, c, lock, owner})
+	if err != nil || !exists {
+		return "", err
 	}
-	removed := []string{}
-	for _, item := range removals {
-		if dryRun {
-			removed = append(removed, strings.TrimPrefix(item.container.Name, "/"))
-			continue
-		}
-		if item.container.State.Running {
-			if err = e.Docker.Stop(ctx, item.container, item.owner); err != nil {
-				return removed, err
-			}
-		}
-		if err = e.Docker.Remove(ctx, item.container, item.owner); err != nil {
-			return removed, err
-		}
-		// Docker removal has committed even if recording activity fails next.
-		removed = append(removed, strings.TrimPrefix(item.container.Name, "/"))
-		if item.record.ID != "" {
-			item.record.Action = "delete-container"
-			item.record.Activity = time.Now().UTC()
-			if err = item.lock.Save(item.record); err != nil {
-				return removed, err
-			}
+	if target.containerID != "" && c.ID != target.containerID {
+		return "", fmt.Errorf("selected container instance changed; retry deletion")
+	}
+	if selection.LocalName != "" && owner.LocalName != selection.LocalName {
+		return "", fmt.Errorf("local name does not match the selected container")
+	}
+	if selection.Stopped && c.State.Running {
+		return "", fmt.Errorf("selected container started during preflight")
+	}
+	name := strings.TrimPrefix(c.Name, "/")
+	if dryRun {
+		return name, nil
+	}
+	if c.State.Running {
+		if err := e.Docker.Stop(ctx, c, owner); err != nil {
+			return "", err
 		}
 	}
-	return removed, nil
+	if err := e.Docker.Remove(ctx, c, owner); err != nil {
+		return "", err
+	}
+	// Docker removal has committed even if recording activity fails next.
+	// Unmatched-resource cleanup never changes a saved session's activity.
+	if !target.unmatched && r.ID != "" {
+		r.Action, r.Activity = "delete-container", time.Now().UTC()
+		if err := lock.Save(r); err != nil {
+			return name, err
+		}
+	}
+	return name, nil
 }
 
 // Missing metadata does not authorize adoption or startup. Deletion can still
@@ -285,13 +230,26 @@ func (e *Engine) RecreateAll(ctx context.Context, image bool, options RecreateOp
 	if options.Host == nil {
 		options.Host = config.Snapshot()
 	}
-	return runSessionBatch(ctx, e, func(ctx context.Context, lock *store.Locked, r store.Record) (BatchResult[Result], error) {
+	targets, err := e.selectSavedSessions(ctx)
+	if err != nil {
+		return BatchReport[Result]{}, err
+	}
+	b := newBatch[Result](targets)
+	b.run(ctx, func(ctx context.Context, target SelectedTarget, item *BatchResult[Result]) error {
+		lock, r, err := e.lockSelectedSession(ctx, target)
+		if err != nil {
+			return err
+		}
+		defer lock.Close()
+		item.Session = r.PublicName()
 		plan, err := e.planRecreate(ctx, lock, r, options, image)
 		e.reportWarnings(plan.spec.Warnings)
 		if err != nil {
-			return BatchResult[Result]{}, err
+			return err
 		}
 		result, err := e.applyRecreate(ctx, plan)
-		return BatchResult[Result]{Result: &result}, err
+		item.Result = &result
+		return err
 	})
+	return b.report, b.err(ctx)
 }
