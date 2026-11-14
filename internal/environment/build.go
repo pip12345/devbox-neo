@@ -36,6 +36,8 @@ type ImageStage struct {
 	IgnoreSource string
 }
 
+const HarnessRefreshArg = "DEVBOX_HARNESS_REFRESH"
+
 type ImageBuildPlan struct {
 	BaseImage      string
 	Prepared       []byte
@@ -118,6 +120,11 @@ func runtimeDockerfile(d harness.Definition, uid, gid int) []byte {
 	// bind mounts; executables belong to the image rather than empty state roots.
 	if d.Install.Script != "" {
 		text += "COPY --chown=devuser:devuser [\"harness-install/\", \"/tmp/devbox-harness-install/\"]\n"
+	}
+	// Docker includes in-scope build arguments in RUN cache keys. One refresh
+	// token invalidates installation while matching builds can share its result.
+	text += "ARG " + HarnessRefreshArg + "\n"
+	if d.Install.Script != "" {
 		encoded, _ := json.Marshal([]string{"/bin/bash", "-o", "pipefail", "/tmp/devbox-harness-install/" + d.Install.Script})
 		text += "RUN " + string(encoded) + "\n"
 		text += "RUN [\"rm\", \"-rf\", \"/tmp/devbox-harness-install\"]\n"

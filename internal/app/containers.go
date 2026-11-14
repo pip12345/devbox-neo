@@ -234,6 +234,10 @@ func (e *Engine) RecreateAll(ctx context.Context, image bool, options RecreateOp
 	if err != nil {
 		return BatchReport[Result]{}, err
 	}
+	harnessRefresh, err := harnessRefreshToken(options.RefreshHarness, image)
+	if err != nil {
+		return BatchReport[Result]{}, err
+	}
 	items := newBatchEntries[Result](targets)
 	runBatch(ctx, items, func(ctx context.Context, item *batchEntry[Result]) error {
 		lock, r, err := e.lockSelectedSession(ctx, item.target)
@@ -242,7 +246,7 @@ func (e *Engine) RecreateAll(ctx context.Context, image bool, options RecreateOp
 		}
 		defer lock.Close()
 		item.outcome.Session = r.PublicName()
-		plan, err := e.planRecreate(ctx, lock, r, options, image)
+		plan, err := e.planRecreate(ctx, lock, r, options, image, harnessRefresh)
 		e.reportWarnings(plan.spec.Warnings)
 		if err != nil {
 			return err

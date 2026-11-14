@@ -60,7 +60,7 @@ func TestFlagHelpDescribesActions(t *testing.T) {
 		{"open", "harness-arg", "Pass an argument to the harness (repeatable)"},
 		{"list", "sort", "Sort sessions by folder, name, or last-active (newest first)"},
 		{"recreate", "image", "Force an uncached image rebuild and container replacement"},
-		{"recreate", "harness", "Refresh harness installation without cache and replace the container (earlier image stages may use cache)"},
+		{"recreate", "harness", "Refresh harness installation and replace the container (matching images share the refreshed installation, earlier stages may use cache)"},
 		{"recreate", "container", "Force container replacement, reusing a compatible image when available"},
 		{"recreate", "all", "Apply current config to all saved sessions, including missing containers, continuing after individual failures"},
 		{"open", "name", "Select the session's folder-local name"},

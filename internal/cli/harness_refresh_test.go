@@ -9,6 +9,7 @@ import (
 
 	"devbox/internal/app"
 	"devbox/internal/docker/dockertest"
+	"devbox/internal/environment"
 	"github.com/spf13/cobra"
 )
 
@@ -20,8 +21,20 @@ func assertHarnessRefreshBuilds(t *testing.T, d *dockertest.Daemon, start int) {
 			builds = append(builds, args)
 		}
 	}
-	if len(builds) != 2 || slices.Contains(builds[0], "--no-cache") || !slices.Contains(builds[1], "--no-cache") {
-		t.Fatal("harness refresh did not preserve earlier-stage cache eligibility", builds)
+	if len(builds) != 2 {
+		t.Fatal("harness refresh did not build both stages", builds)
+	}
+	for i, args := range builds {
+		if slices.Contains(args, "--no-cache") {
+			t.Fatal("harness refresh disabled cache reuse", args)
+		}
+		hasToken := slices.ContainsFunc(args, func(arg string) bool {
+			value, ok := strings.CutPrefix(arg, environment.HarnessRefreshArg+"=")
+			return ok && value != ""
+		})
+		if hasToken != (i == 1) {
+			t.Fatal("harness refresh did not invalidate only installation", args)
+		}
 	}
 }
 

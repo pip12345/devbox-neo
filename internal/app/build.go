@@ -17,7 +17,7 @@ import (
 
 // Every source is staged separately: COPY cannot accidentally see files from
 // another config directory, and each source retains its own ignore policy.
-func (e *Engine) buildStage(ctx context.Context, stage environment.ImageStage, tag string, args map[string]string, force bool) (docker.Image, error) {
+func (e *Engine) buildStage(ctx context.Context, stage environment.ImageStage, tag string, args map[string]string, force, intermediate bool) (docker.Image, error) {
 	dir, err := os.MkdirTemp(e.Store.Home, ".build-*")
 	if err != nil {
 		return docker.Image{}, err
@@ -75,10 +75,12 @@ func (e *Engine) buildStage(ctx context.Context, stage environment.ImageStage, t
 	if err = fsutil.Write(file+".dockerignore", stage.Ignore, 0600); err != nil {
 		return docker.Image{}, err
 	}
-	return e.Docker.Build(ctx, docker.BuildPlan{Directory: root, Dockerfile: file, Tag: tag, NoCache: force, Installation: e.Store.Installation, Arguments: args}, e.Streams.Err)
+	// Fresh attestations change an intermediate image's index digest even on
+	// cache hits, invalidating the next stage. Keep those exports content-stable.
+	return e.Docker.Build(ctx, docker.BuildPlan{Directory: root, Dockerfile: file, Tag: tag, NoCache: force, NoProvenance: intermediate, Installation: e.Store.Installation, Arguments: args}, e.Streams.Err)
 }
 
-func (e *Engine) build(ctx context.Context, s environment.Spec, imageTag string, force, refreshHarness bool) (image docker.Image, err error) {
+func (e *Engine) build(ctx context.Context, s environment.Spec, imageTag string, force bool, harnessRefresh string) (image docker.Image, err error) {
 	occupant, exists, err := e.Docker.TaggedImage(ctx, imageTag)
 	if err != nil {
 		return image, err
@@ -113,8 +115,10 @@ func (e *Engine) build(ctx context.Context, s environment.Spec, imageTag string,
 		if ref != "" {
 			args["DEVBOX_BASE"] = ref
 		}
-		// Refresh only the final installation stage so custom tools can stay cached.
-		next, err := e.buildStage(ctx, stage, tag, args, force || (final && refreshHarness))
+		if final && harnessRefresh != "" {
+			args[environment.HarnessRefreshArg] = harnessRefresh
+		}
+		next, err := e.buildStage(ctx, stage, tag, args, force, !final)
 		if err != nil {
 			return next, err
 		}

@@ -78,8 +78,8 @@ func TestApplicationProgressWording(t *testing.T) {
 		{"runtime", recreatePlan{}, "Updating configuration without replacing the container. It may briefly start or restart."},
 		{"container", recreatePlan{replace: true}, "Replacing the container." + warning},
 		{"image", recreatePlan{replace: true, image: true}, "Building a new image without cache and replacing the container." + warning},
-		{"harness", recreatePlan{replace: true, harness: true}, "Refreshing the harness installation without cache and replacing the container. Earlier image stages may use cache." + warning},
-		{"image-over-harness", recreatePlan{replace: true, image: true, harness: true}, "Building a new image without cache and replacing the container." + warning},
+		{"harness", recreatePlan{replace: true, harnessRefresh: "refresh-token"}, "Refreshing the harness installation and replacing the container. Matching images share the refreshed installation. Earlier image stages may use cache." + warning},
+		{"image-over-harness", recreatePlan{replace: true, image: true, harnessRefresh: "refresh-token"}, "Building a new image without cache and replacing the container." + warning},
 		{"changed-image", recreatePlan{replace: true, change: environment.RebuildAndRecreate}, "Rebuilding the image and replacing the container." + warning},
 		{"force", recreatePlan{replace: true, force: true}, "Replacing the container." + warning + " Attached commands will be interrupted."},
 	} {

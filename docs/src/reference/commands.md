@@ -49,7 +49,7 @@ Only `recreate` replaces a missing container. `open`, `start`, `shell`, `exec`, 
 Recreate keeps saved history and the previous running/stopped state, but may briefly restart the container. **Container replacement loses local files and tools.**
 
 - `--container` forces container replacement.
-- `--harness` reruns the harness installation without cache and replaces the container. Earlier image stages, including custom Dockerfiles, may use cache.
+- `--harness` refreshes the harness installation and replaces the container. With `--all`, the harness is installed once per image. Earlier image stages, including custom Dockerfiles, may use cache.
 - `--image` forces an uncached build of every controlled image stage and container replacement. It takes precedence over `--harness`.
 - These options do not permit interruption of attached commands.
 - `--force` permits interruption and always replaces the container. After interruption, an automatic session is stopped. An explicitly started session keeps running.

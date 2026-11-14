@@ -152,6 +152,7 @@ type BuildPlan struct {
 	Dockerfile   string
 	Tag          string
 	NoCache      bool
+	NoProvenance bool
 	Installation string
 	Arguments    map[string]string
 }
@@ -250,6 +251,9 @@ func (r Runtime) Build(ctx context.Context, p BuildPlan, out io.Writer) (Image, 
 	}
 	if p.NoCache {
 		args = append(args, "--no-cache")
+	}
+	if p.NoProvenance {
+		args = append(args, "--provenance=false")
 	}
 	labels := ImageLabels(p.Installation)
 	for _, k := range sortedKeys(labels) {

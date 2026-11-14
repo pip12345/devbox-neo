@@ -25,7 +25,7 @@ func recreateCommand(factory engineFactory, localName *string) *cobra.Command {
 	}}
 	cmd.Flags().BoolVar(&force, "force", false, "Replace the container even with attached commands; interrupts commands and loses container-local changes")
 	cmd.Flags().BoolVar(&image, "image", false, "Force an uncached image rebuild and container replacement")
-	cmd.Flags().BoolVar(&harness, "harness", false, "Refresh harness installation without cache and replace the container (earlier image stages may use cache)")
+	cmd.Flags().BoolVar(&harness, "harness", false, "Refresh harness installation and replace the container (matching images share the refreshed installation, earlier stages may use cache)")
 	cmd.Flags().BoolVar(&container, "container", false, "Force container replacement, reusing a compatible image when available")
 	cmd.Flags().BoolVar(&all, "all", false, "Apply current config to all saved sessions, including missing containers, continuing after individual failures")
 	return sessionNameFlag(cmd, localName)

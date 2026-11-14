@@ -63,6 +63,9 @@ func TestLayeredBuildUsesTypedPlans(t *testing.T) {
 		if args[0] != "build" {
 			continue
 		}
+		if slices.Contains(args, "--provenance=false") != (stage < want-1) {
+			t.Fatal("only intermediate builds must disable attestations", stage, args)
+		}
 		if stage > 0 && !slices.Contains(args, "DEVBOX_BASE="+tags[stage-1]) {
 			t.Fatal("build chain lost predecessor", args)
 		}

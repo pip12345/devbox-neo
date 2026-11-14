@@ -143,6 +143,37 @@ func TestGeneratedStagesSuppressOnlyMissingDefaultBuildArgWarning(t *testing.T) 
 	}
 }
 
+func TestHarnessRefreshArgumentStartsAtInstallation(t *testing.T) {
+	for _, script := range []bool{false, true} {
+		t.Run(fmt.Sprintf("script=%t", script), func(t *testing.T) {
+			d := harness.Definition{Binary: "test-harness", Install: harness.Install{Shell: "install-harness"}}
+			if script {
+				d.Install.Shell, d.Install.Script = "", "install.sh"
+			}
+			text := string(runtimeDockerfile(d, 1000, 1000))
+			declaration := "ARG " + HarnessRefreshArg + "\n"
+			if strings.Count(text, declaration) != 1 {
+				t.Fatal("runtime must declare one refresh argument", text)
+			}
+			before, after, _ := strings.Cut(text, declaration)
+			if !strings.HasPrefix(after, `RUN ["/bin/bash","-o","pipefail",`) || !strings.Contains(before, "command -v ssh\n") {
+				t.Fatal("refresh must start at installation, after contract restoration", text)
+			}
+			if script && !strings.Contains(before, "COPY --chown=devuser:devuser") {
+				t.Fatal("installation files must remain cache-eligible before refresh", text)
+			}
+			if strings.Count(text, HarnessRefreshArg) != 1 {
+				t.Fatal("refresh token must not become a runtime environment setting", text)
+			}
+			for _, earlier := range [][]byte{preparedDockerfile("debian:bookworm-slim", 1000, 1000), boundaryDockerfile(1000, 1000)} {
+				if strings.Contains(string(earlier), HarnessRefreshArg) {
+					t.Fatal("earlier stages must not consume the refresh token", string(earlier))
+				}
+			}
+		})
+	}
+}
+
 func TestPiInstallDoesNotHideUnderRuntimeMounts(t *testing.T) {
 	h, err := harness.Load(t.TempDir(), "pi")
 	if err != nil {

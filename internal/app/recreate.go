@@ -8,22 +8,33 @@ import (
 	"devbox/internal/commanderror"
 	"devbox/internal/docker"
 	"devbox/internal/environment"
+	"devbox/internal/fsutil"
 	"devbox/internal/store"
 )
 
 type recreatePlan struct {
-	lock                                    *store.Locked
-	record                                  store.Record
-	spec                                    environment.Spec
-	container                               docker.Container
-	change                                  environment.Change
-	replace, image, harness, running, force bool
+	lock                           *store.Locked
+	record                         store.Record
+	spec                           environment.Spec
+	container                      docker.Container
+	change                         environment.Change
+	replace, image, running, force bool
+	harnessRefresh                 string
+}
+
+// The invocation owns the token, not an individual session or image build.
+// A full image rebuild retains its stronger no-cache policy instead.
+func harnessRefreshToken(refresh, image bool) (string, error) {
+	if !refresh || image {
+		return "", nil
+	}
+	return fsutil.ID()
 }
 
 // Planning is read-only under this session's lock. Application consumes this
 // capture without rereading sources, whether invoked alone or within a batch.
-func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.Record, q RecreateOptions, image bool) (recreatePlan, error) {
-	p := recreatePlan{lock: lock, record: r, image: image, harness: q.RefreshHarness, force: q.Force}
+func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.Record, q RecreateOptions, image bool, harnessRefresh string) (recreatePlan, error) {
+	p := recreatePlan{lock: lock, record: r, image: image, harnessRefresh: harnessRefresh, force: q.Force}
 	if q.Force {
 		if _, err := lock.LiveLeases(); err != nil {
 			return p, err
@@ -45,7 +56,7 @@ func (e *Engine) planRecreate(ctx context.Context, lock *store.Locked, r store.R
 		return p, err
 	}
 	p.change = environment.CompareInputs(r.Applied.Inputs, p.spec.Inputs).Change
-	p.replace = !exists || image || q.RefreshHarness || q.ForceContainer || q.Force || p.change == environment.Recreate || p.change == environment.RebuildAndRecreate
+	p.replace = !exists || image || harnessRefresh != "" || q.ForceContainer || q.Force || p.change == environment.Recreate || p.change == environment.RebuildAndRecreate
 	if p.replace {
 		if err := e.preflightSecondaryNetworks(ctx, r, p.spec.Settings.Network); err != nil {
 			return p, err
@@ -65,8 +76,8 @@ func (e *Engine) applyRecreate(ctx context.Context, p recreatePlan) (result Resu
 		message = "Replacing the container."
 		if p.image {
 			message = "Building a new image without cache and replacing the container."
-		} else if p.harness {
-			message = "Refreshing the harness installation without cache and replacing the container. Earlier image stages may use cache."
+		} else if p.harnessRefresh != "" {
+			message = "Refreshing the harness installation and replacing the container. Matching images share the refreshed installation. Earlier image stages may use cache."
 		} else if p.change == environment.RebuildAndRecreate {
 			message = "Rebuilding the image and replacing the container."
 		}
@@ -82,7 +93,7 @@ func (e *Engine) applyRecreate(ctx context.Context, p recreatePlan) (result Resu
 	if !p.replace {
 		return result, e.applyRuntime(ctx, p)
 	}
-	r, c, err := e.createAs(ctx, p.lock, p.spec, &p.record, creationOptions{image: p.image, harness: p.harness, force: p.force}, CreationIdentity{})
+	r, c, err := e.createAs(ctx, p.lock, p.spec, &p.record, creationOptions{image: p.image, harnessRefresh: p.harnessRefresh, force: p.force}, CreationIdentity{})
 	if err != nil {
 		return result, err
 	}

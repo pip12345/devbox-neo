@@ -108,9 +108,9 @@ func (e *Engine) discardUncommittedCreation(ctx context.Context, lock *store.Loc
 }
 
 type creationOptions struct {
-	image   bool
-	harness bool
-	force   bool
+	image          bool
+	harnessRefresh string
+	force          bool
 }
 
 // CreationIdentity supplies identity and creation time for a new destination.
@@ -222,7 +222,7 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 	}
 	var image docker.Image
 	reused := false
-	if previous != nil && !options.image && !options.harness && previous.Applied.Fingerprints.Image == s.Fingerprints.Image {
+	if previous != nil && !options.image && options.harnessRefresh == "" && previous.Applied.Fingerprints.Image == s.Fingerprints.Image {
 		available, inspectErr := e.Docker.ImageAvailable(ctx, previous.Applied.ImageID)
 		if inspectErr != nil {
 			return record, c, inspectErr
@@ -237,10 +237,10 @@ func (e *Engine) createAs(ctx context.Context, l *store.Locked, s environment.Sp
 		// Cache eligibility does not authorize adoption. A missing or unowned
 		// image is replaced by a fresh owned build, never executed or mutated.
 		if !reused {
-			image, err = e.build(ctx, s, imageTag, false, false)
+			image, err = e.build(ctx, s, imageTag, false, "")
 		}
 	} else {
-		image, err = e.build(ctx, s, imageTag, options.image, options.harness)
+		image, err = e.build(ctx, s, imageTag, options.image, options.harnessRefresh)
 	}
 	if err != nil {
 		return record, c, err
@@ -430,7 +430,11 @@ func (e *Engine) Recreate(ctx context.Context, q RecreateRequest, image bool) (R
 	if err != nil {
 		return Result{}, err
 	}
-	plan, err := e.planRecreate(ctx, l, old, q.Options, image)
+	harnessRefresh, err := harnessRefreshToken(q.Options.RefreshHarness, image)
+	if err != nil {
+		return Result{}, err
+	}
+	plan, err := e.planRecreate(ctx, l, old, q.Options, image, harnessRefresh)
 	e.reportWarnings(plan.spec.Warnings)
 	if err != nil {
 		return Result{}, err
