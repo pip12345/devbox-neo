@@ -37,15 +37,15 @@ Without full terminal input/output, bare browsers show help. Other redirected/du
 
 | Column / marker | Meaning |
 |---|---|
-| NAME | Folder-local session name |
 | FOLDER | Workspace (global list only) |
+| SESSION | Public session name accepted by commands |
+| NAME | Folder-local session name |
 | DEFAULT `*` | Selected folder default |
 | HARNESS | Recorded coding tool |
-| LAST ACTIVE | Recorded Devbox activity, not filesystem activity |
+| LAST ACTIVE | Recorded Devbox activity |
 | CONTAINER | Running, stopped, or missing. `!` indicates an error, `*` a pending transfer |
 | LIFETIME | `automatic` or `until stop`, independent of current state |
-| CONFIGS | Selected configs, in order |
-| SESSION | Public session name accepted by commands |
+| CONFIGS (`--wide`) | Selected configs, in order |
 | ID, STORAGE (`--wide`) | Session ID and its fixed storage directory |
 | CONTAINER NAME (`--wide`) | Docker name (independent of session storage) |
 

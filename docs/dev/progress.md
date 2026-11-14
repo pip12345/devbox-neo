@@ -8,6 +8,10 @@ The initial session-structure refactor delivered schema 6 with ID-based lookup/l
 
 Local config discovery and CLI/menu rename implemented. Local discovery filters out config-layer parse failures without restricting directory names or requiring runnable settings. Invalid named configs remain visible for repair. `make test-fast` passes, including parser-boundary and picker regressions. Live Docker and manual terminal acceptance remain unrun.
 
+## Session list config visibility
+
+Only config chains move to `--wide`. The other default columns and JSON remain unchanged. Full fast-suite equivalent and CLI vet pass, including column and terminal-marker regressions.
+
 ## Deletion review fixes: implemented, live acceptance pending
 
 - Captured retries retain ownership and recheck failures. Deletion work items own phase progress, and partial JSON no longer duplicates the batch report.

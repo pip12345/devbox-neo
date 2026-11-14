@@ -78,7 +78,7 @@ func TestListDimsOnlyInactiveRowsWithoutChangingAlignment(t *testing.T) {
 	enableTerminalColors(t)
 	now := time.Now()
 	views := []app.View{
-		{Target: "active", Exists: true, Running: true, Workspace: "/work/a"},
+		{Target: "active", Default: true, Exists: true, Running: true, Workspace: "/work/a"},
 		{Target: "inactive-long-name", Exists: true, Workspace: "/work/b", Error: "broken record"},
 		{Target: "missing", Workspace: "/work/c", Pending: &store.Reservation{Mode: "clone", Phase: "prepare", Source: "a", Destination: "b"}},
 	}
@@ -95,6 +95,9 @@ func TestListDimsOnlyInactiveRowsWithoutChangingAlignment(t *testing.T) {
 			if strings.Contains(line, "\x1b[2m") != shouldDim {
 				t.Fatalf("unexpected styling on line %d: %q", i, line)
 			}
+		}
+		if strings.Count(styled, "\x1b[32m*\x1b[0m") != 1 {
+			t.Fatal("default marker must remain green in both list formats", styled)
 		}
 		var plain bytes.Buffer
 		if err := render(&plain); err != nil {

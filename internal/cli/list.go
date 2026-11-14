@@ -123,12 +123,12 @@ func printSessionTable(out io.Writer, views []app.View, wide bool, now time.Time
 	// as visible text, which would otherwise shift columns on inactive rows.
 	var table bytes.Buffer
 	w := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
-	header := "SESSION\tNAME\tDEFAULT\tHARNESS\tLAST ACTIVE\tCONTAINER\tLIFETIME\tCONFIGS"
+	header := "SESSION\tNAME\tDEFAULT\tHARNESS\tLAST ACTIVE\tCONTAINER\tLIFETIME"
 	if !local {
 		header = "FOLDER\t" + header
 	}
 	if wide {
-		header += "\tLAST ACTION\tCREATED\tID\tSTORAGE\tCONTAINER NAME"
+		header += "\tCONFIGS\tLAST ACTION\tCREATED\tID\tSTORAGE\tCONTAINER NAME"
 	}
 	fmt.Fprintln(w, header)
 	for _, view := range views {
@@ -148,9 +148,9 @@ func printSessionTable(out io.Writer, views []app.View, wide bool, now time.Time
 		if !local {
 			fmt.Fprintf(w, "%s\t", displayCell(view.Workspace))
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s", displayCell(view.Target), displayCell(name), marker, displayCell(view.Harness), activity, state, lifetimeState(view), sourceSummary(view.Sources))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s", displayCell(view.Target), displayCell(name), marker, displayCell(view.Harness), activity, state, lifetimeState(view))
 		if wide {
-			fmt.Fprintf(w, "\t%s\t%s\t%s\t%s\t%s", displayCell(view.LastAction), exactTime(view.CreatedAt), displayCell(view.SessionID), displayCell(view.StoragePath), displayCell(view.ContainerName))
+			fmt.Fprintf(w, "\t%s\t%s\t%s\t%s\t%s\t%s", sourceSummary(view.Sources), displayCell(view.LastAction), exactTime(view.CreatedAt), displayCell(view.SessionID), displayCell(view.StoragePath), displayCell(view.ContainerName))
 		}
 		fmt.Fprintln(w)
 	}

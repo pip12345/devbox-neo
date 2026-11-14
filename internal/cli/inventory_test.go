@@ -68,7 +68,7 @@ func TestFolderListStartsWithItsHeading(t *testing.T) {
 	}
 }
 
-func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
+func TestGlobalListKeepsFolderSortAndPaths(t *testing.T) {
 	engine, _, firstName, root := inventoryCLI(t)
 	first, err := engine.Locate(context.Background(), firstName, "")
 	if err != nil {
@@ -82,7 +82,7 @@ func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 	cmd := root()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	cmd.SetArgs([]string{"list"})
+	cmd.SetArgs([]string{"list", "--wide"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -105,9 +105,30 @@ func TestGlobalListShowsFolderPerRowAndSortsByFolder(t *testing.T) {
 	cmd = root()
 	var explicit bytes.Buffer
 	cmd.SetOut(&explicit)
-	cmd.SetArgs([]string{"list", "--sort", "folder"})
+	cmd.SetArgs([]string{"list", "--wide", "--sort", "folder"})
 	if err := cmd.Execute(); err != nil || explicit.String() != text {
 		t.Fatal("default list order differs from --sort folder", err, explicit.String(), text)
+	}
+	cmd = root()
+	var compact bytes.Buffer
+	cmd.SetOut(&compact)
+	cmd.SetArgs([]string{"list"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	ordered := []string{firstName, second.Session}
+	if first.Settings.Workspace > other {
+		ordered[0], ordered[1] = ordered[1], ordered[0]
+	}
+	lines := strings.Split(strings.TrimSpace(compact.String()), "\n")
+	if len(lines) != 3 || !strings.Contains(compact.String(), "FOLDER") {
+		t.Fatal("default list lost folder columns or rows", compact.String())
+	}
+	for i, target := range ordered {
+		fields := strings.Fields(lines[i+1])
+		if len(fields) < 3 || fields[0] != folders[i] || fields[1] != target || fields[2] != "test" {
+			t.Fatal("default list changed folder ordering or name columns", compact.String())
+		}
 	}
 }
 

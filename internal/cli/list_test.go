@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"devbox/internal/app"
+	"devbox/internal/config"
 	"devbox/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -28,7 +29,7 @@ func TestListDetailsAndSorting(t *testing.T) {
 	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"FOLDER", "NAME", "DEFAULT", "CONFIGS", "LIFETIME", "LAST ACTIVE", "/work/api", "/work/ui", "2 hours ago", "just now", "stopped!*", "no durable record", "pending copy"} {
+	for _, want := range []string{"FOLDER", "SESSION", "NAME", "DEFAULT", "HARNESS", "CONTAINER", "LIFETIME", "LAST ACTIVE", "/work/api", "/work/ui", "2 hours ago", "just now", "stopped!*", "no durable record", "pending copy"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}
@@ -40,7 +41,7 @@ func TestListDetailsAndSorting(t *testing.T) {
 	if err := printSessionList(&out, views, true, now); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"HARNESS", "opencode", "LAST ACTION", "CREATED", "SESSION", "2026-09-01T10:00:00Z", "2026-08-31T12:00:00Z", "open"} {
+	for _, want := range []string{"FOLDER", "NAME", "DEFAULT", "CONFIGS", "LIFETIME", "/work/api", "/work/ui", "HARNESS", "opencode", "LAST ACTION", "CREATED", "SESSION", "2026-09-01T10:00:00Z", "2026-08-31T12:00:00Z", "open"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing wide detail %q: %s", want, out.String())
 		}
@@ -104,7 +105,7 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	if err := printSessionList(&out, views, false, now); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(strings.Fields(out.String()), " "), "FOLDER SESSION NAME DEFAULT HARNESS LAST ACTIVE CONTAINER LIFETIME CONFIGS") {
+	if !strings.Contains(strings.Join(strings.Fields(out.String()), " "), "FOLDER SESSION NAME DEFAULT HARNESS LAST ACTIVE CONTAINER LIFETIME") {
 		t.Fatal("not a session-focused table", out.String())
 	}
 	for _, want := range []string{"pi", "/work/project", "just now", "missing", "opencode", "older", "2 hours ago", "stopped", "missing!*", "corrupt record", "pending copy --move", "automatic", "until stop"} {
@@ -126,7 +127,7 @@ func TestSessionListShowsDurableStateAndDiagnostics(t *testing.T) {
 	}
 }
 
-func TestListUsesLocalNamesAndWideIncludesFullNames(t *testing.T) {
+func TestListNamesAndWideDetails(t *testing.T) {
 	views := []app.View{
 		{Target: "dbx-alpha-111111111111.work", SessionID: "session-alpha", ContainerName: "container-alpha", LocalName: "work", Workspace: "/projects/alpha"},
 		{Target: "dbx-beta-222222222222.work", SessionID: "session-beta", ContainerName: "container-beta", LocalName: "work", Workspace: "/projects/beta"},
@@ -149,11 +150,61 @@ func TestListUsesLocalNamesAndWideIncludesFullNames(t *testing.T) {
 			}
 			for i, view := range rows {
 				fields := strings.Fields(lines[i+1])
-				if fields[nameColumn] != view.LocalName || !strings.Contains(lines[i+1], view.Target) || strings.Contains(lines[i+1], view.SessionID) != wide {
-					t.Fatal("full name replaced the local name or leaked into the compact row", out.String())
+				if !strings.Contains(lines[i+1], view.Target) || strings.Contains(lines[i+1], view.SessionID) != wide {
+					t.Fatal("list lost the public name or exposed internal IDs without --wide", out.String())
+				}
+				if fields[nameColumn] != view.LocalName {
+					t.Fatal("wrong name columns", out.String())
 				}
 				if !local && fields[0] != view.Workspace {
 					t.Fatal("duplicate local names lost their folder context", out.String())
+				}
+			}
+		}
+	}
+}
+
+func TestListKeepsDefaultDetailsAndMakesConfigsWideOnly(t *testing.T) {
+	view := app.View{
+		Target: "dbx-project-111111111111.work", LocalName: "work", Default: true,
+		Harness: "pi", SessionID: "internal-session-id", Workspace: "/long/workspace/path",
+		StoragePath: "/long/storage/path", ContainerName: "long-container-name", ManualStart: true,
+		Sources: []config.Reference{
+			{Label: "base-config", Kind: config.ReferenceFixed, Path: "/configs/base-config"},
+			{Label: strings.Repeat("long-config-", 20), Kind: config.ReferenceFixed, Path: "/configs/long-config"},
+		},
+	}
+	for _, local := range []bool{false, true} {
+		for _, wide := range []bool{false, true} {
+			var out bytes.Buffer
+			if err := printSessionTable(&out, []app.View{view}, wide, time.Now(), local); err != nil {
+				t.Fatal(err)
+			}
+			text := out.String()
+			for _, value := range []string{view.SessionID, view.StoragePath, view.ContainerName, "base-config", view.Sources[1].Label} {
+				if strings.Contains(text, value) != wide {
+					t.Fatal("wrong detail level", value, text)
+				}
+			}
+			if strings.Contains(text, view.Workspace) == local {
+				t.Fatal("workspace column changed", text)
+			}
+			for _, value := range []string{view.Target, view.LocalName, view.Harness, "until stop", "*"} {
+				if !strings.Contains(text, value) {
+					t.Fatal("list lost a default detail", value, text)
+				}
+			}
+			lines := strings.Split(strings.TrimSpace(text), "\n")
+			if strings.Contains(lines[0], "CONFIGS") != wide {
+				t.Fatal("config column must require --wide", text)
+			}
+			if !wide {
+				header := "SESSION NAME DEFAULT HARNESS LAST ACTIVE CONTAINER LIFETIME"
+				if !local {
+					header = "FOLDER " + header
+				}
+				if strings.Join(strings.Fields(lines[0]), " ") != header {
+					t.Fatal("default columns changed beyond config visibility", text)
 				}
 			}
 		}

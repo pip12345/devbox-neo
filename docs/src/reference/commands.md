@@ -75,7 +75,7 @@ Configured arguments precede continuation and one-off arguments. One-off argumen
 
 | Command | Output |
 |---|---|
-| `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Sessions, including missing containers. Public session names are always shown. `--wide` adds IDs, storage paths, container names and exact activity details |
+| `list [folder] [--sort folder\|name\|last-active] [--wide] [--json]` | Sessions, including missing containers. Public session names are always shown. `--wide` adds config chains, IDs, storage paths, container names and exact activity details |
 | `status [--json]` | Configuration health for all sessions |
 | `status <target> [--json]` | One session's state, active commands, and pending changes |
 
